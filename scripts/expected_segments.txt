@@ -1,0 +1,22 @@
+# Ground truth for test.mp3 (Surah Al-Ahzab 33:21-23), as specified by the user.
+# One expected segment per line, in recitation order. Blank lines and #-comments ignored.
+#
+# Text is matched to corpus word ranges by skeleton, so orthography doesn't need to be
+# exact -- the first few lines below are hand-typed in simplified script rather than
+# Uthmani and still resolve correctly.
+#
+# NOTE: consecutive segments deliberately OVERLAP in word range (1 and 2, 4 and 5,
+# 8 and 9). That is the reciter restarting an earlier phrase and carrying further,
+# which is the structure the pipeline has to reproduce.
+
+لَّقَدْ كَانَ لَكُمْ فِي رَسُولِ اللَّهِ أُسْوَةٌ
+لَّقَدْ كَانَ لَكُمْ فِي رَسُولِ اللَّهِ أُسْوَةٌ حَسَنَةٌ لِّمَن كَانَ
+لِّمَن كَانَ يَرْجُو اللَّهَ وَالْيَوْمَ الْآخِرَ وَذَكَرَ اللَّهُ كَثِيرًۭا
+وَلَمَّا رَءَا ٱلْمُؤْمِنُونَ ٱلْأَحْزَابَ قَالُوا۟
+قَالُوا۟ هَـٰذَا مَا وَعَدَنَا ٱللَّهُ وَرَسُولُهُ
+وَصَدَقَ ٱللَّهُ وَرَسُولُهُ
+وَمَا زَادَهُمْ إِلَّآ إِيمَـٰنًۭا وَتَسْلِيمًۭا
+مِّنَ ٱلْمُؤْمِنِينَ رِجَالٌۭ
+مِّنَ ٱلْمُؤْمِنِينَ رِجَالٌۭ صَدَقُوا۟ مَا عَـٰهَدُوا۟ ٱللَّهَ عَلَيْهِ
+فَمِنْهُم مَّن قَضَىٰ نَحْبَهُۥ وَمِنْهُم مَّن يَنتَظِرُ
+وَمَا بَدَّلُوا۟ تَبْدِيلًۭا

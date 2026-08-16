@@ -1,0 +1,321 @@
+/**
+ * Forced-alignment matcher.
+ *
+ * `geminiMatcher.ts` and `asrAligner.ts` ask a model *what* was recited and
+ * *when* at the same time, then repair the answer by searching the Quran text.
+ * This one inverts that: the ayah range is known up front, so the Quran text
+ * becomes a fixed constraint and the sidecar decides only when each word was
+ * spoken.
+ *
+ * What that buys, structurally rather than by tuning:
+ *  - no word can go missing (every reference word is in the target sequence);
+ *  - no word can be garbled (the output tokens *are* the Quran text);
+ *  - nothing can land in the wrong surah (there is no corpus search at all).
+ *
+ * The cost is that the range has to come from somewhere: the UI's selection,
+ * the sidecar's own detection, or `hybridMatcher.ts`, which has Gemini supply
+ * it. See docs/ALIGNMENT.md.
+ */
+
+import { getRange } from '@/lib/quranCorpus';
+import type { MatchResult, MatchSegment } from '@/lib/matchTypes';
+
+type AlignedWord = {
+  text: string;
+  verse_key: string;
+  word_index: number;
+  start: number;
+  end: number;
+  score: number;
+  is_repeat: boolean;
+};
+
+type AlignResponse = {
+  success: boolean;
+  model: string;
+  audioDuration: number;
+  words: AlignedWord[];
+  /**
+   * Segments are computed sidecar-side now: phrase boundaries come from the
+   * audio's own energy dips, and each phrase's word range from decoding it.
+   * Consecutive segments may overlap in word range -- that is a reciter
+   * restarting an earlier phrase and carrying further, not a bug.
+   */
+  segments: {
+    verse_key: string;
+    start_word: number;
+    end_word: number;
+    start: number;
+    end: number;
+    score: number;
+    is_restart: boolean;
+  }[];
+  meanScore: number;
+  /**
+   * Fraction of the supplied reference text the aligner could actually account
+   * for. This -- not `meanScore` -- is what distinguishes a correct ayah range
+   * from a wrong one; see the sidecar's `RecitationResult.reference_coverage`.
+   */
+  referenceCoverage?: number;
+  /** Present when no reference was supplied and the passage was found from the audio. */
+  detectedRange: {
+    /** Every passage found. A recitation is often Al-Fatihah plus a surah. */
+    ranges: { surah: number; start_ayah: number; end_ayah: number; phrases: number }[];
+    /** The largest passage, for a single-range label. */
+    surah: number;
+    start_ayah: number;
+    end_ayah: number;
+    confidence: number;
+    matched_phrases: number;
+    total_phrases: number;
+  } | null;
+  /** Set when the alignment fit the text but the acoustics don't support it. */
+  warning: string | null;
+};
+
+/**
+ * Silence between two aligned words long enough to be a deliberate phrase
+ * break rather than the micro-gap between words in continuous recitation.
+ * This is a measurement on real word boundaries rather than a VAD-region
+ * guess, which is why it can be a single threshold.
+ */
+const SEGMENT_GAP_SEC = 0.45;
+
+async function requestAlignment(params: {
+  serviceUrl: string;
+  audio: File;
+  reference: string;
+  detectRepeats: boolean;
+}): Promise<AlignResponse> {
+  const formData = new FormData();
+  formData.append('audio', params.audio);
+  formData.append('reference', params.reference);
+  formData.append('detect_repeats', String(params.detectRepeats));
+
+  const base = params.serviceUrl.replace(/\/$/, '');
+  let res: Response;
+  try {
+    res = await fetch(`${base}/align`, { method: 'POST', body: formData });
+  } catch {
+    throw new Error(`Could not reach the alignment service at ${base}. Is it running? See asr-service/README.md.`);
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Alignment failed (${res.status}): ${detail.slice(0, 300) || res.statusText}`);
+  }
+  return res.json();
+}
+
+/**
+ * Cuts the aligned word stream into on-screen segments.
+ *
+ * A new segment starts at an ayah change, at a pause longer than
+ * `SEGMENT_GAP_SEC`, or when the recitation crosses into (or out of) a
+ * repeated phrase — a repeat is a separate thing to show, even mid-ayah.
+ */
+export function buildSegments(words: AlignedWord[]): MatchSegment[] {
+  const segments: MatchSegment[] = [];
+  let current: AlignedWord[] = [];
+
+  const flush = () => {
+    if (!current.length) return;
+    const [surahStr, verseStr] = current[0].verse_key.split(':');
+    const scores = current.map(word => word.score);
+    segments.push({
+      verseKey: current[0].verse_key,
+      surahNumber: Number(surahStr),
+      verseNumber: Number(verseStr),
+      startTime: current[0].start,
+      endTime: current[current.length - 1].end,
+      confidence: Math.max(0, Math.min(1, scores.reduce((a, b) => a + b, 0) / scores.length)),
+      displayTextUthmani: current.map(word => word.text).join(' '),
+      notes: current[0].is_repeat ? 'repeated phrase' : undefined
+    });
+    current = [];
+  };
+
+  words.forEach((word, index) => {
+    if (index > 0) {
+      const previous = words[index - 1];
+      const changedVerse = word.verse_key !== previous.verse_key;
+      const changedRepeat = word.is_repeat !== previous.is_repeat;
+      const paused = word.start - previous.end > SEGMENT_GAP_SEC;
+      if (changedVerse || changedRepeat || paused) flush();
+    }
+    current.push(word);
+  });
+  flush();
+
+  return segments;
+}
+
+export async function runForcedAlignMatch(params: {
+  serviceUrl: string;
+  audio: File;
+  /** Omit (or pass autoDetect) to have the sidecar work the passage out from the audio. */
+  surah?: number;
+  start?: number;
+  end?: number;
+  /**
+   * An ordered list of blocks to align against instead of a single range --
+   * e.g. Al-Fatihah followed by Al-Baqarah 1-5. Used by the hybrid provider,
+   * which gets this list from Gemini's identify pass rather than the UI's
+   * single surah/start/end selection. Takes priority over `surah`/`start`/`end`.
+   */
+  ranges?: { surah: number; start: number; end: number }[];
+  autoDetect?: boolean;
+  detectRepeats?: boolean;
+}): Promise<MatchResult> {
+  const explicitRanges = params.ranges?.length ? params.ranges : null;
+  const autoDetect = !explicitRanges && (params.autoDetect || !params.surah || !params.start || !params.end);
+  /** Set when auto-detect was asked for but the sidecar couldn't do it. */
+  let fellBackToSelected = false;
+
+  // Auto-detect sends no reference at all: the sidecar decodes the audio,
+  // finds the passage in the full Quran, and aligns against exactly that.
+  // The range must be tight -- forced alignment has to place every reference
+  // word, so padding it with extra ayahs would corrupt the alignment rather
+  // than make it safer.
+  let reference = '';
+  if (!autoDetect) {
+    const rangesToAlign = explicitRanges || [{ surah: params.surah!, start: params.start!, end: params.end! }];
+    const versesPerRange = await Promise.all(rangesToAlign.map(r => getRange(r.surah, r.start, r.end)));
+    const missing = rangesToAlign.filter((_, i) => !versesPerRange[i].length);
+    if (missing.length) {
+      throw new Error(`No Quran text found for ${missing.map(r => `${r.surah}:${r.start}-${r.end}`).join(', ')}.`);
+    }
+    reference = versesPerRange
+      .flat()
+      .map(verse => `${verse.verseKey}\t${verse.words.map(word => word.arabic).join(' ')}`)
+      .join('\n');
+  }
+
+  let result: AlignResponse;
+  try {
+    result = await requestAlignment({
+      serviceUrl: params.serviceUrl,
+      audio: params.audio,
+      reference,
+      detectRepeats: params.detectRepeats ?? true
+    });
+  } catch (err) {
+    // Auto-detection is the sidecar's most fragile capability: it needs to
+    // *read* the audio, so it only exists on the NeMo backend, and even there
+    // it can fail to find the passage. On a CPU-only host (backend
+    // `wav2vec2`) it always fails -- which would make `align`, the recommended
+    // provider, permanently broken on exactly that deployment.
+    //
+    // Aligning the range the user picked is a strictly better outcome than an
+    // error, and it is what the non-auto-detect path does anyway.
+    const canRetry = autoDetect && params.surah && params.start && params.end;
+    if (!canRetry) throw err;
+
+    console.warn(
+      `[forcedAligner] auto-detect failed (${(err as Error).message.slice(0, 160)}); ` +
+        `retrying with the selected range ${params.surah}:${params.start}-${params.end}.`
+    );
+    const selected = await getRange(params.surah!, params.start!, params.end!);
+    if (!selected.length) throw err;
+    result = await requestAlignment({
+      serviceUrl: params.serviceUrl,
+      audio: params.audio,
+      reference: selected
+        .map(verse => `${verse.verseKey}\t${verse.words.map(word => word.arabic).join(' ')}`)
+        .join('\n'),
+      detectRepeats: params.detectRepeats ?? true
+    });
+    fellBackToSelected = true;
+  }
+
+  const detected = result.detectedRange;
+  const surah = detected?.surah ?? explicitRanges?.[0].surah ?? params.surah!;
+  const startAyah = detected?.start_ayah ?? explicitRanges?.[0].start ?? params.start!;
+  const endAyah = detected?.end_ayah ?? explicitRanges?.[0].end ?? params.end!;
+
+  // Display text comes from the app's corpus. Fetch *every* passage that was
+  // aligned, not just the primary one -- a recitation that opens with
+  // Al-Fatihah before the main surah otherwise leaves those segments with no
+  // text at all.
+  const ranges = detected?.ranges?.length
+    ? detected.ranges.map(r => ({ surah: r.surah, start: r.start_ayah, end: r.end_ayah }))
+    : explicitRanges || [{ surah, start: startAyah, end: endAyah }];
+  const verses = (await Promise.all(ranges.map(r => getRange(r.surah, r.start, r.end).catch(() => [])))).flat();
+
+  if (!result.words?.length) {
+    throw new Error('The alignment service returned no aligned words.');
+  }
+
+  const wordsByVerse = new Map<string, AlignedWord[]>();
+  for (const word of result.words) {
+    const bucket = wordsByVerse.get(word.verse_key);
+    if (bucket) bucket.push(word);
+    else wordsByVerse.set(word.verse_key, [word]);
+  }
+
+  const segments: MatchSegment[] = (result.segments || []).map(segment => {
+    const [surahStr, verseStr] = segment.verse_key.split(':');
+    const verse = verses.find(v => v.verseKey === segment.verse_key);
+    const recited = (verse?.words || []).slice(segment.start_word, segment.end_word + 1);
+    return {
+      verseKey: segment.verse_key,
+      surahNumber: Number(surahStr),
+      verseNumber: Number(verseStr),
+      startTime: segment.start,
+      endTime: segment.end,
+      confidence: Math.max(0, Math.min(1, segment.score)),
+      displayTextUthmani: recited.map(word => word.arabic).join(' '),
+      // Transliteration is per-word by nature, so slicing it reads correctly.
+      displayTransliteration: recited.map(word => word.transliteration).filter(Boolean).join(' '),
+      // Translation is NOT. The corpus's per-word glosses are grammatical
+      // fragments ("(is) with Allah", "even though") that do not compose into
+      // a sentence -- concatenating the slice produced unreadable English.
+      // Show the ayah's own translation for the segment instead.
+      displayTranslation: verse?.translation || '',
+      // Exact word range, so the timeline doesn't have to re-derive which words
+      // were recited by matching text -- which picks the wrong occurrence when
+      // a word repeats inside one ayah.
+      startWordIndex: segment.start_word,
+      endWordIndex: segment.end_word,
+      notes: segment.is_restart ? 'restarted phrase' : undefined
+    };
+  });
+
+  const meanScore = result.meanScore ?? 0;
+  const restarts = (result.segments || []).filter(segment => segment.is_restart).length;
+  const repeatNote = restarts ? ` ${restarts} restarted phrase(s) detected.` : '';
+
+  // Forced alignment fits whatever text it's handed, so a wrong ayah range
+  // produces a complete, plausible-looking, entirely wrong timeline. The
+  // sidecar flags that case on mean acoustic confidence -- pass it through
+  // loudly rather than letting it look like a successful match.
+  if (result.warning) {
+    console.warn(`[forcedAligner] ${result.warning}`);
+  }
+
+  // Label every block that was aligned, not just the first -- a hybrid or
+  // auto-detected run routinely covers Al-Fatihah plus another surah, and a
+  // single-range label would silently under-report what the timeline contains.
+  const rangeLabel = ranges.map(r => `${r.surah}:${r.start}-${r.end}`).join(', ') || `${surah}:${startAyah}-${endAyah}`;
+  console.log(
+    `[forcedAligner] aligned ${result.words.length} word(s) from ${rangeLabel} ` +
+      `(${detected ? 'auto-detected' : 'selected'}) into ${segments.length} segment(s); ${restarts} restart(s); ` +
+      `mean ${meanScore.toFixed(4)}, coverage ${result.referenceCoverage ?? 'n/a'}.`
+  );
+
+  return {
+    audioDuration: result.audioDuration,
+    confidence: meanScore,
+    transcript: result.words.map(word => word.text).join(' '),
+    segments,
+    warning: result.warning || undefined,
+    notes:
+      (result.warning ? `⚠ ${result.warning} ` : '') +
+      (detected
+        ? `Detected ${rangeLabel} from the audio itself (${Math.round(detected.confidence * 100)}% match on ` +
+          `${detected.matched_phrases}/${detected.total_phrases} phrases) and force-aligned it`
+        : fellBackToSelected
+          ? `This sidecar can't detect the range from audio, so the selected range ${rangeLabel} was force-aligned instead — confirm it matches the recording`
+          : `Force-aligned the selected text of ${rangeLabel}`) +
+      ` (${result.model}). Every reference word has a timestamp by construction.${repeatNote}`
+  };
+}

@@ -1,0 +1,416 @@
+# Quran Clip Maker
+
+A Next.js studio for creating short-form Quran recitation videos. Select ayahs, choose a
+reciter or upload your own recitation, sync verse timings, style the canvas, pick an animated
+background, and export the result — all in the browser.
+
+Its distinguishing feature is how it times uploaded audio. Instead of asking a model to guess
+what was recited and when, it takes the *known* Quran text as a fixed constraint and solves
+only for timing. A word cannot go missing, come back garbled, or land in the wrong surah —
+those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Environment variables](#environment-variables)
+- [Audio matching](#audio-matching)
+- [Using the studio](#using-the-studio)
+- [Export](#export)
+- [API reference](#api-reference)
+- [Project structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Limitations](#limitations)
+
+---
+
+## Features
+
+**Quran content**
+- All 114 surahs with Arabic/English metadata, Uthmani text, word-level data, transliteration,
+  and English translation (Quran.com API, translation `131` — The Clear Quran).
+- Six reciters streamed from the mp3quran.net CDN:
+
+  | Reciter | Arabic | Style |
+  |---|---|---|
+  | Abdul Rahman Al-Sudais | عبد الرحمن السديس | Murattal |
+  | Maher Al-Muaiqly | ماهر المعيقلي | Murattal |
+  | Yasser Al-Dosari | ياسر الدوسري | Emotional |
+  | Saud Al-Shuraim | سعود الشريم | Murattal |
+  | Saad Al-Ghamdi | سعد الغامدي | Murattal |
+  | Raad Al-Kurdi | رعد محمد الكردي | Emotional |
+
+**Timing your own audio**
+- Four interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).
+- Forced alignment runs locally, on GPU or CPU, and never sends your audio anywhere.
+- Repeated phrases are detected acoustically and get their own segments.
+- Phrase-level display: each segment carries only the words actually spoken, so a repeated
+  half-ayah shows exactly those words rather than the whole verse.
+- Manual Tap-To-Sync editor as an alternative or a corrective: tap SPACEBAR to mark boundaries,
+  nudge durations (changes cascade to keep the timeline contiguous), and hide individual words.
+
+**Styling and export**
+- Aspect ratios 9:16, 16:9, 1:1, 4:5.
+- 11 Pexels video backgrounds, or paste any video/image URL, or upload a file.
+- Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
+  Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card.
+- Browser export via `canvas.captureStream()` + `MediaRecorder` (WebM, 18 Mbps, 30 or 60 FPS).
+- Save/load projects with PostgreSQL, or in-memory when no database is configured.
+
+---
+
+## Quick start
+
+### Prerequisites
+
+| | Needed for |
+|---|---|
+| **Node.js 20+** | the web app (required) |
+| **Python 3.11 or 3.12** + **ffmpeg** on PATH | local forced alignment (recommended) |
+| **PostgreSQL** | durable saved projects (optional) |
+| **Gemini API key** | cloud matching providers (optional) |
+
+The app runs with Node alone. Everything else unlocks an optional capability.
+
+### 1. Install and run the web app
+
+```bash
+npm install
+npm run dev
+```
+
+Open <http://localhost:3000/video-creator>. You can already browse surahs, load reciter audio,
+style the canvas, manually sync timings, and export.
+
+### 2. Install the alignment sidecar (recommended)
+
+This is what times uploaded audio accurately. It is a separate Python service.
+
+```bash
+cd asr-service
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
+**No NVIDIA GPU** (including most VPS hosts) — install the CPU-only PyTorch wheel first, which
+avoids pulling ~2–3 GB of unused CUDA libraries:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+```
+
+**With an NVIDIA GPU:**
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Start the sidecar
+
+```bash
+cd asr-service
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+The first start downloads model weights (~1.2 GB). Confirm it is up:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Then reload the studio page — the **Forced Align** matcher will show "Sidecar online".
+
+> **CPU-only hosts:** alignment is fast on CPU (a 68-second clip aligns in about 4 seconds on
+> an 8-core machine) because it searches one fixed text rather than every possible sentence.
+> Add `ASR_ALIGN_BACKEND=wav2vec2 ASR_WARM_UP=0` to skip the heavy optional NeMo dependency.
+> See [asr-service/README.md](asr-service/README.md#running-without-a-gpu).
+
+### 4. Configure keys (optional)
+
+Copy `.env.example` to `.env.local` and fill in only what you need:
+
+```bash
+cp .env.example .env.local
+```
+
+Nothing in it is required to run the app.
+
+---
+
+## Environment variables
+
+All of these go in `.env.local` in the project root. **None are required** — each one enables
+an optional capability, and the app degrades cleanly without it.
+
+| Variable | Required for | Default | Notes |
+|---|---|---|---|
+| `ASR_SERVICE_URL` | forced alignment, local ASR | `http://127.0.0.1:8000` | Where the Python sidecar is listening. |
+| `AUDIO_MATCH_PROVIDER` | — | `gemini` | Default provider when the client doesn't pick one. Set to `align` if you run the sidecar. |
+| `GEMINI_API_KEY` | `gemini` and `hybrid` providers | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
+| `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |
+| `GEMINI_TIMEOUT_MS` | — | `180000` | Ceiling on a single Gemini request. |
+| `DATABASE_URL` | durable saved projects | — | Without it, projects are kept in memory and lost on restart. |
+
+> **Gemini model IDs are retired regularly.** `gemini-2.0-flash` and `gemini-2.5-flash` no
+> longer exist and return HTTP 404. Check the
+> [current model list](https://ai.google.dev/gemini-api/docs/models) and pick a model that
+> accepts audio input. Note that `chirp_3` is a Speech-to-Text model, not a Gemini model, and
+> will not work here.
+
+Getting a Gemini key: sign in at [Google AI Studio](https://aistudio.google.com/apikey),
+create an API key, and paste it as `GEMINI_API_KEY`. The free tier is enough to try the cloud
+providers. **Keep `.env.local` out of version control** — it is already in `.gitignore`.
+
+The sidecar has its own settings (backend, device, thresholds), documented in
+[asr-service/README.md](asr-service/README.md).
+
+---
+
+## Audio matching
+
+Upload a recitation, pick a matcher, and the studio produces a timeline of segments.
+All four providers return the same shape and flow through the same timeline-building code,
+so they can be swapped freely and compared on the same clip.
+
+| Provider | Needs | Who picks the ayah range | Timing accuracy |
+|---|---|---|---|
+| **Forced Align** (`align`) | sidecar | detected from audio, or you | **Exact** — cannot drop or garble a word |
+| **Gemini + Align** (`hybrid`) | API key **and** sidecar | Gemini identifies it | **Exact** — same aligner |
+| **Gemini** (`gemini`) | API key | you | Approximate |
+| **Local ASR** (`asr`) | sidecar | detected from audio | Low |
+
+**Forced Align** is the recommended path. It is *given* the Quran text rather than asked to
+guess it: the text becomes a fixed CTC target and the model decides only *when* each word was
+spoken. Every reference word therefore gets a timestamp by construction, and there is no
+corpus search that could put a phrase in the wrong surah.
+
+**Gemini + Align** asks each model only the question it can actually answer. Gemini listens
+and reports *which ayahs were recited, in what order* — no timestamps at all — and those
+ranges become the reference text for the same local aligner. Recognition is a genuine LLM
+strength; frame-accurate timing is not. This gives you exact timing without having to select
+the right range yourself.
+
+**Gemini** does both jobs in one call. Zero local setup, but an LLM has no frame-level time
+grounding, so its timestamps are plausible estimates rather than measurements. Prefer `hybrid`
+when the sidecar is available.
+
+**Local ASR** freely transcribes the audio and fuzzy-searches the result against the whole
+Quran. Kept for the case where no range is known and no API key is available; whatever the
+recogniser mishears is simply lost. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md) for why.
+
+### Checking a match before you publish
+
+Forced alignment cannot fail loudly: hand it any text and any audio and it returns a complete,
+confident-looking timeline. A **wrong ayah range therefore produces plausible garbage, not an
+error.**
+
+The guard against that is `referenceCoverage` — the fraction of the supplied text the aligner
+could actually account for. A correct reference gets walked to its end; a wrong one strands
+most of itself. The sidecar raises a warning below 75% coverage and the studio surfaces it.
+
+The response also carries `needsReview`, which is set when:
+
+- the coverage warning fired, or
+- the provider is `hybrid` (the range came from an LLM, so confirm it), or
+- the provider is `gemini` (its timing is always an estimate).
+
+`align` with a range you chose yourself and clean coverage is the only combination that comes
+back without a review prompt.
+
+**Do not read `confidence` as "this is the right passage."** For `gemini` it is a
+self-assessed score that runs high regardless. For `align`/`hybrid` it is mean per-word
+acoustic sharpness, which is useful for spotting a muddy recording but does *not* separate a
+correct range from a wrong one — [docs/ALIGNMENT.md](docs/ALIGNMENT.md) has the measurements.
+
+---
+
+## Using the studio
+
+The sidebar has three tabs.
+
+**1 — Quran & Reciter**
+1. Choose a reciter, surah, and ayah range, then **Load Ayahs & Audio Data**.
+2. Or upload your own recitation and use **AI Auto-match** (or **Manual Match**).
+   - With **Forced Align**, the sidecar tries to detect the passage itself. If its backend
+     can't do that (CPU-only setups), it falls back to the range selected above — so set it
+     correctly first. The button's help text tells you which mode is active.
+   - With **Gemini + Align**, Gemini picks the range; the selection above is only a fallback.
+
+**2 — Tap-To-Sync**
+3. Press Play and tap SPACEBAR at the end of each ayah to mark boundaries.
+4. Adjust with sliders, nudge durations by ±0.2 s, and hide individual words with the chips.
+5. Review the match confidence and reassign ayah numbers if needed.
+
+**3 — Styling & FX**
+6. Pick an aspect ratio and a background.
+7. Configure fonts, colours, shadows, card opacity, badge, and watermark.
+
+Then save the project and export.
+
+> Built-in reciter timings are estimates. Use Tap-To-Sync or AI matching for accuracy.
+> AI matching applies to uploaded audio only.
+
+---
+
+## Export
+
+Exports use browser APIs: `canvas.captureStream()` for frames, a cloned `Audio` element routed
+through Web Audio, and `MediaRecorder` with VP9/opus (falling back to VP8/opus, then generic
+WebM). **Chrome or Chromium is recommended.** Output is `.webm`.
+
+| Aspect ratio | Resolution |
+|---|---|
+| 9:16 | 1080×1920 |
+| 16:9 | 1920×1080 |
+| 1:1 | 1080×1080 |
+| 4:5 | 1080×1350 |
+
+---
+
+## API reference
+
+App routes:
+
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/api/quran/surahs` | All 114 surahs |
+| `GET` | `/api/quran/verses?surah=&start=&end=&reciter=` | Verse data and audio URL |
+| `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|hybrid\|gemini\|asr`) |
+| `GET` | `/api/audio/match` | Which providers are configured and reachable |
+| `GET` `POST` | `/api/projects` | List / save projects |
+| `GET` `POST` | `/api/exports` | List / save export records |
+
+Sidecar routes (default `http://127.0.0.1:8000`) are documented in
+[asr-service/README.md](asr-service/README.md#api).
+
+Aligning a clip without starting the web app:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/align \
+  -F "audio=@clip.mp3" \
+  -F $'reference=33:21\tلَّقَدْ كَانَ لَكُمْ فِى رَسُولِ ٱللَّهِ' | python3 -m json.tool
+```
+
+---
+
+## Project structure
+
+```
+src/app/                     Next.js pages and API routes
+  api/audio/match/           Matcher endpoint and provider dispatch
+  video-creator/             The studio page
+src/components/              VideoCanvas, TimelineSyncEditor, StyleConfigPanel,
+                             GpuExportModal, SavedProjectsDrawer
+src/db/                      Drizzle ORM connection and schema
+src/lib/
+  quranData.ts               Surahs, reciters, backgrounds, fonts, sample data
+  quranCorpus.ts             Quran text fetch with a memoised chapter cache
+  arabic.ts                  Arabic normalisation and fuzzy word matching
+  matchTypes.ts              Shared segment/result shape for every provider
+  matchTimeline.ts           Provider-agnostic segment -> timeline building
+  forcedAligner.ts           Forced-align provider (recommended)
+  hybridMatcher.ts           Gemini identifies, the local aligner times
+  geminiMatcher.ts           Gemini provider
+  asrAligner.ts              Local ASR provider
+asr-service/                 Python sidecar
+  app/align.py               CTC forced alignment, phrase segmentation, repeat detection
+  app/asr.py                 Free-decode backends (wav2vec2 / nemo / whisper)
+  app/vad.py                 Silero VAD pause detection
+scripts/                     Standalone scripts reproducing the docs/ALIGNMENT.md measurements
+docs/ALIGNMENT.md            Why alignment is built this way, with measurements
+```
+
+**Tech stack:** Next.js 16 (App Router), React 19, TypeScript (strict), Tailwind CSS v4,
+Drizzle ORM + PostgreSQL, Quran.com API v4, FastAPI + PyTorch/torchaudio, Silero VAD.
+
+### Development
+
+```bash
+npm run dev          # start the dev server
+npm run typecheck    # tsc --noEmit
+npm run lint         # eslint
+npm run build        # production build
+```
+
+---
+
+## Troubleshooting
+
+**"Sidecar unreachable" on the Forced Align / Local ASR buttons**
+The sidecar isn't running, or `ASR_SERVICE_URL` is wrong. Start it and check
+`curl http://127.0.0.1:8000/health`. The provider selector polls on page load, so reload
+afterwards.
+
+**The sidecar crashes on startup with a protobuf or onnx version error**
+You are almost certainly running it outside its virtualenv. Use
+`cd asr-service && source .venv/bin/activate` first, or call `.venv/bin/uvicorn` directly.
+
+**"Only N% of the supplied text could be matched to this audio"**
+The ayah range doesn't match the recording, or the recording covers only part of it. Narrow
+or correct the range and match again. This warning is working as intended — it is the main
+protection against a confident-looking but wrong timeline.
+
+**A word is smeared across several seconds**
+Usually an unmodelled repeat: the reciter said something the reference text contains only
+once. Long melodic elongation (*madd*) also legitimately produces multi-second words.
+
+**The first alignment request is slow**
+Model weights download on first use and load on first request. Later requests reuse the
+cached model.
+
+**Gemini returns 404 for the model**
+The model ID in `GEMINI_MODEL` has been retired. Pick a current one from
+[Google's model list](https://ai.google.dev/gemini-api/docs/models) and restart the dev server.
+
+**Gemini returns 503 "high demand"**
+A transient capacity error on Google's side. The client retries once automatically; if it
+still fails, `hybrid` falls back to your selected range and says so in the result notes.
+
+**No audio after "Load Ayahs & Audio Data"**
+An error banner names the specific cause. Try a different reciter or upload your own file.
+
+**Dev server freezes**
+```bash
+rm -rf .next
+npx next dev --webpack
+```
+
+---
+
+## Limitations
+
+- **Always review an AI-generated timeline before publishing.** Forced alignment cannot report
+  that it was handed the wrong text; coverage is a strong guard, not a guarantee.
+- Range auto-detection needs the `nemo` align backend, since it has to read the audio. On the
+  `wav2vec2` backend you supply the range and the service aligns that instead.
+- Alignment assumes the recitation follows the reference text in order. Repeats are detected
+  and inserted; out-of-order recitation is not handled.
+- A multi-block reference (e.g. Al-Fatihah followed by another surah) is fragile: if the first
+  block isn't actually in the audio, the phrase search can stall inside it. Low coverage flags
+  this, but prefer one tight range when you know it.
+- Word-level *timing accuracy* has not been formally measured — only coverage and ordering.
+- The aligner holds the whole clip's CTC emissions in memory. Overlapping windows are stitched
+  so it degrades gracefully, but this has been verified only at around 70 seconds; test before
+  relying on it for long recordings.
+- Repeat-detection thresholds in `align.py` were tuned on a single clip. Multi-word repeats
+  clear them comfortably; single-word matches on very common words sit near the threshold.
+- Gemini inline audio is limited to about 18 MB (roughly 15–20 minutes of MP3). Compress or
+  split longer recordings.
+- Browser export depends on `MediaRecorder` codec support; Chrome/Chromium recommended.
+- In-memory saved projects are not durable — configure `DATABASE_URL` for persistence.
+
+---
+
+## Credits
+
+Quran text, translation, and word data from the [Quran.com API](https://api-docs.quran.com/).
+Reciter audio from [mp3quran.net](https://mp3quran.net/). Background footage from
+[Pexels](https://www.pexels.com/). Acoustic models from the Hugging Face community.
+
+## License
+
+Free for personal, educational, and other non-commercial use — see [LICENSE](LICENSE) for the
+full terms. Commercial use requires separate written permission from the copyright holder.

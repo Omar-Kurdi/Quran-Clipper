@@ -1,0 +1,26 @@
+# Core service
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+numpy>=1.26,<2.2
+
+# Voice activity detection (pause / breath boundaries)
+silero-vad==5.1.2
+
+# Torch. On Linux the default PyPI wheel bundles the CUDA runtime (~2-3 GB of
+# nvidia-* packages). On a machine with no NVIDIA GPU, install the CPU wheel
+# BEFORE this file to skip all of that:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# See "Running without a GPU" in README.md.
+torch>=2.2
+
+# Backend: wav2vec2 (default, ungated, CTC char offsets -> word timestamps)
+# Backend: whisper (Tarteel-fine-tuned, e.g. IJyad/whisper-large-v3-Tarteel)
+#   Both share this dependency -- no extra install needed for whisper.
+transformers>=4.44
+# Recommended for whisper: more memory-efficient large-model loading.
+#   pip install accelerate
+# Backend: nemo (FastConformer hybrid CTC/RNNT, native word timestamps)
+#   Heavy install. Uncomment only if you use ASR_BACKEND=nemo
+# nemo_toolkit[asr]>=2.0.0
+huggingface_hub>=0.24

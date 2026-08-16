@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nvidia-smi *)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(curl -s http://127.0.0.1:8000/health)",
+      "Bash(curl -s --max-time 2 http://127.0.0.1:8000/health)",
+      "Bash(ffprobe *)"
+    ]
+  }
+}

@@ -1,0 +1,51 @@
+# dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# production builds
+dist/
+build/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# env files (important!)
+.env
+.env.local
+.env.*.local
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+
+FutureIdeas.md
+existingwebsite/
+
+# Python sidecar
+asr-service/.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# stray file from a malformed pip install
+asr-service/=*
+
+# local-only Claude Code settings (settings.json is shared)
+.claude/settings.local.json
+.claude/launch.json
+
+# model / corpus caches
+*.nemo
+.cache/

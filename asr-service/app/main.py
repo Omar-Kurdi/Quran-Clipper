@@ -1,0 +1,386 @@
+"""Quran recitation ASR + VAD sidecar.
+
+Deliberately knows nothing about the Quran text. It answers one question:
+"which Arabic words were spoken, when, and where were the pauses?"
+
+Mapping those words onto ayahs happens in the Next.js app, which already owns
+the Quran corpus and the timeline data model.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+
+import numpy as np
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+
+from . import align, asr, corpus, detect
+from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, duration_seconds
+from .vad import VoicedRegion, detect_voiced_regions
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+log = logging.getLogger("asr-service")
+
+MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "200"))
+
+#: Fraction of the reference text an alignment must account for before the
+#: result is presented without a warning. See `RecitationResult.reference_coverage`.
+#:
+#: Set loose deliberately. The separation measured on the reference clip was
+#: total (1.00 correct vs 0.04-0.28 wrong), so the exact cut is not load-bearing;
+#: what it must avoid is nagging about a correct alignment that stops a couple of
+#: words short, which the phrase search can legitimately do at a trailing pause.
+MIN_REFERENCE_COVERAGE = float(os.getenv("ALIGN_MIN_REFERENCE_COVERAGE", "0.75"))
+# Long voiced spans are split so a single forward pass never blows up memory.
+MAX_CHUNK_SECONDS = float(os.getenv("MAX_CHUNK_SECONDS", "25"))
+
+app = FastAPI(title="Quran ASR Aligner", version="1.0.0")
+
+_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_methods=["POST", "GET"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    # Resolve the align backend here, always. When ASR_ALIGN_BACKEND is unset
+    # this probes whether NeMo imports, which costs ~4s -- and `/health` reports
+    # the result, so leaving it lazy put that 4s on the first health check. The
+    # app aborts that call after 1.5s and would then show every sidecar-backed
+    # provider as unreachable on a service that is running perfectly.
+    log.info("align backend resolved to %s (%s)", align.align_backend(), align.align_model_name())
+
+    if os.getenv("ASR_WARM_UP", "1") == "1":
+        asr.warm_up()
+
+
+@app.get("/health")
+def health() -> dict:
+    return {
+        "status": "ok",
+        "backend": asr.backend_name(),
+        "model": asr.model_name(),
+        "nemoDecoder": asr.active_nemo_decoder() if asr.backend_name() == "nemo" else None,
+        "alignBackend": align.align_backend(),
+        "alignModel": align.align_model_name(),
+        # Working the passage out from the audio means decoding it, which only
+        # the nemo backend does. The app needs to know this up front: without
+        # it, `/align` with no reference is a 400 rather than a capability the
+        # caller could have planned around.
+        "canAutoDetectRange": align.align_backend() == "nemo",
+        "sampleRate": SAMPLE_RATE,
+    }
+
+
+# Overlap between consecutive decode chunks. Without it a chunk boundary lands
+# mid-word and destroys the words either side of the cut; each chunk needs to
+# see a little of its neighbour's audio to decode its own edges correctly.
+CHUNK_OVERLAP_SECONDS = float(os.getenv("CHUNK_OVERLAP_SECONDS", "2.0"))
+
+
+def _split_region(region: VoicedRegion) -> list[tuple[float, float]]:
+    """Chunk an over-long voiced region into overlapping ASR-sized pieces."""
+    if region.duration <= MAX_CHUNK_SECONDS:
+        return [(region.start, region.end)]
+
+    overlap = min(CHUNK_OVERLAP_SECONDS, MAX_CHUNK_SECONDS / 2)
+    hop = MAX_CHUNK_SECONDS - overlap
+
+    pieces: list[tuple[float, float]] = []
+    cursor = region.start
+    while cursor < region.end:
+        end = min(cursor + MAX_CHUNK_SECONDS, region.end)
+        pieces.append((cursor, end))
+        if end >= region.end:
+            break
+        cursor += hop
+    return pieces
+
+
+def _dedupe_overlapping_words(words: list[asr.TimedWord]) -> list[asr.TimedWord]:
+    """Drop words decoded twice because they fell in a chunk overlap.
+
+    Consecutive words with the same text whose spans overlap in time can only
+    be the same utterance seen by two adjacent chunks -- a genuine immediate
+    repetition would be separated in time, not overlapping.
+    """
+    deduped: list[asr.TimedWord] = []
+    for word in sorted(words, key=lambda w: w.start):
+        if deduped and deduped[-1].text == word.text and word.start < deduped[-1].end:
+            continue
+        deduped.append(word)
+    return deduped
+
+
+def _merge_overlapping_regions(regions: list[VoicedRegion]) -> list[VoicedRegion]:
+    """Merge voiced regions that overlap after `speech_pad_ms` padding.
+
+    Silero pads each region on both sides, so two regions separated by less
+    than 2*speech_pad_ms come back overlapping. Left alone they get transcribed
+    twice and confuse any word-to-region assignment downstream.
+    """
+    if not regions:
+        return regions
+
+    merged = [regions[0]]
+    for region in regions[1:]:
+        last = merged[-1]
+        if region.start <= last.end:
+            merged[-1] = VoicedRegion(last.start, max(last.end, region.end))
+        else:
+            merged.append(region)
+
+    if len(merged) != len(regions):
+        log.info("merged %d overlapping voiced region(s)", len(regions) - len(merged))
+    return merged
+
+
+@app.post("/transcribe")
+async def transcribe(
+    audio: UploadFile = File(...),
+    vad_threshold: float = Form(0.3),
+    min_silence_ms: int = Form(900),
+    min_speech_ms: int = Form(250),
+    speech_pad_ms: int = Form(200),
+) -> dict:
+    started = time.perf_counter()
+
+    raw = await audio.read()
+    size_mb = len(raw) / 1024 / 1024
+    if size_mb > MAX_UPLOAD_MB:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio is {size_mb:.1f} MB, above the {MAX_UPLOAD_MB:.0f} MB limit.",
+        )
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty audio upload.")
+
+    try:
+        pcm = decode_to_pcm(raw)
+    except AudioDecodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    total_duration = duration_seconds(pcm)
+
+    regions = detect_voiced_regions(
+        pcm,
+        threshold=vad_threshold,
+        min_silence_ms=min_silence_ms,
+        min_speech_ms=min_speech_ms,
+        speech_pad_ms=speech_pad_ms,
+    )
+    if not regions:
+        regions = [VoicedRegion(0.0, total_duration)]
+    regions = _merge_overlapping_regions(regions)
+
+    words: list[dict] = []
+    region_payload: list[dict] = []
+
+    for region in regions:
+        region_words: list[asr.TimedWord] = []
+        for start, end in _split_region(region):
+            chunk = pcm[int(start * SAMPLE_RATE) : int(end * SAMPLE_RATE)]
+            try:
+                region_words.extend(asr.transcribe_words(chunk, offset=start))
+            except asr.AsrError as exc:
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+        region_words = _dedupe_overlapping_words(region_words)
+
+        region_payload.append(
+            {
+                "start": round(region.start, 3),
+                "end": round(region.end, 3),
+                "wordCount": len(region_words),
+                "text": " ".join(word.text for word in region_words),
+            }
+        )
+        words.extend(word.to_dict() for word in region_words)
+
+    elapsed = time.perf_counter() - started
+    log.info(
+        "transcribed %.1fs of audio into %d words across %d regions in %.1fs",
+        total_duration,
+        len(words),
+        len(regions),
+        elapsed,
+    )
+
+    return {
+        "success": True,
+        "backend": asr.backend_name(),
+        "model": asr.model_name(),
+        "audioDuration": round(total_duration, 3),
+        "processingSeconds": round(elapsed, 2),
+        "transcript": " ".join(word["text"] for word in words),
+        "words": words,
+        "voicedRegions": region_payload,
+    }
+
+
+@app.post("/align")
+async def align_endpoint(
+    audio: UploadFile = File(...),
+    reference: str = Form(""),
+    detect_repeats: bool = Form(True),
+) -> dict:
+    """Force-align known Quran text against the audio.
+
+    ``reference`` is newline-delimited, one ayah per line, each formatted
+    ``surah:ayah<TAB>word word word``. Every reference word comes back with a
+    timestamp -- that is a structural property of forced alignment, not a
+    quality claim about the acoustics.
+    """
+    started = time.perf_counter()
+
+    raw = await audio.read()
+    size_mb = len(raw) / 1024 / 1024
+    if size_mb > MAX_UPLOAD_MB:
+        raise HTTPException(status_code=413, detail=f"Audio is {size_mb:.1f} MB, above the {MAX_UPLOAD_MB:.0f} MB limit.")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty audio upload.")
+
+    ref_words: list[tuple[str, int, str]] = []
+    for line in reference.splitlines():
+        line = line.strip()
+        if not line or "\t" not in line:
+            continue
+        verse_key, text = line.split("\t", 1)
+        verse_key = verse_key.strip()
+        index = 0
+        for token in text.split():
+            # Uthmani orthography puts waqf/sajda marks in their own token, and
+            # some words carry one after an internal space. They aren't recited
+            # words and normalize to nothing, so they can't be aligned -- glue
+            # them onto the previous word's display text instead of letting
+            # them become reference words that no frame can ever match.
+            if not align.normalize_for_vocab(token):
+                if ref_words and ref_words[-1][0] == verse_key:
+                    key, position, previous = ref_words[-1]
+                    ref_words[-1] = (key, position, f"{previous} {token}")
+                continue
+            ref_words.append((verse_key, index, token))
+            index += 1
+    try:
+        pcm = decode_to_pcm(raw)
+    except AudioDecodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    total_duration = duration_seconds(pcm)
+
+    # No reference supplied -> work out the passage from the audio itself. The
+    # phrase decodes this needs are the same ones the aligner needs, so they're
+    # computed once here and handed on rather than repeated.
+    detected = None
+    boundaries: list[float] | None = None
+    decoded_phrases: list[str] | None = None
+
+    if not ref_words:
+        if align.align_backend() != "nemo":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Range auto-detection needs the nemo align backend (it reads the audio to find "
+                    f"the passage) but this service resolved to '{align.align_backend()}'. Supply "
+                    "'reference' to align a known range, or install nemo_toolkit[asr]. Note the "
+                    "backend falls back automatically when nemo cannot be imported -- check the "
+                    "startup logs for the reason."
+                ),
+            )
+        try:
+            boundaries = align.detect_boundaries(pcm)
+            decoded_phrases = align.decode_phrases(pcm, boundaries)
+            detected = detect.detect_range(decoded_phrases)
+        except align.AlignError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        if detected is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Could not identify any Quran passage in this audio. Supply 'reference' to align a known range.",
+            )
+        # Every detected passage goes into the reference, not just the largest.
+        # A recitation that opens with Al-Fatihah before the main surah needs
+        # both, or the Fatihah phrases get force-matched into the other surah.
+        ref_words = []
+        for detected_range in detected.ranges:
+            ref_words.extend(
+                corpus.words_for_range(detected_range.surah, detected_range.start_ayah, detected_range.end_ayah)
+            )
+        if not ref_words:
+            summary = ", ".join(f"{r.surah}:{r.start_ayah}-{r.end_ayah}" for r in detected.ranges)
+            raise HTTPException(status_code=422, detail=f"Detected {summary} but found no text for it.")
+
+    try:
+        result = align.align_recitation(pcm, ref_words, boundaries, decoded_phrases)
+    except align.AlignError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    aligned = result.words
+    segments = result.segments
+    mean_score = result.mean_score
+    coverage = result.reference_coverage
+    warning = None
+
+    # Alignment cannot fail loudly -- it fits whatever text it is given -- so
+    # this is the only place a wrong ayah range gets caught.
+    #
+    # Coverage is checked first because it is the signal that works. Mean score
+    # does not: measured on the reference clip, six wrong ranges scored
+    # 0.1475-0.2550 against 0.2923 for the correct one, and
+    # MIN_PLAUSIBLE_MEAN_SCORE fired for none of them. Coverage separated the
+    # same cases completely (1.00 vs 0.04-0.60), because a wrong reference
+    # cannot be walked to its end.
+    if coverage < MIN_REFERENCE_COVERAGE:
+        warning = (
+            f"Only {coverage:.0%} of the supplied text could be matched to this audio. "
+            "The ayah range probably does not match the recording, or the recording covers "
+            "only part of it."
+        )
+        log.warning("%s (reference was %d words, mean score %.4f)", warning, len(ref_words), mean_score)
+    elif mean_score < align.MIN_PLAUSIBLE_MEAN_SCORE:
+        warning = (
+            f"Mean per-word confidence is {mean_score:.4f}, far below what a correct match produces. "
+            "The selected ayah range probably does not match this audio."
+        )
+        log.warning("%s (reference was %d words)", warning, len(ref_words))
+
+    elapsed = time.perf_counter() - started
+    log.info(
+        "aligned %d reference word(s) into %d segment(s) (%d restart(s)) over %.1fs of audio in %.1fs, "
+        "mean score %.3f, coverage %.2f",
+        len(ref_words),
+        len(segments),
+        sum(1 for segment in segments if segment.is_restart),
+        total_duration,
+        elapsed,
+        mean_score,
+        coverage,
+    )
+
+    return {
+        "success": True,
+        "backend": align.align_backend(),
+        "model": align.align_model_name(),
+        "detectedRange": detected.to_dict() if detected else None,
+        "audioDuration": round(total_duration, 3),
+        "processingSeconds": round(elapsed, 2),
+        "words": [word.to_dict() for word in aligned],
+        "segments": [segment.to_dict() for segment in segments],
+        "meanScore": round(mean_score, 4),
+        "referenceCoverage": coverage,
+        "warning": warning,
+    }
