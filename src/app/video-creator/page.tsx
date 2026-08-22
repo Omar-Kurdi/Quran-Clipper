@@ -9,13 +9,17 @@ import {
 } from '@/components/VideoCanvas';
 import { TimelineSyncEditor } from '@/components/TimelineSyncEditor';
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
+import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
+import { trimTimeline } from '@/lib/matchTimeline';
+import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
 import { 
-  SURAHS_LIST, 
-  RECITERS, 
-  SAMPLE_PROJECTS, 
-  VerseData 
+  SURAHS_LIST,
+  RECITERS,
+  SAMPLE_PROJECTS,
+  BACKGROUND_VIDEOS,
+  VerseData
 } from '@/lib/quranData';
 import { 
   Play, 
@@ -36,7 +40,8 @@ import {
   Check, 
   ChevronRight,
   Video,
-  Server
+  Server,
+  Scissors
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
@@ -53,6 +58,14 @@ export default function VideoCreatorPage() {
   /** Measured from the uploaded file itself — see `measureAudioDuration`. */
   const [customAudioDuration, setCustomAudioDuration] = useState<number>(0);
   const [customAudioBuffer, setCustomAudioBuffer] = useState<ArrayBuffer | null>(null);
+  const [showTrimModal, setShowTrimModal] = useState(false);
+  /** Set when the upload was a video file, so its footage can double as the background. */
+  const [uploadIsVideo, setUploadIsVideo] = useState(false);
+  const [useVideoAsBackground, setUseVideoAsBackground] = useState(true);
+  /** Blob URL of the original video, kept whole even after the audio is trimmed. */
+  const [videoBgUrl, setVideoBgUrl] = useState<string | null>(null);
+  /** Seconds trimmed off the front of the audio that `videoBgUrl` still contains. */
+  const [videoBgOffset, setVideoBgOffset] = useState(0);
   const [matchStatus, setMatchStatus] = useState<string | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -60,8 +73,14 @@ export default function VideoCreatorPage() {
   const [providerStatus, setProviderStatus] = useState<{
     gemini: { configured: boolean };
     asr: { configured: boolean; serviceUrl: string };
-    align: { configured: boolean; serviceUrl: string; canAutoDetectRange?: boolean };
-    hybrid: { configured: boolean; serviceUrl: string };
+    align: {
+      configured: boolean;
+      serviceUrl: string;
+      canAutoDetectRange?: boolean;
+      alignReady?: boolean;
+      alignError?: string | null;
+    };
+    hybrid: { configured: boolean; serviceUrl: string; alignReady?: boolean; alignError?: string | null };
   } | null>(null);
 
   // Loaded Surah / Verse Data
@@ -201,16 +220,34 @@ export default function VideoCreatorPage() {
       probe.src = url;
     });
 
-  // Handle Custom Audio MP3 File Upload
+  /** True for a video container. Checked by extension too, because some browsers
+   *  hand over an empty or `application/octet-stream` type for `.mkv`/`.mov`. */
+  const isVideoFile = (file: File) =>
+    file.type.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi|m4v)$/i.test(file.name);
+
+  // Handle Custom Audio / Video File Upload
   const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
+      const video = isVideoFile(file);
       setCustomAudioUrl(url);
       setCustomAudioName(file.name);
       setCustomAudioFile(file);
       setCustomAudioBuffer(await file.arrayBuffer());
-      setMatchStatus('Audio uploaded. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.');
+      setUploadIsVideo(video);
+      // A fresh upload starts un-trimmed, so the video and its audio share a
+      // timeline until a trim introduces an offset.
+      setVideoBgOffset(0);
+      setVideoBgUrl(video ? url : null);
+      if (video && useVideoAsBackground) {
+        setCanvasConfig(prev => ({ ...prev, bgType: 'video', bgUrl: url }));
+      }
+      setMatchStatus(
+        video
+          ? 'Video uploaded — its audio will be used for matching, and its footage as the background. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.'
+          : 'Audio uploaded. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.'
+      );
       setAudioUrl(url);
       if (audioElementRef.current) {
         audioElementRef.current.src = url;
@@ -223,6 +260,47 @@ export default function VideoCreatorPage() {
       setCustomAudioDuration(measured);
       if (measured > 0) setAudioDuration(measured);
     }
+  };
+
+  /**
+   * Replaces the uploaded audio with a trimmed clip.
+   *
+   * Works identically whether the file hasn't been matched yet (no verses to
+   * adjust -- the filter/map below is a no-op on whatever's currently showing)
+   * or already has a timeline from AI/manual matching, in which case that
+   * timeline is clipped and rebased to the new clip's start alongside it.
+   * One "Trim Audio" control therefore covers both "before analysis" and
+   * "after analysis" without needing to know which situation it's in.
+   */
+  const handleApplyTrim = (result: TrimResult & { trimStart: number; trimEnd: number }) => {
+    // Only revoke the *audio* URL. When the source was a video, `videoBgUrl`
+    // points at the same blob and the background still needs it -- revoking
+    // here would blank the canvas the moment anyone trims a video.
+    if (customAudioUrl?.startsWith('blob:') && customAudioUrl !== videoBgUrl) {
+      URL.revokeObjectURL(customAudioUrl);
+    }
+    setCustomAudioFile(result.file);
+    setCustomAudioUrl(result.url);
+    setCustomAudioName(result.file.name);
+    setCustomAudioDuration(result.duration);
+    setCustomAudioBuffer(null);
+    setAudioUrl(result.url);
+    setAudioDuration(result.duration);
+    setVerses(prev => trimTimeline(prev, result.trimStart, result.trimEnd));
+    setCurrentTime(0);
+    // Trimming re-encodes audio only, so the background video is still the full
+    // original. Accumulate how far into it the new clip now starts, and the
+    // canvas keeps the two lined up rather than losing the footage.
+    setVideoBgOffset(prev => prev + result.trimStart);
+    if (audioElementRef.current) {
+      audioElementRef.current.src = result.url;
+      audioElementRef.current.currentTime = 0;
+      audioElementRef.current.load();
+    }
+    setMatchStatus(
+      `Trimmed to ${formatDuration(result.duration)}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`
+    );
+    setShowTrimModal(false);
   };
 
   const handleAutoMatchUploadedAudio = async () => {
@@ -794,10 +872,10 @@ export default function VideoCreatorPage() {
                 <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800">
                   <label className="font-semibold text-slate-200 block mb-1 flex items-center gap-1.5">
                     <Music className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Upload Custom Quran Recitation (MP3 / WAV / M4A):</span>
+                    <span>Upload Recitation — Audio or Video:</span>
                   </label>
                   <p className="text-[11px] text-slate-400 mb-2">
-                    Upload your own Quran recitation audio. AI auto-matching supports files up to ~18 MB (roughly 15–20 minutes of MP3). For longer recordings, compress the audio first or split into smaller segments.
+                    Audio (MP3 / WAV / M4A / OGG) or video (MP4 / MOV / WebM / MKV). For a video, the audio track is used for matching and the footage becomes the background. AI auto-matching supports files up to ~18 MB (roughly 15–20 minutes of MP3); compress or split longer recordings.
                   </p>
 
                   {/* AI Matcher Provider */}
@@ -816,7 +894,15 @@ export default function VideoCreatorPage() {
                         <span className="flex-1 min-w-0">
                           <span className="block text-[11px] font-bold truncate">Forced Align</span>
                           <span className={`block text-[10px] ${providerStatus?.align.configured ? 'text-emerald-400' : 'text-slate-500'}`}>
-                            {providerStatus ? (providerStatus.align.configured ? 'Sidecar online' : 'Sidecar unreachable') : 'Checking…'}
+                            {!providerStatus
+                              ? 'Checking…'
+                              : providerStatus.align.configured
+                                ? 'Sidecar online'
+                                // Reachable but unable to align is a different problem from
+                                // unreachable, and has a different fix -- don't conflate them.
+                                : providerStatus.align.alignReady === false
+                                  ? 'Backend not loaded'
+                                  : 'Sidecar unreachable'}
                           </span>
                         </span>
                       </button>
@@ -876,11 +962,33 @@ export default function VideoCreatorPage() {
                       </button>
                     </div>
                     {matchProvider === 'align' && (
-                      <p className="text-[10px] text-slate-500 mt-1.5">
-                        {providerStatus && providerStatus.align.configured && !providerStatus.align.canAutoDetectRange
-                          ? 'Times each word against the real Quran text — so no word can be dropped or misheard, and repeated phrases get their own segments. This sidecar can’t work out the range from audio, so set the surah and range below to match your recording first.'
-                          : 'Detects the surah and ayah range from the audio itself, then times each word against the real Quran text — so no word can be dropped or misheard, and repeated phrases get their own segments. The surah and range selected below aren’t used.'}
-                      </p>
+                      <>
+                        <p className="text-[10px] text-slate-500 mt-1.5">
+                          Detects the surah and ayah range from the audio itself, then times each word against the real Quran text — so no word can be dropped or misheard, and repeated phrases get their own segments. The surah and range selected below aren&apos;t used.
+                        </p>
+                        {/* Only reachable when the sidecar was deliberately started with
+                            ASR_ALIGN_BACKEND=wav2vec2. That is a misconfiguration for this
+                            provider rather than a normal mode, so it reads as a fixable
+                            problem instead of a capability description. */}
+                        {providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
+                          <p className="text-[10px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                            Detection is currently disabled on your sidecar (<code className="font-mono">ASR_ALIGN_BACKEND</code> is not <code className="font-mono">nemo</code>), so it will align the range selected below instead. Unset that variable and restart the sidecar to restore it.
+                          </p>
+                        )}
+                        {/* The sidecar answers /health but its align backend failed to
+                            import, so every match would fail. Say so here with the fix,
+                            rather than letting someone upload and wait for a 400. */}
+                        {providerStatus?.align.alignReady === false && (
+                          <div className="text-[10px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
+                            <p className="font-semibold">The sidecar is running but its alignment backend didn&apos;t load, so matching will fail.</p>
+                            <p>This is almost always the service being started by the wrong Python. Restart it from its virtualenv:</p>
+                            <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[10px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
+                            {providerStatus.align.alignError && (
+                              <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                     {matchProvider === 'hybrid' && (
                       <p className="text-[10px] text-slate-500 mt-1.5">
@@ -902,32 +1010,73 @@ export default function VideoCreatorPage() {
                   <div className="relative flex items-center justify-center p-3 border-2 border-dashed border-slate-700 hover:border-amber-500/50 rounded-lg cursor-pointer bg-slate-900/60 transition-colors">
                     <input
                       type="file"
-                      accept="audio/*"
+                      accept="audio/*,video/*,.mkv,.m4v,.mov"
                       onChange={handleCustomAudioUpload}
                       className="absolute inset-0 opacity-0 cursor-pointer"
                     />
                     <div className="flex items-center gap-2 text-slate-300">
-                      <Upload className="w-4 h-4 text-amber-400" />
-                      <span className="text-xs font-semibold">{customAudioName || 'Choose Audio File'}</span>
+                      {uploadIsVideo ? <Video className="w-4 h-4 text-amber-400" /> : <Upload className="w-4 h-4 text-amber-400" />}
+                      <span className="text-xs font-semibold">{customAudioName || 'Choose Audio or Video File'}</span>
                     </div>
                   </div>
 
+                  {uploadIsVideo && videoBgUrl && (
+                    <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={useVideoAsBackground}
+                        onChange={e => {
+                          const on = e.target.checked;
+                          setUseVideoAsBackground(on);
+                          // Turning it off restores the previously chosen background
+                          // rather than leaving the canvas pointing at a video the
+                          // user just opted out of.
+                          setCanvasConfig(prev =>
+                            on
+                              ? { ...prev, bgType: 'video', bgUrl: videoBgUrl }
+                              : { ...prev, bgType: 'video', bgUrl: BACKGROUND_VIDEOS[0]?.url || '' }
+                          );
+                        }}
+                        className="mt-0.5 accent-amber-500"
+                      />
+                      <span>
+                        Use this video as the background
+                        <span className="block text-[10px] text-slate-500">
+                          Its frames follow the audio, so the recitation stays in sync{videoBgOffset > 0 ? ` (offset ${formatDuration(videoBgOffset)} after trimming)` : ''}.
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
                   {(customAudioFile || customAudioUrl) && (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="mt-3 space-y-2">
                       <button
-                        onClick={handleAutoMatchUploadedAudio}
-                        className="py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        onClick={() => setShowTrimModal(true)}
+                        disabled={!customAudioFile}
+                        className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>AI Auto-match</span>
+                        <Scissors className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Trim / Crop Audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
                       </button>
-                      <button
-                        onClick={handleManualMatchUploadedAudio}
-                        className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <Clock className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Manual Match</span>
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={handleAutoMatchUploadedAudio}
+                          className="py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>AI Auto-match</span>
+                        </button>
+                        <button
+                          onClick={handleManualMatchUploadedAudio}
+                          className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Manual Match</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        Trim before matching to crop dead air first, or after to cut the AI-matched timeline down — either way the segment times adjust to the new clip automatically.
+                      </p>
                     </div>
                   )}
 
@@ -1011,6 +1160,9 @@ export default function VideoCreatorPage() {
                 surahNumber={selectedSurah}
                 ayahStart={ayahStart}
                 ayahEnd={ayahEnd}
+                syncBackgroundVideo={uploadIsVideo && useVideoAsBackground && canvasConfig.bgUrl === videoBgUrl}
+                isPlaying={isPlaying}
+                backgroundTimeOffset={videoBgOffset}
               />
             </div>
           </div>
@@ -1133,6 +1285,18 @@ export default function VideoCreatorPage() {
         onClose={() => setIsProjectsDrawerOpen(false)}
         onLoadProject={handleLoadSavedProject}
       />
+
+      {/* Audio Trim Modal */}
+      {customAudioFile && customAudioUrl && (
+        <AudioTrimModal
+          key={`${customAudioFile.name}-${customAudioFile.size}-${customAudioFile.lastModified}`}
+          isOpen={showTrimModal}
+          file={customAudioFile}
+          audioUrl={customAudioUrl}
+          onCancel={() => setShowTrimModal(false)}
+          onApply={handleApplyTrim}
+        />
+      )}
     </div>
   );
 }

@@ -99,45 +99,47 @@ class AlignedWord:
 DEFAULT_NEMO_ALIGN_MODEL = "Muno459/fastconformer-quran"
 
 
-@lru_cache(maxsize=1)
-def _nemo_importable() -> bool:
-    """Whether NeMo actually imports here, not merely whether it is installed."""
+def align_backend() -> str:
+    """``nemo`` (the default) or ``wav2vec2``.
+
+    **Never probe-and-downgrade here.** Working the surah out from the audio is
+    a core feature, not a bonus, and it needs nemo because it has to decode.
+    An earlier version checked whether nemo imported and quietly switched to
+    wav2vec2 when it didn't -- which turned a *fixable environment problem*
+    (service started outside its virtualenv, so nemo's dependencies mismatched)
+    into what looked like a permanent capability limit, and silently cost every
+    user range detection.
+
+    So the default is nemo, unconditionally. If nemo cannot load,
+    `_load_nemo_aligner` raises with a message naming the actual cause, which
+    the caller can act on. wav2vec2 is available only by explicitly asking for
+    it -- an informed opt-out, never an automatic one.
+    """
+    value = (os.getenv("ASR_ALIGN_BACKEND") or "nemo").strip().lower()
+    return value if value in ("nemo", "wav2vec2") else "nemo"
+
+
+def probe_backend_error() -> str | None:
+    """Import-check the configured backend, returning the failure reason or None.
+
+    **Diagnostic only -- this never changes which backend is used.** That
+    distinction is the whole point: an earlier version used a check like this to
+    silently switch to wav2vec2, which hid a broken environment and cost users
+    range detection without telling them. Here the answer is only ever reported,
+    never acted on, so a broken install surfaces at startup (and in `/health`)
+    instead of as a 400 the first time someone uploads a file.
+
+    Only the import is exercised, not the model weights -- the failure this
+    catches (a protobuf/onnx mismatch from running under the wrong interpreter)
+    happens at import time, and loading weights here would cost a download.
+    """
+    if align_backend() != "nemo":
+        return None
     try:
         import nemo.collections.asr  # noqa: F401
-
-        return True
     except Exception as exc:
-        # Any exception, not only ImportError -- see `_load_nemo_aligner`.
-        log.warning("nemo is not usable in this environment (%s: %s)", type(exc).__name__, exc)
-        return False
-
-
-@lru_cache(maxsize=1)
-def align_backend() -> str:
-    """``nemo`` or ``wav2vec2``, resolved once per process.
-
-    An explicit ``ASR_ALIGN_BACKEND`` is always obeyed, including when it names
-    a backend that then fails to load: someone who asked for nemo should get
-    nemo's error rather than a silent downgrade.
-
-    With it unset, nemo is preferred for its sharper emissions but only if it
-    *imports*. It is a heavy optional dependency that a CPU-only host generally
-    will not have, and hard-failing there would make the service unusable out of
-    the box on exactly the deployment the wav2vec2 backend exists to serve.
-    """
-    explicit = (os.getenv("ASR_ALIGN_BACKEND") or "").strip().lower()
-    if explicit in ("nemo", "wav2vec2"):
-        return explicit
-
-    if _nemo_importable():
-        return "nemo"
-
-    log.warning(
-        "ASR_ALIGN_BACKEND is unset and nemo could not be imported -- falling back to wav2vec2. "
-        "Alignment works normally; range auto-detection does not, so /align needs 'reference'. "
-        "Set ASR_ALIGN_BACKEND explicitly to silence this."
-    )
-    return "wav2vec2"
+        return f"{type(exc).__name__}: {exc}"
+    return None
 
 
 def align_model_name() -> str:
@@ -248,9 +250,12 @@ def _load_nemo_aligner():
     except Exception as exc:  # pragma: no cover - optional heavy dep
         raise AlignError(
             f"The nemo align backend could not be loaded ({type(exc).__name__}: {exc}). "
-            "It needs nemo_toolkit[asr] and a consistent onnx/protobuf pairing -- a common cause "
-            "is running the service outside asr-service/.venv. Set ASR_ALIGN_BACKEND=wav2vec2 to "
-            "use the ungated character model instead, which needs none of this and runs on CPU."
+            "By far the most common cause is starting this service outside its virtualenv, which "
+            "picks up a system Python whose onnx/protobuf versions disagree -- run "
+            "`cd asr-service && source .venv/bin/activate` first, or call `.venv/bin/uvicorn` "
+            "directly. If nemo genuinely isn't installed, `pip install nemo_toolkit[asr]`. "
+            "Setting ASR_ALIGN_BACKEND=wav2vec2 avoids this dependency but gives up detecting "
+            "the surah from the audio, so fix the environment in preference to switching."
         ) from exc
 
     from huggingface_hub import hf_hub_download

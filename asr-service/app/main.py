@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -55,14 +57,46 @@ app.add_middleware(
 )
 
 
+#: Why the align backend cannot load, or None when it is fine. Set once at
+#: startup so `/health` can report it and the app can warn *before* someone
+#: uploads a file and waits for a 400.
+ALIGN_STARTUP_ERROR: str | None = None
+
+
 @app.on_event("startup")
 def _startup() -> None:
-    # Resolve the align backend here, always. When ASR_ALIGN_BACKEND is unset
-    # this probes whether NeMo imports, which costs ~4s -- and `/health` reports
-    # the result, so leaving it lazy put that 4s on the first health check. The
-    # app aborts that call after 1.5s and would then show every sidecar-backed
-    # provider as unreachable on a service that is running perfectly.
-    log.info("align backend resolved to %s (%s)", align.align_backend(), align.align_model_name())
+    global ALIGN_STARTUP_ERROR
+
+    backend = align.align_backend()
+    log.info("align backend: %s (%s)", backend, align.align_model_name())
+
+    # Fail loudly here rather than on the first request. The usual cause is the
+    # service being started by a Python that is not this project's virtualenv --
+    # commonly because bash cached the path to a different `uvicorn` before the
+    # venv was activated (`hash -r` clears that) -- and the resulting
+    # protobuf/onnx mismatch is impossible to guess from a 400 in the browser.
+    ALIGN_STARTUP_ERROR = align.probe_backend_error()
+    if ALIGN_STARTUP_ERROR:
+        expected = Path(__file__).resolve().parent.parent / ".venv" / "bin" / "python"
+        log.error("%s", "=" * 78)
+        log.error("ALIGN BACKEND '%s' CANNOT LOAD -- /align will fail on every request.", backend)
+        log.error("  reason:      %s", ALIGN_STARTUP_ERROR)
+        log.error("  running as:  %s", sys.executable)
+        log.error("  expected:    %s", expected)
+        if Path(sys.executable).resolve() != expected.resolve():
+            log.error("  ^ These differ. Start the service from its virtualenv:")
+            log.error("      cd asr-service && hash -r && ./run.sh")
+        log.error("%s", "=" * 78)
+
+    if backend != "nemo":
+        # Only reachable by explicitly setting ASR_ALIGN_BACKEND, so this is an
+        # informed choice rather than an accident -- but say what it costs, since
+        # it is the one setting that disables detecting the surah from audio.
+        log.warning(
+            "ASR_ALIGN_BACKEND=%s disables range auto-detection: /align will require a "
+            "'reference' and the app will fall back to the ayah range selected in the UI.",
+            backend,
+        )
 
     if os.getenv("ASR_WARM_UP", "1") == "1":
         asr.warm_up()
@@ -77,11 +111,16 @@ def health() -> dict:
         "nemoDecoder": asr.active_nemo_decoder() if asr.backend_name() == "nemo" else None,
         "alignBackend": align.align_backend(),
         "alignModel": align.align_model_name(),
+        # Whether the align backend actually loads. False means every /align
+        # call will fail, so the app can say so up front instead of letting
+        # someone upload a file and wait for the error.
+        "alignReady": ALIGN_STARTUP_ERROR is None,
+        "alignError": ALIGN_STARTUP_ERROR,
         # Working the passage out from the audio means decoding it, which only
-        # the nemo backend does. The app needs to know this up front: without
-        # it, `/align` with no reference is a 400 rather than a capability the
-        # caller could have planned around.
-        "canAutoDetectRange": align.align_backend() == "nemo",
+        # the nemo backend does -- and only if it loads. The app needs this up
+        # front: without it, `/align` with no reference is a 400 rather than a
+        # capability the caller could have planned around.
+        "canAutoDetectRange": align.align_backend() == "nemo" and ALIGN_STARTUP_ERROR is None,
         "sampleRate": SAMPLE_RATE,
     }
 
@@ -290,15 +329,19 @@ async def align_endpoint(
 
     if not ref_words:
         if align.align_backend() != "nemo":
+            # Structured so the caller can tell "this backend can't auto-detect,
+            # send me a reference instead" (worth retrying with one) apart from
+            # "the backend is broken" (retrying anything fails the same way).
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Range auto-detection needs the nemo align backend (it reads the audio to find "
-                    f"the passage) but this service resolved to '{align.align_backend()}'. Supply "
-                    "'reference' to align a known range, or install nemo_toolkit[asr]. Note the "
-                    "backend falls back automatically when nemo cannot be imported -- check the "
-                    "startup logs for the reason."
-                ),
+                detail={
+                    "code": "auto_detect_unsupported",
+                    "message": (
+                        "Range auto-detection needs the nemo align backend (it reads the audio to "
+                        f"find the passage), but ASR_ALIGN_BACKEND is set to '{align.align_backend()}'. "
+                        "Unset it to restore detection, or supply 'reference' to align a known range."
+                    ),
+                },
             )
         try:
             boundaries = align.detect_boundaries(pcm)

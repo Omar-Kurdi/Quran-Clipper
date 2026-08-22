@@ -100,10 +100,37 @@ async function requestAlignment(params: {
     throw new Error(`Could not reach the alignment service at ${base}. Is it running? See asr-service/README.md.`);
   }
   if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`Alignment failed (${res.status}): ${detail.slice(0, 300) || res.statusText}`);
+    const body = await res.text().catch(() => '');
+    // FastAPI wraps errors as {detail: ...}, where detail is either a plain
+    // string or a {code, message} object for cases the caller can act on.
+    let message = body;
+    let code: string | undefined;
+    try {
+      const parsed = JSON.parse(body);
+      const detail = parsed?.detail;
+      if (detail && typeof detail === 'object') {
+        code = detail.code;
+        message = detail.message ?? body;
+      } else if (typeof detail === 'string') {
+        message = detail;
+      }
+    } catch {
+      // Not JSON -- keep the raw body as the message.
+    }
+    throw new AlignRequestError(
+      `Alignment failed (${res.status}): ${message.slice(0, 400) || res.statusText}`,
+      code
+    );
   }
   return res.json();
+}
+
+/** Carries the sidecar's machine-readable error code, when it sent one. */
+class AlignRequestError extends Error {
+  constructor(message: string, readonly code?: string) {
+    super(message);
+    this.name = 'AlignRequestError';
+  }
 }
 
 /**
@@ -199,16 +226,21 @@ export async function runForcedAlignMatch(params: {
       detectRepeats: params.detectRepeats ?? true
     });
   } catch (err) {
-    // Auto-detection is the sidecar's most fragile capability: it needs to
-    // *read* the audio, so it only exists on the NeMo backend, and even there
-    // it can fail to find the passage. On a CPU-only host (backend
-    // `wav2vec2`) it always fails -- which would make `align`, the recommended
-    // provider, permanently broken on exactly that deployment.
+    // Retry with the user's range only when the sidecar said auto-detection is
+    // *unsupported here* -- that is the one failure a reference actually fixes.
     //
-    // Aligning the range the user picked is a strictly better outcome than an
-    // error, and it is what the non-auto-detect path does anyway.
-    const canRetry = autoDetect && params.surah && params.start && params.end;
-    if (!canRetry) throw err;
+    // Any other failure (most often the backend not loading at all) fails the
+    // same way with a reference attached, so retrying just doubles the wait and
+    // logs a second 400 for the same underlying problem. That is exactly what
+    // it did: two 400s per upload, both the same protobuf error.
+    const retryable =
+      err instanceof AlignRequestError &&
+      err.code === 'auto_detect_unsupported' &&
+      autoDetect &&
+      params.surah &&
+      params.start &&
+      params.end;
+    if (!retryable) throw err;
 
     console.warn(
       `[forcedAligner] auto-detect failed (${(err as Error).message.slice(0, 160)}); ` +

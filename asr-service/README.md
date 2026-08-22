@@ -44,10 +44,14 @@ pip install -r requirements.txt
 ## Run
 
 ```bash
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+./run.sh                      # or: ./run.sh --host 0.0.0.0 --port 8000
 ```
 
-The first start downloads model weights (~1.2 GB). Check it with `curl http://127.0.0.1:8000/health`.
+`run.sh` calls this project's `.venv/bin/python` by absolute path, which is the only reliable
+way to start it — see [Don't start it with a bare `uvicorn`](#dont-start-it-with-a-bare-uvicorn).
+
+The first start downloads model weights (~1.2 GB). Check it with `curl http://127.0.0.1:8000/health`
+— `alignReady` must be `true`.
 
 Then point the app at it, in the project root's `.env.local`:
 
@@ -56,9 +60,22 @@ ASR_SERVICE_URL=http://127.0.0.1:8000
 AUDIO_MATCH_PROVIDER=align
 ```
 
-> Always run it from the virtualenv (`source .venv/bin/activate`, or call `.venv/bin/uvicorn`
-> directly). Running under a different Python is the usual cause of protobuf/onnx version
-> errors on startup.
+### Don't start it with a bare `uvicorn`
+
+Typing `uvicorn app.main:app` can silently run the service under a **different Python** than
+the virtualenv, even with the venv activated. Bash caches the path of every command it
+resolves, so a shell that ran `uvicorn` before activation keeps using the old one — `hash -r`
+clears that cache.
+
+The symptom is unmistakable once you know it: NeMo fails to import against the wrong
+interpreter's protobuf/onnx, and every `/align` returns HTTP 400 with a `VersionError`. The
+service now checks for this at startup and prints which interpreter it is running as, which
+one it expected, and the command to fix it. `GET /health` reports the same via `alignReady`
+and `alignError`, and the studio shows it on the Forced Align button before you upload
+anything.
+
+If you prefer not to use `run.sh`, call the binary directly — `.venv/bin/uvicorn app.main:app`
+— rather than relying on `PATH`.
 
 ## Running without a GPU
 
@@ -67,31 +84,35 @@ single fixed sequence rather than every possible one. Measured on an 8-core desk
 68.5-second clip against a 53-word reference aligned in **4.4 seconds** (14 s on the first
 request, which includes loading the model).
 
+**Keep the default `nemo` align backend even on CPU.** It is what decodes the audio to work
+out which surah is being recited, and that is the feature most of the app is built around.
+NeMo is a heavy install but it is not GPU-only; `ASR_DEVICE` handles the rest.
+
 ```bash
-ASR_ALIGN_BACKEND=wav2vec2 ASR_WARM_UP=0 \
-  uvicorn app.main:app --host 127.0.0.1 --port 8000
+ASR_WARM_UP=0 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Both settings matter on a CPU-only host:
+`ASR_WARM_UP=0` skips loading the `ASR_BACKEND` model at startup, which is what `/transcribe`
+uses. If you only serve `/align` (the `align` and `hybrid` providers) that is a second large
+model held in memory for nothing.
 
-- **`ASR_ALIGN_BACKEND=wav2vec2`** — the align backend prefers `nemo`, which needs the heavy
-  optional `nemo_toolkit[asr]` install. The character model is ungated, needs nothing beyond
-  `transformers`, and its weaker acoustics cost far less here than they would for decoding.
+### Giving up range detection
 
-  Setting this is optional but recommended. With the variable **unset**, the service checks
-  whether NeMo imports and falls back to `wav2vec2` on its own, logging why — so a host
-  without NeMo works out of the box rather than failing every request. Setting it explicitly
-  skips that check, and naming `nemo` turns a broken NeMo install into a loud error instead of
-  a silent downgrade. `GET /health` always reports the backend actually in use.
+`ASR_ALIGN_BACKEND=wav2vec2` swaps in an ungated character model that needs nothing beyond
+`transformers`. Its weaker acoustics matter far less for alignment than they would for
+decoding — but it **cannot detect the ayah range**, because detection requires decoding the
+audio. `POST /align` without a `reference` then returns HTTP 400, and the app falls back to
+whatever range is selected in its UI (and says so).
 
-- **`ASR_WARM_UP=0`** — warm-up loads the `ASR_BACKEND` model, which is what `/transcribe`
-  uses. If you only serve `/align` (the `align` and `hybrid` providers), that is a second
-  large model held in memory for nothing.
+Choose it only when NeMo genuinely will not install. It is never selected automatically: an
+earlier version probed whether NeMo imported and switched silently, which turned a fixable
+environment problem — typically the service started outside its virtualenv — into what looked
+like a permanent limitation, and cost every user range detection without telling them. Now a
+broken NeMo raises an error naming the cause. `GET /health` reports the backend in use and a
+`canAutoDetectRange` flag.
 
-The trade-off: `wav2vec2` cannot auto-detect the ayah range, because detection requires
-decoding the audio. `POST /align` without a `reference` returns HTTP 400 on this backend —
-supply the range instead. The app's `hybrid` provider is designed for exactly this case: it
-has Gemini identify the passage and the CPU aligner time it, with no local decode at all.
+If you want cloud identification instead of a local decode, the app's `hybrid` provider has
+Gemini name the passage and the CPU aligner time it.
 
 ---
 
@@ -99,7 +120,7 @@ has Gemini identify the passage and the CPU aligner time it, with no local decod
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ASR_ALIGN_BACKEND` | auto | `nemo` or `wav2vec2` for `/align`. Unset = use NeMo if it imports. |
+| `ASR_ALIGN_BACKEND` | `nemo` | Backend for `/align`. `wav2vec2` disables ayah-range detection. |
 | `ASR_ALIGN_MODEL` | per backend | Override the alignment checkpoint. |
 | `ASR_BACKEND` | `wav2vec2` | Decode backend for `/transcribe`: `wav2vec2`, `nemo`, or `whisper`. |
 | `ASR_MODEL` | per backend | Override the decode checkpoint. |
@@ -199,13 +220,23 @@ curl -s http://127.0.0.1:8000/transcribe \
 
 Multipart with `audio`, and optionally `reference`.
 
+The `audio` part may be a **video** container (MP4 / MOV / WebM / MKV) as well as bare audio —
+ffmpeg selects the audio stream, so callers need not strip it first.
+
 **Supply `reference`** to align a known range — one ayah per line, formatted
 `surah:ayah<TAB>word word word`.
 
 **Omit it to auto-detect the passage.** The service decodes the audio, locates each phrase in
 the full Quran (downloaded once and cached under `~/.cache/quran-clip-creator/`), and aligns
 against exactly the ayahs it found, returning them as `detectedRange`. This requires the
-`nemo` align backend.
+`nemo` align backend (the default).
+
+Each phrase is located independently and the results pooled, so a repeat is harmless — it just
+lands on the same place twice. The reported span is the *cluster* of ayahs carrying the most
+matched words, not the outer envelope of every match: a short fragment truncated at a phrase
+boundary can genuinely match elsewhere in the same surah (`ٱللَّهُ وَرَسُولُهُۥ` occurs in both 33:12
+and 33:22), and one such match must not be able to widen a correct range. Strays are dropped
+with a log line naming them.
 
 ```jsonc
 {
@@ -290,17 +321,23 @@ Free decode, no reference text. Multipart with `audio`, plus optional `vad_thres
 
 ### `GET /health`
 
-Reports the decode backend, the align backend actually in use, and whether range
-auto-detection is available:
+Reports the decode backend, the align backend in use, whether that backend actually loaded,
+and whether range auto-detection is available:
 
 ```jsonc
 {
   "status": "ok",
   "backend": "wav2vec2",
   "model": "jonatasgrosman/wav2vec2-large-xlsr-53-arabic",
-  "alignBackend": "wav2vec2",
-  "alignModel": "jonatasgrosman/wav2vec2-large-xlsr-53-arabic",
-  "canAutoDetectRange": false,
+  "alignBackend": "nemo",
+  "alignModel": "Muno459/fastconformer-quran",
+  "alignReady": true,          // false => every /align call will fail
+  "alignError": null,          // why, when alignReady is false
+  "canAutoDetectRange": true,
   "sampleRate": 16000
 }
 ```
+
+`status` is `"ok"` whenever the process is up, so **check `alignReady`, not `status`**, before
+concluding the service is usable. The two differ exactly in the case worth catching: a service
+that answers requests but cannot align anything.

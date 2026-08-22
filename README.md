@@ -50,6 +50,14 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   half-ayah shows exactly those words rather than the whole verse.
 - Manual Tap-To-Sync editor as an alternative or a corrective: tap SPACEBAR to mark boundaries,
   nudge durations (changes cascade to keep the timeline contiguous), and hide individual words.
+- **Trim / crop uploaded audio** with a waveform editor — drag the handles, preview the
+  selection, then apply. Works before matching (cut dead air first) or after (cut the matched
+  timeline down); the segment times adjust to the new clip automatically either way. Runs
+  entirely in the browser, no upload or server round-trip.
+- **Upload video as well as audio** (MP4 / MOV / WebM / MKV). The audio track drives the
+  timing, and the footage can double as the clip background — kept frame-synced to playback
+  rather than looped, so a recorded recitation stays in sync. Trimming the audio offsets the
+  background automatically instead of discarding it.
 
 **Styling and export**
 - Aspect ratios 9:16, 16:9, 1:1, 4:5.
@@ -112,20 +120,27 @@ pip install -r requirements.txt
 
 ```bash
 cd asr-service
-.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+./run.sh
 ```
+
+Use `run.sh` rather than a bare `uvicorn`: it calls the virtualenv's Python by absolute path,
+which avoids the one failure that reliably breaks this service — bash resolving `uvicorn` to a
+different Python, whose mismatched protobuf/onnx makes every match fail. The service detects
+that at startup and tells you how to fix it.
 
 The first start downloads model weights (~1.2 GB). Confirm it is up:
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/health     # alignReady must be true
 ```
 
 Then reload the studio page — the **Forced Align** matcher will show "Sidecar online".
 
-> **CPU-only hosts:** alignment is fast on CPU (a 68-second clip aligns in about 4 seconds on
-> an 8-core machine) because it searches one fixed text rather than every possible sentence.
-> Add `ASR_ALIGN_BACKEND=wav2vec2 ASR_WARM_UP=0` to skip the heavy optional NeMo dependency.
+> **CPU-only hosts:** everything here runs on CPU — a 68-second clip aligns in about 4 seconds
+> on an 8-core machine, because it searches one fixed text rather than every possible sentence.
+> Keep the default NeMo backend even without a GPU: it is what reads the audio to work out the
+> surah for you. `ASR_ALIGN_BACKEND=wav2vec2` avoids that dependency but **gives up surah
+> detection**, so reach for it only if NeMo genuinely won't install.
 > See [asr-service/README.md](asr-service/README.md#running-without-a-gpu).
 
 ### 4. Configure keys (optional)
@@ -233,11 +248,16 @@ The sidebar has three tabs.
 
 **1 — Quran & Reciter**
 1. Choose a reciter, surah, and ayah range, then **Load Ayahs & Audio Data**.
-2. Or upload your own recitation and use **AI Auto-match** (or **Manual Match**).
+2. Or upload your own recitation — audio **or video** — and use **AI Auto-match**
+   (or **Manual Match**). For a video, its audio is used for timing and a checkbox offers its
+   footage as the background, synced to playback.
    - With **Forced Align**, the sidecar tries to detect the passage itself. If its backend
      can't do that (CPU-only setups), it falls back to the range selected above — so set it
      correctly first. The button's help text tells you which mode is active.
    - With **Gemini + Align**, Gemini picks the range; the selection above is only a fallback.
+   - **Trim / Crop Audio** is available the moment a file is uploaded, and stays available
+     after matching too — use it to cut dead air before matching, or shorten the matched
+     timeline afterward. Same button either way; it adjusts existing segment times for you.
 
 **2 — Tap-To-Sync**
 3. Press Play and tap SPACEBAR at the end of each ayah to mark boundaries.
@@ -303,7 +323,7 @@ src/app/                     Next.js pages and API routes
   api/audio/match/           Matcher endpoint and provider dispatch
   video-creator/             The studio page
 src/components/              VideoCanvas, TimelineSyncEditor, StyleConfigPanel,
-                             GpuExportModal, SavedProjectsDrawer
+                             GpuExportModal, SavedProjectsDrawer, AudioTrimModal
 src/db/                      Drizzle ORM connection and schema
 src/lib/
   quranData.ts               Surahs, reciters, backgrounds, fonts, sample data
@@ -311,10 +331,12 @@ src/lib/
   arabic.ts                  Arabic normalisation and fuzzy word matching
   matchTypes.ts              Shared segment/result shape for every provider
   matchTimeline.ts           Provider-agnostic segment -> timeline building
+                             (also trimTimeline: clips/rebases segments to a trim window)
   forcedAligner.ts           Forced-align provider (recommended)
   hybridMatcher.ts           Gemini identifies, the local aligner times
   geminiMatcher.ts           Gemini provider
   asrAligner.ts              Local ASR provider
+  audioTrim.ts               In-browser decode/slice/re-encode for the trim editor
 asr-service/                 Python sidecar
   app/align.py               CTC forced alignment, phrase segmentation, repeat detection
   app/asr.py                 Free-decode backends (wav2vec2 / nemo / whisper)
@@ -344,9 +366,21 @@ The sidecar isn't running, or `ASR_SERVICE_URL` is wrong. Start it and check
 `curl http://127.0.0.1:8000/health`. The provider selector polls on page load, so reload
 afterwards.
 
-**The sidecar crashes on startup with a protobuf or onnx version error**
-You are almost certainly running it outside its virtualenv. Use
-`cd asr-service && source .venv/bin/activate` first, or call `.venv/bin/uvicorn` directly.
+**"Backend not loaded" on Forced Align, or `/align` returns a `VersionError` about protobuf/onnx**
+The sidecar is running under the wrong Python. Even with the virtualenv activated, bash can
+still use a cached path to a different `uvicorn`. Fix it with:
+
+```bash
+cd asr-service && hash -r && ./run.sh
+```
+
+The sidecar prints which interpreter it is running as at startup when this happens, and
+`/health` reports `alignReady: false` with the reason.
+
+**The detected surah doesn't appear in Tap-To-Sync**
+The match failed, so nothing was updated and the studio kept your manual selection. Check the
+status banner under the upload panel for the error — most often it is the backend problem
+above.
 
 **"Only N% of the supplied text could be matched to this audio"**
 The ayah range doesn't match the recording, or the recording covers only part of it. Narrow
@@ -384,10 +418,16 @@ npx next dev --webpack
 
 - **Always review an AI-generated timeline before publishing.** Forced alignment cannot report
   that it was handed the wrong text; coverage is a strong guard, not a guarantee.
-- Range auto-detection needs the `nemo` align backend, since it has to read the audio. On the
-  `wav2vec2` backend you supply the range and the service aligns that instead.
+- Range auto-detection needs the `nemo` align backend (the default), since it has to read the
+  audio. Setting `ASR_ALIGN_BACKEND=wav2vec2` turns detection off and makes you supply the
+  range; the studio shows a warning when the sidecar is in that state. If NeMo fails to load,
+  the service says so with the reason rather than quietly downgrading — most often it means the
+  service was started outside its virtualenv.
 - Alignment assumes the recitation follows the reference text in order. Repeats are detected
   and inserted; out-of-order recitation is not handled.
+- Range detection reports the ayah cluster carrying the most matched words, so a recitation
+  that deliberately jumps between distant ayahs of the same surah is narrowed to its main
+  span. That trade buys immunity to a single mislocated fragment widening a correct range.
 - A multi-block reference (e.g. Al-Fatihah followed by another surah) is fragile: if the first
   block isn't actually in the audio, the phrase search can stall inside it. Low coverage flags
   this, but prefer one tight range when you know it.
@@ -398,7 +438,9 @@ npx next dev --webpack
 - Repeat-detection thresholds in `align.py` were tuned on a single clip. Multi-word repeats
   clear them comfortably; single-word matches on very common words sit near the threshold.
 - Gemini inline audio is limited to about 18 MB (roughly 15–20 minutes of MP3). Compress or
-  split longer recordings.
+  split longer recordings. Trimming re-encodes to uncompressed WAV, which is *larger* than the
+  original MP3 even after cutting — trim well past 18 MB and you can cross that limit rather
+  than get under it.
 - Browser export depends on `MediaRecorder` codec support; Chrome/Chromium recommended.
 - In-memory saved projects are not durable — configure `DATABASE_URL` for persistence.
 

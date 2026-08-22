@@ -210,3 +210,22 @@ export function enforceTimelineOrder(verses: VerseData[], audioDuration: number)
   }
   return sorted;
 }
+
+/**
+ * Clips a timeline to a trimmed audio window and rebases times to the new
+ * clip's start (so segment 0 still starts at/near 0, matching every other
+ * consumer's assumption about where the audio begins).
+ *
+ * Segments entirely outside the window are dropped. A segment that straddles
+ * a trim boundary is clamped rather than dropped, so cutting mid-ayah keeps
+ * the part of it that survived instead of losing the whole verse.
+ */
+export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: number): VerseData[] {
+  return verses
+    .filter(verse => verse.endTime > trimStart && verse.startTime < trimEnd)
+    .map(verse => {
+      const startTime = Math.round((Math.max(verse.startTime, trimStart) - trimStart) * 10) / 10;
+      const endTime = Math.round((Math.min(verse.endTime, trimEnd) - trimStart) * 10) / 10;
+      return { ...verse, startTime, endTime: Math.max(endTime, startTime + 0.1) };
+    });
+}

@@ -274,6 +274,11 @@ export async function GET() {
   // False on a CPU-only host, where the align backend is the character model
   // rather than NeMo -- `align` then aligns the UI's selected range instead.
   let canAutoDetectRange = false;
+  // A sidecar can be reachable and still be unable to align at all, if its
+  // backend failed to import. Surfacing that here means the studio can say so
+  // before someone uploads a file, rather than after a failed match.
+  let alignReady = true;
+  let alignError: string | null = null;
   try {
     // The sidecar resolves its align backend at startup so this stays a few
     // milliseconds, but allow headroom for a loaded host -- timing out here
@@ -283,6 +288,9 @@ export async function GET() {
     if (res.ok) {
       const health = await res.json().catch(() => null);
       canAutoDetectRange = Boolean(health?.canAutoDetectRange);
+      // Absent on an older sidecar, which is indistinguishable from healthy.
+      alignReady = health?.alignReady !== false;
+      alignError = health?.alignError ?? null;
     }
   } catch {
     asrAvailable = false;
@@ -292,12 +300,25 @@ export async function GET() {
     providers: {
       gemini: { configured: geminiConfigured },
       asr: { configured: asrAvailable, serviceUrl: asrServiceUrl },
-      // Same sidecar as `asr`, different endpoint on it.
-      align: { configured: asrAvailable, serviceUrl: asrServiceUrl, canAutoDetectRange },
+      // Same sidecar as `asr`, different endpoint on it. `configured` means the
+      // provider can actually run, so a sidecar whose align backend won't load
+      // is reported as not configured rather than as online-but-failing.
+      align: {
+        configured: asrAvailable && alignReady,
+        serviceUrl: asrServiceUrl,
+        canAutoDetectRange,
+        alignReady,
+        alignError
+      },
       // Needs both halves: Gemini to identify the passage, the sidecar to time
       // it. Gemini also *replaces* the sidecar's own range detection, which is
       // why this stays fully useful on a host where `canAutoDetectRange` is false.
-      hybrid: { configured: geminiConfigured && asrAvailable, serviceUrl: asrServiceUrl }
+      hybrid: {
+        configured: geminiConfigured && asrAvailable && alignReady,
+        serviceUrl: asrServiceUrl,
+        alignReady,
+        alignError
+      }
     },
     defaultProvider: resolveProvider(null)
   });

@@ -137,6 +137,53 @@ def locate_phrase(
     return best
 
 
+#: Unsupported ayahs tolerated inside one passage before it is treated as two
+#: separate clusters. A reciter skipping an ayah, or a phrase the decoder failed
+#: to place, leaves a small hole that should not split the range; nine empty
+#: ayahs between one stray match and the body of the recitation should.
+MAX_AYAH_GAP = 2
+
+
+def _dominant_span(ayahs: list[int]) -> dict[str, int]:
+    """The ayah span actually being recited, ignoring isolated stray matches.
+
+    `ayahs` holds one entry per matched *word*, so an ayah's entry count is how
+    much evidence supports it. Taking a plain min()/max() over that made the
+    reported range only as good as its single worst match: on the reference clip
+    a three-token fragment (`...ٱللَّهُ وَرَسُولُهُۥ`) truncated at a phrase boundary
+    scored 0.67 against 33:12 -- those words genuinely appear in both 33:12 and
+    33:22 -- and that one hit widened a correct 33:21-23 detection to 33:12-23,
+    outvoting ten confident matches.
+
+    Clustering instead of trimming by score keeps this free of tuned thresholds:
+    contiguous runs of supported ayahs are grouped, and the group carrying the
+    most matched words wins. A genuinely disjoint recitation from the same surah
+    is the one case this narrows, and that is the rarer reading by a wide margin
+    than a single mislocated fragment.
+    """
+    counts = Counter(ayahs)
+    ordered = sorted(counts)
+
+    clusters: list[list[int]] = [[ordered[0]]]
+    for ayah in ordered[1:]:
+        if ayah - clusters[-1][-1] - 1 > MAX_AYAH_GAP:
+            clusters.append([ayah])
+        else:
+            clusters[-1].append(ayah)
+
+    best = max(clusters, key=lambda cluster: sum(counts[a] for a in cluster))
+    if len(clusters) > 1:
+        dropped = [a for cluster in clusters if cluster is not best for a in cluster]
+        log.info(
+            "ignoring %d stray ayah match(es) outside the main span %d-%d: %s",
+            sum(counts[a] for a in dropped),
+            best[0],
+            best[-1],
+            dropped,
+        )
+    return {"start_ayah": best[0], "end_ayah": best[-1]}
+
+
 def detect_range(decoded_phrases: list[str]) -> DetectedRange | None:
     """Work out the surah and ayah range covering the recited phrases.
 
@@ -198,6 +245,9 @@ def detect_range(decoded_phrases: list[str]) -> DetectedRange | None:
     # winner. Recitations routinely open with Al-Fatihah before the main
     # passage; collapsing to one surah drops those phrases, and they then get
     # force-matched into the surviving surah as nonsense.
+    #
+    # Within a surah the span comes from `_dominant_span` rather than plain
+    # min()/max(), because a single stray phrase must not be able to stretch it.
     per_surah: dict[int, list[int]] = {}
     phrases_per_surah: Counter[int] = Counter()
     for start, end, _ in hits:
@@ -211,7 +261,7 @@ def detect_range(decoded_phrases: list[str]) -> DetectedRange | None:
                     ayahs.append(int(key[1]))
 
     ranges = [
-        SurahRange(surah=surah, start_ayah=min(ayahs), end_ayah=max(ayahs), phrases=phrases_per_surah[surah])
+        SurahRange(surah=surah, **_dominant_span(ayahs), phrases=phrases_per_surah[surah])
         for surah, ayahs in sorted(per_surah.items())
         if phrases_per_surah[surah] >= MIN_PHRASES_PER_SURAH
     ]

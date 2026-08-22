@@ -57,6 +57,21 @@ interface VideoCanvasProps {
   surahNumber: number;
   ayahStart: number;
   ayahEnd: number;
+  /**
+   * Set when the background video *is* the uploaded recitation, rather than
+   * decorative footage. A decorative clip loops on its own; a recitation has to
+   * track playback frame-for-frame or the reciter's lips drift out of sync.
+   */
+  syncBackgroundVideo?: boolean;
+  /** Whether playback is running, so a synced background can start and stop with it. */
+  isPlaying?: boolean;
+  /**
+   * Seconds trimmed off the front of the audio that the background video still
+   * contains. Trimming re-encodes audio only, so the original video stays
+   * whole -- adding this offset keeps the two lined up instead of forcing the
+   * background to be discarded after a trim.
+   */
+  backgroundTimeOffset?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +115,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   surahNameEnglish,
   surahNumber,
   ayahStart,
-  ayahEnd
+  ayahEnd,
+  syncBackgroundVideo = false,
+  isPlaying = false,
+  backgroundTimeOffset = 0
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoBgRef = useRef<HTMLVideoElement | null>(null);
@@ -135,11 +153,15 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     if (!vid) {
       vid = document.createElement('video');
       vid.crossOrigin = 'anonymous';
-      vid.loop = true;
       vid.muted = true;
       vid.playsInline = true;
       videoBgRef.current = vid;
     }
+
+    // Decorative footage loops forever on its own. A synced recitation must
+    // not: it is driven by the effect below, and looping would send it back to
+    // 0 mid-verse.
+    vid.loop = !syncBackgroundVideo;
 
     if (vid.src !== bgVideoSrc || vid.dataset.bgSrc !== bgVideoSrc) {
       vid.dataset.bgSrc = bgVideoSrc;
@@ -148,13 +170,41 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       const onErr = () => { videoErrorRef.current = true; };
       vid.addEventListener('error', onErr, { once: true });
 
-      vid.play().catch(() => { videoErrorRef.current = true; });
+      if (!syncBackgroundVideo) {
+        vid.play().catch(() => { videoErrorRef.current = true; });
+      }
     }
 
     return () => {
       // Keep video alive across re-renders; only destroy on unmount
     };
-  }, [bgVideoSrc]);
+  }, [bgVideoSrc, syncBackgroundVideo]);
+
+  /**
+   * Keeps a synced background video in step with playback.
+   *
+   * Correction is threshold-based rather than a seek on every tick: `currentTime`
+   * updates from the audio element's `timeupdate`, which fires only ~4x a second,
+   * so assigning it every time would stutter the video. Letting it run at its own
+   * rate and nudging it only when it drifts past a quarter-second keeps playback
+   * smooth while staying visually in sync.
+   */
+  useEffect(() => {
+    const vid = videoBgRef.current;
+    if (!vid || !bgVideoSrc || !syncBackgroundVideo || videoErrorRef.current) return;
+
+    const target = currentTime + backgroundTimeOffset;
+    if (Number.isFinite(target) && Math.abs(vid.currentTime - target) > 0.25) {
+      try {
+        vid.currentTime = Math.max(0, target);
+      } catch {
+        // Seeking before metadata lands throws; the next tick retries.
+      }
+    }
+
+    if (isPlaying && vid.paused) vid.play().catch(() => {});
+    else if (!isPlaying && !vid.paused) vid.pause();
+  }, [bgVideoSrc, syncBackgroundVideo, currentTime, isPlaying, backgroundTimeOffset]);
 
   // Cleanup on unmount
   useEffect(() => {
