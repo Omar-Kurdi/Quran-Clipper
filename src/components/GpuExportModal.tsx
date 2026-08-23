@@ -37,6 +37,17 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [renderedMs, setRenderedMs] = useState<number>(0);
   const [downloadFileName, setDownloadFileName] = useState<string>('QuranClip.webm');
 
+  // Clear the previous render whenever the modal is reopened. Without this the
+  // result screen from the last export is still mounted, so a second export --
+  // after trimming or any other edit -- has no way in and looks blocked. This
+  // is the documented "adjust state when a prop changes" pattern: done during
+  // render rather than in an effect, so it never paints the stale screen first.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) setExportedBlobUrl(null);
+  }
+
   if (!isOpen) return null;
 
   const handleExport = () => {
@@ -217,6 +228,16 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               <Download className="w-5 h-5" />
               <span>Download High-Quality WebM Video</span>
             </a>
+
+            {/* Renders are repeatable -- the previous blob URL is left alive on
+                purpose so the saved export record keeps working. */}
+            <button
+              onClick={() => setExportedBlobUrl(null)}
+              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Film className="w-3.5 h-3.5 text-amber-400" />
+              <span>Render Another Export</span>
+            </button>
           </div>
         )}
       </div>

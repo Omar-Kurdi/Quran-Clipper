@@ -50,10 +50,13 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   half-ayah shows exactly those words rather than the whole verse.
 - Manual Tap-To-Sync editor as an alternative or a corrective: tap SPACEBAR to mark boundaries,
   nudge durations (changes cascade to keep the timeline contiguous), and hide individual words.
-- **Trim / crop uploaded audio** with a waveform editor — drag the handles, preview the
-  selection, then apply. Works before matching (cut dead air first) or after (cut the matched
-  timeline down); the segment times adjust to the new clip automatically either way. Runs
-  entirely in the browser, no upload or server round-trip.
+- **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
+  ruler show exactly where you are, zoom (up to 16×) resolves the waveform for fine cuts, and
+  start/end are entered as timecodes (`3:31.7`). Drag the handles, or park the playhead and
+  press *Start here* / *End here*. Works before matching (cut dead air first) or after (cut the
+  matched timeline down); the segment times adjust to the new clip automatically either way.
+  Runs entirely in the browser, no upload or server round-trip, and is reachable from the top
+  toolbar at any step.
 - **Upload video as well as audio** (MP4 / MOV / WebM / MKV). The audio track drives the
   timing, and the footage can double as the clip background — kept frame-synced to playback
   rather than looped, so a recorded recitation stays in sync. Trimming the audio offsets the
@@ -255,9 +258,13 @@ The sidebar has three tabs.
      can't do that (CPU-only setups), it falls back to the range selected above — so set it
      correctly first. The button's help text tells you which mode is active.
    - With **Gemini + Align**, Gemini picks the range; the selection above is only a fallback.
-   - **Trim / Crop Audio** is available the moment a file is uploaded, and stays available
-     after matching too — use it to cut dead air before matching, or shorten the matched
-     timeline afterward. Same button either way; it adjusts existing segment times for you.
+   - **Trim / Crop Audio** is available the moment a file is uploaded, from this panel *and*
+     from the **Trim Audio** button in the top toolbar — so you can shave a second off the end
+     after matching, styling, or even after a first export without leaving the step you are on.
+     It adjusts existing segment times for you, so timeline edits survive a re-trim.
+     Click the waveform to move the playhead, *Play* to audition from it, and zoom in when a
+     cut needs to land between two words. Start and end accept `m:ss.s`, `h:mm:ss.s`, or plain
+     seconds; an unparseable entry reverts instead of applying.
 
 **2 — Tap-To-Sync**
 3. Press Play and tap SPACEBAR at the end of each ayah to mark boundaries.

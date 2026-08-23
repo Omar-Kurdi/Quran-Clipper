@@ -379,7 +379,11 @@ export const TimelineSyncEditor: React.FC<TimelineSyncEditorProps> = ({
               }`}
             >
               <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
+                {/* `min-w-0` + `flex-wrap` let the badges wrap instead of shoving
+                    the action buttons out of the card -- the "Playing Now" badge
+                    only appears on the active segment, so without this the row
+                    overflows exactly when a segment is playing. */}
+                <div className="flex items-center gap-2 gap-y-1 flex-wrap min-w-0">
                   <span
                     className="cursor-grab active:cursor-grabbing text-slate-600 hover:text-slate-300 shrink-0"
                     title="Drag to reorder this segment"
@@ -425,7 +429,7 @@ export const TimelineSyncEditor: React.FC<TimelineSyncEditorProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button onClick={() => onSeek(verse.startTime)} title="Jump to ayah start" className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md transition-colors">
                     <Play className="w-3.5 h-3.5" />
                   </button>

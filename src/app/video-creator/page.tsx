@@ -708,6 +708,21 @@ export default function VideoCreatorPage() {
             <span className="hidden sm:inline">Saved Clips</span>
           </button>
 
+          {/* Trimming is not a step you do once up front -- wanting to shave a
+              second off the end after matching and editing is normal, and the
+              timeline survives it. Keep it reachable from every step rather
+              than only from the upload panel back in Quran & Reciter. */}
+          {customAudioFile && (
+            <button
+              onClick={() => setShowTrimModal(true)}
+              title="Trim / crop the uploaded audio -- your timeline edits are kept"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
+            >
+              <Scissors className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Trim Audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
+            </button>
+          )}
+
           <button
             onClick={handleSaveProject}
             className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
