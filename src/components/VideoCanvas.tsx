@@ -10,6 +10,8 @@ export interface VideoCanvasConfig {
   arabicFontSize: number;
   transliterationFontSize: number;
   translationFontSize: number;
+  /** 'ayah' draws the sentence translation; 'words' pairs each shown word with its own gloss. */
+  translationMode?: 'ayah' | 'words';
   ayahNumberFontSize: number;
   textAlignment: string;
   textColor: string;
@@ -270,6 +272,56 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     return lines;
   }, []);
 
+  /**
+   * Lays visible words out as right-to-left columns, each Arabic word sitting
+   * above its own English gloss.
+   *
+   * This exists because the sentence translation describes the *whole* ayah:
+   * exclude a word from the canvas and the English underneath still claims the
+   * full verse. Pairing each word with its own gloss keeps the two in step.
+   *
+   * Word order is right-to-left, so words[0] is placed at the right edge and
+   * each subsequent column moves left. The Arabic is drawn per column rather
+   * than as one string, so we position it ourselves instead of letting the
+   * browser's bidi pass do it -- a single word is a contiguous RTL run, which
+   * renders correctly either way.
+   */
+  const buildWordColumns = useCallback((
+    ctx: CanvasRenderingContext2D,
+    words: { arabic: string; gloss: string }[],
+    maxWidth: number,
+    arabicFont: string,
+    glossFont: string,
+    gap: number
+  ) => {
+    const measured = words.map(w => {
+      ctx.font = arabicFont;
+      const arabicWidth = ctx.measureText(w.arabic).width;
+      ctx.font = glossFont;
+      // An empty gloss simply collapses the column to the Arabic width; the
+      // API returns '' for some tokens and a forced gap would read as a bug.
+      const glossWidth = w.gloss ? ctx.measureText(w.gloss).width : 0;
+      return { ...w, width: Math.max(arabicWidth, glossWidth) };
+    });
+
+    const rows: { columns: typeof measured; width: number }[] = [];
+    let current: typeof measured = [];
+    let currentWidth = 0;
+    for (const col of measured) {
+      const added = col.width + (current.length ? gap : 0);
+      if (currentWidth + added > maxWidth && current.length) {
+        rows.push({ columns: current, width: currentWidth });
+        current = [col];
+        currentWidth = col.width;
+      } else {
+        current.push(col);
+        currentWidth += added;
+      }
+    }
+    if (current.length) rows.push({ columns: current, width: currentWidth });
+    return rows;
+  }, []);
+
   // ---- RENDER LOOP ----
   useEffect(() => {
     let animationFrameId: number;
@@ -421,6 +473,19 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         : config.textAlignment === 'left' ? cardX + 40 : width / 2;
 
       const displayArabic = activeVerse ? getDisplayArabic(activeVerse) : '';
+
+      // Word-by-word only works when the ayah actually carries per-word glosses
+      // (the Quran.com fetch supplies them; hand-added segments may not), so
+      // fall back to the sentence translation rather than rendering blanks.
+      const glossWords = (activeVerse?.words || [])
+        .filter(w => !w.excluded && w.arabic)
+        .map(w => ({ arabic: w.arabic, gloss: (w.translation || '').trim() }));
+      const wordByWord =
+        config.translationMode === 'words' &&
+        config.showTranslation &&
+        glossWords.length > 0 &&
+        glossWords.some(w => w.gloss);
+
       if (activeVerse && displayArabic) {
         let arabicRenderSize = config.arabicFontSize * (height / 1920) * 1.5;
         const maxArabicBlockHeight = cardHeight * 0.34;
@@ -455,6 +520,32 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           lineHeight = arabicRenderSize * 1.45;
           lines = buildArabicLines();
         }
+
+        // Word-by-word stacks a gloss under every word, so a row is far taller
+        // than a paragraph line and the block gets its own shrink-to-fit pass
+        // against a larger budget (it carries the translation too).
+        const arabicFontFor = (size: number) =>
+          `bold ${size}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
+        let glossSize = (config.translationFontSize || 20) * (height / 1920) * 1.05;
+        const glossFontFor = (size: number) => `${size}px '${config.fontTranslation}', sans-serif`;
+        const columnGap = Math.max(14, arabicRenderSize * 0.35);
+        let glossRows = wordByWord
+          ? buildWordColumns(ctx, glossWords, maxTextWidth, arabicFontFor(arabicRenderSize), glossFontFor(glossSize), columnGap)
+          : [];
+        let glossRowHeight = arabicRenderSize * 1.15 + glossSize * 1.45;
+        if (wordByWord) {
+          const glossBudget = cardHeight * 0.62;
+          while (glossRows.length * glossRowHeight > glossBudget && arabicRenderSize > 26) {
+            arabicRenderSize -= 2;
+            glossSize = Math.max(11, glossSize - 1);
+            glossRows = buildWordColumns(
+              ctx, glossWords, maxTextWidth,
+              arabicFontFor(arabicRenderSize), glossFontFor(glossSize),
+              Math.max(14, arabicRenderSize * 0.35)
+            );
+            glossRowHeight = arabicRenderSize * 1.15 + glossSize * 1.45;
+          }
+        }
         // Measure the blocks below the Arabic before drawing anything, so the
         // whole stack can be centred in the card. Anchoring the Arabic to a
         // fixed top offset made short ayahs hug the top border and leave the
@@ -462,7 +553,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // visual balance changed with every segment.
         const ayahFontSize = (config.ayahNumberFontSize || 34) * (height / 1920);
         const shownArabicLines = Math.min(lines.length, 5);
-        const arabicBlockHeight = shownArabicLines * lineHeight;
+        const arabicBlockHeight = wordByWord
+          ? glossRows.length * glossRowHeight
+          : shownArabicLines * lineHeight;
 
         let belowHeight = ayahFontSize * 0.65 + 48; // ayah number + divider gap
 
@@ -476,7 +569,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         }
 
         const measuredTranslation = activeVerse.displayTranslation || activeVerse.translation || '';
-        if (config.showTranslation && measuredTranslation) {
+        if (config.showTranslation && measuredTranslation && !wordByWord) {
           const ts = config.translationFontSize * (height / 1920) * 1.3;
           ctx.font = `${ts}px '${config.fontTranslation}', sans-serif`;
           belowHeight += wrapCanvasText(ctx, measuredTranslation, maxTextWidth, 12).length * ts * 1.55;
@@ -490,12 +583,38 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           ? cardY + (cardHeight - stackHeight) / 2
           : cardY + minPadding;
 
-        ctx.font = `bold ${arabicRenderSize}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
         ctx.fillStyle = config.textColor || '#ffffff';
-        lines.slice(0, 5).forEach((line, li) => {
-          ctx.fillText(`${line.trim()}${li === 4 && lines.length > 5 ? '…' : ''}`, textX, arabicStartY);
-          arabicStartY += lineHeight;
-        });
+        if (wordByWord) {
+          const prevAlign = ctx.textAlign;
+          ctx.textAlign = 'center';
+          for (const row of glossRows) {
+            // Rows are centred on textX; words[0] is the rightmost column and
+            // each following one steps left, which is the reading order.
+            let cursor = textX + row.width / 2;
+            for (const col of row.columns) {
+              const centre = cursor - col.width / 2;
+              ctx.direction = 'rtl';
+              ctx.font = arabicFontFor(arabicRenderSize);
+              ctx.fillStyle = config.textColor || '#ffffff';
+              ctx.fillText(col.arabic, centre, arabicStartY);
+              if (col.gloss) {
+                ctx.direction = 'ltr';
+                ctx.font = glossFontFor(glossSize);
+                ctx.fillStyle = config.translationColor || '#e2e8f0';
+                ctx.fillText(col.gloss, centre, arabicStartY + arabicRenderSize * 0.35 + glossSize);
+              }
+              cursor -= col.width + columnGap;
+            }
+            arabicStartY += glossRowHeight;
+          }
+          ctx.textAlign = prevAlign;
+        } else {
+          ctx.font = `bold ${arabicRenderSize}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
+          lines.slice(0, 5).forEach((line, li) => {
+            ctx.fillText(`${line.trim()}${li === 4 && lines.length > 5 ? '…' : ''}`, textX, arabicStartY);
+            arabicStartY += lineHeight;
+          });
+        }
         ctx.direction = 'ltr';
         ctx.shadowColor = 'transparent';
         ctx.font = `600 ${ayahFontSize}px '${config.fontArabic}', serif`;
@@ -526,7 +645,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         } else { transY += 18; }
 
         const translationText = activeVerse.displayTranslation || activeVerse.translation || '';
-        if (config.showTranslation && translationText) {
+        if (config.showTranslation && translationText && !wordByWord) {
           let ts = config.translationFontSize * (height / 1920) * 1.3;
           let tlh = ts * 1.55;
           const bottom = cardY + cardHeight - 44;
