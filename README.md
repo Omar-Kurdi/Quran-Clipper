@@ -55,7 +55,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   translation.
 - **Multiple backgrounds, four ways** — one clip, one per ayah, cycling on a timer, or shuffled
   (repeatably, so a re-export matches the preview). Every selected clip is preloaded in its own
-  element, so switching never stalls the render.
+  element, so switching never stalls the render — which does mean each one decodes concurrently,
+  so a handful is kinder to the export than all of them.
 - Manual Tap-To-Sync editor as an alternative or a corrective: tap SPACEBAR to mark boundaries,
   nudge durations (changes cascade to keep the timeline contiguous), and hide individual words.
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
@@ -397,7 +398,7 @@ Any Postgres 14+ will do — a system install, a managed instance, or a containe
 or Docker:
 
 ```bash
-podman run -d --name quranclipper-db -e POSTGRES_USER=quranclipper -e POSTGRES_PASSWORD=quranclipper -e POSTGRES_DB=quranclipper -p 5432:5432 -v quranclipper-pgdata:/var/lib/postgresql/data docker.io/library/postgres:16-alpine
+podman run -d --name quranclipper-db --restart=unless-stopped -e POSTGRES_USER=quranclipper -e POSTGRES_PASSWORD=quranclipper -e POSTGRES_DB=quranclipper -p 5432:5432 -v quranclipper-pgdata:/var/lib/postgresql/data docker.io/library/postgres:16-alpine
 ```
 
 The named volume is what makes the data outlive the container. Swap `podman` for `docker` if
@@ -448,6 +449,11 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
 - **Re-run `npm run db:push` after editing `src/db/schema.ts`.**
 - **Exported videos are not stored in the database.** Only metadata is; the video itself is a
   browser blob URL that dies with the tab.
+- **If the container is not running, saves fail with a 500** — the same symptom as a bad
+  `DATABASE_URL`, because the app cannot tell the difference. `--restart=unless-stopped` brings
+  it back after a reboot, but only once the container runtime itself starts; on a desktop that
+  usually needs `systemctl --user enable --now podman-restart.service`. Check with
+  `podman ps` before assuming the app is at fault.
 - Stop and start the database with `podman stop quranclipper-db` / `podman start
   quranclipper-db`. To wipe it completely, `podman rm -f quranclipper-db && podman volume rm
   quranclipper-pgdata`.

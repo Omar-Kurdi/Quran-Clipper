@@ -584,7 +584,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           `bold ${size}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
         let glossSize = (config.translationFontSize || 20) * (height / 1920) * 1.05;
         const glossFontFor = (size: number) => `${size}px '${config.fontTranslation}', sans-serif`;
-        const columnGap = Math.max(14, arabicRenderSize * 0.35);
+        // Must stay in step with arabicRenderSize through the shrink loop below:
+        // packing and drawing both step by this, so a stale value would centre
+        // the row on one gap and walk it with another.
+        let columnGap = Math.max(14, arabicRenderSize * 0.35);
         let glossRows = wordByWord
           ? buildWordColumns(ctx, glossWords, maxTextWidth, arabicFontFor(arabicRenderSize), glossFontFor(glossSize), columnGap)
           : [];
@@ -594,10 +597,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           while (glossRows.length * glossRowHeight > glossBudget && arabicRenderSize > 26) {
             arabicRenderSize -= 2;
             glossSize = Math.max(11, glossSize - 1);
+            columnGap = Math.max(14, arabicRenderSize * 0.35);
             glossRows = buildWordColumns(
               ctx, glossWords, maxTextWidth,
               arabicFontFor(arabicRenderSize), glossFontFor(glossSize),
-              Math.max(14, arabicRenderSize * 0.35)
+              columnGap
             );
             glossRowHeight = arabicRenderSize * 1.15 + glossSize * 1.45;
           }
