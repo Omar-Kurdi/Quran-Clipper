@@ -137,7 +137,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
             )
           ) : exportsList.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-xs">
-              No exported video clips yet. Click &quot;Export Video&quot; to render with RTX 5080 GPU!
+              No exported video clips yet. Click &quot;Export Video&quot; to render your first clip.
             </div>
           ) : (
             exportsList.map((exp) => (
@@ -153,7 +153,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                 </div>
 
                 <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>GPU: {exp.gpuDevice || 'NVIDIA RTX 5080'}</span>
+                  <span>GPU: {exp.gpuDevice || 'Unknown GPU'}</span>
                   <span className="font-mono text-slate-500">{exp.fps} FPS</span>
                 </div>
 

@@ -355,6 +355,21 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 className="w-full accent-amber-500"
               />
             </div>
+
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>Ayah Number Size:</span>
+                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={20}
+                max={72}
+                value={config.ayahNumberFontSize}
+                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
           </div>
 
           {/* Colors */}
@@ -413,21 +428,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 max={80}
                 value={config.cardBgOpacity}
                 onChange={(e) => updateConfig('cardBgOpacity', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>Ayah Number Size:</span>
-                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={20}
-                max={72}
-                value={config.ayahNumberFontSize}
-                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
                 className="w-full accent-amber-500"
               />
             </div>

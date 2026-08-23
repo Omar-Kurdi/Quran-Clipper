@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Quran Clip Helper - GPU Accelerated Quran Video Creator',
-  description: 'Replicate QuranClipHelper Video Creator locally using NVIDIA RTX 5080 GPU hardware acceleration for 60FPS 1080p/4K Quran short video generation.',
+  description: 'Create Quran recitation videos locally in the browser: forced-aligned word timing, canvas rendering, and 60 FPS 1080p/4K WebM export.',
 };
 
 export default function RootLayout({

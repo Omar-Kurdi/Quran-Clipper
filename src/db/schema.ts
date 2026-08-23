@@ -67,7 +67,7 @@ export const exports = pgTable('exports', {
   fileSizeBytes: integer('file_size_bytes').notNull().default(0),
   fps: integer('fps').notNull().default(60),
   renderTimeMs: integer('render_time_ms').notNull().default(0),
-  gpuDevice: text('gpu_device').default('NVIDIA GeForce RTX 5080'),
+  gpuDevice: text('gpu_device').default('Unknown GPU'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

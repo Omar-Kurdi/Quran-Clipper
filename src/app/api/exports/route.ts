@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       fileSizeBytes: body.fileSizeBytes || 0,
       fps: body.fps || 60,
       renderTimeMs: body.renderTimeMs || 0,
-      gpuDevice: body.gpuDevice || 'NVIDIA GeForce RTX 5080 (WebGPU Acceleration)',
+      gpuDevice: body.gpuDevice || 'Unknown GPU',
       createdAt: new Date()
     };
 

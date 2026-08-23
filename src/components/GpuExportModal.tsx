@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Cpu, Film, Download, CheckCircle, X, Sparkles, Loader2, Play } from 'lucide-react';
+import { describeGpu, describeEncoder } from '@/lib/gpuInfo';
 
 interface GpuExportModalProps {
   isOpen: boolean;
@@ -32,6 +33,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   aspectRatio,
   onSaveExportRecord
 }) => {
+  // Report what this machine actually has rather than a hardcoded model name.
+  const gpuName = useMemo(() => describeGpu(), []);
+  const encoderName = useMemo(() => describeEncoder(), []);
+
   const [selectedFps, setSelectedFps] = useState<number>(60);
   const [exportedBlobUrl, setExportedBlobUrl] = useState<string | null>(null);
   const [renderedMs, setRenderedMs] = useState<number>(0);
@@ -81,10 +86,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
           </div>
           <div>
             <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-              GPU Hardware Accelerated Video Export
+              Video Export
             </h3>
             <p className="text-xs text-slate-400">
-              Utilizing local NVIDIA RTX 5080 WebCodecs H.264 / WebM Engine
+              Records the canvas in real time via MediaRecorder ({encoderName})
             </p>
           </div>
         </div>
@@ -96,12 +101,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               <div className="flex items-center gap-2.5">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></div>
                 <div>
-                  <span className="text-xs font-semibold text-slate-200 block">Active Local Acceleration</span>
-                  <span className="text-[11px] font-mono text-emerald-400">NVIDIA GeForce RTX 5080 (16GB VRAM)</span>
+                  <span className="text-xs font-semibold text-slate-200 block">Detected GPU</span>
+                  <span className="text-[11px] font-mono text-emerald-400">{gpuName}</span>
                 </div>
               </div>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2 py-1 rounded">
-                NVENC HW READY
+              <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-2 py-1 rounded">
+                {encoderName}
               </span>
             </div>
 
@@ -188,7 +193,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
                 <div className="flex justify-between text-[11px] text-slate-400 font-mono mt-1">
                   <span>Speed: {exportSpeed}</span>
-                  <span>RTX 5080 Active</span>
+                  <span title="Export records playback in real time, so a clip takes about as long as its duration.">Real-time capture</span>
                 </div>
               </div>
             ) : (
@@ -209,9 +214,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
             </div>
 
             <div>
-              <h4 className="text-lg font-bold text-slate-100">GPU Video Render Complete!</h4>
+              <h4 className="text-lg font-bold text-slate-100">Video Render Complete!</h4>
               <p className="text-xs text-slate-400 mt-1">
-                Rendered in <span className="font-mono text-emerald-400">{Math.round(renderedMs / 100) / 10}s</span> using RTX 5080 GPU hardware acceleration.
+                Rendered in <span className="font-mono text-emerald-400">{Math.round(renderedMs / 100) / 10}s</span> on {gpuName}.
               </p>
             </div>
 

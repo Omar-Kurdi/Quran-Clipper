@@ -10,6 +10,7 @@ import {
 import { TimelineSyncEditor } from '@/components/TimelineSyncEditor';
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
+import { describeGpu } from '@/lib/gpuInfo';
 import { trimTimeline } from '@/lib/matchTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -41,7 +42,9 @@ import {
   ChevronRight,
   Video,
   Server,
-  Scissors
+  Scissors,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
@@ -112,7 +115,7 @@ export default function VideoCreatorPage() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<number>(0);
   const [exportSpeed, setExportSpeed] = useState<string>('1.0x');
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{ text: string; kind: 'pending' | 'ok' | 'error' } | null>(null);
 
   // Studio Canvas Configuration
   const [canvasConfig, setCanvasConfig] = useState<VideoCanvasConfig>({
@@ -494,7 +497,7 @@ export default function VideoCreatorPage() {
 
   // Save Project to Database
   const handleSaveProject = async () => {
-    setSaveStatus('Saving...');
+    setSaveStatus({ text: 'Saving…', kind: 'pending' });
     try {
       const payload = {
         title: `${surahNameEnglish} (${selectedSurah}:${ayahStart}-${ayahEnd}) Clip`,
@@ -545,16 +548,24 @@ export default function VideoCreatorPage() {
       });
 
       if (res.ok) {
-        setSaveStatus('Project Saved!');
+        const data = await res.json().catch(() => null);
+        // The route falls back to in-memory storage when DATABASE_URL is unset;
+        // say so rather than implying the project survived a restart.
+        setSaveStatus({
+          text: data?.source === 'memory' ? 'Saved (this session)' : 'Project Saved!',
+          kind: 'ok'
+        });
         setTimeout(() => setSaveStatus(null), 3000);
       } else {
         const data = await res.json().catch(() => null);
-        setSaveStatus(data?.error ? 'Save Failed' : 'Save Failed');
-        setTimeout(() => setSaveStatus(null), 3000);
+        console.error('Save failed:', data?.error || res.status);
+        setSaveStatus({ text: 'Save Failed', kind: 'error' });
+        setTimeout(() => setSaveStatus(null), 5000);
       }
-    } catch {
-      setSaveStatus('Save Failed');
-      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (err) {
+      console.error('Save failed:', err);
+      setSaveStatus({ text: 'Save Failed', kind: 'error' });
+      setTimeout(() => setSaveStatus(null), 5000);
     }
   };
 
@@ -594,7 +605,7 @@ export default function VideoCreatorPage() {
           resolution: canvasConfig.aspectRatio === '16:9' ? '1920x1080' : '1080x1920',
           fps: canvasConfig.fps,
           renderTimeMs: Math.round(renderMs),
-          gpuDevice: 'NVIDIA GeForce RTX 5080 (WebGPU Acceleration)'
+          gpuDevice: describeGpu()
         })
       });
     } catch {
@@ -687,7 +698,7 @@ export default function VideoCreatorPage() {
                 Quran Clip Helper <span className="text-amber-400 font-mono text-xs">Studio</span>
               </span>
               <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-                <Cpu className="w-3 h-3 inline animate-pulse" /> RTX 5080 GPU Active
+                <Cpu className="w-3 h-3 inline animate-pulse" /> Rendering locally
               </span>
             </div>
           </Link>
@@ -727,8 +738,16 @@ export default function VideoCreatorPage() {
             onClick={handleSaveProject}
             className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
           >
-            {saveStatus ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Save className="w-3.5 h-3.5 text-amber-400" />}
-            <span>{saveStatus || 'Save Project'}</span>
+            {saveStatus?.kind === 'ok' ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : saveStatus?.kind === 'error' ? (
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+            ) : saveStatus?.kind === 'pending' ? (
+              <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+            ) : (
+              <Save className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span className={saveStatus?.kind === 'error' ? 'text-red-300' : undefined}>{saveStatus?.text || 'Save Project'}</span>
           </button>
 
           <button

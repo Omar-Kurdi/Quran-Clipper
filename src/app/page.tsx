@@ -43,7 +43,7 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
               <Cpu className="w-3.5 h-3.5 animate-pulse" />
-              <span>NVIDIA RTX 5080 GPU HW Ready</span>
+              <span>Runs Locally</span>
             </div>
 
             <Link
@@ -66,7 +66,7 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-amber-500/30 text-amber-400 text-xs font-semibold mb-6 shadow-md">
             <Zap className="w-3.5 h-3.5 fill-current" />
-            <span>Replicated for Local GPU Performance (RTX 5080 Accelerated)</span>
+            <span>Runs entirely on your own machine</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-black text-slate-100 tracking-tight leading-tight sm:leading-tight">
@@ -103,8 +103,8 @@ export default function HomePage() {
                 <Cpu className="w-6 h-6 animate-pulse" />
               </div>
               <div>
-                <span className="text-xs font-bold text-slate-200 block">NVIDIA GeForce RTX 5080 GPU Acceleration</span>
-                <span className="text-[11px] text-emerald-400 font-mono">60 FPS 1080p/4K OffscreenCanvas & WebCodecs Rendering</span>
+                <span className="text-xs font-bold text-slate-200 block">Local Canvas Rendering</span>
+                <span className="text-[11px] text-emerald-400 font-mono">GPU-composited canvas, recorded to WebM in real time</span>
               </div>
             </div>
             <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2.5 py-1 rounded-md font-semibold">
@@ -171,9 +171,9 @@ export default function HomePage() {
               <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl w-fit mb-4">
                 <Cpu className="w-6 h-6 text-emerald-400" />
               </div>
-              <h3 className="font-bold text-slate-100 text-base mb-1">GPU Hardware Render</h3>
+              <h3 className="font-bold text-slate-100 text-base mb-1">Local Render &amp; Export</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Offload video rendering directly to your local GPU (NVIDIA RTX 5080) for 60 FPS high-bitrate video export in seconds.
+                Frames are drawn on a GPU-composited canvas and captured to high-bitrate WebM in your browser. Nothing is uploaded, and export runs in real time.
               </p>
             </div>
 
@@ -240,7 +240,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-800 py-6 text-center text-xs text-slate-500">
-        <p>Quran Clip Helper Video Creator • Local GPU Hardware Acceleration (RTX 5080)</p>
+        <p>Quran Clip Helper Video Creator • Renders locally in your browser</p>
       </footer>
     </div>
   );
