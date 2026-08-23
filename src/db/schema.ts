@@ -20,7 +20,6 @@ export const projects = pgTable('projects', {
   arabicFontSize: integer('arabic_font_size').notNull().default(38),
   transliterationFontSize: integer('transliteration_font_size').notNull().default(24),
   translationFontSize: integer('translation_font_size').notNull().default(20),
-  translationMode: text('translation_mode').default('ayah'),
   ayahNumberFontSize: integer('ayah_number_font_size').notNull().default(34),
   textAlignment: text('text_alignment').notNull().default('center'),
   textColor: text('text_color').notNull().default('#ffffff'),

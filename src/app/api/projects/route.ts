@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
       arabicFontSize: body.arabicFontSize || 38,
       transliterationFontSize: body.transliterationFontSize || 24,
       translationFontSize: body.translationFontSize || 20,
-      translationMode: body.translationMode === 'words' ? 'words' : 'ayah',
       ayahNumberFontSize: body.ayahNumberFontSize || 34,
       textAlignment: body.textAlignment || 'center',
       textColor: body.textColor || '#ffffff',

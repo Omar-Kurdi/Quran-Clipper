@@ -599,23 +599,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               </label>
             </div>
 
-            {config.showTranslation && (
-              <label className="flex items-start gap-2 cursor-pointer text-slate-300 pt-2 mt-2 border-t border-slate-800">
-                <input
-                  type="checkbox"
-                  checked={config.translationMode === 'words'}
-                  onChange={(e) => updateConfig('translationMode', e.target.checked ? 'words' : 'ayah')}
-                  className="mt-0.5 rounded accent-amber-500"
-                />
-                <span>
-                  Word-by-word translation
-                  <span className="block text-[10px] text-slate-500">
-                    Puts each word&apos;s own English under it, so hiding a word hides its meaning too.
-                    Off shows the whole ayah as one sentence.
-                  </span>
-                </span>
-              </label>
-            )}
           </div>
         </div>
       )}
