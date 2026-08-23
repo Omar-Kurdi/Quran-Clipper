@@ -125,7 +125,7 @@ export default function VideoCreatorPage() {
     arabicFontSize: 38,
     transliterationFontSize: 24,
     translationFontSize: 20,
-    translationMode: 'words',
+    translationMode: 'ayah',
     ayahNumberFontSize: 34,
     textAlignment: 'center',
     textColor: '#ffffff',

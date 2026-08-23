@@ -49,10 +49,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Repeated phrases are detected acoustically and get their own segments.
 - Phrase-level display: each segment carries only the words actually spoken, so a repeated
   half-ayah shows exactly those words rather than the whole verse.
-- **Word-by-word English** that follows what is on screen — each Arabic word carries its own
-  gloss, so excluding a word removes its meaning too, instead of leaving a sentence that
-  describes the whole ayah. Toggle it off in Typography for the classic single-sentence
-  translation.
+- Full-ayah English translation under the Arabic. Optionally, a word-by-word mode pairs each
+  Arabic word with its own gloss so excluding a word removes its meaning too — off by default,
+  since the interlinear glosses read as crib notation rather than prose.
 - **Multiple backgrounds, four ways** — one clip, one per ayah, cycling on a timer, or shuffled
   (repeatably, so a re-export matches the preview). Every selected clip is preloaded in its own
   element, so switching never stalls the render — which does mean each one decodes concurrently,
