@@ -21,6 +21,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - [Export](#export)
 - [API reference](#api-reference)
 - [Project structure](#project-structure)
+- [Database (optional)](#database-optional)
 - [Troubleshooting](#troubleshooting)
 - [Limitations](#limitations)
 
@@ -68,7 +69,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
   Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card.
 - Browser export via `canvas.captureStream()` + `MediaRecorder` (WebM, 18 Mbps, 30 or 60 FPS).
-- Save/load projects with PostgreSQL, or in-memory when no database is configured.
+- Save/load projects with PostgreSQL, or in-memory when no database is configured — see
+  [Database](#database-optional) for a five-minute container setup.
 
 ---
 
@@ -170,7 +172,12 @@ an optional capability, and the app degrades cleanly without it.
 | `GEMINI_API_KEY` | `gemini` and `hybrid` providers | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
 | `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |
 | `GEMINI_TIMEOUT_MS` | — | `180000` | Ceiling on a single Gemini request. |
-| `DATABASE_URL` | durable saved projects | — | Without it, projects are kept in memory and lost on restart. |
+| `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
+
+> **Do not leave `DATABASE_URL` set to a placeholder.** The app checks whether the variable is
+> set, not whether it works — so `postgres://USER:PASSWORD@HOST:PORT/DATABASE` skips the
+> in-memory fallback and every save fails with a 500. Either give it a real connection string
+> or comment the line out.
 
 > **Gemini model IDs are retired regularly.** `gemini-2.0-flash` and `gemini-2.5-flash` no
 > longer exist and return HTTP 404. Check the
@@ -362,11 +369,91 @@ npm run dev          # start the dev server
 npm run typecheck    # tsc --noEmit
 npm run lint         # eslint
 npm run build        # production build
+npm run db:push      # apply src/db/schema.ts to DATABASE_URL
+npm run db:studio    # browse the database in Drizzle Studio
 ```
 
 ---
 
+## Database (optional)
+
+**You do not need this.** With `DATABASE_URL` unset, saved projects and export records are
+kept in memory — everything works, but they disappear when the dev server restarts. Set up
+Postgres only if you want saved clips to survive a restart.
+
+Three tables are defined in [`src/db/schema.ts`](src/db/schema.ts): `projects`, `exports`,
+and `preset_templates`.
+
+### 1. Start Postgres
+
+Any Postgres 14+ will do — a system install, a managed instance, or a container. With Podman
+or Docker:
+
+```bash
+podman run -d --name quranclipper-db -e POSTGRES_USER=quranclipper -e POSTGRES_PASSWORD=quranclipper -e POSTGRES_DB=quranclipper -p 5432:5432 -v quranclipper-pgdata:/var/lib/postgresql/data docker.io/library/postgres:16-alpine
+```
+
+The named volume is what makes the data outlive the container. Swap `podman` for `docker` if
+that is what you run; the arguments are identical.
+
+Check it is accepting connections:
+
+```bash
+podman exec quranclipper-db pg_isready -U quranclipper
+```
+
+### 2. Point the app at it
+
+Add the matching connection string to `.env.local`:
+
+```bash
+DATABASE_URL=postgres://quranclipper:quranclipper@127.0.0.1:5432/quranclipper
+```
+
+Use a real password if this is not a throwaway local database.
+
+### 3. Create the tables
+
+```bash
+npm run db:push
+```
+
+This reads `DATABASE_URL` from `.env.local` and applies the schema directly — no migration
+files, which suits a single-developer setup. Verify:
+
+```bash
+podman exec quranclipper-db psql -U quranclipper -d quranclipper -c '\dt'
+```
+
+You should see `exports`, `preset_templates`, and `projects`.
+
+### 4. Restart the dev server
+
+Next.js reads the environment at boot, so a running server will not pick up a newly added
+`DATABASE_URL`. After restarting, **Save Project** reports `Project Saved!`; if it still says
+`Saved (this session)`, the app is still on the in-memory fallback.
+
+### Notes and gotchas
+
+- **A placeholder `DATABASE_URL` is worse than none.** The API checks whether the variable is
+  set, not whether it connects, so a leftover `postgres://USER:PASSWORD@HOST:PORT/DATABASE`
+  bypasses the in-memory fallback and every save returns HTTP 500.
+- **Re-run `npm run db:push` after editing `src/db/schema.ts`.**
+- **Exported videos are not stored in the database.** Only metadata is; the video itself is a
+  browser blob URL that dies with the tab.
+- Stop and start the database with `podman stop quranclipper-db` / `podman start
+  quranclipper-db`. To wipe it completely, `podman rm -f quranclipper-db && podman volume rm
+  quranclipper-pgdata`.
+
+---
+
 ## Troubleshooting
+
+**`POST /api/projects 500` and saving fails**
+`DATABASE_URL` is set to something that cannot be reached — most often the placeholder
+`postgres://USER:PASSWORD@HOST:PORT/DATABASE` left uncommented in `.env.local`. The API only
+falls back to in-memory storage when the variable is *unset*, so a broken value fails every
+save. Either comment the line out or follow [Database](#database-optional).
 
 **"Sidecar unreachable" on the Forced Align / Local ASR buttons**
 The sidecar isn't running, or `ASR_SERVICE_URL` is wrong. Start it and check
@@ -449,7 +536,7 @@ npx next dev --webpack
   original MP3 even after cutting — trim well past 18 MB and you can cross that limit rather
   than get under it.
 - Browser export depends on `MediaRecorder` codec support; Chrome/Chromium recommended.
-- In-memory saved projects are not durable — configure `DATABASE_URL` for persistence.
+- In-memory saved projects are not durable — see [Database](#database-optional) for persistence.
 
 ---
 
