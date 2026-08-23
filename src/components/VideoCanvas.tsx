@@ -26,6 +26,11 @@ export interface VideoCanvasConfig {
   surahBadgeSubtitleText: string;
   bgType: string;
   bgUrl: string;
+  /** Extra backgrounds for the non-single modes. `bgUrl` stays the single-background case. */
+  bgUrls?: string[];
+  bgMode?: 'single' | 'per-ayah' | 'cycle' | 'shuffle';
+  /** Seconds each background holds in 'cycle' mode. */
+  bgCycleSeconds?: number;
   bgOverlayOpacity: number;
   bgBlur: number;
   cardBgOpacity: number;
@@ -140,47 +145,103 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     }
   }, [config.aspectRatio]);
 
-  // Derive the video src from config.bgUrl
-  const bgVideoSrc = useMemo(() => {
-    if (config.bgType !== 'video' || !config.bgUrl) return '';
-    return config.bgUrl;
-  }, [config.bgType, config.bgUrl]);
+  // Active verse
+  const sortedVerses = useMemo(() => [...verses].sort((a, b) => a.startTime - b.startTime), [verses]);
+  const activeVerse = useMemo(
+    () => [...sortedVerses].reverse().find(v => currentTime >= v.startTime)
+      || sortedVerses[0]
+      || { verseNumber: 1, textUthmani: '', transliteration: '', translation: '' } as VerseData,
+    [sortedVerses, currentTime]
+  );
+  const activeVerseIndex = useMemo(
+    () => Math.max(0, sortedVerses.indexOf(activeVerse as VerseData)),
+    [sortedVerses, activeVerse]
+  );
 
-  // Manage the background <video> element
+  /**
+   * Backgrounds in play, in order.
+   *
+   * `bgUrl` remains the single-background case so existing projects, the saved
+   * schema and the API payload keep working untouched; `bgUrls` only takes over
+   * once a multi mode is selected and something is actually in the list.
+   */
+  const videoPoolRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+
+  const bgPlaylist = useMemo(() => {
+    if (config.bgType !== 'video') return [] as string[];
+    const many = (config.bgUrls || []).filter(Boolean);
+    if (config.bgMode && config.bgMode !== 'single' && many.length > 0) return many;
+    return config.bgUrl ? [config.bgUrl] : [];
+  }, [config.bgType, config.bgUrl, config.bgUrls, config.bgMode]);
+
+  const bgVideoSrc = useMemo(() => {
+    const count = bgPlaylist.length;
+    if (count === 0) return '';
+    if (count === 1) return bgPlaylist[0];
+    switch (config.bgMode) {
+      case 'per-ayah':
+        return bgPlaylist[activeVerseIndex % count];
+      case 'cycle': {
+        const hold = Math.max(1, config.bgCycleSeconds || 5);
+        return bgPlaylist[Math.floor(Math.max(0, currentTime) / hold) % count];
+      }
+      case 'shuffle': {
+        // Seeded from the segment index, never Math.random(): the value has to
+        // be identical on every frame and identical again during export, or the
+        // background would flicker and the render would not match the preview.
+        const hashed = Math.imul(activeVerseIndex + 1, 2654435761) >>> 0;
+        return bgPlaylist[hashed % count];
+      }
+      default:
+        return bgPlaylist[0];
+    }
+  }, [bgPlaylist, config.bgMode, config.bgCycleSeconds, activeVerseIndex, currentTime]);
+
+  /**
+   * One <video> per background, all loaded and running at once.
+   *
+   * Swapping `src` on a single element would stall while the next clip buffers,
+   * and export records the canvas in real time -- so that stall bakes into the
+   * output as black frames rather than merely looking rough in the preview.
+   * Keeping every clip warm makes switching a choice of which element to draw.
+   */
   useEffect(() => {
     videoErrorRef.current = false;
-    if (!bgVideoSrc) return;
+    const pool = videoPoolRef.current;
 
-    let vid = videoBgRef.current;
-    if (!vid) {
-      vid = document.createElement('video');
-      vid.crossOrigin = 'anonymous';
-      vid.muted = true;
-      vid.playsInline = true;
-      videoBgRef.current = vid;
-    }
-
-    // Decorative footage loops forever on its own. A synced recitation must
-    // not: it is driven by the effect below, and looping would send it back to
-    // 0 mid-verse.
-    vid.loop = !syncBackgroundVideo;
-
-    if (vid.src !== bgVideoSrc || vid.dataset.bgSrc !== bgVideoSrc) {
-      vid.dataset.bgSrc = bgVideoSrc;
-      vid.src = bgVideoSrc;
-
-      const onErr = () => { videoErrorRef.current = true; };
-      vid.addEventListener('error', onErr, { once: true });
-
-      if (!syncBackgroundVideo) {
-        vid.play().catch(() => { videoErrorRef.current = true; });
+    for (const url of bgPlaylist) {
+      let vid = pool.get(url);
+      if (!vid) {
+        vid = document.createElement('video');
+        vid.crossOrigin = 'anonymous';
+        vid.muted = true;
+        vid.playsInline = true;
+        vid.preload = 'auto';
+        vid.src = url;
+        vid.addEventListener('error', () => { videoErrorRef.current = true; }, { once: true });
+        pool.set(url, vid);
+        vid.load();
       }
+      // Decorative footage loops forever on its own. A synced recitation must
+      // not: it is driven by the sync effect below, and looping would send it
+      // back to 0 mid-verse.
+      vid.loop = !syncBackgroundVideo;
+      if (!syncBackgroundVideo) vid.play().catch(() => {});
     }
 
-    return () => {
-      // Keep video alive across re-renders; only destroy on unmount
-    };
-  }, [bgVideoSrc, syncBackgroundVideo]);
+    for (const [url, vid] of Array.from(pool.entries())) {
+      if (bgPlaylist.includes(url)) continue;
+      vid.pause();
+      vid.removeAttribute('src');
+      vid.load();
+      pool.delete(url);
+    }
+  }, [bgPlaylist, syncBackgroundVideo]);
+
+  // Point the draw loop at whichever pooled clip is current.
+  useEffect(() => {
+    videoBgRef.current = bgVideoSrc ? videoPoolRef.current.get(bgVideoSrc) ?? null : null;
+  }, [bgVideoSrc]);
 
   /**
    * Keeps a synced background video in step with playback.
@@ -208,25 +269,20 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     else if (!isPlaying && !vid.paused) vid.pause();
   }, [bgVideoSrc, syncBackgroundVideo, currentTime, isPlaying, backgroundTimeOffset]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount -- the whole pool, not just the visible clip, or every
+  // background ever selected keeps its buffer alive for the page's lifetime.
   useEffect(() => {
+    const pool = videoPoolRef.current;
     return () => {
-      if (videoBgRef.current) {
-        videoBgRef.current.pause();
-        videoBgRef.current.removeAttribute('src');
-        videoBgRef.current.load();
+      for (const vid of pool.values()) {
+        vid.pause();
+        vid.removeAttribute('src');
+        vid.load();
       }
+      pool.clear();
+      videoBgRef.current = null;
     };
   }, []);
-
-  // Active verse
-  const sortedVerses = useMemo(() => [...verses].sort((a, b) => a.startTime - b.startTime), [verses]);
-  const activeVerse = useMemo(
-    () => [...sortedVerses].reverse().find(v => currentTime >= v.startTime)
-      || sortedVerses[0]
-      || { verseNumber: 1, textUthmani: '', transliteration: '', translation: '' } as VerseData,
-    [sortedVerses, currentTime]
-  );
 
   const getDisplayArabic = useCallback((verse: VerseData | typeof activeVerse) => {
     if ('words' in verse && verse.words?.length && verse.words.some(word => word.excluded)) {
@@ -701,7 +757,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     animationFrameId = requestAnimationFrame(drawFrame);
     return () => cancelAnimationFrame(animationFrameId);
   }, [config, verses, currentTime, audioAnalyser, surahNameArabic, surahNameEnglish,
-      dimensions, getDisplayArabic, wrapCanvasText, surahNumber, ayahStart, ayahEnd, activeVerse]);
+      dimensions, getDisplayArabic, wrapCanvasText, buildWordColumns,
+      surahNumber, ayahStart, ayahEnd, activeVerse]);
 
   // ---- EXPORT ----
   useImperativeHandle(ref, () => ({

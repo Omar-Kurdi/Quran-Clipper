@@ -49,6 +49,13 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Repeated phrases are detected acoustically and get their own segments.
 - Phrase-level display: each segment carries only the words actually spoken, so a repeated
   half-ayah shows exactly those words rather than the whole verse.
+- **Word-by-word English** that follows what is on screen — each Arabic word carries its own
+  gloss, so excluding a word removes its meaning too, instead of leaving a sentence that
+  describes the whole ayah. Toggle it off in Typography for the classic single-sentence
+  translation.
+- **Multiple backgrounds, four ways** — one clip, one per ayah, cycling on a timer, or shuffled
+  (repeatably, so a re-export matches the preview). Every selected clip is preloaded in its own
+  element, so switching never stalls the render.
 - Manual Tap-To-Sync editor as an alternative or a corrective: tap SPACEBAR to mark boundaries,
   nudge durations (changes cascade to keep the timeline contiguous), and hide individual words.
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time

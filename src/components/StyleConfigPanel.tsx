@@ -148,25 +148,98 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       {/* Tab 2: Background Selection */}
       {activeTab === 'background' && (
         <div className="flex flex-col gap-4">
+          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <label className="font-semibold text-slate-200 text-sm block mb-2">How backgrounds are used:</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                ['single', 'One background', 'A single looping clip.'],
+                ['per-ayah', 'One per ayah', 'Steps to the next clip on each ayah.'],
+                ['cycle', 'Cycle on a timer', 'Changes every few seconds.'],
+                ['shuffle', 'Shuffle', 'Picks per ayah, repeatably.']
+              ] as const).map(([mode, label, hint]) => (
+                <button
+                  key={mode}
+                  title={hint}
+                  onClick={() => onChangeConfig({ ...config, bgMode: mode })}
+                  className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                    (config.bgMode || 'single') === mode
+                      ? 'bg-amber-500 text-slate-950 border-amber-500'
+                      : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {(config.bgMode || 'single') === 'cycle' && (
+              <div className="mt-3">
+                <div className="flex justify-between text-slate-300 mb-1 text-xs">
+                  <span>Seconds per background:</span>
+                  <span className="font-mono text-amber-400">{config.bgCycleSeconds || 5}s</span>
+                </div>
+                <input
+                  type="range"
+                  min={2}
+                  max={30}
+                  value={config.bgCycleSeconds || 5}
+                  onChange={(e) => updateConfig('bgCycleSeconds', parseInt(e.target.value, 10))}
+                  className="w-full accent-amber-500"
+                />
+              </div>
+            )}
+
+            {(config.bgMode || 'single') !== 'single' && (
+              <p className="text-[10px] text-slate-500 mt-2">
+                {(config.bgUrls || []).length === 0
+                  ? 'Tap thumbnails below to add backgrounds. With none selected this behaves as a single background.'
+                  : `${(config.bgUrls || []).length} selected — tap to add or remove, in the order they play.`}
+              </p>
+            )}
+          </div>
+
           <div>
-            <label className="font-semibold text-slate-200 text-sm block mb-2">Preset Video Loop Backgrounds:</label>
+            <label className="font-semibold text-slate-200 text-sm block mb-2">
+              {(config.bgMode || 'single') === 'single' ? 'Preset Video Loop Backgrounds:' : 'Pick your backgrounds:'}
+            </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
               {BACKGROUND_VIDEOS.map((bg) => (
                 <button
                   key={bg.id}
                   onClick={() => {
+                    const multi = (config.bgMode || 'single') !== 'single';
+                    if (!multi) {
+                      onChangeConfig({ ...config, bgType: 'video', bgUrl: bg.url });
+                      return;
+                    }
+                    const current = config.bgUrls || [];
+                    const next = current.includes(bg.url)
+                      ? current.filter(u => u !== bg.url)
+                      : [...current, bg.url];
+                    // Keep bgUrl pointing at something real: it is the
+                    // single-mode value, the saved-project field, and the
+                    // fallback when the list is emptied.
                     onChangeConfig({
                       ...config,
                       bgType: 'video',
-                      bgUrl: bg.url
+                      bgUrls: next,
+                      bgUrl: next[0] || config.bgUrl
                     });
                   }}
                   className={`relative group rounded-xl overflow-hidden border transition-all aspect-[9/16] ${
-                    config.bgUrl === bg.url
+                    ((config.bgMode || 'single') === 'single'
+                      ? config.bgUrl === bg.url
+                      : (config.bgUrls || []).includes(bg.url))
                       ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
                       : 'border-slate-800 hover:border-slate-600'
                   }`}
                 >
+                  {/* Play order, so a multi-background sequence is readable at a glance. */}
+                  {(config.bgMode || 'single') !== 'single' && (config.bgUrls || []).includes(bg.url) && (
+                    <span className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold flex items-center justify-center shadow">
+                      {(config.bgUrls || []).indexOf(bg.url) + 1}
+                    </span>
+                  )}
                   <img
                     src={bg.thumbnail}
                     alt={bg.title}
