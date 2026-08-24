@@ -288,7 +288,7 @@ export const TimelineSyncEditor: React.FC<TimelineSyncEditorProps> = ({
               </span>
             </h4>
             <p className="text-xs text-slate-400 mt-0.5">
-              Auto-match uploaded audio first, then refine by tapping <kbd className="px-1.5 py-0.5 bg-slate-800 text-amber-300 rounded text-[10px]">SPACEBAR</kbd> or editing each ayah duration.
+              Auto-match uploaded audio first, then refine by tapping <kbd className="px-1.5 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px]">SPACEBAR</kbd> or editing each ayah duration.
             </p>
           </div>
         </div>
@@ -395,7 +395,7 @@ export const TimelineSyncEditor: React.FC<TimelineSyncEditorProps> = ({
                       onClick={() => handleReorder(idx, idx - 1)}
                       disabled={idx === 0}
                       title="Move up"
-                      className="text-slate-500 hover:text-amber-300 disabled:opacity-25 disabled:hover:text-slate-500"
+                      className="text-slate-400 hover:text-amber-300 disabled:opacity-25 disabled:hover:text-slate-400"
                     >
                       <ChevronUp className="w-3.5 h-3.5" />
                     </button>
@@ -403,7 +403,7 @@ export const TimelineSyncEditor: React.FC<TimelineSyncEditorProps> = ({
                       onClick={() => handleReorder(idx, idx + 1)}
                       disabled={idx === verses.length - 1}
                       title="Move down"
-                      className="text-slate-500 hover:text-amber-300 disabled:opacity-25 disabled:hover:text-slate-500"
+                      className="text-slate-400 hover:text-amber-300 disabled:opacity-25 disabled:hover:text-slate-400"
                     >
                       <ChevronDown className="w-3.5 h-3.5" />
                     </button>
@@ -418,12 +418,12 @@ export const TimelineSyncEditor: React.FC<TimelineSyncEditorProps> = ({
                   </span>
                   <span className="text-xs font-mono text-slate-400">{verse.verseKey}</span>
                   {isActive && (
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                    <span className="text-[11px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
                       <Mic className="w-3 h-3 animate-pulse" /> Playing Now
                     </span>
                   )}
                   {typeof verse.matchConfidence === 'number' && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${verse.matchConfidence >= 0.75 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${verse.matchConfidence >= 0.75 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
                       Match {Math.round(verse.matchConfidence * 100)}%
                     </span>
                   )}
@@ -477,7 +477,7 @@ export const TimelineSyncEditor: React.FC<TimelineSyncEditorProps> = ({
               <div className="my-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800/70">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-semibold text-slate-300">Word-by-word display</span>
-                  <span className="text-[10px] text-slate-500">Click a word to exclude/include it from the canvas</span>
+                  <span className="text-[11px] text-slate-400">Click a word to exclude/include it from the canvas</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 justify-end" dir="rtl">
                   {words.map((word, wordIndex) => (

@@ -105,7 +105,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
             </div>
           ) : activeTab === 'projects' ? (
             projectsList.length === 0 ? (
-              <div className="text-center py-12 text-slate-500 text-xs">
+              <div className="text-center py-12 text-slate-400 text-xs">
                 No saved projects yet. Click &quot;Save Project&quot; in the studio!
               </div>
             ) : (
@@ -118,14 +118,14 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                     <span className="font-bold text-slate-200 text-sm group-hover:text-amber-300 transition-colors">
                       {proj.title}
                     </span>
-                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
+                    <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
                       {proj.aspectRatio}
                     </span>
                   </div>
 
                   <div className="text-xs text-slate-400 flex items-center justify-between">
                     <span>{proj.surahNameEnglish} ({proj.surahNumber}:{proj.ayahStart}-{proj.ayahEnd})</span>
-                    <span className="text-[10px] font-mono">{proj.reciterName}</span>
+                    <span className="text-[11px] font-mono">{proj.reciterName}</span>
                   </div>
 
                   <button
@@ -142,7 +142,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
               ))
             )
           ) : exportsList.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-xs">
+            <div className="text-center py-12 text-slate-400 text-xs">
               No exported video clips yet. Click &quot;Export Video&quot; to render your first clip.
             </div>
           ) : (
@@ -153,14 +153,14 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
               >
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-200 text-sm">{exp.title}</span>
-                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                  <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
                     {exp.resolution}
                   </span>
                 </div>
 
                 <div className="text-xs text-slate-400 flex items-center justify-between">
                   <span>GPU: {exp.gpuDevice || 'Unknown GPU'}</span>
-                  <span className="font-mono text-slate-500">{exp.fps} FPS</span>
+                  <span className="font-mono text-slate-400">{exp.fps} FPS</span>
                 </div>
 
                 {exp.fileUrl && (

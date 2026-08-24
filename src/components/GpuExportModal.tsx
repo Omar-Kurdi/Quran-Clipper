@@ -113,7 +113,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   <span className="text-[11px] font-mono text-emerald-400">{gpuName}</span>
                 </div>
               </div>
-              <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-2 py-1 rounded">
+              <span className="text-[11px] bg-slate-800 text-slate-300 font-mono px-2 py-1 rounded">
                 {encoderName}
               </span>
             </div>

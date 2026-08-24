@@ -112,7 +112,7 @@ export const PaletteSwitcher: React.FC = () => {
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-xs font-semibold text-slate-100 truncate">{p.name}</span>
-                <span className="block text-[10px] text-slate-400 truncate">{p.note}</span>
+                <span className="block text-[11px] text-slate-400 truncate">{p.note}</span>
               </span>
               {active === p.id && <Check className="w-3.5 h-3.5 text-gold shrink-0" />}
             </button>

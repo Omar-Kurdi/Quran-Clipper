@@ -696,6 +696,10 @@ export default function VideoCreatorPage() {
         crossOrigin="anonymous"
       />
 
+      <h1 className="sr-only">
+        Quran Clip Studio — {surahNameEnglish} {selectedSurah}:{ayahStart}&ndash;{ayahEnd}
+      </h1>
+
       {/* Top Navbar */}
       <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3">
@@ -703,7 +707,7 @@ export default function VideoCreatorPage() {
             <span className="font-display text-xl leading-none text-parchment group-hover:text-gold-bright transition-colors">
               Quran Clip
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-gold">Studio</span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-gold">Studio</span>
           </Link>
 
           {/* The reference, set the way a mushaf cites itself: surah name, then
@@ -828,16 +832,17 @@ export default function VideoCreatorPage() {
                     <li><strong>Choose a surah and ayah range</strong> (start &amp; end).</li>
                     <li>Click <strong>&quot;Load Ayahs &amp; Audio Data&quot;</strong> to fetch the verses and audio.</li>
                     <li>Switch to the <strong>Tap-To-Sync</strong> tab above.</li>
-                    <li>Press <strong>Play</strong> and tap <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[10px] font-mono">SPACEBAR</kbd> at the end of each ayah to mark its boundary.</li>
+                    <li>Press <strong>Play</strong> and tap <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACEBAR</kbd> at the end of each ayah to mark its boundary.</li>
                     <li>Adjust timings with the sliders, then style and export.</li>
                   </ol>
-                  <p className="text-[10px] text-slate-400 mt-2">Note: Built-in reciter timings are estimates. Use Tap-To-Sync for accurate alignment. AI auto-matching is only for <strong>uploaded</strong> custom audio files.</p>
+                  <p className="text-[11px] text-slate-400 mt-2">Note: Built-in reciter timings are estimates. Use Tap-To-Sync for accurate alignment. AI auto-matching is only for <strong>uploaded</strong> custom audio files.</p>
                 </div>
 
                 {/* Surah Selector */}
                 <div>
-                  <label className="font-semibold text-slate-200 block mb-1.5">Select Surah:</label>
+                  <label htmlFor="surah-select" className="font-semibold text-slate-200 block mb-1.5">Select Surah:</label>
                   <select
+                    id="surah-select"
                     value={selectedSurah}
                     onChange={(e) => {
                       const num = parseInt(e.target.value, 10);
@@ -864,8 +869,9 @@ export default function VideoCreatorPage() {
                 {/* Ayah Range */}
                 <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">
                   <div>
-                    <label className="text-slate-400 block mb-1">Start Ayah:</label>
+                    <label htmlFor="ayah-start" className="text-slate-400 block mb-1">Start Ayah:</label>
                     <input
+                      id="ayah-start"
                       type="text"
                       inputMode="numeric"
                       value={ayahStartInput}
@@ -879,8 +885,9 @@ export default function VideoCreatorPage() {
                   </div>
 
                   <div>
-                    <label className="text-slate-400 block mb-1">End Ayah:</label>
+                    <label htmlFor="ayah-end" className="text-slate-400 block mb-1">End Ayah:</label>
                     <input
+                      id="ayah-end"
                       type="text"
                       inputMode="numeric"
                       value={ayahEndInput}
@@ -896,8 +903,8 @@ export default function VideoCreatorPage() {
 
                 {/* Reciter Selector */}
                 <div>
-                  <label className="font-semibold text-slate-200 block mb-1.5">Select Reciter / Voice:</label>
-                  <div className="grid grid-cols-1 gap-2">
+                  <label id="reciter-label" className="font-semibold text-slate-200 block mb-1.5">Select Reciter / Voice:</label>
+                  <div role="radiogroup" aria-labelledby="reciter-label" className="grid grid-cols-1 gap-2">
                     {RECITERS.map((r) => (
                       <button
                         key={r.id}
@@ -912,7 +919,7 @@ export default function VideoCreatorPage() {
                           <span className="font-bold block text-slate-200">{r.name}</span>
                           <span className="text-[11px] text-amber-400 font-amiri block" dir="rtl">{r.arabicName}</span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-500 bg-slate-900 px-2 py-0.5 rounded">
+                        <span className="text-[11px] font-mono text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
                           {r.style}
                         </span>
                       </button>
@@ -922,7 +929,7 @@ export default function VideoCreatorPage() {
 
                 {/* Upload Custom Audio */}
                 <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800">
-                  <label className="font-semibold text-slate-200 block mb-1 flex items-center gap-1.5">
+                  <label htmlFor="recitation-upload" className="font-semibold text-slate-200 block mb-1 flex items-center gap-1.5">
                     <Music className="w-3.5 h-3.5 text-amber-400" />
                     <span>Upload Recitation — Audio or Video:</span>
                   </label>
@@ -932,8 +939,8 @@ export default function VideoCreatorPage() {
 
                   {/* AI Matcher Provider */}
                   <div className="mb-3">
-                    <label className="text-[11px] font-semibold text-slate-400 block mb-1.5">AI Matcher:</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <label id="matcher-label" className="text-[11px] font-semibold text-slate-400 block mb-1.5">AI Matcher:</label>
+                    <div role="radiogroup" aria-labelledby="matcher-label" className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => setMatchProvider('align')}
                         className={`py-2 px-2.5 rounded-lg border text-left flex items-center gap-1.5 transition-all ${
@@ -945,7 +952,7 @@ export default function VideoCreatorPage() {
                         <Server className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
                         <span className="flex-1 min-w-0">
                           <span className="block text-[11px] font-bold truncate">Forced Align</span>
-                          <span className={`block text-[10px] ${providerStatus?.align.configured ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          <span className={`block text-[11px] ${providerStatus?.align.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
                             {!providerStatus
                               ? 'Checking…'
                               : providerStatus.align.configured
@@ -969,7 +976,7 @@ export default function VideoCreatorPage() {
                         <Sparkles className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
                         <span className="flex-1 min-w-0">
                           <span className="block text-[11px] font-bold truncate">Gemini + Align</span>
-                          <span className={`block text-[10px] ${providerStatus?.hybrid.configured ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          <span className={`block text-[11px] ${providerStatus?.hybrid.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
                             {providerStatus
                               ? providerStatus.hybrid.configured
                                 ? 'Key + sidecar ready'
@@ -991,7 +998,7 @@ export default function VideoCreatorPage() {
                         <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                         <span className="flex-1 min-w-0">
                           <span className="block text-[11px] font-bold truncate">Gemini (cloud)</span>
-                          <span className={`block text-[10px] ${providerStatus?.gemini.configured ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          <span className={`block text-[11px] ${providerStatus?.gemini.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
                             {providerStatus ? (providerStatus.gemini.configured ? 'Configured' : 'Not configured') : 'Checking…'}
                           </span>
                         </span>
@@ -1007,7 +1014,7 @@ export default function VideoCreatorPage() {
                         <Server className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                         <span className="flex-1 min-w-0">
                           <span className="block text-[11px] font-bold truncate">Local ASR</span>
-                          <span className={`block text-[10px] ${providerStatus?.asr.configured ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          <span className={`block text-[11px] ${providerStatus?.asr.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
                             {providerStatus ? (providerStatus.asr.configured ? 'Sidecar online' : 'Sidecar unreachable') : 'Checking…'}
                           </span>
                         </span>
@@ -1015,7 +1022,7 @@ export default function VideoCreatorPage() {
                     </div>
                     {matchProvider === 'align' && (
                       <>
-                        <p className="text-[10px] text-slate-500 mt-1.5">
+                        <p className="text-[11px] text-slate-400 mt-1.5">
                           Detects the surah and ayah range from the audio itself, then times each word against the real Quran text — so no word can be dropped or misheard, and repeated phrases get their own segments. The surah and range selected below aren&apos;t used.
                         </p>
                         {/* Only reachable when the sidecar was deliberately started with
@@ -1023,7 +1030,7 @@ export default function VideoCreatorPage() {
                             provider rather than a normal mode, so it reads as a fixable
                             problem instead of a capability description. */}
                         {providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
-                          <p className="text-[10px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                          <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
                             Detection is currently disabled on your sidecar (<code className="font-mono">ASR_ALIGN_BACKEND</code> is not <code className="font-mono">nemo</code>), so it will align the range selected below instead. Unset that variable and restart the sidecar to restore it.
                           </p>
                         )}
@@ -1031,10 +1038,10 @@ export default function VideoCreatorPage() {
                             import, so every match would fail. Say so here with the fix,
                             rather than letting someone upload and wait for a 400. */}
                         {providerStatus?.align.alignReady === false && (
-                          <div className="text-[10px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
+                          <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
                             <p className="font-semibold">The sidecar is running but its alignment backend didn&apos;t load, so matching will fail.</p>
                             <p>This is almost always the service being started by the wrong Python. Restart it from its virtualenv:</p>
-                            <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[10px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
+                            <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[11px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
                             {providerStatus.align.alignError && (
                               <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
                             )}
@@ -1043,17 +1050,17 @@ export default function VideoCreatorPage() {
                       </>
                     )}
                     {matchProvider === 'hybrid' && (
-                      <p className="text-[10px] text-slate-500 mt-1.5">
+                      <p className="text-[11px] text-slate-400 mt-1.5">
                         Gemini identifies which ayahs were recited — what it&apos;s genuinely good at — then the local aligner times each word against the real Quran text. Audio is sent to Google. If Gemini can&apos;t identify the passage, the surah and range selected below are used instead.
                       </p>
                     )}
                     {matchProvider === 'gemini' && (
-                      <p className="text-[10px] text-slate-500 mt-1.5">
+                      <p className="text-[11px] text-slate-400 mt-1.5">
                         Gemini both identifies and times the recitation in one pass. Zero setup, but timings are estimates rather than measurements — for accurate timing use Gemini + Align, which keeps the identification and fixes the timing.
                       </p>
                     )}
                     {matchProvider === 'asr' && (
-                      <p className="text-[10px] text-slate-500 mt-1.5">
+                      <p className="text-[11px] text-slate-400 mt-1.5">
                         Local ASR detects the surah/ayah itself from the audio — the surah and range selected below aren&apos;t used to restrict matching.
                       </p>
                     )}
@@ -1064,6 +1071,7 @@ export default function VideoCreatorPage() {
                       type="file"
                       accept="audio/*,video/*,.mkv,.m4v,.mov"
                       onChange={handleCustomAudioUpload}
+                      id="recitation-upload"
                       className="absolute inset-0 opacity-0 cursor-pointer"
                     />
                     <div className="flex items-center gap-2 text-slate-300">
@@ -1093,7 +1101,7 @@ export default function VideoCreatorPage() {
                       />
                       <span>
                         Use this video as the background
-                        <span className="block text-[10px] text-slate-500">
+                        <span className="block text-[11px] text-slate-300">
                           Its frames follow the audio, so the recitation stays in sync{videoBgOffset > 0 ? ` (offset ${formatDuration(videoBgOffset)} after trimming)` : ''}.
                         </span>
                       </span>
@@ -1126,7 +1134,7 @@ export default function VideoCreatorPage() {
                           <span>Manual Match</span>
                         </button>
                       </div>
-                      <p className="text-[10px] text-slate-500">
+                      <p className="text-[11px] text-slate-400">
                         Trim before matching to crop dead air first, or after to cut the AI-matched timeline down — either way the segment times adjust to the new clip automatically.
                       </p>
                     </div>
@@ -1228,12 +1236,12 @@ export default function VideoCreatorPage() {
           {audioError && (
             <div className="w-full max-w-2xl bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-2 text-center z-20">
               <p className="text-xs text-red-400 font-medium">{audioError}</p>
-              <p className="text-[10px] text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-400 mt-1">
                 Try switching reciters, or upload a custom audio file.
               </p>
               <button
                 onClick={() => setAudioError(null)}
-                className="mt-1.5 text-[10px] text-amber-400 hover:text-amber-300 underline"
+                className="mt-1.5 text-[11px] text-amber-400 hover:text-amber-300 underline"
               >
                 Dismiss
               </button>
@@ -1255,6 +1263,7 @@ export default function VideoCreatorPage() {
                 step={0.1}
                 value={currentTime}
                 onChange={(e) => handleSeek(parseFloat(e.target.value))}
+                aria-label="Seek through the recitation"
                 className="flex-1 accent-amber-500 h-2 bg-slate-800 rounded-lg cursor-pointer"
               />
 
@@ -1268,6 +1277,8 @@ export default function VideoCreatorPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={togglePlayPause}
+                  aria-label={isPlaying ? 'Pause recitation' : 'Play recitation'}
+                  title={isPlaying ? 'Pause' : 'Play'}
                   className="p-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-full font-bold shadow-md transition-transform active:scale-95"
                 >
                   {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
@@ -1292,7 +1303,9 @@ export default function VideoCreatorPage() {
                       audioElementRef.current.muted = newMute;
                     }
                   }}
-                  className="text-slate-400 hover:text-slate-100"
+                  aria-label={isMuted ? 'Unmute' : 'Mute'}
+                  title={isMuted ? 'Unmute' : 'Mute'}
+                  className="p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
                 >
                   {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
                 </button>
@@ -1312,6 +1325,7 @@ export default function VideoCreatorPage() {
                       audioElementRef.current.muted = false;
                     }
                   }}
+                  aria-label="Volume"
                   className="w-20 accent-amber-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
                 />
               </div>

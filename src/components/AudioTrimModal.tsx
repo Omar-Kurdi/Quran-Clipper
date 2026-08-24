@@ -340,7 +340,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
             <div className="flex items-center justify-between mb-2">
               <div className="text-[11px] font-mono text-slate-400">
                 Playhead <span className="text-lapis-bright">{formatDuration(playhead)}</span>
-                <span className="text-slate-600"> / {formatDuration(duration)}</span>
+                <span className="text-slate-400"> / {formatDuration(duration)}</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -385,7 +385,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                   {ticks.map(tick => (
                     <div
                       key={tick.time}
-                      className="absolute top-0 bottom-0 border-l border-slate-800 pl-1 text-[9px] font-mono text-slate-500 leading-5 whitespace-nowrap"
+                      className="absolute top-0 bottom-0 border-l border-slate-800 pl-1 text-[9px] font-mono text-slate-400 leading-5 whitespace-nowrap"
                       style={{ left: `${pct(tick.time)}%` }}
                     >
                       {tick.label}
