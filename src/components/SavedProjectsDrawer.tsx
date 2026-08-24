@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, FolderOpen, Film, Clock, Download, Play, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { Dialog } from './Dialog';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
@@ -51,11 +52,16 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
     }
   }, [isOpen, fetchData]);
 
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl p-5 overflow-hidden">
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      label="Saved projects and exports"
+      placement="right"
+      panelClassName="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl p-5 overflow-hidden"
+    >
+      <div className="contents">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
@@ -172,6 +178,6 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };

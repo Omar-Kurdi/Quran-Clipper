@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Cpu, Film, Download, CheckCircle, X, Sparkles, Loader2, Play } from 'lucide-react';
 import { describeGpu, describeEncoder } from '@/lib/gpuInfo';
+import { Dialog } from './Dialog';
 
 interface GpuExportModalProps {
   isOpen: boolean;
@@ -53,7 +54,6 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
     if (isOpen) setExportedBlobUrl(null);
   }
 
-  if (!isOpen) return null;
 
   const handleExport = () => {
     setExportedBlobUrl(null);
@@ -67,8 +67,16 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl overflow-hidden">
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      label="Export video"
+      // Closing mid-render would orphan the recorder, so the dialog refuses to
+      // dismiss while an export is in flight.
+      dismissible={!isExporting}
+      panelClassName="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl overflow-hidden"
+    >
+      <div>
         {/* Glow Header */}
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-emerald-500 to-amber-500"></div>
 
@@ -246,6 +254,6 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </Dialog>
   );
 };
