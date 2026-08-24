@@ -137,6 +137,35 @@
   --color-red-400: color-mix(in srgb, var(--p-error) 84%, white);
   --color-red-500: var(--p-error);
 
+  /* Radius, collapsed to three roles.
+     Seven values were in use across the app with no rule for which to pick,
+     which is a large part of why unrelated panels stopped looking related.
+     Rather than rewrite hundreds of call sites, the scale itself is remapped so
+     every existing `rounded-*` class lands on one of three real values:
+     controls, cards, and pills. */
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-pill: 9999px;
+
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-control);
+  --radius-xl: var(--radius-card);
+  --radius-2xl: var(--radius-card);
+  --radius-3xl: var(--radius-card);
+
+  /* Honest names for the same values the remapped ramp carries. New markup
+     should reach for these; the slate/amber/emerald ramp above stays only so
+     the existing call sites keep working, and is deprecated. */
+  --color-surface: var(--p-surface);
+  --color-surface-edge: var(--p-edge);
+  --color-accent: var(--p-accent);
+  --color-accent-bright: var(--p-accent-bright);
+  --color-live: var(--p-live);
+  --color-success: var(--p-success);
+  --color-danger: var(--p-error);
+  --color-muted: var(--p-muted);
+
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
   --font-display: 'Cormorant Garamond', Georgia, serif;
@@ -249,7 +278,7 @@
   width: 1.35rem;
   height: 1.35rem;
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   line-height: 1;
   color: var(--color-gold);
@@ -278,5 +307,49 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Interaction floor.
+
+   A pointer target smaller than roughly 44px is hard to hit accurately on a
+   touch screen; the studio had thirteen under that on a phone, the smallest an
+   8px-tall range input. Touch devices get a real minimum height rather than an
+   invisible extended hit area -- an overlay large enough to matter also
+   overlaps its neighbours, so the honest fix is to make the control bigger
+   only where fingers are the input device. Desktop density is untouched.
+   --------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  /* Icon-only controls collapse to their glyph on small screens, so they need
+     a width floor as well as a height one. */
+  button,
+  a[href],
+  select,
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  input[type="email"] {
+    min-height: 44px;
+  }
+
+  button,
+  a[href][class*="px-"] {
+    min-width: 44px;
+  }
+
+  /* A range's painted track should stay slim; pad the box instead so the thumb
+     is reachable without the track turning into a slab. */
+  input[type="range"] {
+    min-height: 44px;
+    padding-block: 14px;
+    background-clip: content-box;
+  }
+
+  /* Checkboxes and radios are square, so they scale rather than stretch. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 24px;
+    min-height: 24px;
   }
 }

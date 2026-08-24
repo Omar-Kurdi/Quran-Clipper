@@ -3,6 +3,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { decodeAudioFile, computePeaks, buildTrimmedFile, TrimResult } from '@/lib/audioTrim';
+import { Dialog } from './Dialog';
 
 interface AudioTrimModalProps {
   isOpen: boolean;
@@ -233,7 +234,6 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
     return out;
   }, [duration, zoom]);
 
-  if (!isOpen) return null;
 
   const changeZoom = (next: number) => {
     const vp = viewportRef.current;
@@ -297,8 +297,14 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
     'w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+    <Dialog
+      isOpen={isOpen}
+      onClose={onCancel}
+      label="Trim or crop audio"
+      dismissible={!isApplying}
+      panelClassName="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl"
+    >
+      <div>
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-gold via-lapis to-gold"></div>
 
         <button
@@ -313,7 +319,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
             <Scissors className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-100">Trim / Crop Audio</h3>
+            <h3 className="text-lg font-bold text-slate-100">Trim audio</h3>
             <p className="text-xs text-slate-400">
               Drag the ruler to move the playhead; drag the amber handles to set what to keep.
             </p>
@@ -334,7 +340,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
             <div className="flex items-center justify-between mb-2">
               <div className="text-[11px] font-mono text-slate-400">
                 Playhead <span className="text-lapis-bright">{formatDuration(playhead)}</span>
-                <span className="text-slate-600"> / {formatDuration(duration)}</span>
+                <span className="text-slate-400"> / {formatDuration(duration)}</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -379,7 +385,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                   {ticks.map(tick => (
                     <div
                       key={tick.time}
-                      className="absolute top-0 bottom-0 border-l border-slate-800 pl-1 text-[9px] font-mono text-slate-500 leading-5 whitespace-nowrap"
+                      className="absolute top-0 bottom-0 border-l border-slate-800 pl-1 text-[9px] font-mono text-slate-400 leading-5 whitespace-nowrap"
                       style={{ left: `${pct(tick.time)}%` }}
                     >
                       {tick.label}
@@ -565,7 +571,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };
 

@@ -138,7 +138,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   {config.aspectRatio === ar.id && <Check className="w-4 h-4 text-amber-400" />}
                 </div>
                 <span className="text-[11px] text-slate-400">{ar.name}</span>
-                <span className="text-[10px] font-mono text-slate-500">{ar.width}x{ar.height}</span>
+                <span className="text-[11px] font-mono text-slate-400">{ar.width}x{ar.height}</span>
               </button>
             ))}
           </div>
@@ -190,7 +190,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             )}
 
             {(config.bgMode || 'single') !== 'single' && (
-              <p className="text-[10px] text-slate-500 mt-2">
+              <p className="text-[11px] text-slate-400 mt-2">
                 {(config.bgUrls || []).length === 0
                   ? 'Tap thumbnails below to add backgrounds. With none selected this behaves as a single background.'
                   : `${(config.bgUrls || []).length} selected — tap to add or remove, in the order they play.`}
@@ -236,7 +236,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 >
                   {/* Play order, so a multi-background sequence is readable at a glance. */}
                   {(config.bgMode || 'single') !== 'single' && (config.bgUrls || []).includes(bg.url) && (
-                    <span className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold flex items-center justify-center shadow">
+                    <span className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
                       {(config.bgUrls || []).indexOf(bg.url) + 1}
                     </span>
                   )}
@@ -453,7 +453,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </label>
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <span className="text-[10px] text-slate-400 block mb-1">Arabic Text</span>
+                <span className="text-[11px] text-slate-400 block mb-1">Arabic Text</span>
                 <input
                   type="color"
                   value={config.textColor}
@@ -463,7 +463,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               </div>
 
               <div>
-                <span className="text-[10px] text-slate-400 block mb-1">Accent Gold</span>
+                <span className="text-[11px] text-slate-400 block mb-1">Accent Gold</span>
                 <input
                   type="color"
                   value={config.accentColor}
@@ -473,7 +473,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               </div>
 
               <div>
-                <span className="text-[10px] text-slate-400 block mb-1">Translation</span>
+                <span className="text-[11px] text-slate-400 block mb-1">Translation</span>
                 <input
                   type="color"
                   value={config.translationColor}
@@ -516,7 +516,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 placeholder="Leave blank for automatic surah/range title"
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-[10px] text-slate-500 mt-1">
+              <p className="text-[11px] text-slate-400 mt-1">
                 Leave empty to auto-generate from detected surah and ayah range.
               </p>
             </div>
@@ -532,7 +532,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 placeholder="Optional subtitle under the badge title"
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-[10px] text-slate-500 mt-1">
+              <p className="text-[11px] text-slate-400 mt-1">
                 Leave empty to hide the second badge line.
               </p>
             </div>
