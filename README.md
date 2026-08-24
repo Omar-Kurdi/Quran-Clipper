@@ -9,6 +9,12 @@ what was recited and when, it takes the *known* Quran text as a fixed constraint
 only for timing. A word cannot go missing, come back garbled, or land in the wrong surah —
 those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
 
+<p align="center">
+  <img src="docs/screenshots/studio-nocturne.png" alt="The studio in the Nocturne theme: a three-column layout of source panel, video preview and ayah inspector, with a full-width waveform timeline beneath." width="49%">
+  <img src="docs/screenshots/studio-slate.png" alt="The same studio in the Slate & Amber theme, showing the runtime theme switcher." width="49%">
+</p>
+<p align="center"><sub>Nocturne (default) and Slate &amp; Amber — five themes ship, switchable at runtime from the header.</sub></p>
+
 ---
 
 ## Contents
