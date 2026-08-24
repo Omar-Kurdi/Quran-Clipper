@@ -12,6 +12,7 @@ import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
 import { PaletteSwitcher } from '@/components/PaletteSwitcher';
+import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { trimTimeline } from '@/lib/matchTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -45,7 +46,8 @@ import {
   Server,
   Scissors,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Film
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
@@ -576,6 +578,40 @@ export default function VideoCreatorPage() {
     }
   };
 
+  /**
+   * On a phone the panel and the preview each got half the height, which
+   * served neither: the panel was too short to work in and the preview -- a
+   * 9:16 video, on the one device shaped for it -- overflowed its pane by
+   * about 180px. Below `md` one surface is shown at a time instead.
+   */
+  const [mobileSurface, setMobileSurface] = useState<'panel' | 'preview'>('panel');
+
+  const headerOverflowItems: OverflowItem[] = [
+    {
+      key: 'saved',
+      label: 'Saved clips',
+      icon: <FolderOpen className="w-4 h-4" />,
+      onSelect: () => setIsProjectsDrawerOpen(true)
+    },
+    ...(customAudioFile
+      ? [{
+          key: 'trim',
+          label: 'Trim audio',
+          hint: customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined,
+          icon: <Scissors className="w-4 h-4" />,
+          onSelect: () => setShowTrimModal(true)
+        }]
+      : []),
+    {
+      key: 'save',
+      label: 'Save project',
+      hint: saveStatus?.text,
+      icon: <Save className="w-4 h-4" />,
+      onSelect: handleSaveProject
+    }
+  ];
+
+
   // Start Video Export Pipeline
   const handleStartExport = (targetFps: number, onComplete: (blob: Blob, renderMs: number) => void) => {
     if (!canvasRef.current || !audioElementRef.current) return;
@@ -720,55 +756,66 @@ export default function VideoCreatorPage() {
           </div>
         </div>
 
-        {/* Action Controls Header */}
+        {/* Action Controls Header.
+
+            Below `lg` the secondary actions collapse into an overflow menu so
+            the primary one keeps its place: five side-by-side controls pushed
+            Export to 42% visible at 375px and made the bar scroll sideways
+            with nothing to indicate it. */}
         <div className="flex items-center gap-2">
-          <PaletteSwitcher />
+          <div className="hidden lg:flex items-center gap-2">
+            <PaletteSwitcher />
 
-          <button
-            onClick={() => setIsProjectsDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Saved Clips</span>
-          </button>
-
-          {/* Trimming is not a step you do once up front -- wanting to shave a
-              second off the end after matching and editing is normal, and the
-              timeline survives it. Keep it reachable from every step rather
-              than only from the upload panel back in Quran & Reciter. */}
-          {customAudioFile && (
             <button
-              onClick={() => setShowTrimModal(true)}
-              title="Trim / crop the uploaded audio -- your timeline edits are kept"
+              onClick={() => setIsProjectsDrawerOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
             >
-              <Scissors className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Trim Audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
+              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span>Saved Clips</span>
             </button>
-          )}
 
-          <button
-            onClick={handleSaveProject}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
-          >
-            {saveStatus?.kind === 'ok' ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-            ) : saveStatus?.kind === 'error' ? (
-              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-            ) : saveStatus?.kind === 'pending' ? (
-              <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-            ) : (
-              <Save className="w-3.5 h-3.5 text-amber-400" />
+            {/* Trimming is not a step you do once up front -- wanting to shave a
+                second off the end after matching and editing is normal, and the
+                timeline survives it. Keep it reachable from every step rather
+                than only from the upload panel back in Quran & Reciter. */}
+            {customAudioFile && (
+              <button
+                onClick={() => setShowTrimModal(true)}
+                title="Trim / crop the uploaded audio -- your timeline edits are kept"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
+              >
+                <Scissors className="w-3.5 h-3.5 text-amber-400" />
+                <span>Trim audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
+              </button>
             )}
-            <span className={saveStatus?.kind === 'error' ? 'text-red-300' : undefined}>{saveStatus?.text || 'Save Project'}</span>
-          </button>
+
+            <button
+              onClick={handleSaveProject}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
+            >
+              {saveStatus?.kind === 'ok' ? (
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+              ) : saveStatus?.kind === 'error' ? (
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+              ) : saveStatus?.kind === 'pending' ? (
+                <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span className={saveStatus?.kind === 'error' ? 'text-red-300' : undefined}>{saveStatus?.text || 'Save project'}</span>
+            </button>
+          </div>
+
+          <div className="lg:hidden">
+            <OverflowMenu items={headerOverflowItems} />
+          </div>
 
           <button
             onClick={() => setIsExportModalOpen(true)}
             className="flex items-center gap-2 px-4 py-1.5 bg-gold hover:bg-gold-bright text-ink font-semibold text-xs rounded-md shadow-[0_2px_12px_-2px_rgba(201,162,39,0.5)] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-bright focus-visible:ring-offset-2 focus-visible:ring-offset-ink"
           >
             <Sparkles className="w-4 h-4 fill-current" />
-            <span>Export video</span>
+            <span>Export</span>
           </button>
         </div>
       </header>
@@ -776,7 +823,11 @@ export default function VideoCreatorPage() {
       {/* Main Studio Workspace Split Screen */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Left Control Sidebar */}
-        <aside className="w-full md:w-[420px] border-r border-slate-800 bg-slate-900/60 backdrop-blur-sm flex flex-col h-1/2 md:h-full shrink-0 overflow-hidden">
+        <aside
+          className={`w-full md:w-[420px] border-r border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col h-full shrink-0 overflow-hidden ${
+            mobileSurface === 'panel' ? 'flex' : 'hidden'
+          } md:flex`}
+        >
           {/* Sidebar steps.
 
               These are numbered because they genuinely are a sequence: you
@@ -1201,7 +1252,11 @@ export default function VideoCreatorPage() {
         </aside>
 
         {/* Right Main Studio Preview Area */}
-        <main className="flex-1 flex flex-col items-center justify-between p-4 bg-slate-950 relative overflow-hidden">
+        <main
+          className={`flex-1 flex-col items-center justify-between p-4 bg-slate-950 relative overflow-hidden ${
+            mobileSurface === 'preview' ? 'flex' : 'hidden'
+          } md:flex`}
+        >
           {/* Main Video Canvas WYSIWYG Renderer */}
           <div className="flex-1 w-full flex items-center justify-center relative">
             {/* Click-to-play is scoped to the video itself, not the whole
@@ -1333,6 +1388,37 @@ export default function VideoCreatorPage() {
           </div>
         </main>
       </div>
+
+      {/* Mobile surface switch.
+
+          Sits at the bottom because that is where a thumb rests, and it names
+          the two things a phone can usefully show one at a time. Hidden from
+          `md` up, where both surfaces are visible at once and the switch would
+          mean nothing. */}
+      <nav
+        aria-label="Switch view"
+        className="md:hidden shrink-0 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md p-1.5 flex gap-1.5 z-30"
+      >
+        {([
+          ['panel', 'Edit', Sliders],
+          ['preview', 'Preview', Film]
+        ] as const).map(([id, label, Icon]) => {
+          const active = mobileSurface === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setMobileSurface(id)}
+              aria-pressed={active}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+                active ? 'bg-gold text-ink' : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       {/* Export Modal */}
       <GpuExportModal
