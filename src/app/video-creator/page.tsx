@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
 import { 
   VideoCanvas, 
   VideoCanvasConfig, 
@@ -49,7 +48,8 @@ import {
   Scissors,
   AlertTriangle,
   Loader2,
-  Film
+  Film,
+  ChevronDown
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
@@ -834,12 +834,14 @@ export default function VideoCreatorPage() {
       {/* Top Navbar */}
       <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-baseline gap-2 group">
-            <span className="font-display text-xl leading-none text-parchment group-hover:text-gold-bright transition-colors">
-              Quran Clip
-            </span>
+          {/* Not a link. The studio is the only page, so the wordmark had
+              nowhere to go -- and because the whole project lives in component
+              state, clicking it navigated away and silently discarded unsaved
+              work. */}
+          <span className="flex items-baseline gap-2">
+            <span className="font-display text-xl leading-none text-parchment">Quran Clip</span>
             <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-gold">Studio</span>
-          </Link>
+          </span>
 
           {/* The reference, set the way a mushaf cites itself: surah name, then
               the ayah span. Mono keeps the numerals aligned as they change. */}
@@ -971,10 +973,21 @@ export default function VideoCreatorPage() {
             {/* TAB 1: Quran & Audio Selection */}
             {sidebarTab === 'quran' && (
               <div className="flex flex-col gap-4 text-xs">
-                {/* Workflow instructions */}
-                <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-600/5 to-emerald-500/10 border border-amber-500/20">
-                  <h4 className="font-semibold text-amber-400 text-xs uppercase tracking-wider mb-1.5">How it works</h4>
-                  <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed">
+                {/* Workflow instructions.
+
+                    Collapsible, and open only while the timeline is still the
+                    seeded sample -- i.e. on a genuine first run. It took about
+                    40% of the panel on every visit, pushing the controls it
+                    describes below the fold for someone who had already read it. */}
+                <details
+                  open={isSampleProject}
+                  className="group p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-600/5 to-emerald-500/10 border border-amber-500/20"
+                >
+                  <summary className="font-semibold text-amber-400 text-xs uppercase tracking-wider cursor-pointer list-none flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded">
+                    <span>How it works</span>
+                    <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed mt-1.5">
                     <li><strong>Select a reciter</strong> below (e.g. Sudais, Raad Al-Kurdi).</li>
                     <li><strong>Choose a surah and ayah range</strong> (start &amp; end).</li>
                     <li>Click <strong>&quot;Load ayahs &amp; audio&quot;</strong> to fetch the verses and audio.</li>
@@ -983,7 +996,7 @@ export default function VideoCreatorPage() {
                     <li>Adjust timings with the sliders, then style and export.</li>
                   </ol>
                   <p className="text-[11px] text-slate-400 mt-2">Note: built-in reciter timings are estimates. Use the Timing step for accurate alignment. Auto-matching only works on <strong>uploaded</strong> files.</p>
-                </div>
+                </details>
 
                 {/* Surah Selector */}
                 <div>

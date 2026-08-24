@@ -421,20 +421,14 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // 5. Surah badge
       if (config.showSurahBadge) {
         ctx.save();
-        const badgeWidth = width * 0.65;
-        const badgeHeight = 70;
+        // Everything else on the canvas scales with height; this badge used a
+        // fixed 22px on a 1080-wide frame, which rendered as an illegible strip
+        // and could overflow its own plate on a long surah name.
+        const scale = height / 1920;
+        const badgeWidth = width * 0.72;
         const badgeX = (width - badgeWidth) / 2;
         const badgeY = height * 0.12;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
-        ctx.strokeStyle = goldAccent;
-        ctx.lineWidth = 1.5;
-        drawRoundRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 35);
-        ctx.fill();
-        ctx.stroke();
-        ctx.font = `bold 22px 'Amiri', serif`;
-        ctx.fillStyle = goldAccent;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+
         const firstVK = verses[0]?.verseKey;
         const lastVK = verses[verses.length - 1]?.verseKey;
         const range = firstVK && lastVK
@@ -444,11 +438,38 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           : `${surahNumber}:${ayahStart}-${ayahEnd}`;
         const title = config.surahBadgeText?.trim() || `سُورَةُ ${surahNameArabic} • ${surahNameEnglish} (${range})`;
         const subtitle = config.surahBadgeSubtitleText?.trim() || '';
-        ctx.fillText(title, width / 2, badgeY + badgeHeight / 2 - (subtitle ? 10 : 0));
+
+        // Shrink to fit rather than spill past the plate.
+        let titleSize = 34 * scale;
+        const innerWidth = badgeWidth - 44 * scale;
+        ctx.font = `bold ${titleSize}px 'Amiri', serif`;
+        while (ctx.measureText(title).width > innerWidth && titleSize > 16 * scale) {
+          titleSize -= scale;
+          ctx.font = `bold ${titleSize}px 'Amiri', serif`;
+        }
+        const subtitleSize = 20 * scale;
+        const badgeHeight = (subtitle ? titleSize + subtitleSize + 34 * scale : titleSize + 34 * scale);
+
+        // Darker plate than before: the badge sits over arbitrary footage, so
+        // it has to carry its own contrast rather than hope the frame is dark.
+        ctx.fillStyle = 'rgba(6, 9, 16, 0.74)';
+        ctx.strokeStyle = goldAccent;
+        ctx.lineWidth = Math.max(1, 2 * scale);
+        drawRoundRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, badgeHeight / 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+        ctx.shadowBlur = 6 * scale;
+        ctx.font = `bold ${titleSize}px 'Amiri', serif`;
+        ctx.fillStyle = goldAccent;
+        ctx.fillText(title, width / 2, badgeY + badgeHeight / 2 - (subtitle ? subtitleSize * 0.62 : 0));
         if (subtitle) {
-          ctx.font = `600 16px 'Inter', sans-serif`;
-          ctx.fillStyle = 'rgba(226, 232, 240, 0.88)';
-          ctx.fillText(subtitle, width / 2, badgeY + badgeHeight / 2 + 18);
+          ctx.font = `600 ${subtitleSize}px 'Inter', sans-serif`;
+          ctx.fillStyle = 'rgba(237, 241, 247, 0.92)';
+          ctx.fillText(subtitle, width / 2, badgeY + badgeHeight / 2 + titleSize * 0.62);
         }
         ctx.restore();
       }
@@ -735,19 +756,26 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
   return (
     <div className="relative flex flex-col items-center justify-center w-full h-full group">
-      <div className="absolute top-3 left-3 z-20 flex items-center gap-2 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-emerald-500/30 text-xs font-mono text-emerald-400 shadow-lg">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-        </span>
-        <span>GPU Active</span>
-        <span className="text-slate-500">|</span>
-        <span>{fpsDisplay} FPS</span>
-        <span className="text-slate-500">|</span>
-        <span>{renderMs} ms/frame</span>
-      </div>
-      <div className="absolute top-3 right-3 z-20 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-300 border border-slate-700/50">
-        {dimensions.width} x {dimensions.height} ({config.aspectRatio})
+      {/* One row rather than two independently-anchored corners. Pinned to
+          opposite edges of the same pane, these overlapped by 141px whenever
+          the preview was narrow -- the resolution pill sat on top of half the
+          render stats. `justify-between` makes that impossible, and the stats
+          truncate rather than push. */}
+      <div className="absolute top-3 inset-x-3 z-20 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+        <div className="flex items-center gap-2 shrink-0 whitespace-nowrap bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-emerald-500/30 text-xs font-mono text-emerald-400 shadow-lg">
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span>{fpsDisplay} FPS</span>
+          <span className="text-slate-400">|</span>
+          {/* Short unit: the pane is narrow and "ms/frame" is what pushed this
+              badge into truncating mid-word. */}
+          <span>{renderMs} ms</span>
+        </div>
+        <div className="shrink-0 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-300 border border-slate-700/50">
+          {dimensions.width} x {dimensions.height} ({config.aspectRatio})
+        </div>
       </div>
       <div className="relative w-full h-full flex items-center justify-center p-2">
         <canvas
