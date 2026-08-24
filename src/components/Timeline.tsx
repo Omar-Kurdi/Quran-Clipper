@@ -66,11 +66,13 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   useEffect(() => {
     if (!audioUrl) return;
-    const controller = new AbortController();
-    loadWaveform(audioUrl, controller.signal).then(result => {
-      if (!controller.signal.aborted) setLoaded({ url: audioUrl, peaks: result });
+    // Ignore a late answer rather than cancelling it -- the fetch is shared and
+    // cached, so cancelling would rob any other listener of the same result.
+    let stale = false;
+    loadWaveform(audioUrl).then(result => {
+      if (!stale) setLoaded({ url: audioUrl, peaks: result });
     });
-    return () => controller.abort();
+    return () => { stale = true; };
   }, [audioUrl]);
 
   const settled = loaded?.url === audioUrl;

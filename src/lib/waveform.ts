@@ -29,8 +29,16 @@ function getAudioContextCtor(): AudioContextCtor | null {
  * Returns peaks for `url`, or null when the audio cannot be read -- a
  * cross-origin server without CORS, an unsupported codec, or an offline fetch.
  * Null is a normal outcome, not an error: the caller draws a plain track.
+ *
+ * Deliberately takes no AbortSignal. The work is shared between every caller
+ * asking for the same url, so letting one of them cancel it poisons the result
+ * for the others: React's development double-mount aborted the very fetch the
+ * second mount was waiting on, and the timeline reported the waveform
+ * unavailable for audio that had downloaded fine. A caller that no longer
+ * wants the answer should ignore it rather than cancel it -- the fetch is
+ * cached, so finishing it costs nothing and warms the next request.
  */
-export async function loadWaveform(url: string, signal?: AbortSignal): Promise<Float32Array | null> {
+export async function loadWaveform(url: string): Promise<Float32Array | null> {
   if (!url) return null;
   const cached = cache.get(url);
   if (cached) return cached;
@@ -43,7 +51,7 @@ export async function loadWaveform(url: string, signal?: AbortSignal): Promise<F
     if (!Ctor) return null;
     const ctx = new Ctor();
     try {
-      const res = await fetch(url, { signal });
+      const res = await fetch(url);
       if (!res.ok) return null;
       const bytes = await res.arrayBuffer();
       const buffer = await ctx.decodeAudioData(bytes);
