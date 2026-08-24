@@ -1,18 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   VideoCanvas, 
   VideoCanvasConfig, 
   VideoCanvasRef 
 } from '@/components/VideoCanvas';
-import { TimelineSyncEditor } from '@/components/TimelineSyncEditor';
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
 import { PaletteSwitcher } from '@/components/PaletteSwitcher';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
-import { EmptyStep } from '@/components/EmptyStep';
+import { Timeline } from '@/components/Timeline';
+import { Inspector } from '@/components/Inspector';
+import {
+  setBoundary, nudgeBoundary, markBoundaryAt, reorder, setText, setVerseNumber,
+  toggleWord, addVerseAfter, removeVerse, duplicateVerse, segmentAt
+} from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import { trimTimeline } from '@/lib/matchTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
@@ -26,23 +30,15 @@ import {
   VerseData
 } from '@/lib/quranData';
 import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Volume2, 
-  VolumeX, 
   Sparkles, 
   Save, 
   FolderOpen, 
-  Cpu, 
   Sliders, 
   Clock, 
-  Layers, 
   Upload, 
   Music, 
   BookOpen, 
   Check, 
-  ChevronRight,
   Video,
   Server,
   Scissors,
@@ -65,7 +61,6 @@ export default function VideoCreatorPage() {
   const [customAudioFile, setCustomAudioFile] = useState<File | null>(null);
   /** Measured from the uploaded file itself — see `measureAudioDuration`. */
   const [customAudioDuration, setCustomAudioDuration] = useState<number>(0);
-  const [customAudioBuffer, setCustomAudioBuffer] = useState<ArrayBuffer | null>(null);
   const [showTrimModal, setShowTrimModal] = useState(false);
   /** Set when the upload was a video file, so its footage can double as the background. */
   const [uploadIsVideo, setUploadIsVideo] = useState(false);
@@ -119,7 +114,9 @@ export default function VideoCreatorPage() {
   const [loadResult, setLoadResult] = useState<{ ok: boolean; message: string; count?: number } | null>(null);
 
   // UI Tabs & Drawer
-  const [sidebarTab, setSidebarTab] = useState<'quran' | 'timings' | 'style'>('quran');
+  /** Which ayah the timeline and inspector are focused on. */
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [inspectorTab, setInspectorTab] = useState<'ayah' | 'style'>('ayah');
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isProjectsDrawerOpen, setIsProjectsDrawerOpen] = useState<boolean>(false);
 
@@ -265,7 +262,6 @@ export default function VideoCreatorPage() {
       setCustomAudioUrl(url);
       setCustomAudioName(file.name);
       setCustomAudioFile(file);
-      setCustomAudioBuffer(await file.arrayBuffer());
       setUploadIsVideo(video);
       // A fresh upload starts un-trimmed, so the video and its audio share a
       // timeline until a trim introduces an offset.
@@ -314,7 +310,6 @@ export default function VideoCreatorPage() {
     setCustomAudioUrl(result.url);
     setCustomAudioName(result.file.name);
     setCustomAudioDuration(result.duration);
-    setCustomAudioBuffer(null);
     setAudioUrl(result.url);
     setAudioDuration(result.duration);
     setVerses(prev => trimTimeline(prev, result.trimStart, result.trimEnd));
@@ -375,7 +370,7 @@ export default function VideoCreatorPage() {
 
       if (!res.ok || !data.success) {
         setMatchStatus(data?.error || 'AI matcher is not configured. Use manual matching for this audio.');
-        setSidebarTab('timings');
+        setMobileSurface('preview');
         setIsMatching(false);
         return;
       }
@@ -420,18 +415,18 @@ export default function VideoCreatorPage() {
             ? 'Check that this is the right surah and ayah range for your audio, then review the timings below before publishing.'
             : 'Review the timings and text below before publishing.')
       );
-      setSidebarTab('timings');
+      setMobileSurface('preview');
       setIsMatching(false);
     } catch {
       setMatchStatus('AI matcher failed. Use manual matching, or configure the server-side AI matcher and try again.');
-      setSidebarTab('timings');
+      setMobileSurface('preview');
       setIsMatching(false);
     }
   };
 
   const handleManualMatchUploadedAudio = () => {
     setMatchStatus('Manual matching mode: assign ayah numbers and adjust start/end times for each audio segment.');
-    setSidebarTab('timings');
+    setMobileSurface('preview');
   };
 
   // Audio Play / Pause Sync with Web Audio API Analyser
@@ -490,6 +485,29 @@ export default function VideoCreatorPage() {
     };
   }, []);
 
+  /** Which ayah the playhead is currently inside. */
+  const activeVerseIndex = useMemo(() => segmentAt(verses, currentTime), [verses, currentTime]);
+
+  /**
+   * Ends the selected ayah at the playhead and hands the rest to the next one.
+   * This is tap-to-sync, and it now happens on the timeline rather than from a
+   * button in a panel on the opposite side of the screen.
+   */
+  const handleMarkHere = useCallback(() => {
+    const target = selectedIndex;
+    const updated = markBoundaryAt(verses, target, currentTime);
+    if (!updated) return;
+    setVerses(updated);
+    if (target + 1 < updated.length) setSelectedIndex(target + 1);
+  }, [verses, selectedIndex, currentTime]);
+
+  const markHereRef = useRef(handleMarkHere);
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    markHereRef.current = handleMarkHere;
+    isPlayingRef.current = isPlaying;
+  }, [handleMarkHere, isPlaying]);
+
   // Seek time
   const handleSeek = (seconds: number) => {
     if (audioElementRef.current) {
@@ -498,13 +516,25 @@ export default function VideoCreatorPage() {
     }
   };
 
-  // Spacebar hotkey for Tap-To-Sync — uses ref to avoid stale closure
+  /**
+   * SPACEBAR. Paused, it starts playback; playing, it marks the end of the
+   * current ayah -- which is exactly the workflow the instructions describe
+   * ("press Play and tap SPACEBAR at each boundary"). The old handler was
+   * labelled tap-to-sync but only ever toggled playback, which is why marking
+   * needed a separate button in a separate panel.
+   *
+   * Skipped when a control has focus, so Space still activates a focused
+   * button or types into a field instead of being hijacked.
+   */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && (e.target as HTMLElement).tagName !== 'INPUT') {
-        e.preventDefault();
-        togglePlayPauseRef.current();
-      }
+      if (e.code !== 'Space') return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || el?.isContentEditable) return;
+      e.preventDefault();
+      if (isPlayingRef.current) markHereRef.current();
+      else togglePlayPauseRef.current();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -678,7 +708,7 @@ export default function VideoCreatorPage() {
    * 9:16 video, on the one device shaped for it -- overflowed its pane by
    * about 180px. Below `md` one surface is shown at a time instead.
    */
-  const [mobileSurface, setMobileSurface] = useState<'panel' | 'preview'>('panel');
+  const [mobileSurface, setMobileSurface] = useState<'source' | 'preview' | 'inspect'>('preview');
 
   const headerOverflowItems: OverflowItem[] = [
     {
@@ -806,11 +836,18 @@ export default function VideoCreatorPage() {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
       {/* Hidden Audio Element */}
+      {/* onPlay/onPause track the element rather than only our own toggle.
+          Playback can start or stop by routes this component does not own --
+          clicking the preview, the export pipeline, media keys -- and
+          `isPlaying` now decides what SPACEBAR does, so a desync makes the key
+          do the wrong thing. */}
       <audio
         ref={audioElementRef}
         src={audioUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}
         onError={(e) => {
           const audio = e.currentTarget;
@@ -908,70 +945,37 @@ export default function VideoCreatorPage() {
         </div>
       </header>
 
-      {/* Main Studio Workspace Split Screen */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* Left Control Sidebar */}
-        <aside
-          className={`w-full md:w-[420px] border-r border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col h-full shrink-0 overflow-hidden ${
-            mobileSurface === 'panel' ? 'flex' : 'hidden'
-          } md:flex`}
-        >
-          {/* Sidebar steps.
+      {/* Studio workspace.
 
-              These are numbered because they genuinely are a sequence: you
-              cannot sync timings before there is text and audio, and styling a
-              timeline that does not exist yet is meaningless. The numeral is
-              drawn as an ayah marker -- the mushaf's own device for marking
-              position in a recitation -- rather than a bare digit. */}
-          <nav aria-label="Studio steps" className="border-b border-slate-800 bg-ink/80">
-            <div className="flex items-stretch">
-              {([
-                ['quran', 'Text & Voice', BookOpen],
-                ['timings', 'Timing', Clock],
-                ['style', 'Setting', Sliders]
-              ] as const).map(([id, label, Icon], i) => {
-                const active = sidebarTab === id;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => setSidebarTab(id)}
-                    aria-current={active ? 'step' : undefined}
-                    className={`group relative flex-1 flex items-center justify-center gap-2 py-3 px-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold focus-visible:ring-inset ${
-                      active ? 'text-parchment' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span className={`ayah-marker ${active ? 'ayah-marker-active' : ''}`}>{i + 1}</span>
-                    <span className="flex items-center gap-1.5">
-                      <Icon className={`w-3.5 h-3.5 ${active ? 'text-gold' : 'opacity-60'}`} />
-                      <span className="text-[11px] font-semibold tracking-wide">{label}</span>
-                    </span>
-                    {/* Gold rule marks the current step, the way a manuscript
-                        rules the line it is working on. */}
-                    <span
-                      className={`absolute inset-x-0 bottom-0 h-px transition-opacity ${
-                        active ? 'bg-gold opacity-100' : 'opacity-0'
-                      }`}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
+          Three columns over one full-width timeline. The previous layout put
+          the entire product -- source form, timeline and styling -- through a
+          single 420px column, which is why the timeline could not show time and
+          why the styling step showed four cards in a screen of empty space.
+          Each surface now gets the shape its content actually needs. */}
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div className="flex-1 flex overflow-hidden min-h-0">
 
-          {/* Sidebar Content Area */}
-          <div className="flex-1 overflow-y-auto p-4">
-            {isSampleProject && (
-              <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5 text-[11px] text-amber-200 flex items-start gap-2">
-                <BookOpen className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <span>
-                  <span className="font-semibold">This is a sample.</span> The timeline is
-                  pre-filled with Al-Fatihah so the preview isn&apos;t blank. Load a surah or
-                  upload a recitation to replace it.
-                </span>
-              </div>
-            )}
-            {/* TAB 1: Quran & Audio Selection */}
-            {sidebarTab === 'quran' && (
+          {/* Source */}
+          <aside
+            aria-label="Source"
+            className={`w-full lg:w-[340px] shrink-0 border-r border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
+              mobileSurface === 'source' ? 'flex' : 'hidden'
+            } lg:flex`}
+          >
+            <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800">
+              Source
+            </h2>
+            <div className="flex-1 overflow-y-auto p-3">
+              {isSampleProject && (
+                <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5 text-[11px] text-amber-200 flex items-start gap-2">
+                  <BookOpen className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    <span className="font-semibold">This is a sample.</span> The timeline is
+                    pre-filled with Al-Fatihah so the preview isn&apos;t blank. Load a surah or
+                    upload a recitation to replace it.
+                  </span>
+                </div>
+              )}
               <div className="flex flex-col gap-4 text-xs">
                 {/* Workflow instructions.
 
@@ -988,14 +992,14 @@ export default function VideoCreatorPage() {
                     <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
                   </summary>
                   <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed mt-1.5">
-                    <li><strong>Select a reciter</strong> below (e.g. Sudais, Raad Al-Kurdi).</li>
-                    <li><strong>Choose a surah and ayah range</strong> (start &amp; end).</li>
-                    <li>Click <strong>&quot;Load ayahs &amp; audio&quot;</strong> to fetch the verses and audio.</li>
-                    <li>Switch to the <strong>Timing</strong> step above.</li>
-                    <li>Press <strong>Play</strong> and tap <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACEBAR</kbd> at the end of each ayah to mark its boundary.</li>
-                    <li>Adjust timings with the sliders, then style and export.</li>
+                    <li><strong>Pick a reciter</strong> and a surah, or upload your own recitation.</li>
+                    <li>Click <strong>&quot;Load ayahs &amp; audio&quot;</strong>. The ayahs appear on the timeline below.</li>
+                    <li>Press <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd> to play, then tap it again at the end of each ayah to set its boundary.</li>
+                    <li><strong>Drag the edge</strong> of any block on the timeline to fine-tune it.</li>
+                    <li>Click a block to edit its text and words in the panel on the right.</li>
+                    <li>Switch that panel to <strong>Style</strong>, then export.</li>
                   </ol>
-                  <p className="text-[11px] text-slate-400 mt-2">Note: built-in reciter timings are estimates. Use the Timing step for accurate alignment. Auto-matching only works on <strong>uploaded</strong> files.</p>
+                  <p className="text-[11px] text-slate-400 mt-2">Note: built-in reciter timings are estimates — set them yourself on the timeline for accuracy. Auto-matching only works on <strong>uploaded</strong> files.</p>
                 </details>
 
                 {/* Surah Selector */}
@@ -1273,68 +1277,25 @@ export default function VideoCreatorPage() {
                     <span className="font-semibold">{loadResult.message}</span>
                     {loadResult.ok && (
                       <button
-                        onClick={() => setSidebarTab('timings')}
+                        onClick={() => { setSelectedIndex(0); setMobileSurface('preview'); }}
                         className="ml-1.5 underline underline-offset-2 hover:text-emerald-100"
                       >
-                        Go to Timing
+                        Show on timeline
                       </button>
                     )}
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          </aside>
 
-            {/* Steps 2 and 3 used to render their full interface with nothing
-                loaded -- offering to mark ayah boundaries that did not exist and
-                to style a video with no verses in it. Numbering promises a
-                sequence, so the sequence has to hold. */}
-            {sidebarTab === 'timings' && (
-              verses.length === 0 ? (
-                <EmptyStep
-                  icon={<Clock className="w-6 h-6" />}
-                  title="No ayahs to time yet"
-                  body="Timing lines up each ayah with the recitation, so there has to be a recitation first. Load a surah and its audio, then come back."
-                  actionLabel="Go to Text & Voice"
-                  onAction={() => setSidebarTab('quran')}
-                />
-              ) : (
-                <TimelineSyncEditor
-                  verses={verses}
-                  onChangeVerses={setVerses}
-                  currentTime={currentTime}
-                  isPlaying={isPlaying}
-                  audioDuration={audioDuration}
-                  onSeek={handleSeek}
-                  onPlayPauseToggle={togglePlayPause}
-                />
-              )
-            )}
-
-            {sidebarTab === 'style' && (
-              verses.length === 0 ? (
-                <EmptyStep
-                  icon={<Sliders className="w-6 h-6" />}
-                  title="Nothing to style yet"
-                  body="These controls change how the ayahs look on screen. Load a surah first and the preview will show your changes as you make them."
-                  actionLabel="Go to Text & Voice"
-                  onAction={() => setSidebarTab('quran')}
-                />
-              ) : (
-                <StyleConfigPanel
-                  config={canvasConfig}
-                  onChangeConfig={setCanvasConfig}
-                />
-              )
-            )}
-          </div>
-        </aside>
-
-        {/* Right Main Studio Preview Area */}
-        <main
-          className={`flex-1 flex-col items-center justify-between p-4 bg-slate-950 relative overflow-hidden ${
-            mobileSurface === 'preview' ? 'flex' : 'hidden'
-          } md:flex`}
-        >
+          {/* Preview */}
+          <main
+            aria-label="Preview"
+            className={`flex-1 flex-col items-center justify-center p-4 bg-slate-950 relative overflow-hidden min-w-0 ${
+              mobileSurface === 'preview' ? 'flex' : 'hidden'
+            } lg:flex`}
+          >
           {/* Main Video Canvas WYSIWYG Renderer */}
           <div className="flex-1 w-full flex items-center justify-center relative">
             {/* Click-to-play is scoped to the video itself, not the whole
@@ -1380,106 +1341,93 @@ export default function VideoCreatorPage() {
               </button>
             </div>
           )}
+          </main>
 
-          {/* Interactive Player Scrubber Bar (Bottom) */}
-          <div className="w-full max-w-2xl bg-slate-900/90 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-2xl flex flex-col gap-2 mt-2 z-20">
-            {/* Timeline Progress Slider */}
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-slate-400 w-10 text-right">
-                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
-              </span>
-
-              <input
-                type="range"
-                min={0}
-                max={audioDuration || 100}
-                step={0.1}
-                value={currentTime}
-                onChange={(e) => handleSeek(parseFloat(e.target.value))}
-                aria-label="Seek through the recitation"
-                className="flex-1 accent-amber-500 h-2 bg-slate-800 rounded-lg cursor-pointer"
-              />
-
-              <span className="text-xs font-mono text-slate-400 w-10">
-                {Math.floor(audioDuration / 60)}:{Math.floor(audioDuration % 60).toString().padStart(2, '0')}
-              </span>
+          {/* Inspector */}
+          <aside
+            aria-label="Inspector"
+            className={`w-full lg:w-[340px] shrink-0 border-l border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
+              mobileSurface === 'inspect' ? 'flex' : 'hidden'
+            } lg:flex`}
+          >
+            <div className="flex border-b border-slate-800 shrink-0">
+              {([['ayah', 'Ayah'], ['style', 'Style']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setInspectorTab(id)}
+                  aria-current={inspectorTab === id ? 'true' : undefined}
+                  className={`relative flex-1 py-2.5 text-[11px] font-semibold tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold focus-visible:ring-inset ${
+                    inspectorTab === id ? 'text-parchment' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {label}
+                  <span className={`absolute inset-x-0 bottom-0 h-px ${inspectorTab === id ? 'bg-gold' : 'bg-transparent'}`} />
+                </button>
+              ))}
             </div>
-
-            {/* Scrubber Controls */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={togglePlayPause}
-                  aria-label={isPlaying ? 'Pause recitation' : 'Play recitation'}
-                  title={isPlaying ? 'Pause' : 'Play'}
-                  className="p-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-full font-bold shadow-md transition-transform active:scale-95"
-                >
-                  {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
-                </button>
-
-                <button
-                  onClick={() => handleSeek(0)}
-                  className="p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
-                  title="Reset to beginning"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Volume Slider */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const newMute = !isMuted;
-                    setIsMuted(newMute);
-                    if (audioElementRef.current) {
-                      audioElementRef.current.muted = newMute;
-                    }
-                  }}
-                  aria-label={isMuted ? 'Unmute' : 'Mute'}
-                  title={isMuted ? 'Unmute' : 'Mute'}
-                  className="p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
-                </button>
-
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={isMuted ? 0 : volume}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    setVolume(val);
-                    setIsMuted(false);
-                    if (audioElementRef.current) {
-                      audioElementRef.current.volume = val;
-                      audioElementRef.current.muted = false;
-                    }
-                  }}
-                  aria-label="Volume"
-                  className="w-20 accent-amber-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+            <div className="flex-1 overflow-y-auto">
+              {inspectorTab === 'ayah' ? (
+                <Inspector
+                  verses={verses}
+                  index={selectedIndex}
+                  isActive={selectedIndex === activeVerseIndex}
+                  onText={(field, value) => setVerses(setText(verses, selectedIndex, field, value))}
+                  onVerseNumber={value => setVerses(setVerseNumber(verses, selectedIndex, value))}
+                  onToggleWord={wi => setVerses(toggleWord(verses, selectedIndex, wi))}
+                  onNudge={(edge, delta) => setVerses(nudgeBoundary(verses, selectedIndex, edge, delta, audioDuration))}
+                  onReorder={to => { setVerses(reorder(verses, selectedIndex, to)); setSelectedIndex(Math.max(0, Math.min(verses.length - 1, to))); }}
+                  onDuplicate={() => setVerses(duplicateVerse(verses, selectedIndex, audioDuration))}
+                  onDelete={() => { setVerses(removeVerse(verses, selectedIndex)); setSelectedIndex(i => Math.max(0, i - 1)); }}
+                  onAdd={() => { const r = addVerseAfter(verses, selectedIndex); setVerses(r.verses); setSelectedIndex(r.insertedAt); }}
                 />
-              </div>
+              ) : (
+                <StyleConfigPanel config={canvasConfig} onChangeConfig={setCanvasConfig} />
+              )}
             </div>
-          </div>
-        </main>
+          </aside>
+        </div>
+
+        <Timeline
+          verses={verses}
+          audioUrl={customAudioUrl || audioUrl}
+          audioDuration={audioDuration}
+          currentTime={currentTime}
+          isPlaying={isPlaying}
+          selectedIndex={selectedIndex}
+          onSelect={setSelectedIndex}
+          onSeek={handleSeek}
+          onPlayPause={togglePlayPause}
+          onMoveBoundary={(i, edge, value) => setVerses(setBoundary(verses, i, edge, value, audioDuration))}
+          onMarkHere={handleMarkHere}
+          isMuted={isMuted}
+          volume={volume}
+          onToggleMute={() => {
+            const next = !isMuted;
+            setIsMuted(next);
+            if (audioElementRef.current) audioElementRef.current.muted = next;
+          }}
+          onVolume={v => {
+            setVolume(v);
+            setIsMuted(v === 0);
+            if (audioElementRef.current) { audioElementRef.current.volume = v; audioElementRef.current.muted = v === 0; }
+          }}
+        />
       </div>
 
       {/* Mobile surface switch.
 
-          Sits at the bottom because that is where a thumb rests, and it names
-          the two things a phone can usefully show one at a time. Hidden from
-          `md` up, where both surfaces are visible at once and the switch would
-          mean nothing. */}
+          Sits at the bottom because that is where a thumb rests. Three
+          surfaces now, matching the three columns above -- a phone can show
+          exactly one of them usefully at a time. Hidden from `lg` up, where all
+          three are visible at once and the switch would mean nothing. */}
       <nav
         aria-label="Switch view"
-        className="md:hidden shrink-0 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md p-1.5 flex gap-1.5 z-30"
+        className="lg:hidden shrink-0 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md p-1.5 flex gap-1.5 z-30"
       >
         {([
-          ['panel', 'Edit', Sliders],
-          ['preview', 'Preview', Film]
+          ['source', 'Source', BookOpen],
+          ['preview', 'Preview', Film],
+          ['inspect', 'Edit', Sliders]
         ] as const).map(([id, label, Icon]) => {
           const active = mobileSurface === id;
           return (
@@ -1487,7 +1435,7 @@ export default function VideoCreatorPage() {
               key={id}
               onClick={() => setMobileSurface(id)}
               aria-pressed={active}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
                 active ? 'bg-gold text-ink' : 'text-slate-300 hover:bg-slate-800'
               }`}
             >
