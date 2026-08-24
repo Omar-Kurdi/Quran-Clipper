@@ -49,3 +49,10 @@ asr-service/=*
 # model / corpus caches
 *.nemo
 .cache/
+
+# Written by `next dev` (Next 16.3+ generates agent instruction files via
+# node_modules/next/dist/server/lib/generate-agent-files.js). Deleting them
+# does not stick -- they reappear on the next dev run -- so they are ignored
+# rather than tracked. Remove these two lines if you would rather commit them.
+/AGENTS.md
+/CLAUDE.md
