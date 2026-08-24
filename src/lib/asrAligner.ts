@@ -390,7 +390,6 @@ export function alignAsrToQuran(params: { words: AsrWord[]; voicedRegions: Voice
         endTime: endWord.end,
         confidence: Math.max(0, Math.min(1, 0.6 * textSimilarity + 0.4 * avgAsrScore)),
         displayTextUthmani: runTokens.map(t => t.word.arabic).join(' '),
-        displayTransliteration: runTokens.map(t => t.word.transliteration).filter(Boolean).join(' '),
         displayTranslation: runTokens.map(t => t.word.translation).filter(Boolean).join(' ')
       });
 
@@ -419,9 +418,6 @@ export function alignAsrToQuran(params: { words: AsrWord[]; voicedRegions: Voice
       while (appended < estimatedMissingWords && cursor < corpus.length && corpus[cursor].verseKey === lastSegment.verseKey) {
         const extra = corpus[cursor].word;
         lastSegment.displayTextUthmani = `${lastSegment.displayTextUthmani} ${extra.arabic}`.trim();
-        if (extra.transliteration) {
-          lastSegment.displayTransliteration = `${lastSegment.displayTransliteration || ''} ${extra.transliteration}`.trim();
-        }
         if (extra.translation) {
           lastSegment.displayTranslation = `${lastSegment.displayTranslation || ''} ${extra.translation}`.trim();
         }

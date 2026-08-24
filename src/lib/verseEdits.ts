@@ -22,7 +22,7 @@ export function ensureWords(verse: VerseData): VerseWord[] {
   return verse.textUthmani
     .split(/\s+/)
     .filter(Boolean)
-    .map(arabic => ({ arabic, transliteration: '', translation: '', excluded: false }));
+    .map(arabic => ({ arabic, translation: '', excluded: false }));
 }
 
 /**
@@ -122,7 +122,7 @@ export function reorder(verses: VerseData[], from: number, to: number): VerseDat
 export function setText(
   verses: VerseData[],
   index: number,
-  field: 'textUthmani' | 'transliteration' | 'translation',
+  field: 'textUthmani' | 'translation',
   value: string
 ): VerseData[] {
   const updated = [...verses];
@@ -135,11 +135,9 @@ export function setText(
       textUthmani: value,
       displayTextUthmani: value,
       words: value.split(/\s+/).filter(Boolean).map(arabic => ({
-        arabic, transliteration: '', translation: '', excluded: false
+        arabic, translation: '', excluded: false
       }))
     };
-  } else if (field === 'transliteration') {
-    updated[index] = { ...current, transliteration: value, displayTransliteration: value };
   } else {
     updated[index] = { ...current, translation: value, displayTranslation: value };
   }
@@ -191,13 +189,11 @@ export function addVerseAfter(verses: VerseData[], anchorIndex: number): { verse
     verseNumber: nextNum,
     verseKey: `${surahNumber}:${nextNum}`,
     textUthmani: text,
-    transliteration: 'New verse transliteration',
     translation: 'New verse translation',
     startTime: startT,
     endTime: startT + 5.0,
-    words: text.split(/\s+/).map(arabic => ({ arabic, transliteration: '', translation: '', excluded: false })),
+    words: text.split(/\s+/).map(arabic => ({ arabic, translation: '', excluded: false })),
     displayTextUthmani: text,
-    displayTransliteration: 'New verse transliteration',
     displayTranslation: 'New verse translation'
   };
 

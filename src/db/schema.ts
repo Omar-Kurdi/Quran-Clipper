@@ -18,6 +18,7 @@ export const projects = pgTable('projects', {
   fontArabic: text('font_arabic').notNull().default('Scheherazade New'),
   fontTranslation: text('font_translation').notNull().default('Inter'),
   arabicFontSize: integer('arabic_font_size').notNull().default(38),
+  /** @deprecated The studio no longer renders transliteration. Kept so existing rows load; nothing writes it. */
   transliterationFontSize: integer('transliteration_font_size').notNull().default(24),
   translationFontSize: integer('translation_font_size').notNull().default(20),
   ayahNumberFontSize: integer('ayah_number_font_size').notNull().default(34),
@@ -26,6 +27,7 @@ export const projects = pgTable('projects', {
   accentColor: text('accent_color').notNull().default('#b8c7dc'),
   translationColor: text('translation_color').notNull().default('#d5dfec'),
   textShadow: boolean('text_shadow').notNull().default(true),
+  /** @deprecated The studio no longer renders transliteration. Kept so existing rows load; nothing writes it. */
   showTransliteration: boolean('show_transliteration').notNull().default(true),
   showTranslation: boolean('show_translation').notNull().default(true),
   showWaveform: boolean('show_waveform').notNull().default(true),
@@ -48,7 +50,7 @@ export const projects = pgTable('projects', {
   watermarkText: text('watermark_text').default('@QuranClips'),
   watermarkPosition: text('watermark_position').default('bottom-right'),
   
-  // Timestamps JSON array: [{ verseNumber, verseKey, arabicText, translationText, transliterationText, startTime, endTime }]
+  // Timestamps JSON array: [{ verseNumber, verseKey, arabicText, translationText, startTime, endTime }]
   versesJson: jsonb('verses_json').notNull().default([]),
   
   // GPU settings

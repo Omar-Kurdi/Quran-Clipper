@@ -4,6 +4,18 @@ export interface Reciter {
   arabicName: string;
   style: string;
   audioServerUrl: string;
+  /**
+   * Reciter id on quran.com's audio API, which publishes measured per-ayah
+   * timings for that reciter's chapter recordings. `0` means quran.com does
+   * not carry this reciter: loading their audio falls back to the mp3quran
+   * file above with *estimated* ayah boundaries, which have to be corrected on
+   * the timeline by hand.
+   *
+   * The timings and the audio file are a matched pair -- the timestamps index
+   * quran.com's own recording, not mp3quran's -- so whichever source a load
+   * uses, it must use both halves of it. Verified against
+   * `api.quran.com/api/v4/resources/recitations` (Aug 2026).
+   */
   quranApiId: number;
 }
 
@@ -18,7 +30,6 @@ export interface Surah {
 
 export interface VerseWord {
   arabic: string;
-  transliteration: string;
   translation: string;
   timestamp?: number;
   excluded?: boolean;
@@ -28,7 +39,6 @@ export interface VerseData {
   verseNumber: number;
   verseKey: string; // e.g. "1:1"
   textUthmani: string;
-  transliteration: string;
   translation: string;
   startTime: number; // in seconds (e.g. 0.0)
   endTime: number;   // in seconds (e.g. 5.2)
@@ -37,7 +47,6 @@ export interface VerseData {
   // Optional segment-specific display overrides from AI matching.
   // Useful when only part of an ayah is recited or repeated.
   displayTextUthmani?: string;
-  displayTransliteration?: string;
   displayTranslation?: string;
 }
 
@@ -58,7 +67,8 @@ export const RECITERS: Reciter[] = [
     arabicName: 'ماهر المعيقلي',
     style: 'Murattal',
     audioServerUrl: 'https://server12.mp3quran.net/download/maher/',
-    quranApiId: 4
+    // Not on quran.com -- id 4 there is Abu Bakr al-Shatri, a different voice.
+    quranApiId: 0
   },
   {
     id: 'yasser',
@@ -66,7 +76,7 @@ export const RECITERS: Reciter[] = [
     arabicName: 'ياسر الدوسري',
     style: 'Emotional',
     audioServerUrl: 'https://server11.mp3quran.net/download/yasser/',
-    quranApiId: 10
+    quranApiId: 97
   },
   {
     id: 'shuraim',
@@ -74,7 +84,7 @@ export const RECITERS: Reciter[] = [
     arabicName: 'سعود الشريم',
     style: 'Murattal',
     audioServerUrl: 'https://server7.mp3quran.net/download/shur/',
-    quranApiId: 9
+    quranApiId: 10
   },
   {
     id: 'ghamdi',
@@ -82,7 +92,8 @@ export const RECITERS: Reciter[] = [
     arabicName: 'سعد الغامدي',
     style: 'Murattal',
     audioServerUrl: 'https://server7.mp3quran.net/download/s_gmd/',
-    quranApiId: 8
+    // Not on quran.com -- id 8 there is al-Minshawi.
+    quranApiId: 0
   },
   {
     id: 'raad',
@@ -229,7 +240,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 1,
         verseKey: "1:1",
         textUthmani: "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
-        transliteration: "Bismillāhir-raḥmānir-raḥīm",
         translation: "In the name of Allah, the Entirely Merciful, the Especially Merciful.",
         startTime: 0.0,
         endTime: 6.2
@@ -238,7 +248,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 2,
         verseKey: "1:2",
         textUthmani: "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ",
-        transliteration: "Al-ḥamdu lillāhi rabbil-ʿālamīn",
         translation: "[All] praise is [due] to Allah, Lord of the worlds.",
         startTime: 6.2,
         endTime: 11.5
@@ -247,7 +256,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 3,
         verseKey: "1:3",
         textUthmani: "ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
-        transliteration: "Ar-raḥmānir-raḥīm",
         translation: "The Entirely Merciful, the Especially Merciful,",
         startTime: 11.5,
         endTime: 16.8
@@ -256,7 +264,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 4,
         verseKey: "1:4",
         textUthmani: "مَـٰلِكِ يَوْمِ ٱلدَّينِ",
-        transliteration: "Māliki yawmid-dīn",
         translation: "Sovereign of the Day of Recompense.",
         startTime: 16.8,
         endTime: 21.4
@@ -265,7 +272,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 5,
         verseKey: "1:5",
         textUthmani: "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ",
-        transliteration: "Iyyāka naʿbudu wa-iyyāka nastaʿīn",
         translation: "It is You we worship and You we ask for help.",
         startTime: 21.4,
         endTime: 27.6
@@ -274,7 +280,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 6,
         verseKey: "1:6",
         textUthmani: "ٱهْدِنَا ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ",
-        transliteration: "Ihdināṣ-ṣirāṭal-mustaqīm",
         translation: "Guide us to the straight path -",
         startTime: 27.6,
         endTime: 33.1
@@ -283,7 +288,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 7,
         verseKey: "1:7",
         textUthmani: "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ",
-        transliteration: "Ṣirāṭal-ladhīna anʿamta ʿalayhim ghayril-maghḍūbi ʿalayhim wa-laḍ-ḍāāāllīn",
         translation: "The path of those upon whom You have bestowed favor, not of those who have evoked [Your] anger or of those who are astray.",
         startTime: 33.1,
         endTime: 43.0
@@ -306,7 +310,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 1,
         verseKey: "93:1",
         textUthmani: "وَٱلضُّحَىٰ",
-        transliteration: "Waḍ-ḍuḥā",
         translation: "By the morning brightness",
         startTime: 0.0,
         endTime: 4.5
@@ -315,7 +318,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 2,
         verseKey: "93:2",
         textUthmani: "وَٱلَّيْلِ إِذَا سَجَىٰ",
-        transliteration: "Wal-layli idhā sajā",
         translation: "And [by] the night when it covers with darkness,",
         startTime: 4.5,
         endTime: 9.8
@@ -324,7 +326,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 3,
         verseKey: "93:3",
         textUthmani: "مَا وَدَّعَكَ رَبُّكَ وَمَا قَلَىٰ",
-        transliteration: "Mā waddaʿaka rabbuka wa-mā qalā",
         translation: "Your Lord has not taken leave of you, [O Muhammad], nor has He detested [you].",
         startTime: 9.8,
         endTime: 16.2
@@ -333,7 +334,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 4,
         verseKey: "93:4",
         textUthmani: "وَلَلْـَٔاخِرَةُ خَيْرٌۭ لَّكَ مِنَ ٱلْأُولَىٰ",
-        transliteration: "Wa-lal-ākhiratu khayrul-laka minal-ūlā",
         translation: "And the Hereafter is better for you than the first [life].",
         startTime: 16.2,
         endTime: 23.5
@@ -342,7 +342,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 5,
         verseKey: "93:5",
         textUthmani: "وَلَسَوْفَ يُعْطِيكَ رَبُّكَ فَتَرْضَىٰ",
-        transliteration: "Wa-la-sawfa yuʿṭīka rabbuka fa-tarḍā",
         translation: "And your Lord is going to give you, and you will be satisfied.",
         startTime: 23.5,
         endTime: 31.0
@@ -351,7 +350,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 6,
         verseKey: "93:6",
         textUthmani: "أَلَمْ يَجِدْكَ يَتِيمًۭا فَـَٔاوَىٰ",
-        transliteration: "Alam yajidka yatīman fa-āwā",
         translation: "Did He not find you an orphan and give [you] refuge?",
         startTime: 31.0,
         endTime: 37.8
@@ -360,7 +358,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 7,
         verseKey: "93:7",
         textUthmani: "وَوَجَدَكَ ضَآلًّۭا فَهَدَىٰ",
-        transliteration: "Wa-wajadaka ḍāāāllan fa-hadā",
         translation: "And He found you lost and guided [you].",
         startTime: 37.8,
         endTime: 44.5
@@ -369,7 +366,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 8,
         verseKey: "93:8",
         textUthmani: "وَوَجَدَكَ عَآئِلًۭا فَأَغْنَىٰ",
-        transliteration: "Wa-wajadaka ʿāāā-ilan fa-aghnā",
         translation: "And He found you poor and made [you] self-sufficient.",
         startTime: 44.5,
         endTime: 51.8
@@ -378,7 +374,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 9,
         verseKey: "93:9",
         textUthmani: "فَأَمَّا ٱلْيَتِيمَ فَلَا تَقْهَرْ",
-        transliteration: "Fa-ammal-yatīma falā taqhar",
         translation: "So as for the orphan, do not oppress [him].",
         startTime: 51.8,
         endTime: 57.5
@@ -387,7 +382,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 10,
         verseKey: "93:10",
         textUthmani: "وَأَمَّا ٱلسَّآئِلَ فَلَا تَنْهَرْ",
-        transliteration: "Wa-ammas-sāāā-ila falā tanhar",
         translation: "And as for the petitioner, do not repel [him].",
         startTime: 57.5,
         endTime: 64.0
@@ -396,7 +390,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 11,
         verseKey: "93:11",
         textUthmani: "وَأَمَّا بِنِعْمَةِ رَبِّكَ فَحَدِّثْ",
-        transliteration: "Wa-ammā bi-niʿmati rabbika fa-ḥaddith",
         translation: "And as for the favor of your Lord, report [it].",
         startTime: 64.0,
         endTime: 73.0
@@ -419,7 +412,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 1,
         verseKey: "67:1",
         textUthmani: "تَبَـٰرَكَ ٱلَّذِى بِيَدِهِ ٱلْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَىْءٍۢ قَدِيرٌ",
-        transliteration: "Tabārakal-ladhī biyadihil-mulku wa-huwa ʿalā kulli shay'in qadīr",
         translation: "Blessed is He in whose hand is dominion, and He is over all things competent -",
         startTime: 0.0,
         endTime: 12.0
@@ -428,7 +420,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 2,
         verseKey: "67:2",
         textUthmani: "ٱلَّذِى خَلَقَ ٱلْمَوْتَ وَٱلْحَيَوٰةَ لِيَبْلُوَكُمْ أَيُّكُمْ أَحْسَنُ عَمَلًۭا ۚ وَهُوَ ٱلْعَزِيزُ ٱلْغَفُورُ",
-        transliteration: "Al-ladhī khalaqal-mawta wal-ḥayāta li-yabluwakum ayyukum aḥsanu ʿamalā wa-huwal-ʿazīzul-ghafūr",
         translation: "[He] who created death and life to test you [as to] which of you is best in deed - and He is the Exalted in Might, the Forgiving -",
         startTime: 12.0,
         endTime: 26.5
@@ -437,7 +428,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 3,
         verseKey: "67:3",
         textUthmani: "ٱلَّذِى خَلَقَ سَبْعَ سَمَـٰوَٰتٍۢ طِبَاقًۭا ۖ مَّا تَرَىٰ فِى خَلْقِ ٱلرَّحْمَـٰنِ مِن تَفَـٰوُتٍۢ ۖ فَٱرْجِعِ ٱلْبَصَرَ هَلْ تَرَىٰ مِن فُطُورٍۢ",
-        transliteration: "Al-ladhī khalaqa sabʿa samāwātin ṭibāqan mā tarā fī khalqir-raḥmāni min tafāwutin farjiʿil-baṣara hal tarā min fuṭūr",
         translation: "[And] who created seven heavens in layers. You do not see in the creation of the Most Merciful any inconsistency. So return [your] vision; do you see any breaks?",
         startTime: 26.5,
         endTime: 44.0
@@ -446,7 +436,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 4,
         verseKey: "67:4",
         textUthmani: "ثُمَّ ٱرْجِعِ ٱلْبَصَرَ كَرَّتَيْنِ يَنقَلِبْ إِلَيْكَ ٱلْبَصَرُ خَاسِئًۭا وَهُوَ حَسِيرٌۭ",
-        transliteration: "Thummar-jiʿil-baṣara karratayni yanqalib ilaykal-baṣaru khāsi'an wa-huwa ḥasīr",
         translation: "Then return [your] vision twice again. [Your] vision will return to you humbled while it is fatigued.",
         startTime: 44.0,
         endTime: 56.5
@@ -455,7 +444,6 @@ export const SAMPLE_PROJECTS = [
         verseNumber: 5,
         verseKey: "67:5",
         textUthmani: "وَلَقَدْ زَيَّنَّا ٱلسَّمَآءَ ٱلدُّنْيَا بِمَصَـٰبِيحَ وَجَعَلْنَـٰهَا رُجُومًۭا لِّلشَّيَـٰطِينِ ۖ وَأَعْتَدْنَا لَهُمْ عَذَابَ ٱلسَّعِيرِ",
-        transliteration: "Wa-laqad zayyannās-samāā'ad-dunyā bi-maṣābīḥa wa-jaʿalnāhā rujūman lish-shayāṭīni wa-aʿtadnā lahum ʿadhābas-saʿīr",
         translation: "And We have certainly beautified the nearest heaven with lamps and have made [from] them what is thrown at the devils and have prepared for them the punishment of the Blaze.",
         startTime: 56.5,
         endTime: 70.0

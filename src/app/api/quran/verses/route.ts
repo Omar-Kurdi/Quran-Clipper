@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
+import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
 function cleanHtml(input = '') {
   return input.replace(/<[^>]*>?/gm, '').replace(/&quot;/g, '"').trim();
@@ -9,6 +10,59 @@ function getReciterAudioUrl(reciterId: string, surahNumber: number) {
   const reciter = RECITERS.find(r => r.id === reciterId) || RECITERS[0];
   const paddedSurah = String(surahNumber).padStart(3, '0');
   return `${reciter.audioServerUrl}${paddedSurah}.mp3`;
+}
+
+/**
+ * Measured per-ayah timings for a reciter's chapter recording.
+ *
+ * The studio used to invent these: every ayah got `max(3.5, length * 0.15)`
+ * seconds laid end to end from zero. For a range starting past ayah 1 that is
+ * not an approximation, it is wrong -- ayah 5's block sat at 0:00 while the
+ * recording at 0:00 is ayah 1 -- and even from ayah 1 it drifted apart within
+ * a few ayahs. quran.com publishes the real boundaries, so use them.
+ *
+ * The timings index quran.com's own recording, so `audioUrl` here must travel
+ * with them; pairing them with the mp3quran file would be just as wrong as the
+ * estimates were. Returns null whenever anything is missing, and the caller
+ * falls back to estimates against mp3quran.
+ */
+type VerseTiming = { start: number; end: number };
+
+async function fetchReciterTimings(
+  quranApiId: number,
+  surahNumber: number
+): Promise<{ audioUrl: string; totalSeconds: number; timings: Map<string, VerseTiming> } | null> {
+  if (!quranApiId) return null;
+  try {
+    const res = await fetch(
+      `https://api.qurancdn.com/api/qdc/audio/reciters/${quranApiId}/audio_files?chapter=${surahNumber}&segments=true`,
+      { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const file = data?.audio_files?.[0];
+    if (!file?.audio_url || !Array.isArray(file.verse_timings)) return null;
+
+    const timings = new Map<string, VerseTiming>();
+    for (const entry of file.verse_timings as { verse_key?: string; timestamp_from?: number; timestamp_to?: number }[]) {
+      if (!entry?.verse_key) continue;
+      // Milliseconds. The response also carries its own `duration` field, which
+      // comes back negative -- computing it from the two timestamps instead.
+      const start = (entry.timestamp_from ?? 0) / 1000;
+      const end = (entry.timestamp_to ?? 0) / 1000;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+      timings.set(entry.verse_key, { start, end });
+    }
+    if (timings.size === 0) return null;
+
+    return {
+      audioUrl: file.audio_url as string,
+      totalSeconds: Number.isFinite(file.duration) ? file.duration / 1000 : 0,
+      timings
+    };
+  } catch {
+    return null;
+  }
 }
 
 function buildRangeFallbackVerses(surahNumber: number, start: number, end: number) {
@@ -23,7 +77,6 @@ function buildRangeFallbackVerses(surahNumber: number, start: number, end: numbe
       verseNumber,
       verseKey: `${surahNumber}:${verseNumber}`,
       textUthmani: `سورة ${surahNumber} آية ${verseNumber}`,
-      transliteration: `Surah ${surahNumber}, Ayah ${verseNumber}`,
       translation: 'Verse text could not be fetched. Please check your network connection, then reload ayah data.',
       startTime: verseStart,
       endTime: verseEnd,
@@ -41,12 +94,18 @@ export async function GET(req: NextRequest) {
     const reciter = searchParams.get('reciter') || RECITERS[0]?.id || 'sudais';
     const surahMeta = SURAHS_LIST.find(s => s.number === surahNumber) || SURAHS_LIST[0];
 
-    // Check if we have sample project for instant match
+    const reciterMeta = RECITERS.find(r => r.id === reciter) || RECITERS[0];
+
+    // Hand-authored sample, used as a shortcut for the ranges it covers -- but
+    // only for reciters quran.com has no timings for. Every sample here is
+    // Sudais, who does have them, so taking this shortcut would hand back
+    // estimated boundaries for exactly the surah/reciter/range the studio opens
+    // on: the first Load a new user clicks would be the one that is not timed.
     const sample = SAMPLE_PROJECTS.find(
       s => s.surahNumber === surahNumber && s.reciterId === reciter
     );
 
-    if (sample && start === sample.ayahStart && end === sample.ayahEnd) {
+    if (sample && start === sample.ayahStart && end === sample.ayahEnd && !reciterMeta.quranApiId) {
       return NextResponse.json({
         success: true,
         source: 'cached_sample',
@@ -55,6 +114,7 @@ export async function GET(req: NextRequest) {
         surahNameEnglish: sample.surahNameEnglish,
         audioUrl: sample.audioUrl,
         audioDuration: sample.audioDuration,
+        timingSource: 'estimated',
         verses: sample.verses
       });
     }
@@ -62,7 +122,7 @@ export async function GET(req: NextRequest) {
     // Otherwise query Quran.com API v4
     try {
       const quranRes = await fetch(
-        `https://api.quran.com/api/v4/verses/by_chapter/${surahNumber}?language=en&words=true&translations=131&fields=text_uthmani&word_fields=text_uthmani,transliteration,translation&per_page=300`,
+        `https://api.quran.com/api/v4/verses/by_chapter/${surahNumber}?language=en&words=true&translations=131&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
         { headers: { 'Accept': 'application/json' }, next: { revalidate: 86400 } }
       );
 
@@ -75,30 +135,46 @@ export async function GET(req: NextRequest) {
           v.verse_number >= start && v.verse_number <= end
         );
 
+        const measured = await fetchReciterTimings(reciterMeta.quranApiId, surahNumber);
+        // All measured or none of them. A half-timed range would mix absolute
+        // timestamps with offsets counted from zero, which is worse than either.
+        const useMeasured =
+          !!measured && filtered.every((v: { verse_key: string }) => measured.timings.has(v.verse_key));
+
         let currentOffset = 0;
-        const mappedVerses = filtered.map((v: { verse_number: number; verse_key: string; text_uthmani: string; translations: { text: string }[]; words?: { char_type_name?: string; text_uthmani?: string; transliteration?: { text?: string }; translation?: { text?: string } }[] }) => {
+        const mappedVerses = filtered.map((v: { verse_number: number; verse_key: string; text_uthmani: string; translations: { text: string }[]; words?: { char_type_name?: string; text_uthmani?: string; translation?: { text?: string } }[] }) => {
           const quranWords = (v.words || []).filter(w => w.char_type_name === 'word');
           const words = quranWords.map(w => ({
             arabic: w.text_uthmani || '',
-            transliteration: cleanHtml(w.transliteration?.text || ''),
             translation: cleanHtml(w.translation?.text || ''),
             excluded: false
           })).filter(w => w.arabic);
 
-          const approxDuration = Math.max(3.5, Math.max(v.text_uthmani.length, words.length * 8) * 0.15);
-          const verseStart = Math.round(currentOffset * 10) / 10;
-          const verseEnd = Math.round((currentOffset + approxDuration) * 10) / 10;
-          currentOffset += approxDuration + 0.8;
+          const timing = useMeasured ? measured!.timings.get(v.verse_key)! : null;
+          let verseStart: number;
+          let verseEnd: number;
+          if (timing) {
+            // Kept absolute, on the recording's own clock: the timeline, the
+            // playhead, the canvas and the exporter all read these against the
+            // same <audio> element, so rebasing them to zero would desync
+            // every one of them.
+            verseStart = Math.round(timing.start * 10) / 10;
+            verseEnd = Math.round(timing.end * 10) / 10;
+            currentOffset = verseEnd;
+          } else {
+            const approxDuration = Math.max(3.5, Math.max(v.text_uthmani.length, words.length * 8) * 0.15);
+            verseStart = Math.round(currentOffset * 10) / 10;
+            verseEnd = Math.round((currentOffset + approxDuration) * 10) / 10;
+            currentOffset += approxDuration + 0.8;
+          }
 
           const rawTranslation = v.translations?.[0]?.text || '';
           const cleanTranslation = cleanHtml(rawTranslation);
-          const transliteration = words.map(w => w.transliteration).filter(Boolean).join(' ') || `Verse ${v.verse_key}`;
 
           return {
             verseNumber: v.verse_number,
             verseKey: v.verse_key,
             textUthmani: v.text_uthmani,
-            transliteration,
             translation: cleanTranslation,
             startTime: verseStart,
             endTime: verseEnd,
@@ -106,14 +182,19 @@ export async function GET(req: NextRequest) {
           };
         });
 
+        const totalSeconds = useMeasured ? measured!.totalSeconds || currentOffset : currentOffset;
+
         return NextResponse.json({
           success: true,
           source: 'quran_api',
           surahNumber,
           surahNameArabic: surahMeta.nameArabic,
           surahNameEnglish: surahMeta.nameEnglish,
-          audioUrl: getReciterAudioUrl(reciter, surahNumber),
-          audioDuration: `${Math.floor(currentOffset / 60)}:${Math.floor(currentOffset % 60).toString().padStart(2, '0')}`,
+          // Paired with the timings above -- see `fetchReciterTimings`.
+          audioUrl: useMeasured ? proxiedAudioUrl(measured!.audioUrl) : getReciterAudioUrl(reciter, surahNumber),
+          audioDuration: `${Math.floor(totalSeconds / 60)}:${Math.floor(totalSeconds % 60).toString().padStart(2, '0')}`,
+          /** 'measured' means the boundaries came from the recording; 'estimated' means they were guessed from text length. */
+          timingSource: useMeasured ? 'measured' : 'estimated',
           verses: mappedVerses
         });
       }
@@ -132,6 +213,7 @@ export async function GET(req: NextRequest) {
       surahNameEnglish: surahMeta.nameEnglish,
       audioUrl: getReciterAudioUrl(reciter, surahNumber),
       audioDuration: `${Math.floor(approxTotal / 60)}:${Math.floor(approxTotal % 60).toString().padStart(2, '0')}`,
+      timingSource: 'estimated',
       verses: fallbackVerses
     });
 

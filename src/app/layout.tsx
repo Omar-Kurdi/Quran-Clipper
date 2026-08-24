@@ -12,7 +12,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" data-palette="nocturne">
+    /* `suppressHydrationWarning` covers exactly one element, and this is the
+       one that needs it: the inline script below rewrites `data-palette`
+       before React hydrates, so the server's "nocturne" and the client's
+       restored value legitimately differ. */
+    <html lang="en" className="dark" data-palette="nocturne" suppressHydrationWarning>
       <head>
         {/* Restore the saved palette before first paint. Doing this in an
             effect would flash Nocturne for a frame on every load for anyone

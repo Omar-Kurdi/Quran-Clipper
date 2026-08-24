@@ -35,18 +35,21 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 ## Features
 
 **Quran content**
-- All 114 surahs with Arabic/English metadata, Uthmani text, word-level data, transliteration,
-  and English translation (Quran.com API, translation `131` — The Clear Quran).
-- Six reciters streamed from the mp3quran.net CDN:
+- All 114 surahs with Arabic/English metadata, Uthmani text, word-level data and English
+  translation (Quran.com API, translation `131` — The Clear Quran).
+- Six reciters. The three marked **timed** carry per-ayah boundaries measured from the
+  recording, published by Quran.com; loading them gives a real timeline, and the recording is
+  streamed through `/api/audio/proxy`. The rest stream from mp3quran.net with boundaries
+  estimated from text length, which have to be corrected on the timeline by hand.
 
-  | Reciter | Arabic | Style |
-  |---|---|---|
-  | Abdul Rahman Al-Sudais | عبد الرحمن السديس | Murattal |
-  | Maher Al-Muaiqly | ماهر المعيقلي | Murattal |
-  | Yasser Al-Dosari | ياسر الدوسري | Emotional |
-  | Saud Al-Shuraim | سعود الشريم | Murattal |
-  | Saad Al-Ghamdi | سعد الغامدي | Murattal |
-  | Raad Al-Kurdi | رعد محمد الكردي | Emotional |
+  | Reciter | Arabic | Style | Timings |
+  |---|---|---|---|
+  | Abdul Rahman Al-Sudais | عبد الرحمن السديس | Murattal | timed |
+  | Maher Al-Muaiqly | ماهر المعيقلي | Murattal | estimated |
+  | Yasser Al-Dosari | ياسر الدوسري | Emotional | timed |
+  | Saud Al-Shuraim | سعود الشريم | Murattal | timed |
+  | Saad Al-Ghamdi | سعد الغامدي | Murattal | estimated |
+  | Raad Al-Kurdi | رعد محمد الكردي | Emotional | estimated |
 
 **Timing your own audio**
 - Four interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).

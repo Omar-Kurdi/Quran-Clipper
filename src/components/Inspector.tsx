@@ -11,7 +11,7 @@ interface InspectorProps {
   verses: VerseData[];
   index: number;
   isActive: boolean;
-  onText: (field: 'textUthmani' | 'transliteration' | 'translation', value: string) => void;
+  onText: (field: 'textUthmani' | 'translation', value: string) => void;
   onVerseNumber: (value: number) => void;
   onToggleWord: (wordIndex: number) => void;
   onNudge: (edge: 'startTime' | 'endTime', delta: number) => void;
@@ -108,26 +108,35 @@ export const Inspector: React.FC<InspectorProps> = ({
         />
       </div>
 
+      {/* Both boxes open tall enough to hold a whole ayah without scrolling --
+          two rows showed about a third of one -- and both are drag-resizable.
+          The grip is easy to miss on a dark panel, so each one says so. */}
       <div>
-        <label htmlFor="insp-arabic" className="text-[11px] font-semibold text-slate-400 block mb-1">Arabic</label>
+        <label htmlFor="insp-arabic" className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2">
+          <span>Arabic</span>
+          <span className="font-normal text-slate-400">drag the corner to resize</span>
+        </label>
         <textarea
           id="insp-arabic"
           value={verse.displayTextUthmani || verse.textUthmani}
           onChange={e => onText('textUthmani', e.target.value)}
           dir="rtl"
-          rows={2}
-          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-amiri leading-loose"
+          rows={4}
+          className="w-full min-h-32 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-amiri leading-loose"
         />
       </div>
 
       <div>
-        <label htmlFor="insp-translation" className="text-[11px] font-semibold text-slate-400 block mb-1">Translation</label>
+        <label htmlFor="insp-translation" className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2">
+          <span>Translation</span>
+          <span className="font-normal text-slate-400">drag the corner to resize</span>
+        </label>
         <textarea
           id="insp-translation"
           value={verse.displayTranslation || verse.translation}
           onChange={e => onText('translation', e.target.value)}
-          rows={2}
-          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 leading-relaxed"
+          rows={5}
+          className="w-full min-h-28 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 leading-relaxed"
         />
       </div>
 

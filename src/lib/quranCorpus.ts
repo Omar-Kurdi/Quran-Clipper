@@ -12,7 +12,6 @@ import { normalizeArabic } from '@/lib/arabic';
 type QuranApiWord = {
   char_type_name?: string;
   text_uthmani?: string;
-  transliteration?: { text?: string };
   translation?: { text?: string };
 };
 
@@ -29,7 +28,6 @@ export type CorpusVerse = {
   verseNumber: number;
   verseKey: string;
   textUthmani: string;
-  transliteration: string;
   translation: string;
   words: VerseWord[];
   /** Normalised tokens, index-aligned with `words`. */
@@ -64,7 +62,7 @@ const TRANSLATION_ID = process.env.QURAN_TRANSLATION_ID || '20'; // Saheeh Inter
 const CHAPTER_URL = (surah: number) =>
   `https://api.quran.com/api/v4/verses/by_chapter/${surah}` +
   `?language=en&words=true&translations=${TRANSLATION_ID}&fields=text_uthmani` +
-  `&word_fields=text_uthmani,transliteration,translation&per_page=300`;
+  `&word_fields=text_uthmani,translation&per_page=300`;
 
 const chapterCache = new Map<number, Promise<CorpusVerse[]>>();
 
@@ -81,7 +79,6 @@ async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
       .filter(word => word.char_type_name === 'word')
       .map(word => ({
         arabic: word.text_uthmani || '',
-        transliteration: cleanHtml(word.transliteration?.text || ''),
         translation: cleanHtml(word.translation?.text || ''),
         excluded: false
       }))
@@ -92,7 +89,6 @@ async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
       verseNumber: verse.verse_number,
       verseKey: verse.verse_key,
       textUthmani: verse.text_uthmani,
-      transliteration: words.map(w => w.transliteration).filter(Boolean).join(' ') || `Verse ${verse.verse_key}`,
       translation: cleanHtml(verse.translations?.[0]?.text || ''),
       words,
       tokens: words.map(word => normalizeArabic(word.arabic))

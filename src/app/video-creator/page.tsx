@@ -111,7 +111,29 @@ export default function VideoCreatorPage() {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [volume, setVolume] = useState<number>(0.9);
   const [isLoadingVerses, setIsLoadingVerses] = useState<boolean>(false);
-  const [loadResult, setLoadResult] = useState<{ ok: boolean; message: string; count?: number } | null>(null);
+  const [loadResult, setLoadResult] = useState<{
+    ok: boolean;
+    message: string;
+    count?: number;
+    /** 'measured' timings came from the recording; 'estimated' ones were guessed from text length. */
+    timingSource?: 'measured' | 'estimated';
+    /** Set when the playhead was moved to the first ayah of the range. */
+    seeked?: boolean;
+    /**
+     * Set when an uploaded file is still the audio being played. The ayah times
+     * that just arrived belong to the reciter's recording, not to that file, so
+     * they cannot be trusted against it.
+     */
+    againstUpload?: boolean;
+  } | null>(null);
+  /**
+   * Where in the new recording playback should resume once its metadata
+   * arrives. A range that starts past ayah 1 starts minutes into the chapter
+   * file, and `currentTime` cannot be set before the browser knows the
+   * duration. Stamped with the url it belongs to so a seek meant for one
+   * recording is never applied to the next.
+   */
+  const pendingSeekRef = useRef<{ url: string; time: number } | null>(null);
 
   // UI Tabs & Drawer
   /** Which ayah the timeline and inspector are focused on. */
@@ -133,7 +155,6 @@ export default function VideoCreatorPage() {
     fontArabic: 'Scheherazade New',
     fontTranslation: 'Inter',
     arabicFontSize: 38,
-    transliterationFontSize: 24,
     translationFontSize: 20,
     ayahNumberFontSize: 34,
     textAlignment: 'center',
@@ -141,7 +162,6 @@ export default function VideoCreatorPage() {
     accentColor: '#b8c7dc',
     translationColor: '#d5dfec',
     textShadow: true,
-    showTransliteration: false,
     showTranslation: true,
     showWaveform: true,
     showSurahBadge: true,
@@ -202,11 +222,28 @@ export default function VideoCreatorPage() {
       const loaded = data.verses || [];
       setVerses(loaded);
       setIsSampleProject(false);
+      setSelectedIndex(0);
+      // Measured timings are absolute positions in the whole chapter file, so
+      // ayah 5 of Ya-Sin genuinely begins at 0:14 and ayah 255 of Al-Baqarah at
+      // 1:13:42. Start the playhead there rather than at 0:00, which would play
+      // ayah 1 while the canvas showed the ayah the user asked for.
+      const firstStart = loaded[0]?.startTime ?? 0;
+      const willSeek = !customAudioUrl && !!data.audioUrl && firstStart > 0;
+      if (willSeek) {
+        pendingSeekRef.current = { url: data.audioUrl, time: firstStart };
+      }
       // The response is usually cached, so it returns faster than a frame and
       // the spinner never paints -- leaving the click with no visible result at
       // all, since the verses themselves appear on a different step. Confirm
       // what arrived and point at where it went.
-      setLoadResult({ ok: true, message: `Loaded ${loaded.length} ${loaded.length === 1 ? 'ayah' : 'ayahs'}.`, count: loaded.length });
+      setLoadResult({
+        ok: true,
+        message: `Loaded ${loaded.length} ${loaded.length === 1 ? 'ayah' : 'ayahs'}.`,
+        count: loaded.length,
+        timingSource: data.timingSource === 'measured' ? 'measured' : 'estimated',
+        seeked: willSeek,
+        againstUpload: !!customAudioUrl
+      });
     } catch {
       setLoadResult({ ok: false, message: 'Could not load those ayahs. Check your connection and try again.' });
     } finally {
@@ -547,12 +584,36 @@ export default function VideoCreatorPage() {
     }
   };
 
+  const applyPendingSeek = useCallback(() => {
+    const audio = audioElementRef.current;
+    const pending = pendingSeekRef.current;
+    if (!audio || !pending) return;
+    // `currentSrc` rather than `src`: React commits the new `src` attribute
+    // before effects run, so there is a window where `src` already names the
+    // new recording while `duration` still describes the old one. `currentSrc`
+    // is only set once the browser has actually selected that resource, so
+    // waiting for it means the seek lands on the media it was meant for.
+    if (audio.currentSrc !== new URL(pending.url, window.location.href).href) return;
+    if (audio.readyState < 1 || !Number.isFinite(audio.duration)) return;
+    pendingSeekRef.current = null;
+    if (pending.time <= 0 || pending.time >= audio.duration) return;
+    audio.currentTime = pending.time;
+    setCurrentTime(pending.time);
+  }, []);
+
   const handleLoadedMetadata = () => {
     if (audioElementRef.current) {
       setAudioDuration(audioElementRef.current.duration || 43.0);
       setAudioError(null); // clear any previous error on successful load
+      applyPendingSeek();
     }
   };
+
+  // Covers the case where the url did not change -- reloading the same surah
+  // and reciter fires no `loadedmetadata`, so the seek would never be applied.
+  useEffect(() => {
+    applyPendingSeek();
+  }, [applyPendingSeek, verses, audioUrl]);
 
   // Save Project to Database
   const handleSaveProject = async () => {
@@ -574,14 +635,12 @@ export default function VideoCreatorPage() {
         fontTranslation: canvasConfig.fontTranslation,
         arabicFontSize: canvasConfig.arabicFontSize,
         translationFontSize: canvasConfig.translationFontSize,
-        transliterationFontSize: canvasConfig.transliterationFontSize,
         ayahNumberFontSize: canvasConfig.ayahNumberFontSize,
         textAlignment: canvasConfig.textAlignment,
         textColor: canvasConfig.textColor,
         accentColor: canvasConfig.accentColor,
         translationColor: canvasConfig.translationColor,
         textShadow: canvasConfig.textShadow,
-        showTransliteration: canvasConfig.showTransliteration,
         showTranslation: canvasConfig.showTranslation,
         showWaveform: canvasConfig.showWaveform,
         showSurahBadge: canvasConfig.showSurahBadge,
@@ -801,7 +860,6 @@ export default function VideoCreatorPage() {
       fontArabic: proj.fontArabic || 'Scheherazade New',
       fontTranslation: proj.fontTranslation || 'Inter',
       arabicFontSize: proj.arabicFontSize || 38,
-      transliterationFontSize: proj.transliterationFontSize || 24,
       translationFontSize: proj.translationFontSize || 20,
       ayahNumberFontSize: proj.ayahNumberFontSize || 34,
       textColor: proj.textColor || '#ffffff',
@@ -809,7 +867,6 @@ export default function VideoCreatorPage() {
       translationColor: proj.translationColor || '#d5dfec',
       textAlignment: proj.textAlignment || 'center',
       textShadow: proj.textShadow ?? true,
-      showTransliteration: proj.showTransliteration ?? false,
       showTranslation: proj.showTranslation ?? true,
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
@@ -999,98 +1056,15 @@ export default function VideoCreatorPage() {
                     <li>Click a block to edit its text and words in the panel on the right.</li>
                     <li>Switch that panel to <strong>Style</strong>, then export.</li>
                   </ol>
-                  <p className="text-[11px] text-slate-400 mt-2">Note: built-in reciter timings are estimates — set them yourself on the timeline for accuracy. Auto-matching only works on <strong>uploaded</strong> files.</p>
+                  <p className="text-[11px] text-slate-400 mt-2">Note: reciters marked <strong>timed</strong> come with ayah boundaries measured from the recording; the rest are estimates you set yourself on the timeline. Auto-matching only works on <strong>uploaded</strong> files.</p>
                 </details>
 
-                {/* Surah Selector */}
-                <div>
-                  <label htmlFor="surah-select" className="font-semibold text-slate-200 block mb-1.5">Select Surah:</label>
-                  <select
-                    id="surah-select"
-                    value={selectedSurah}
-                    onChange={(e) => {
-                      const num = parseInt(e.target.value, 10);
-                      setSelectedSurah(num);
-                      const s = SURAHS_LIST.find(item => item.number === num);
-                      if (s) {
-                        const defaultEnd = Math.min(7, s.numberOfAyahs);
-                        setAyahStart(1);
-                        setAyahEnd(defaultEnd);
-                        setAyahStartInput('1');
-                        setAyahEndInput(String(defaultEnd));
-                      }
-                    }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-100 text-sm font-medium"
-                  >
-                    {SURAHS_LIST.map((s) => (
-                      <option key={s.number} value={s.number}>
-                        {s.number}. {s.nameEnglish} ({s.nameArabic}) - {s.numberOfAyahs} Ayahs
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* Upload first.
 
-                {/* Ayah Range */}
-                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">
-                  <div>
-                    <label htmlFor="ayah-start" className="text-slate-400 block mb-1">Start Ayah:</label>
-                    <input
-                      id="ayah-start"
-                      type="text"
-                      inputMode="numeric"
-                      value={ayahStartInput}
-                      onChange={(e) => setAyahStartInput(e.target.value.replace(/[^0-9]/g, ''))}
-                      onBlur={() => commitAyahRangeInput('start')}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitAyahRangeInput('start');
-                      }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="ayah-end" className="text-slate-400 block mb-1">End Ayah:</label>
-                    <input
-                      id="ayah-end"
-                      type="text"
-                      inputMode="numeric"
-                      value={ayahEndInput}
-                      onChange={(e) => setAyahEndInput(e.target.value.replace(/[^0-9]/g, ''))}
-                      onBlur={() => commitAyahRangeInput('end')}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitAyahRangeInput('end');
-                      }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* Reciter Selector */}
-                <div>
-                  <label id="reciter-label" className="font-semibold text-slate-200 block mb-1.5">Select Reciter / Voice:</label>
-                  <div role="radiogroup" aria-labelledby="reciter-label" className="grid grid-cols-1 gap-2">
-                    {RECITERS.map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => setSelectedReciter(r.id)}
-                        className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
-                          selectedReciter === r.id
-                            ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div>
-                          <span className="font-bold block text-slate-200">{r.name}</span>
-                          <span className="text-[11px] text-amber-400 font-amiri block" dir="rtl">{r.arabicName}</span>
-                        </div>
-                        <span className="text-[11px] font-mono text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
-                          {r.style}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
+                    The two ways in are "bring your own recording" and "use a
+                    built-in reciter", and the upload is the one that produces a
+                    real, matched timeline -- it was below three other controls
+                    that only matter to the other path. */}
                 {/* Upload Custom Audio */}
                 <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800">
                   <label htmlFor="recitation-upload" className="font-semibold text-slate-200 block mb-1 flex items-center gap-1.5">
@@ -1255,6 +1229,109 @@ export default function VideoCreatorPage() {
                   )}
                 </div>
 
+                {/* Surah Selector */}
+                <div>
+                  <label htmlFor="surah-select" className="font-semibold text-slate-200 block mb-1.5">Select Surah:</label>
+                  <select
+                    id="surah-select"
+                    value={selectedSurah}
+                    onChange={(e) => {
+                      const num = parseInt(e.target.value, 10);
+                      setSelectedSurah(num);
+                      const s = SURAHS_LIST.find(item => item.number === num);
+                      if (s) {
+                        const defaultEnd = Math.min(7, s.numberOfAyahs);
+                        setAyahStart(1);
+                        setAyahEnd(defaultEnd);
+                        setAyahStartInput('1');
+                        setAyahEndInput(String(defaultEnd));
+                      }
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-100 text-sm font-medium"
+                  >
+                    {SURAHS_LIST.map((s) => (
+                      <option key={s.number} value={s.number}>
+                        {s.number}. {s.nameEnglish} ({s.nameArabic}) - {s.numberOfAyahs} Ayahs
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Ayah Range */}
+                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+                  <div>
+                    <label htmlFor="ayah-start" className="text-slate-400 block mb-1">Start Ayah:</label>
+                    <input
+                      id="ayah-start"
+                      type="text"
+                      inputMode="numeric"
+                      value={ayahStartInput}
+                      onChange={(e) => setAyahStartInput(e.target.value.replace(/[^0-9]/g, ''))}
+                      onBlur={() => commitAyahRangeInput('start')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitAyahRangeInput('start');
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="ayah-end" className="text-slate-400 block mb-1">End Ayah:</label>
+                    <input
+                      id="ayah-end"
+                      type="text"
+                      inputMode="numeric"
+                      value={ayahEndInput}
+                      onChange={(e) => setAyahEndInput(e.target.value.replace(/[^0-9]/g, ''))}
+                      onBlur={() => commitAyahRangeInput('end')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitAyahRangeInput('end');
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Reciter Selector */}
+                <div>
+                  <label id="reciter-label" className="font-semibold text-slate-200 block mb-1.5">Select Reciter / Voice:</label>
+                  <div role="radiogroup" aria-labelledby="reciter-label" className="grid grid-cols-1 gap-2">
+                    {RECITERS.map((r) => (
+                      <button
+                        key={r.id}
+                        onClick={() => setSelectedReciter(r.id)}
+                        className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                          selectedReciter === r.id
+                            ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <span className="font-bold block text-slate-200">{r.name}</span>
+                          <span className="text-[11px] text-amber-400 font-amiri block" dir="rtl">{r.arabicName}</span>
+                        </div>
+                        {/* Whether this voice has published ayah timings decides
+                            whether "Load ayahs & audio" produces a real timeline
+                            or one you have to set by hand, so it belongs on the
+                            choice rather than in a note underneath it. */}
+                        <span className="flex items-center gap-1.5">
+                          {r.quranApiId > 0 && (
+                            <span
+                              title="Ayah boundaries for this reciter come from the recording"
+                              className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
+                            >
+                              timed
+                            </span>
+                          )}
+                          <span className="text-[11px] font-mono text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
+                            {r.style}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Load & Fetch Button */}
                 <button
                   onClick={handleLoadSurahVerses}
@@ -1269,9 +1346,11 @@ export default function VideoCreatorPage() {
                   <div
                     role="status"
                     className={`mt-2 rounded-lg border p-2.5 text-[11px] ${
-                      loadResult.ok
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                        : 'bg-red-500/10 border-red-500/30 text-red-200'
+                      !loadResult.ok
+                        ? 'bg-red-500/10 border-red-500/30 text-red-200'
+                        : loadResult.againstUpload
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                          : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
                     }`}
                   >
                     <span className="font-semibold">{loadResult.message}</span>
@@ -1282,6 +1361,15 @@ export default function VideoCreatorPage() {
                       >
                         Show on timeline
                       </button>
+                    )}
+                    {loadResult.ok && (
+                      <span className="block mt-1 font-normal">
+                        {loadResult.againstUpload
+                          ? 'Your uploaded file is still the audio being played, and these times belong to the reciter\u2019s recording — not to it. Run AI Auto-match, or set the boundaries on the timeline.'
+                          : loadResult.timingSource === 'measured'
+                            ? `Ayah boundaries came from the recording itself${loadResult.seeked ? ', and the playhead has moved to the first one' : ''}.`
+                            : 'This reciter has no published timings, so the boundaries are estimated — set them on the timeline before exporting.'}
+                      </span>
                     )}
                   </div>
                 )}
@@ -1399,6 +1487,8 @@ export default function VideoCreatorPage() {
           onPlayPause={togglePlayPause}
           onMoveBoundary={(i, edge, value) => setVerses(setBoundary(verses, i, edge, value, audioDuration))}
           onMarkHere={handleMarkHere}
+          onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
+          trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}
           onToggleMute={() => {

@@ -239,10 +239,11 @@
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
 }
 
-/* The inner lapis rule, held off the gold by a band of ink. */
+/* The inner band of ink. This used to carry a second, lapis rule -- in the
+   Slate palette that variable is green, so the preview read as two unexplained
+   coloured borders rather than as one frame. One rule states the same thing. */
 .jadwal-inner {
   padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--color-lapis) 62%, transparent);
   border-radius: 1px;
   background: var(--color-ink);
 }

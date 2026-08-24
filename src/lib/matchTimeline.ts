@@ -115,7 +115,6 @@ export async function fetchVersesByDetectedSegments(params: {
         verseNumber: corpusVerse.verseNumber,
         verseKey: corpusVerse.verseKey,
         textUthmani: corpusVerse.textUthmani,
-        transliteration: corpusVerse.transliteration,
         translation: corpusVerse.translation,
         startTime: 0,
         endTime: 0,
@@ -155,7 +154,6 @@ export async function fetchVersesByDetectedSegments(params: {
       words: segmentWords,
       matchConfidence: Math.max(0, Math.min(1, Number(segment.confidence ?? 0.65))),
       displayTextUthmani: segmentDisplayText,
-      displayTransliteration: segment.displayTransliteration || '',
       displayTranslation: segment.displayTranslation || ''
     });
   }

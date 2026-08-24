@@ -10,6 +10,12 @@ interface DialogProps {
   children: React.ReactNode;
   /** Classes for the panel itself. The backdrop and centring are handled here. */
   panelClassName?: string;
+  /**
+   * Inline styles for the panel. Exists for the one thing a class cannot carry:
+   * a live drag offset. Keep transforms here and any zoom on a child, so drag
+   * deltas are not multiplied by the zoom factor.
+   */
+  panelStyle?: React.CSSProperties;
   /** Backdrop layout: centred (modals) or pinned to the right edge (drawers). */
   placement?: 'center' | 'right';
   /**
@@ -40,6 +46,7 @@ export const Dialog: React.FC<DialogProps> = ({
   label,
   children,
   panelClassName = '',
+  panelStyle,
   placement = 'center',
   dismissible = true
 }) => {
@@ -132,6 +139,7 @@ export const Dialog: React.FC<DialogProps> = ({
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
+        style={panelStyle}
         className={`focus:outline-none ${panelClassName}`}
       >
         {children}

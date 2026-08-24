@@ -8,7 +8,6 @@ export interface VideoCanvasConfig {
   fontArabic: string;
   fontTranslation: string;
   arabicFontSize: number;
-  transliterationFontSize: number;
   translationFontSize: number;
   ayahNumberFontSize: number;
   textAlignment: string;
@@ -16,7 +15,6 @@ export interface VideoCanvasConfig {
   accentColor: string;
   translationColor: string;
   textShadow: boolean;
-  showTransliteration: boolean;
   showTranslation: boolean;
   showWaveform: boolean;
   showSurahBadge: boolean;
@@ -148,7 +146,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   const activeVerse = useMemo(
     () => [...sortedVerses].reverse().find(v => currentTime >= v.startTime)
       || sortedVerses[0]
-      || { verseNumber: 1, textUthmani: '', transliteration: '', translation: '' } as VerseData,
+      || { verseNumber: 1, textUthmani: '', translation: '' } as unknown as VerseData,
     [sortedVerses, currentTime]
   );
   const activeVerseIndex = useMemo(
@@ -487,9 +485,16 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         drawRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, 28);
         ctx.fill();
         if (config.cardBorder) {
-          ctx.strokeStyle = 'rgba(251, 191, 36, 0.35)';
+          // Follows the accent colour like the badge, the ayah numeral and the
+          // divider do. It used to be hardcoded amber, so setting the accent to
+          // anything else left one stray gold rectangle behind with no control
+          // anywhere that explained it.
+          ctx.save();
+          ctx.globalAlpha = 0.35;
+          ctx.strokeStyle = goldAccent;
           ctx.lineWidth = 2;
           ctx.stroke();
+          ctx.restore();
         }
       }
 
@@ -542,16 +547,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const shownArabicLines = Math.min(lines.length, 5);
         const arabicBlockHeight = shownArabicLines * lineHeight;
 
-        let belowHeight = ayahFontSize * 0.65 + 48; // ayah number + divider gap
-
-        const translitText = activeVerse.displayTransliteration || activeVerse.transliteration || '';
-        if (config.showTransliteration && translitText) {
-          const tSize = (config.transliterationFontSize || 24) * (height / 1920) * 1.15;
-          ctx.font = `italic ${tSize}px 'Inter', sans-serif`;
-          belowHeight += wrapCanvasText(ctx, translitText, maxTextWidth, 2).length * tSize * 1.45 + 14;
-        } else {
-          belowHeight += 18;
-        }
+        // Ayah number, the gap around the divider, and the breathing room
+        // under it before the translation starts.
+        let belowHeight = ayahFontSize * 0.65 + 48 + 18;
 
         const measuredTranslation = activeVerse.displayTranslation || activeVerse.translation || '';
         if (config.showTranslation && measuredTranslation) {
@@ -592,16 +590,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.stroke();
         ctx.globalAlpha = 1.0;
 
-        let transY = dividerY + 48;
-
-        if (config.showTransliteration && (activeVerse.displayTransliteration || activeVerse.transliteration)) {
-          const tSize = (config.transliterationFontSize || 24) * (height / 1920) * 1.15;
-          ctx.font = `italic ${tSize}px 'Inter', sans-serif`;
-          ctx.fillStyle = goldAccent;
-          wrapCanvasText(ctx, activeVerse.displayTransliteration || activeVerse.transliteration, maxTextWidth, 2)
-            .forEach(line => { ctx.fillText(line, textX, transY); transY += tSize * 1.45; });
-          transY += 14;
-        } else { transY += 18; }
+        let transY = dividerY + 48 + 18;
 
         const translationText = activeVerse.displayTranslation || activeVerse.translation || '';
         if (config.showTranslation && translationText) {

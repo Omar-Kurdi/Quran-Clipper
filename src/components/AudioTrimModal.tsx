@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, ChevronsLeft, ChevronsRight, Move, Maximize2 } from 'lucide-react';
 import { decodeAudioFile, computePeaks, buildTrimmedFile, TrimResult } from '@/lib/audioTrim';
 import { Dialog } from './Dialog';
 
@@ -76,6 +76,87 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
   const [zoom, setZoom] = useState(1);
   const [startDraft, setStartDraft] = useState<string | null>(null);
   const [endDraft, setEndDraft] = useState<string | null>(null);
+
+  /**
+   * Where the panel has been dragged to, and how large its contents are drawn.
+   *
+   * A trim is done *against* the timeline behind it, and a centred modal covers
+   * exactly that. So the header moves the panel out of the way, and the corner
+   * grip scales everything inside it the way a browser zoom would -- CSS `zoom`
+   * rather than `transform: scale`, because zoom reflows, so text re-renders at
+   * the new size instead of being resampled, and the panel's own box grows with
+   * it so `max-h`/overflow keep working.
+   *
+   * The offset lives on the panel and the scale on a child: on one element the
+   * zoom factor would multiply every drag delta.
+   */
+  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 });
+  const [panelScale, setPanelScale] = useState(1);
+  const panelDragRef = useRef<
+    | { mode: 'move'; pointerX: number; pointerY: number; originX: number; originY: number }
+    | { mode: 'scale'; pointerX: number; pointerY: number; startScale: number; span: number }
+    | null
+  >(null);
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const drag = panelDragRef.current;
+      if (!drag) return;
+      e.preventDefault();
+      if (drag.mode === 'move') {
+        // Kept mostly on screen: dragging the panel entirely past an edge would
+        // leave no way back to it short of closing the dialog.
+        const limitX = Math.max(0, window.innerWidth / 2 - 60);
+        const limitY = Math.max(0, window.innerHeight / 2 - 40);
+        setPanelOffset({
+          x: Math.max(-limitX, Math.min(limitX, drag.originX + e.clientX - drag.pointerX)),
+          y: Math.max(-limitY, Math.min(limitY, drag.originY + e.clientY - drag.pointerY))
+        });
+      } else {
+        const delta = (e.clientX - drag.pointerX + (e.clientY - drag.pointerY)) / drag.span;
+        setPanelScale(Math.max(0.6, Math.min(2, drag.startScale * (1 + delta))));
+      }
+    };
+    const up = () => { panelDragRef.current = null; };
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+  }, []);
+
+  const startPanelMove = (e: React.PointerEvent) => {
+    // Mouse only. On a touch screen a drag on the header is far more likely to
+    // be someone scrolling the panel than moving it.
+    if (e.pointerType !== 'mouse') return;
+    if ((e.target as HTMLElement).closest('button, input, a')) return;
+    panelDragRef.current = {
+      mode: 'move',
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      originX: panelOffset.x,
+      originY: panelOffset.y
+    };
+  };
+
+  const startPanelScale = (e: React.PointerEvent) => {
+    const rect = (e.currentTarget as HTMLElement).closest('[data-trim-panel]')?.getBoundingClientRect();
+    panelDragRef.current = {
+      mode: 'scale',
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startScale: panelScale,
+      span: Math.max(240, ((rect?.width ?? 720) + (rect?.height ?? 520)) / 2)
+    };
+  };
+
+  const resetPanelView = () => {
+    setPanelOffset({ x: 0, y: 0 });
+    setPanelScale(1);
+  };
 
   // Read by the rAF loop, which must not be torn down and rebuilt every time
   // one of these changes -- `trimEnd` changes on every frame of a handle drag.
@@ -302,9 +383,14 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
       onClose={onCancel}
       label="Trim or crop audio"
       dismissible={!isApplying}
-      panelClassName="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl"
+      panelClassName="relative max-w-full max-h-[90vh] overflow-auto"
+      panelStyle={{ transform: `translate(${panelOffset.x}px, ${panelOffset.y}px)` }}
     >
-      <div>
+      <div
+        data-trim-panel
+        style={{ zoom: panelScale }}
+        className="relative w-[min(48rem,88vw)] bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl"
+      >
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-gold via-lapis to-gold"></div>
 
         <button
@@ -314,16 +400,31 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-3 mb-5">
+        <div
+          onPointerDown={startPanelMove}
+          className="flex items-center gap-3 mb-5 pr-10 cursor-move select-none"
+        >
           <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
             <Scissors className="w-6 h-6" />
           </div>
-          <div>
-            <h3 className="text-lg font-bold text-slate-100">Trim audio</h3>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+              Trim audio
+              <Move className="w-3.5 h-3.5 text-slate-400" aria-hidden />
+            </h3>
             <p className="text-xs text-slate-400">
               Drag the ruler to move the playhead; drag the amber handles to set what to keep.
+              Drag this bar to move the window, or its bottom-right corner to resize everything in it.
             </p>
           </div>
+          {(panelScale !== 1 || panelOffset.x !== 0 || panelOffset.y !== 0) && (
+            <button
+              onClick={resetPanelView}
+              className="shrink-0 px-2 py-1 text-[11px] font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
+            >
+              Reset window ({Math.round(panelScale * 100)}%)
+            </button>
+          )}
         </div>
 
         {error && (
@@ -570,6 +671,18 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
             <span>{isApplying ? 'Trimming…' : 'Apply Trim'}</span>
           </button>
         </div>
+        {/* Resize grip. Scales the panel's contents rather than reflowing them
+            into a wider box, which is what "make this bigger" means here: the
+            waveform, the handles and the timecodes all have to grow together. */}
+        <span
+          onPointerDown={startPanelScale}
+          role="separator"
+          aria-label="Resize the trim window"
+          title="Drag to resize the whole window"
+          className="absolute bottom-1 right-1 w-5 h-5 flex items-end justify-end text-slate-400 hover:text-slate-200 cursor-nwse-resize touch-none"
+        >
+          <Maximize2 className="w-3.5 h-3.5 rotate-90" />
+        </span>
       </div>
     </Dialog>
   );

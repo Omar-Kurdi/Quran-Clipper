@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
 import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
@@ -20,6 +20,10 @@ interface TimelineProps {
   onMoveBoundary: (index: number, edge: 'startTime' | 'endTime', value: number) => void;
   /** SPACEBAR / button: end the current segment here and start the next. */
   onMarkHere: () => void;
+  /** Opens the trim modal. Omitted when there is no uploaded file to trim. */
+  onTrim?: () => void;
+  /** Length of the uploaded clip, shown on the trim button. */
+  trimHint?: string;
   isMuted: boolean;
   volume: number;
   onToggleMute: () => void;
@@ -43,7 +47,7 @@ const ZOOMS = [1, 2, 4, 8];
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere,
-  isMuted, volume, onToggleMute, onVolume
+  onTrim, trimHint, isMuted, volume, onToggleMute, onVolume
 }) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -165,6 +169,21 @@ export const Timeline: React.FC<TimelineProps> = ({
           <span className="hidden sm:inline">Mark ayah end</span>
           <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">SPACE</kbd>
         </button>
+
+        {/* Trimming belongs beside marking: both are edits to where the audio
+            starts and stops, and both are things you reach for repeatedly
+            while working the timeline. */}
+        {onTrim && (
+          <button
+            onClick={onTrim}
+            title="Trim the uploaded audio — your timeline edits are kept"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          >
+            <Scissors className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Trim audio</span>
+            {trimHint && <span className="hidden md:inline font-mono text-[10px] text-slate-400">{trimHint}</span>}
+          </button>
+        )}
 
         <span className="flex-1" />
 

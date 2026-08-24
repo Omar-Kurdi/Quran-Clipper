@@ -127,7 +127,6 @@ Required JSON schema:
       "endTime": 5.2,
       "confidence": 0.86,
       "displayTextUthmani": "exact Arabic words recited in this segment, not necessarily the full ayah",
-      "displayTransliteration": "optional transliteration of only the displayed words",
       "displayTranslation": "optional English meaning of only the displayed words",
       "notes": "optional short note"
     }
@@ -165,7 +164,6 @@ const MATCH_SCHEMA = {
           endTime: { type: 'NUMBER' },
           confidence: { type: 'NUMBER' },
           displayTextUthmani: { type: 'STRING' },
-          displayTransliteration: { type: 'STRING' },
           displayTranslation: { type: 'STRING' },
           notes: { type: 'STRING' }
         },

@@ -13,7 +13,6 @@ export type MatchSegment = {
   notes?: string;
   displayTextUthmani?: string;
   recitedTextUthmani?: string;
-  displayTransliteration?: string;
   displayTranslation?: string;
   /**
    * Which words of the ayah this segment covers, 0-based and inclusive.

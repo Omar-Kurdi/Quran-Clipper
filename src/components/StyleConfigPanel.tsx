@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { 
   VideoCanvasConfig 
 } from './VideoCanvas';
+import { ColorField } from './ColorField';
 import { 
   BACKGROUND_VIDEOS, 
   FONTS_ARABIC, 
@@ -31,7 +32,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   config,
   onChangeConfig
 }) => {
-  const [activeTab, setActiveTab] = useState<'aspect' | 'background' | 'font' | 'card' | 'watermark'>('aspect');
+  const [activeTab, setActiveTab] = useState<'design' | 'background' | 'card'>('design');
 
   const updateConfig = (key: keyof VideoCanvasConfig, value: unknown) => {
     onChangeConfig({
@@ -53,74 +54,101 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     }
   };
 
-  const handleApplyUrl = (url: string) => {
-    if (!url.trim()) return;
-    const isVideo = /\.(mp4|webm|mov|avi)(\?|$)/i.test(url.trim());
+  const [urlDraft, setUrlDraft] = useState('');
+  const [urlStatus, setUrlStatus] = useState<{ kind: 'busy' | 'error' | 'ok'; message: string } | null>(null);
+
+  const applyDirectUrl = (url: string) => {
+    const isVideo = /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
     onChangeConfig({
       ...config,
       bgType: isVideo ? 'video' : 'image',
-      bgUrl: url.trim()
+      bgUrl: url
     });
+  };
+
+  /**
+   * Accepts either a direct file link or a Pexels page link.
+   *
+   * What people actually copy from Pexels is the address bar, and that is a
+   * web page -- pasting it here used to set the background to an HTML document
+   * and quietly show nothing. `/api/background/resolve` turns one into the
+   * file link it stands for.
+   */
+  const handleApplyUrl = async (raw: string) => {
+    const url = raw.trim();
+    if (!url) return;
+
+    let host = '';
+    try {
+      host = new URL(url).hostname;
+    } catch {
+      setUrlStatus({ kind: 'error', message: 'That does not look like a link.' });
+      return;
+    }
+
+    const isPexelsPage = /(^|\.)pexels\.com$/.test(host) && !/^videos?\.|^images\./.test(host);
+    if (!isPexelsPage) {
+      applyDirectUrl(url);
+      setUrlStatus({ kind: 'ok', message: 'Background set.' });
+      setUrlDraft('');
+      return;
+    }
+
+    setUrlStatus({ kind: 'busy', message: 'Looking that up on Pexels…' });
+    try {
+      const res = await fetch(`/api/background/resolve?url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        setUrlStatus({ kind: 'error', message: data?.error || 'Could not resolve that Pexels link.' });
+        return;
+      }
+      applyDirectUrl(data.url);
+      setUrlStatus({
+        kind: 'ok',
+        message: data.credit ? `Background set — ${data.credit} on Pexels.` : 'Background set.'
+      });
+      setUrlDraft('');
+    } catch {
+      setUrlStatus({ kind: 'error', message: 'Could not reach the resolver.' });
+    }
   };
 
   return (
     <div className="flex flex-col gap-4 text-xs">
-      {/* Tab Navigation */}
-      <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('aspect')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all shrink-0 ${
-            activeTab === 'aspect' ? 'bg-amber-500 text-slate-950 font-semibold shadow' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Layout className="w-3.5 h-3.5" />
-          <span>Format</span>
-        </button>
+      {/* Tab navigation.
 
-        <button
-          onClick={() => setActiveTab('background')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all shrink-0 ${
-            activeTab === 'background' ? 'bg-amber-500 text-slate-950 font-semibold shadow' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <ImageIcon className="w-3.5 h-3.5" />
-          <span>Background</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('font')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all shrink-0 ${
-            activeTab === 'font' ? 'bg-amber-500 text-slate-950 font-semibold shadow' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Type className="w-3.5 h-3.5" />
-          <span>Typography</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('card')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all shrink-0 ${
-            activeTab === 'card' ? 'bg-amber-500 text-slate-950 font-semibold shadow' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5" />
-          <span>Card & FX</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('watermark')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all shrink-0 ${
-            activeTab === 'watermark' ? 'bg-amber-500 text-slate-950 font-semibold shadow' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Branding</span>
-        </button>
+          Format, Typography and Branding used to be three tabs of their own,
+          which made five -- more than fits across a 340px column, so the strip
+          scrolled sideways and the last two tabs were invisible until you
+          found that out. They are all "how the frame is laid out and lettered"
+          and now share one tab with headings inside it. Three fit. */}
+      <div className="grid grid-cols-3 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+        {([
+          ['design', 'Layout & Text', Type],
+          ['background', 'Background', ImageIcon],
+          ['card', 'Card & FX', Sliders]
+        ] as const).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            aria-current={activeTab === id ? 'true' : undefined}
+            className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px] font-medium transition-all min-w-0 ${
+              activeTab === id ? 'bg-amber-500 text-slate-950 font-semibold shadow' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Tab 1: Aspect Ratio */}
-      {activeTab === 'aspect' && (
+      {/* Layout & Text, section 1: format */}
+      {activeTab === 'design' && (
         <div className="flex flex-col gap-3">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
+            <Layout className="w-3.5 h-3.5 text-amber-400" />
+            Format
+          </h3>
           <label className="font-semibold text-slate-200 text-sm">Select Video Aspect Ratio:</label>
           <div className="grid grid-cols-2 gap-2.5">
             {ASPECT_RATIOS.map((ar) => (
@@ -145,7 +173,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         </div>
       )}
 
-      {/* Tab 2: Background Selection */}
+      {/* Background */}
       {activeTab === 'background' && (
         <div className="flex flex-col gap-4">
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
@@ -202,7 +230,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             <label className="font-semibold text-slate-200 text-sm block mb-2">
               {(config.bgMode || 'single') === 'single' ? 'Preset Video Loop Backgrounds:' : 'Pick your backgrounds:'}
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+            {/* No inner scroller. Capping this at 224px put a second scrollbar
+                inside a panel that was already scrolling, and showed four
+                thumbnails above a screen of empty space. */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {BACKGROUND_VIDEOS.map((bg) => (
                 <button
                   key={bg.id}
@@ -263,7 +294,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               ))}
             </div>
 
-            <div className="text-center">
+            <div className="text-center mt-2">
               <a
                 href="https://www.pexels.com/search/videos/mosque%20night/"
                 target="_blank"
@@ -273,36 +304,53 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Browse free stock videos on Pexels</span>
               </a>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Copy the page link from the address bar and paste it below.
+              </p>
             </div>
           </div>
 
-          {/* Paste Video URL */}
+          {/* Paste a link -- file or Pexels page */}
           <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
-            <label className="font-semibold text-slate-200 block mb-1.5">Paste Custom Video or Image URL:</label>
+            <label htmlFor="bg-url" className="font-semibold text-slate-200 block mb-1.5">Paste a video or image link:</label>
             <div className="flex gap-2">
               <input
+                id="bg-url"
                 type="text"
-                placeholder="https://example.com/video.mp4"
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                value={urlDraft}
+                onChange={e => { setUrlDraft(e.target.value); setUrlStatus(null); }}
+                placeholder="A .mp4 link, or a Pexels page link"
+                className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleApplyUrl((e.target as HTMLInputElement).value);
-                    (e.target as HTMLInputElement).value = '';
-                  }
+                  if (e.key === 'Enter') handleApplyUrl(urlDraft);
                 }}
               />
               <button
-                onClick={(e) => {
-                  const input = (e.currentTarget as HTMLButtonElement).parentElement?.querySelector('input') as HTMLInputElement | null;
-                  const url = input?.value || '';
-                  handleApplyUrl(url);
-                  if (input) input.value = '';
-                }}
-                className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold rounded-lg text-xs transition-colors shrink-0"
+                onClick={() => handleApplyUrl(urlDraft)}
+                disabled={urlStatus?.kind === 'busy'}
+                className="px-3 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold rounded-lg text-xs transition-colors shrink-0"
               >
                 Apply
               </button>
             </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              A Pexels page link from the address bar works here — it is looked up and turned into the
+              video file for you.
+            </p>
+            {urlStatus && (
+              <p
+                role="status"
+                className={`text-[11px] mt-1.5 rounded-md p-2 border ${
+                  urlStatus.kind === 'error'
+                    ? 'text-red-300 bg-red-500/10 border-red-500/25'
+                    : urlStatus.kind === 'ok'
+                      ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
+                      : 'text-slate-300 bg-slate-800/60 border-slate-700'
+                }`}
+              >
+                {urlStatus.message}
+              </p>
+            )}
           </div>
 
           {/* Custom Upload */}
@@ -357,9 +405,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         </div>
       )}
 
-      {/* Tab 3: Typography */}
-      {activeTab === 'font' && (
+      {/* Layout & Text, section 2: typography and colour */}
+      {activeTab === 'design' && (
         <div className="flex flex-col gap-3">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
+            <Type className="w-3.5 h-3.5 text-amber-400" />
+            Typography
+          </h3>
           <div>
             <label className="font-semibold text-slate-200 text-sm block mb-1.5">Arabic Calligraphy Font:</label>
             <div className="grid grid-cols-2 gap-2">
@@ -401,21 +453,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
             <div>
               <div className="flex justify-between text-slate-300 mb-1">
-                <span>Transliteration Font Size:</span>
-                <span className="font-mono text-amber-400">{config.transliterationFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={16}
-                max={52}
-                value={config.transliterationFontSize}
-                onChange={(e) => updateConfig('transliterationFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
                 <span>Translation Font Size:</span>
                 <span className="font-mono text-amber-400">{config.translationFontSize}px</span>
               </div>
@@ -445,48 +482,47 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
           </div>
 
-          {/* Colors */}
+          {/* Colours.
+
+              Three native `<input type="color">` used to sit here; on a
+              multi-monitor setup the OS opened its dialog on another screen
+              entirely. `ColorField` keeps the picker in the panel.
+
+              "Accent Gold" was also the wrong name twice over: it is not
+              necessarily gold, and it was never clear what it painted. It is
+              named for its job now, and the card border -- which was hardcoded
+              amber and stayed gold no matter what this was set to -- follows
+              it like everything else in the list. */}
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <label className="font-semibold text-slate-200 block mb-2 flex items-center gap-1.5">
+            <label className="font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5 text-amber-400" />
-              <span>Color Themes:</span>
+              <span>Colours:</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <span className="text-[11px] text-slate-400 block mb-1">Arabic Text</span>
-                <input
-                  type="color"
-                  value={config.textColor}
-                  onChange={(e) => updateConfig('textColor', e.target.value)}
-                  className="w-full h-8 rounded bg-slate-950 border border-slate-700 cursor-pointer"
-                />
-              </div>
-
-              <div>
-                <span className="text-[11px] text-slate-400 block mb-1">Accent Gold</span>
-                <input
-                  type="color"
-                  value={config.accentColor}
-                  onChange={(e) => updateConfig('accentColor', e.target.value)}
-                  className="w-full h-8 rounded bg-slate-950 border border-slate-700 cursor-pointer"
-                />
-              </div>
-
-              <div>
-                <span className="text-[11px] text-slate-400 block mb-1">Translation</span>
-                <input
-                  type="color"
-                  value={config.translationColor}
-                  onChange={(e) => updateConfig('translationColor', e.target.value)}
-                  className="w-full h-8 rounded bg-slate-950 border border-slate-700 cursor-pointer"
-                />
-              </div>
+            <div className="flex flex-col gap-2">
+              <ColorField
+                label="Arabic text"
+                description="The ayah itself."
+                value={config.textColor}
+                onChange={hex => updateConfig('textColor', hex)}
+              />
+              <ColorField
+                label="Accent"
+                description="Surah badge, ayah number, the divider, the visualiser bars and the card border."
+                value={config.accentColor}
+                onChange={hex => updateConfig('accentColor', hex)}
+              />
+              <ColorField
+                label="Translation text"
+                description="The English line under the Arabic."
+                value={config.translationColor}
+                onChange={hex => updateConfig('translationColor', hex)}
+              />
             </div>
           </div>
         </div>
       )}
 
-      {/* Tab 4: Card & FX */}
+      {/* Card & FX */}
       {activeTab === 'card' && (
         <div className="flex flex-col gap-3">
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
@@ -545,7 +581,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   onChange={(e) => updateConfig('cardBorder', e.target.checked)}
                   className="rounded accent-amber-500"
                 />
-                <span>Gold Border</span>
+                <span>Card border</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer text-slate-300">
@@ -581,16 +617,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               <label className="flex items-center gap-2 cursor-pointer text-slate-300">
                 <input
                   type="checkbox"
-                  checked={config.showTransliteration}
-                  onChange={(e) => updateConfig('showTransliteration', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>Transliteration</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
                   checked={config.showTranslation}
                   onChange={(e) => updateConfig('showTranslation', e.target.checked)}
                   className="rounded accent-amber-500"
@@ -603,9 +629,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         </div>
       )}
 
-      {/* Tab 5: Branding */}
-      {activeTab === 'watermark' && (
+      {/* Layout & Text, section 3: branding */}
+      {activeTab === 'design' && (
         <div className="flex flex-col gap-3">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+            Branding
+          </h3>
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
             <div>
               <label className="font-semibold text-slate-200 block mb-1">Watermark / Social Handle:</label>

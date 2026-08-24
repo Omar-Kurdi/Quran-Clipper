@@ -296,8 +296,6 @@ export async function runForcedAlignMatch(params: {
       endTime: segment.end,
       confidence: Math.max(0, Math.min(1, segment.score)),
       displayTextUthmani: recited.map(word => word.arabic).join(' '),
-      // Transliteration is per-word by nature, so slicing it reads correctly.
-      displayTransliteration: recited.map(word => word.transliteration).filter(Boolean).join(' '),
       // Translation is NOT. The corpus's per-word glosses are grammatical
       // fragments ("(is) with Allah", "even though") that do not compose into
       // a sentence -- concatenating the slice produced unreadable English.
