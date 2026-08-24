@@ -54,8 +54,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   (repeatably, so a re-export matches the preview). Every selected clip is preloaded in its own
   element, so switching never stalls the render — which does mean each one decodes concurrently,
   so a handful is kinder to the export than all of them.
-- Manual Tap-To-Sync editor as an alternative or a corrective: tap SPACEBAR to mark boundaries,
-  nudge durations (changes cascade to keep the timeline contiguous), and hide individual words.
+- **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
+  waveform of the recitation. Drag an edge to retime it, or tap SPACEBAR at each boundary while
+  the audio plays. Changes cascade so the timeline stays contiguous.
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
   ruler show exactly where you are, zoom (up to 16×) resolves the waveform for fine cuts, and
   start/end are entered as timecodes (`3:31.7`). Drag the handles, or park the playhead and
@@ -259,38 +260,40 @@ correct range from a wrong one — [docs/ALIGNMENT.md](docs/ALIGNMENT.md) has th
 
 ## Using the studio
 
-The sidebar has three tabs.
+The studio is one screen: **Source** on the left, the **preview** in the middle, the
+**inspector** on the right, and the **timeline** running the full width beneath them. Nothing is
+hidden behind a step — you can change the text, the timing and the styling in any order, which is
+how the work actually goes.
 
-**1 — Quran & Reciter**
-1. Choose a reciter, surah, and ayah range, then **Load Ayahs & Audio Data**.
-2. Or upload your own recitation — audio **or video** — and use **AI Auto-match**
-   (or **Manual Match**). For a video, its audio is used for timing and a checkbox offers its
-   footage as the background, synced to playback.
-   - With **Forced Align**, the sidecar tries to detect the passage itself. If its backend
-     can't do that (CPU-only setups), it falls back to the range selected above — so set it
-     correctly first. The button's help text tells you which mode is active.
-   - With **Gemini + Align**, Gemini picks the range; the selection above is only a fallback.
-   - **Trim / Crop Audio** is available the moment a file is uploaded, from this panel *and*
-     from the **Trim Audio** button in the top toolbar — so you can shave a second off the end
-     after matching, styling, or even after a first export without leaving the step you are on.
-     It adjusts existing segment times for you, so timeline edits survive a re-trim.
-     Click the waveform to move the playhead, *Play* to audition from it, and zoom in when a
-     cut needs to land between two words. Start and end accept `m:ss.s`, `h:mm:ss.s`, or plain
-     seconds; an unparseable entry reverts instead of applying.
+**Source — what you are making**
+1. Choose a reciter, surah and ayah range, then **Load ayahs & audio**.
+2. Or upload your own recitation — audio **or video**. For a video, its audio drives the timing
+   and a checkbox offers the footage as the background, synced to playback.
+   - **Most accurate** detects the passage from the audio and times every word locally.
+   - **Best for unknown passages** identifies it in the cloud, then times it on your machine.
+   - **No setup** works with nothing installed, but the timing is estimated rather than measured.
+   - Options that need something you do not have say so, and say what to do about it.
+   - **Trim audio** is in the top toolbar and available at any point — before matching, after
+     styling, even after a first export. Existing segment times are adjusted for you, so your
+     timeline edits survive a re-trim.
 
-**2 — Tap-To-Sync**
-3. Press Play and tap SPACEBAR at the end of each ayah to mark boundaries.
-4. Adjust with sliders, nudge durations by ±0.2 s, and hide individual words with the chips.
-5. Review the match confidence and reassign ayah numbers if needed.
+**Timeline — when each ayah happens**
+3. Each ayah is a block whose width is its real duration, drawn over the waveform of the audio.
+4. Press <kbd>SPACE</kbd> to play. Tap <kbd>SPACE</kbd> again at the end of each ayah to set its
+   boundary and move to the next one — the recitation keeps playing while you do.
+5. Drag either edge of a block to adjust it. Moving an end pushes the following ayahs along so
+   the timeline stays contiguous.
+6. Click a block to select it. Zoom in when a boundary needs to land between two words.
 
-**3 — Styling & FX**
-6. Pick an aspect ratio and a background.
-7. Configure fonts, colours, shadows, card opacity, badge, and watermark.
+**Inspector — what each ayah says**
+7. **Ayah** holds the text, the translation, the ayah number, and a chip per word — tap a word to
+   hide it from the video. Fine timing nudges (±0.2 s) are here too.
+8. **Style** holds the aspect ratio, background, typography, card and watermark.
 
 Then save the project and export.
 
-> Built-in reciter timings are estimates. Use Tap-To-Sync or AI matching for accuracy.
-> AI matching applies to uploaded audio only.
+> Built-in reciter timings are estimates. Set boundaries yourself on the timeline, or use AI
+> matching, for accuracy. AI matching applies to uploaded audio only.
 
 ---
 
@@ -341,8 +344,9 @@ curl -s -X POST http://127.0.0.1:8000/align \
 src/app/                     Next.js pages and API routes
   api/audio/match/           Matcher endpoint and provider dispatch
   video-creator/             The studio page
-src/components/              VideoCanvas, TimelineSyncEditor, StyleConfigPanel,
+src/components/              VideoCanvas, Timeline, Inspector, StyleConfigPanel,
                              GpuExportModal, SavedProjectsDrawer, AudioTrimModal
+                             Dialog, Button, Status, OverflowMenu, PaletteSwitcher
 src/db/                      Drizzle ORM connection and schema
 src/lib/
   quranData.ts               Surahs, reciters, backgrounds, fonts, sample data
@@ -356,6 +360,8 @@ src/lib/
   geminiMatcher.ts           Gemini provider
   asrAligner.ts              Local ASR provider
   audioTrim.ts               In-browser decode/slice/re-encode for the trim editor
+  waveform.ts                Cached peak data for the timeline's waveform track
+  verseEdits.ts              Pure timeline edits shared by the timeline and inspector
 asr-service/                 Python sidecar
   app/align.py               CTC forced alignment, phrase segmentation, repeat detection
   app/asr.py                 Free-decode backends (wav2vec2 / nemo / whisper)
@@ -481,7 +487,7 @@ cd asr-service && hash -r && ./run.sh
 The sidecar prints which interpreter it is running as at startup when this happens, and
 `/health` reports `alignReady: false` with the reason.
 
-**The detected surah doesn't appear in Tap-To-Sync**
+**The detected surah doesn't appear on the timeline**
 The match failed, so nothing was updated and the studio kept your manual selection. Check the
 status banner under the upload panel for the error — most often it is the backend problem
 above.
