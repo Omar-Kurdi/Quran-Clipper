@@ -13,6 +13,7 @@ import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
 import { PaletteSwitcher } from '@/components/PaletteSwitcher';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
+import { EmptyStep } from '@/components/EmptyStep';
 import { trimTimeline } from '@/lib/matchTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -94,6 +95,13 @@ export default function VideoCreatorPage() {
   const [surahNameEnglish, setSurahNameEnglish] = useState<string>('Al-Fatihah');
   const [audioUrl, setAudioUrl] = useState<string>('https://server11.mp3quran.net/download/sds/001.mp3');
   const [verses, setVerses] = useState<VerseData[]>(SAMPLE_PROJECTS[0].verses);
+  /**
+   * The studio opens with Al-Fatihah already in the timeline so the preview is
+   * not blank on a first visit. That is useful, but it is indistinguishable
+   * from a project you loaded yourself -- so say which it is until you replace
+   * it. Cleared as soon as anything real arrives.
+   */
+  const [isSampleProject, setIsSampleProject] = useState<boolean>(true);
 
   // Audio Playback & Web Audio API
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
@@ -107,6 +115,7 @@ export default function VideoCreatorPage() {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [volume, setVolume] = useState<number>(0.9);
   const [isLoadingVerses, setIsLoadingVerses] = useState<boolean>(false);
+  const [loadResult, setLoadResult] = useState<{ ok: boolean; message: string; count?: number } | null>(null);
 
   // UI Tabs & Drawer
   const [sidebarTab, setSidebarTab] = useState<'quran' | 'timings' | 'style'>('quran');
@@ -177,19 +186,31 @@ export default function VideoCreatorPage() {
   // Fetch Verses on Surah / Reciter / Ayah change
   const handleLoadSurahVerses = async () => {
     setIsLoadingVerses(true);
+    setLoadResult(null);
     try {
       const res = await fetch(`/api/quran/verses?surah=${selectedSurah}&start=${ayahStart}&end=${ayahEnd}&reciter=${selectedReciter}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSurahNameArabic(data.surahNameArabic || 'الفاتحة');
-        setSurahNameEnglish(data.surahNameEnglish || 'Al-Fatihah');
-        if (!customAudioUrl) {
-          setAudioUrl(data.audioUrl);
-        }
-        setVerses(data.verses || []);
+      if (!res.ok) {
+        // A failed load used to be swallowed: `if (res.ok)` with no else and an
+        // empty catch, so a broken fetch looked exactly like a successful one.
+        setLoadResult({ ok: false, message: 'Could not load those ayahs. Check your connection and try again.' });
+        return;
       }
+      const data = await res.json();
+      setSurahNameArabic(data.surahNameArabic || 'الفاتحة');
+      setSurahNameEnglish(data.surahNameEnglish || 'Al-Fatihah');
+      if (!customAudioUrl) {
+        setAudioUrl(data.audioUrl);
+      }
+      const loaded = data.verses || [];
+      setVerses(loaded);
+      setIsSampleProject(false);
+      // The response is usually cached, so it returns faster than a frame and
+      // the spinner never paints -- leaving the click with no visible result at
+      // all, since the verses themselves appear on a different step. Confirm
+      // what arrived and point at where it went.
+      setLoadResult({ ok: true, message: `Loaded ${loaded.length} ${loaded.length === 1 ? 'ayah' : 'ayahs'}.`, count: loaded.length });
     } catch {
-      // Fallback
+      setLoadResult({ ok: false, message: 'Could not load those ayahs. Check your connection and try again.' });
     } finally {
       setIsLoadingVerses(false);
     }
@@ -371,6 +392,7 @@ export default function VideoCreatorPage() {
       }
       if (typeof data.audioDuration === 'number') setAudioDuration(data.audioDuration);
       setVerses(data.verses || verses);
+      setIsSampleProject(false);
       const providerLabel =
         data.provider === 'align'
           ? 'Forced alignment'
@@ -579,6 +601,77 @@ export default function VideoCreatorPage() {
   };
 
   /**
+   * Matching options, named by the outcome the user is choosing between.
+   *
+   * These used to be labelled with their implementations -- "Forced Align",
+   * "Gemini + Align", "Local ASR" -- and three of them reported "Sidecar
+   * unreachable", which is the vocabulary of the failing subsystem and tells
+   * someone who never installed a sidecar nothing they can act on. The real
+   * decision is only ever: how accurate do you need the timing, and will you
+   * send audio to the cloud. The implementation name is kept on hover for
+   * anyone who does want it.
+   */
+  const matchOptions = [
+    {
+      id: 'align' as const,
+      label: 'Most accurate',
+      technical: 'local forced alignment',
+      Icon: Server,
+      ready: !!providerStatus?.align.configured && providerStatus.align.alignReady !== false,
+      status: !providerStatus
+        ? 'Checking…'
+        : providerStatus.align.configured
+          ? providerStatus.align.alignReady === false
+            ? 'Helper needs restarting'
+            : 'Ready'
+          : 'Helper not running',
+      blurb:
+        'Finds the passage in the audio, then times every word against the real Quran text, so no word can be dropped or misheard. Nothing leaves your machine.',
+      fix: 'This needs the local helper app running. Start it, then reload this page.'
+    },
+    {
+      id: 'hybrid' as const,
+      label: 'Best for unknown passages',
+      technical: 'Gemini identification + local alignment',
+      Icon: Sparkles,
+      ready: !!providerStatus?.hybrid.configured,
+      status: !providerStatus
+        ? 'Checking…'
+        : providerStatus.hybrid.configured
+          ? 'Ready'
+          : providerStatus.gemini.configured
+            ? 'Helper not running'
+            : 'Needs an API key',
+      blurb:
+        'Identifies which ayahs were recited in the cloud, then times them on your machine. Your audio is sent to Google. Best when you are not sure what the recording contains.',
+      fix: 'This needs both an API key and the local helper running.'
+    },
+    {
+      id: 'gemini' as const,
+      label: 'No setup',
+      technical: 'Gemini cloud matching',
+      Icon: Sparkles,
+      ready: !!providerStatus?.gemini.configured,
+      status: !providerStatus ? 'Checking…' : providerStatus.gemini.configured ? 'Ready' : 'Needs an API key',
+      blurb:
+        'Works with nothing installed, but the timing is estimated rather than measured, so expect to correct it by hand. Your audio is sent to Google.',
+      fix: 'Add a Gemini API key to use this option.'
+    },
+    {
+      id: 'asr' as const,
+      label: 'Roughest',
+      technical: 'local transcription and search',
+      Icon: Server,
+      ready: !!providerStatus?.asr.configured,
+      status: !providerStatus ? 'Checking…' : providerStatus.asr.configured ? 'Ready' : 'Helper not running',
+      blurb:
+        'Transcribes the audio locally and searches the Quran for a match. The least reliable option; useful mainly when the others are unavailable.',
+      fix: 'This needs the local helper app running.'
+    }
+  ];
+  const selectedMatchOption = matchOptions.find(o => o.id === matchProvider) ?? matchOptions[0];
+
+  /**
    * On a phone the panel and the preview each got half the height, which
    * served neither: the panel was too short to work in and the preview -- a
    * 9:16 video, on the one device shaped for it -- overflowed its pane by
@@ -669,6 +762,7 @@ export default function VideoCreatorPage() {
     setSelectedReciter(proj.reciterId || 'sudais');
     setAudioUrl(proj.audioUrl || 'https://server11.mp3quran.net/download/sds/001.mp3');
     setVerses(proj.versesJson || []);
+    setIsSampleProject(false);
 
     setCanvasConfig({
       ...canvasConfig,
@@ -872,6 +966,16 @@ export default function VideoCreatorPage() {
 
           {/* Sidebar Content Area */}
           <div className="flex-1 overflow-y-auto p-4">
+            {isSampleProject && (
+              <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5 text-[11px] text-amber-200 flex items-start gap-2">
+                <BookOpen className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>
+                  <span className="font-semibold">This is a sample.</span> The timeline is
+                  pre-filled with Al-Fatihah so the preview isn&apos;t blank. Load a surah or
+                  upload a recitation to replace it.
+                </span>
+              </div>
+            )}
             {/* TAB 1: Quran & Audio Selection */}
             {sidebarTab === 'quran' && (
               <div className="flex flex-col gap-4 text-xs">
@@ -881,12 +985,12 @@ export default function VideoCreatorPage() {
                   <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed">
                     <li><strong>Select a reciter</strong> below (e.g. Sudais, Raad Al-Kurdi).</li>
                     <li><strong>Choose a surah and ayah range</strong> (start &amp; end).</li>
-                    <li>Click <strong>&quot;Load Ayahs &amp; Audio Data&quot;</strong> to fetch the verses and audio.</li>
-                    <li>Switch to the <strong>Tap-To-Sync</strong> tab above.</li>
+                    <li>Click <strong>&quot;Load ayahs &amp; audio&quot;</strong> to fetch the verses and audio.</li>
+                    <li>Switch to the <strong>Timing</strong> step above.</li>
                     <li>Press <strong>Play</strong> and tap <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACEBAR</kbd> at the end of each ayah to mark its boundary.</li>
                     <li>Adjust timings with the sliders, then style and export.</li>
                   </ol>
-                  <p className="text-[11px] text-slate-400 mt-2">Note: Built-in reciter timings are estimates. Use Tap-To-Sync for accurate alignment. AI auto-matching is only for <strong>uploaded</strong> custom audio files.</p>
+                  <p className="text-[11px] text-slate-400 mt-2">Note: built-in reciter timings are estimates. Use the Timing step for accurate alignment. Auto-matching only works on <strong>uploaded</strong> files.</p>
                 </div>
 
                 {/* Surah Selector */}
@@ -992,128 +1096,54 @@ export default function VideoCreatorPage() {
                   <div className="mb-3">
                     <label id="matcher-label" className="text-[11px] font-semibold text-slate-400 block mb-1.5">AI Matcher:</label>
                     <div role="radiogroup" aria-labelledby="matcher-label" className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setMatchProvider('align')}
-                        className={`py-2 px-2.5 rounded-lg border text-left flex items-center gap-1.5 transition-all ${
-                          matchProvider === 'align'
-                            ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                            : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <Server className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[11px] font-bold truncate">Forced Align</span>
-                          <span className={`block text-[11px] ${providerStatus?.align.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
-                            {!providerStatus
-                              ? 'Checking…'
-                              : providerStatus.align.configured
-                                ? 'Sidecar online'
-                                // Reachable but unable to align is a different problem from
-                                // unreachable, and has a different fix -- don't conflate them.
-                                : providerStatus.align.alignReady === false
-                                  ? 'Backend not loaded'
-                                  : 'Sidecar unreachable'}
-                          </span>
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => setMatchProvider('hybrid')}
-                        className={`py-2 px-2.5 rounded-lg border text-left flex items-center gap-1.5 transition-all ${
-                          matchProvider === 'hybrid'
-                            ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                            : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[11px] font-bold truncate">Gemini + Align</span>
-                          <span className={`block text-[11px] ${providerStatus?.hybrid.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
-                            {providerStatus
-                              ? providerStatus.hybrid.configured
-                                ? 'Key + sidecar ready'
-                                : providerStatus.gemini.configured
-                                  ? 'Sidecar unreachable'
-                                  : 'Needs API key'
-                              : 'Checking…'}
-                          </span>
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => setMatchProvider('gemini')}
-                        className={`py-2 px-2.5 rounded-lg border text-left flex items-center gap-1.5 transition-all ${
-                          matchProvider === 'gemini'
-                            ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                            : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[11px] font-bold truncate">Gemini (cloud)</span>
-                          <span className={`block text-[11px] ${providerStatus?.gemini.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
-                            {providerStatus ? (providerStatus.gemini.configured ? 'Configured' : 'Not configured') : 'Checking…'}
-                          </span>
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => setMatchProvider('asr')}
-                        className={`py-2 px-2.5 rounded-lg border text-left flex items-center gap-1.5 transition-all ${
-                          matchProvider === 'asr'
-                            ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                            : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <Server className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[11px] font-bold truncate">Local ASR</span>
-                          <span className={`block text-[11px] ${providerStatus?.asr.configured ? 'text-emerald-300' : 'text-slate-300'}`}>
-                            {providerStatus ? (providerStatus.asr.configured ? 'Sidecar online' : 'Sidecar unreachable') : 'Checking…'}
-                          </span>
-                        </span>
-                      </button>
+                      {matchOptions.map(opt => {
+                        const selected = matchProvider === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => setMatchProvider(opt.id)}
+                            title={`Uses ${opt.technical}`}
+                            className={`py-2 px-2.5 rounded-lg border text-left flex items-center gap-1.5 transition-all ${
+                              selected
+                                ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
+                                : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <opt.Icon className={`w-3.5 h-3.5 shrink-0 ${opt.ready ? 'text-emerald-400' : 'text-slate-400'}`} />
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-[11px] font-bold truncate">{opt.label}</span>
+                              <span className={`block text-[11px] ${opt.ready ? 'text-emerald-300' : 'text-slate-300'}`}>
+                                {opt.status}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                    {matchProvider === 'align' && (
-                      <>
-                        <p className="text-[11px] text-slate-400 mt-1.5">
-                          Detects the surah and ayah range from the audio itself, then times each word against the real Quran text — so no word can be dropped or misheard, and repeated phrases get their own segments. The surah and range selected below aren&apos;t used.
-                        </p>
-                        {/* Only reachable when the sidecar was deliberately started with
-                            ASR_ALIGN_BACKEND=wav2vec2. That is a misconfiguration for this
-                            provider rather than a normal mode, so it reads as a fixable
-                            problem instead of a capability description. */}
-                        {providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
-                          <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
-                            Detection is currently disabled on your sidecar (<code className="font-mono">ASR_ALIGN_BACKEND</code> is not <code className="font-mono">nemo</code>), so it will align the range selected below instead. Unset that variable and restart the sidecar to restore it.
-                          </p>
+                    <p className="text-[11px] text-slate-400 mt-1.5">{selectedMatchOption.blurb}</p>
+                    {!selectedMatchOption.ready && selectedMatchOption.fix && (
+                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                        {selectedMatchOption.fix}
+                      </p>
+                    )}
+                    {/* Kept because they are diagnostics with a fix, not descriptions:
+                        the blurb above already says what the option does. */}
+                    {matchProvider === 'align' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
+                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                        Passage detection is switched off on your helper, so it will time the surah and range selected above instead of finding them in the audio. Unset <code className="font-mono">ASR_ALIGN_BACKEND</code> and restart it to turn detection back on.
+                      </p>
+                    )}
+                    {matchProvider === 'align' && providerStatus?.align.alignReady === false && (
+                      <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
+                        <p className="font-semibold">The helper is running but could not load its alignment engine, so matching will fail.</p>
+                        <p>This is almost always the service being started by the wrong Python. Restart it from its virtualenv:</p>
+                        <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[11px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
+                        {providerStatus.align.alignError && (
+                          <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
                         )}
-                        {/* The sidecar answers /health but its align backend failed to
-                            import, so every match would fail. Say so here with the fix,
-                            rather than letting someone upload and wait for a 400. */}
-                        {providerStatus?.align.alignReady === false && (
-                          <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
-                            <p className="font-semibold">The sidecar is running but its alignment backend didn&apos;t load, so matching will fail.</p>
-                            <p>This is almost always the service being started by the wrong Python. Restart it from its virtualenv:</p>
-                            <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[11px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
-                            {providerStatus.align.alignError && (
-                              <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {matchProvider === 'hybrid' && (
-                      <p className="text-[11px] text-slate-400 mt-1.5">
-                        Gemini identifies which ayahs were recited — what it&apos;s genuinely good at — then the local aligner times each word against the real Quran text. Audio is sent to Google. If Gemini can&apos;t identify the passage, the surah and range selected below are used instead.
-                      </p>
-                    )}
-                    {matchProvider === 'gemini' && (
-                      <p className="text-[11px] text-slate-400 mt-1.5">
-                        Gemini both identifies and times the recitation in one pass. Zero setup, but timings are estimates rather than measurements — for accurate timing use Gemini + Align, which keeps the identification and fixes the timing.
-                      </p>
-                    )}
-                    {matchProvider === 'asr' && (
-                      <p className="text-[11px] text-slate-400 mt-1.5">
-                        Local ASR detects the surah/ayah itself from the audio — the surah and range selected below aren&apos;t used to restrict matching.
-                      </p>
+                      </div>
                     )}
                   </div>
                   
@@ -1167,7 +1197,7 @@ export default function VideoCreatorPage() {
                         className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
                       >
                         <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Trim / Crop Audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
+                        <span>Trim audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
                       </button>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -1222,31 +1252,74 @@ export default function VideoCreatorPage() {
                   disabled={isLoadingVerses}
                   className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
                 >
-                  <BookOpen className="w-4 h-4" />
-                  <span>{isLoadingVerses ? 'Fetching Verses...' : 'Load Ayahs & Audio Data'}</span>
+                  {isLoadingVerses ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
+                  <span>{isLoadingVerses ? 'Loading ayahs…' : 'Load ayahs & audio'}</span>
                 </button>
+
+                {loadResult && (
+                  <div
+                    role="status"
+                    className={`mt-2 rounded-lg border p-2.5 text-[11px] ${
+                      loadResult.ok
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                        : 'bg-red-500/10 border-red-500/30 text-red-200'
+                    }`}
+                  >
+                    <span className="font-semibold">{loadResult.message}</span>
+                    {loadResult.ok && (
+                      <button
+                        onClick={() => setSidebarTab('timings')}
+                        className="ml-1.5 underline underline-offset-2 hover:text-emerald-100"
+                      >
+                        Go to Timing
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* TAB 2: Timings & Tap-To-Sync */}
+            {/* Steps 2 and 3 used to render their full interface with nothing
+                loaded -- offering to mark ayah boundaries that did not exist and
+                to style a video with no verses in it. Numbering promises a
+                sequence, so the sequence has to hold. */}
             {sidebarTab === 'timings' && (
-              <TimelineSyncEditor
-                verses={verses}
-                onChangeVerses={setVerses}
-                currentTime={currentTime}
-                isPlaying={isPlaying}
-                audioDuration={audioDuration}
-                onSeek={handleSeek}
-                onPlayPauseToggle={togglePlayPause}
-              />
+              verses.length === 0 ? (
+                <EmptyStep
+                  icon={<Clock className="w-6 h-6" />}
+                  title="No ayahs to time yet"
+                  body="Timing lines up each ayah with the recitation, so there has to be a recitation first. Load a surah and its audio, then come back."
+                  actionLabel="Go to Text & Voice"
+                  onAction={() => setSidebarTab('quran')}
+                />
+              ) : (
+                <TimelineSyncEditor
+                  verses={verses}
+                  onChangeVerses={setVerses}
+                  currentTime={currentTime}
+                  isPlaying={isPlaying}
+                  audioDuration={audioDuration}
+                  onSeek={handleSeek}
+                  onPlayPauseToggle={togglePlayPause}
+                />
+              )
             )}
 
-            {/* TAB 3: Visual Styling & FX */}
             {sidebarTab === 'style' && (
-              <StyleConfigPanel
-                config={canvasConfig}
-                onChangeConfig={setCanvasConfig}
-              />
+              verses.length === 0 ? (
+                <EmptyStep
+                  icon={<Sliders className="w-6 h-6" />}
+                  title="Nothing to style yet"
+                  body="These controls change how the ayahs look on screen. Load a surah first and the preview will show your changes as you make them."
+                  actionLabel="Go to Text & Voice"
+                  onAction={() => setSidebarTab('quran')}
+                />
+              ) : (
+                <StyleConfigPanel
+                  config={canvasConfig}
+                  onChangeConfig={setCanvasConfig}
+                />
+              )
             )}
           </div>
         </aside>

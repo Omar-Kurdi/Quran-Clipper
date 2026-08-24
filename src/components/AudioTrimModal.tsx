@@ -319,7 +319,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
             <Scissors className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-100">Trim / Crop Audio</h3>
+            <h3 className="text-lg font-bold text-slate-100">Trim audio</h3>
             <p className="text-xs text-slate-400">
               Drag the ruler to move the playhead; drag the amber handles to set what to keep.
             </p>
