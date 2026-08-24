@@ -299,7 +299,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
       <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-emerald-500 to-amber-500"></div>
+        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-gold via-lapis to-gold"></div>
 
         <button
           onClick={onCancel}
@@ -333,7 +333,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
           <>
             <div className="flex items-center justify-between mb-2">
               <div className="text-[11px] font-mono text-slate-400">
-                Playhead <span className="text-emerald-400">{formatDuration(playhead)}</span>
+                Playhead <span className="text-lapis-bright">{formatDuration(playhead)}</span>
                 <span className="text-slate-600"> / {formatDuration(duration)}</span>
               </div>
               <div className="flex items-center gap-1">
@@ -408,7 +408,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                     playhead, the waveform below belongs to the trim handles, so
                     a playhead parked next to a handle can't steal its drag. */}
                 <div
-                  className="absolute inset-y-0 -ml-px w-0.5 bg-emerald-400 pointer-events-none shadow-[0_0_6px_rgba(52,211,153,0.7)]"
+                  className="absolute inset-y-0 -ml-px w-0.5 bg-lapis-bright pointer-events-none shadow-[0_0_7px_rgba(109,149,224,0.8)]"
                   style={{ left: `${playheadPct}%` }}
                 />
                 <div
@@ -421,7 +421,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                   className="absolute top-0 h-5 -ml-2.5 w-5 cursor-ew-resize flex justify-center items-start pt-0.5 touch-none group"
                   style={{ left: `${playheadPct}%` }}
                 >
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 group-hover:bg-emerald-300 ring-2 ring-slate-950/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-lapis-bright group-hover:bg-lapis ring-2 ring-slate-950/60" />
                 </div>
 
                 {/* Trim handles -- `top-5` keeps them clear of the ruler (h-5). */}
@@ -586,7 +586,7 @@ const Waveform = React.memo(function Waveform({ peaks, width }: { peaks: Float32
 
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#fbbf24';
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--p-accent').trim() || '#b8c7dc';
     const barWidth = width / peaks.length;
     const mid = height / 2;
     for (let i = 0; i < peaks.length; i++) {

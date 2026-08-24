@@ -1,6 +1,152 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Palettes.
+
+   Each block sets the same eleven variables and nothing else, so adding a
+   scheme means adding one block -- no utility classes change. The active one is
+   chosen by `data-palette` on <html>, written by the picker in the studio
+   header and restored before first paint by the inline script in layout.tsx.
+
+   Nocturne is the default and is bound to bare `:root` as well, so the app
+   still paints correctly if the attribute is ever missing.
+   --------------------------------------------------------------------------- */
+:root,
+[data-palette="nocturne"] {
+  --p-bg: #0a0f1a;
+  --p-surface: #121a2a;
+  --p-edge: #1f2b40;
+  --p-muted: #8497b0;
+  --p-text: #e8eef7;
+  --p-accent: #b8c7dc;
+  --p-accent-bright: #d6e0ee;
+  --p-live: #56b6c2;
+  --p-live-bright: #7fd3dd;
+  --p-success: #5fb59b;
+  --p-error: #e06c75;
+}
+
+[data-palette="slate"] {
+  --p-bg: #020617;
+  --p-surface: #0f172a;
+  --p-edge: #1e293b;
+  --p-muted: #94a3b8;
+  --p-text: #f1f5f9;
+  --p-accent: #f59e0b;
+  --p-accent-bright: #fbbf24;
+  --p-live: #34d399;
+  --p-live-bright: #6ee7b7;
+  --p-success: #34d399;
+  --p-error: #ef4444;
+}
+
+[data-palette="mushaf"] {
+  --p-bg: #12101a;
+  --p-surface: #1a1724;
+  --p-edge: #262233;
+  --p-muted: #948aa8;
+  --p-text: #ede3d0;
+  --p-accent: #c9a227;
+  --p-accent-bright: #e0bd47;
+  --p-live: #3d6bc4;
+  --p-live-bright: #6d95e0;
+  --p-success: #4e8b6b;
+  --p-error: #a8402f;
+}
+
+[data-palette="graphite"] {
+  --p-bg: #131315;
+  --p-surface: #1c1c1f;
+  --p-edge: #2c2c31;
+  --p-muted: #8c8c94;
+  --p-text: #e9e9ec;
+  --p-accent: #b9975b;
+  --p-accent-bright: #d4b478;
+  --p-live: #6f9bc4;
+  --p-live-bright: #92b8d9;
+  --p-success: #789e82;
+  --p-error: #b8635a;
+}
+
+[data-palette="verdigris"] {
+  --p-bg: #0d1412;
+  --p-surface: #14201c;
+  --p-edge: #1f2f28;
+  --p-muted: #8ba394;
+  --p-text: #ecf0e9;
+  --p-accent: #b8944d;
+  --p-accent-bright: #d4af6a;
+  --p-live: #5eb39b;
+  --p-live-bright: #82ccb7;
+  --p-success: #5eb39b;
+  --p-error: #c4614e;
+}
+
+/* ---------------------------------------------------------------------------
+   Tailwind ramp, mapped onto whichever palette is live.
+
+   MIGRATION SHIM, stated plainly: the slate/amber/emerald ramps are REMAPPED,
+   not renamed. `slate-900` resolves to the active palette's raised surface and
+   `amber-500` to its accent. The names lie. They are kept because those class
+   names are spread across hundreds of call sites in six files, and remapping
+   the ramp re-skins all of them at once. Read `slate` as "surface", `amber` as
+   "accent", `emerald` as "success", `blue` as "live", `red` as "error".
+
+   Every value is a var(), so switching palettes is a single attribute write
+   rather than a rebuild.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-ink: var(--p-bg);
+  --color-ink-raised: var(--p-surface);
+  --color-ink-edge: var(--p-edge);
+  --color-parchment: var(--p-text);
+  --color-gold: var(--p-accent);
+  --color-gold-bright: var(--p-accent-bright);
+  --color-lapis: var(--p-live);
+  --color-lapis-bright: var(--p-live-bright);
+
+  --color-slate-950: var(--p-bg);
+  --color-slate-900: var(--p-surface);
+  --color-slate-800: var(--p-edge);
+  --color-slate-700: color-mix(in srgb, var(--p-edge) 72%, var(--p-muted));
+  --color-slate-600: color-mix(in srgb, var(--p-edge) 42%, var(--p-muted));
+  --color-slate-500: color-mix(in srgb, var(--p-muted) 78%, var(--p-edge));
+  --color-slate-400: var(--p-muted);
+  --color-slate-300: color-mix(in srgb, var(--p-muted) 45%, var(--p-text));
+  --color-slate-200: color-mix(in srgb, var(--p-muted) 18%, var(--p-text));
+  --color-slate-100: var(--p-text);
+  --color-slate-50: color-mix(in srgb, var(--p-text) 82%, white);
+
+  --color-amber-200: color-mix(in srgb, var(--p-accent-bright) 55%, white);
+  --color-amber-300: color-mix(in srgb, var(--p-accent-bright) 78%, white);
+  --color-amber-400: var(--p-accent-bright);
+  --color-amber-500: var(--p-accent);
+  --color-amber-600: color-mix(in srgb, var(--p-accent) 82%, black);
+  --color-amber-700: color-mix(in srgb, var(--p-accent) 64%, black);
+
+  --color-emerald-200: color-mix(in srgb, var(--p-success) 50%, white);
+  --color-emerald-300: color-mix(in srgb, var(--p-success) 74%, white);
+  --color-emerald-400: color-mix(in srgb, var(--p-success) 90%, white);
+  --color-emerald-500: var(--p-success);
+  --color-emerald-600: color-mix(in srgb, var(--p-success) 80%, black);
+
+  --color-blue-400: var(--p-live-bright);
+  --color-blue-500: var(--p-live);
+
+  --color-red-300: color-mix(in srgb, var(--p-error) 62%, white);
+  --color-red-400: color-mix(in srgb, var(--p-error) 84%, white);
+  --color-red-500: var(--p-error);
+
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+}
+
 @layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+  }
   .font-amiri {
     font-family: 'Amiri', 'Traditional Arabic', 'Uthmanic', serif;
   }
@@ -24,14 +170,14 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(18, 16, 26, 0.6);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.8);
+  background: rgba(54, 47, 71, 0.8);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(245, 158, 11, 0.6);
+  background: rgba(201, 162, 39, 0.7);
 }
 
 @keyframes pulse-subtle {
@@ -41,4 +187,96 @@
 
 .animate-pulse-subtle {
   animation: pulse-subtle 3s infinite ease-in-out;
+}
+
+/* ---------------------------------------------------------------------------
+   The jadwal -- the ruled frame that encloses the text block of a mushaf page.
+
+   In a manuscript this is not ornament: it declares "the revealed text sits
+   here", and is drawn as several distinct rules, conventionally gold against
+   ink against lapis. It is used in exactly one place in this studio -- around
+   the canvas preview -- because the preview IS the text block being made.
+   Using it anywhere else would turn a statement into decoration.
+
+   It is studio chrome and deliberately does not appear in the exported video.
+   --------------------------------------------------------------------------- */
+.jadwal {
+  padding: 7px;
+  background:
+    linear-gradient(var(--color-ink), var(--color-ink)) padding-box,
+    linear-gradient(160deg, #7d6318 0%, var(--color-gold) 22%, #f0dc9a 46%, var(--color-gold) 70%, #6b5415 100%) border-box;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+}
+
+/* The inner lapis rule, held off the gold by a band of ink. */
+.jadwal-inner {
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--color-lapis) 62%, transparent);
+  border-radius: 1px;
+  background: var(--color-ink);
+}
+
+/* Corner illumination. Hairline only -- at studio scale a full rosette turns
+   to mud, and the frame already carries the idea. */
+.jadwal::before,
+.jadwal::after {
+  content: '';
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-color: var(--color-gold-bright);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.jadwal::before {
+  top: -1px; left: -1px;
+  border-top: 2px solid; border-left: 2px solid;
+}
+.jadwal::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 2px solid; border-right: 2px solid;
+}
+
+/* Ayah-marker step numeral. The three steps are a real sequence, so a numeral
+   earns its place; drawing it as a rosette borrows the mushaf's own device for
+   marking position in a recitation. */
+.ayah-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-gold);
+  border: 1px solid color-mix(in srgb, var(--color-gold) 45%, transparent);
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+.ayah-marker::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 1px solid color-mix(in srgb, var(--color-gold) 22%, transparent);
+  border-radius: 50%;
+}
+.ayah-marker-active {
+  color: var(--color-ink);
+  background: var(--color-gold);
+  border-color: var(--color-gold-bright);
+}
+.ayah-marker-active::before { border-color: color-mix(in srgb, var(--color-ink) 30%, transparent); }
+
+/* Reduced motion is a floor, not a feature. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -11,6 +11,7 @@ import { TimelineSyncEditor } from '@/components/TimelineSyncEditor';
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
+import { PaletteSwitcher } from '@/components/PaletteSwitcher';
 import { trimTimeline } from '@/lib/matchTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -128,8 +129,8 @@ export default function VideoCreatorPage() {
     ayahNumberFontSize: 34,
     textAlignment: 'center',
     textColor: '#ffffff',
-    accentColor: '#fbbf24',
-    translationColor: '#e2e8f0',
+    accentColor: '#b8c7dc',
+    translationColor: '#d5dfec',
     textShadow: true,
     showTransliteration: false,
     showTranslation: true,
@@ -643,8 +644,8 @@ export default function VideoCreatorPage() {
       translationFontSize: proj.translationFontSize || 20,
       ayahNumberFontSize: proj.ayahNumberFontSize || 34,
       textColor: proj.textColor || '#ffffff',
-      accentColor: proj.accentColor || '#fbbf24',
-      translationColor: proj.translationColor || '#e2e8f0',
+      accentColor: proj.accentColor || '#b8c7dc',
+      translationColor: proj.translationColor || '#d5dfec',
       textAlignment: proj.textAlignment || 'center',
       textShadow: proj.textShadow ?? true,
       showTransliteration: proj.showTransliteration ?? false,
@@ -698,28 +699,27 @@ export default function VideoCreatorPage() {
       {/* Top Navbar */}
       <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400 group-hover:scale-105 transition-transform border border-amber-500/30">
-              <Video className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="font-bold text-slate-100 text-sm tracking-tight block leading-tight">
-                Quran Clip Helper <span className="text-amber-400 font-mono text-xs">Studio</span>
-              </span>
-              <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-                <Cpu className="w-3 h-3 inline animate-pulse" /> Rendering locally
-              </span>
-            </div>
+          <Link href="/" className="flex items-baseline gap-2 group">
+            <span className="font-display text-xl leading-none text-parchment group-hover:text-gold-bright transition-colors">
+              Quran Clip
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-gold">Studio</span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-2 ml-4 pl-4 border-l border-slate-800 text-xs text-slate-400 font-medium">
-            <span>Project:</span>
-            <span className="text-slate-200 font-semibold">{surahNameEnglish} ({selectedSurah}:{ayahStart}-{ayahEnd})</span>
+          {/* The reference, set the way a mushaf cites itself: surah name, then
+              the ayah span. Mono keeps the numerals aligned as they change. */}
+          <div className="hidden md:flex items-baseline gap-2.5 ml-3 pl-4 border-l border-slate-800">
+            <span className="font-display text-base text-parchment/90">{surahNameEnglish}</span>
+            <span className="font-mono text-[11px] text-gold tracking-wider">
+              {selectedSurah}:{ayahStart}&ndash;{ayahEnd}
+            </span>
           </div>
         </div>
 
         {/* Action Controls Header */}
         <div className="flex items-center gap-2">
+          <PaletteSwitcher />
+
           <button
             onClick={() => setIsProjectsDrawerOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
@@ -761,10 +761,10 @@ export default function VideoCreatorPage() {
 
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-slate-950 font-bold text-xs rounded-lg shadow-md transition-all active:scale-95"
+            className="flex items-center gap-2 px-4 py-1.5 bg-gold hover:bg-gold-bright text-ink font-semibold text-xs rounded-md shadow-[0_2px_12px_-2px_rgba(201,162,39,0.5)] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-bright focus-visible:ring-offset-2 focus-visible:ring-offset-ink"
           >
             <Sparkles className="w-4 h-4 fill-current" />
-            <span>Export 60 FPS GPU Video</span>
+            <span>Export video</span>
           </button>
         </div>
       </header>
@@ -773,38 +773,47 @@ export default function VideoCreatorPage() {
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Left Control Sidebar */}
         <aside className="w-full md:w-[420px] border-r border-slate-800 bg-slate-900/60 backdrop-blur-sm flex flex-col h-1/2 md:h-full shrink-0 overflow-hidden">
-          {/* Sidebar Tabs */}
-          <div className="flex items-center border-b border-slate-800 bg-slate-950/80 p-1.5">
-            <button
-              onClick={() => setSidebarTab('quran')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all ${
-                sidebarTab === 'quran' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>1. Quran & Reciter</span>
-            </button>
+          {/* Sidebar steps.
 
-            <button
-              onClick={() => setSidebarTab('timings')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all ${
-                sidebarTab === 'timings' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>2. Tap-To-Sync</span>
-            </button>
-
-            <button
-              onClick={() => setSidebarTab('style')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all ${
-                sidebarTab === 'style' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>3. Styling & FX</span>
-            </button>
-          </div>
+              These are numbered because they genuinely are a sequence: you
+              cannot sync timings before there is text and audio, and styling a
+              timeline that does not exist yet is meaningless. The numeral is
+              drawn as an ayah marker -- the mushaf's own device for marking
+              position in a recitation -- rather than a bare digit. */}
+          <nav aria-label="Studio steps" className="border-b border-slate-800 bg-ink/80">
+            <div className="flex items-stretch">
+              {([
+                ['quran', 'Text & Voice', BookOpen],
+                ['timings', 'Timing', Clock],
+                ['style', 'Setting', Sliders]
+              ] as const).map(([id, label, Icon], i) => {
+                const active = sidebarTab === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setSidebarTab(id)}
+                    aria-current={active ? 'step' : undefined}
+                    className={`group relative flex-1 flex items-center justify-center gap-2 py-3 px-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold focus-visible:ring-inset ${
+                      active ? 'text-parchment' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className={`ayah-marker ${active ? 'ayah-marker-active' : ''}`}>{i + 1}</span>
+                    <span className="flex items-center gap-1.5">
+                      <Icon className={`w-3.5 h-3.5 ${active ? 'text-gold' : 'opacity-60'}`} />
+                      <span className="text-[11px] font-semibold tracking-wide">{label}</span>
+                    </span>
+                    {/* Gold rule marks the current step, the way a manuscript
+                        rules the line it is working on. */}
+                    <span
+                      className={`absolute inset-x-0 bottom-0 h-px transition-opacity ${
+                        active ? 'bg-gold opacity-100' : 'opacity-0'
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
 
           {/* Sidebar Content Area */}
           <div className="flex-1 overflow-y-auto p-4">
@@ -1190,7 +1199,11 @@ export default function VideoCreatorPage() {
             {/* Click-to-play is scoped to the video itself, not the whole
                 preview area, so clicking the surrounding background doesn't
                 toggle playback. */}
-            <div className="relative cursor-pointer" onClick={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
+            {/* The preview sits inside a jadwal -- the ruled frame a mushaf
+                draws around its text block -- because that is exactly what the
+                preview is. Chrome only; it is not in the exported video. */}
+            <div className="jadwal relative cursor-pointer" onClick={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
+              <div className="jadwal-inner overflow-hidden">
               <VideoCanvas
                 ref={canvasRef}
                 config={canvasConfig}
@@ -1207,6 +1220,7 @@ export default function VideoCreatorPage() {
                 isPlaying={isPlaying}
                 backgroundTimeOffset={videoBgOffset}
               />
+              </div>
             </div>
           </div>
 

@@ -378,7 +378,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
       // 3. Subtle ambient particles
       ctx.save();
-      const goldAccent = config.accentColor || '#fbbf24';
+      const goldAccent = config.accentColor || '#b8c7dc';
       for (let i = 0; i < 12; i++) {
         const px = (Math.sin(frameCount * 0.02 + i * 2.1) * 0.5 + 0.5) * width;
         const py = ((frameCount * 0.15 + i * 73) % height);
