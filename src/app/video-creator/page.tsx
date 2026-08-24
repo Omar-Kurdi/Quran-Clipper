@@ -14,6 +14,7 @@ import { describeGpu } from '@/lib/gpuInfo';
 import { PaletteSwitcher } from '@/components/PaletteSwitcher';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { EmptyStep } from '@/components/EmptyStep';
+import { Button } from '@/components/Button';
 import { trimTimeline } from '@/lib/matchTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -860,34 +861,27 @@ export default function VideoCreatorPage() {
           <div className="hidden lg:flex items-center gap-2">
             <PaletteSwitcher />
 
-            <button
-              onClick={() => setIsProjectsDrawerOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
-            >
-              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-              <span>Saved Clips</span>
-            </button>
+            <Button onClick={() => setIsProjectsDrawerOpen(true)} icon={<FolderOpen className="w-3.5 h-3.5 text-amber-400" />}>
+              Saved clips
+            </Button>
 
             {/* Trimming is not a step you do once up front -- wanting to shave a
                 second off the end after matching and editing is normal, and the
                 timeline survives it. Keep it reachable from every step rather
                 than only from the upload panel back in Quran & Reciter. */}
             {customAudioFile && (
-              <button
+              <Button
                 onClick={() => setShowTrimModal(true)}
-                title="Trim / crop the uploaded audio -- your timeline edits are kept"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
+                title="Trim the uploaded audio — your timeline edits are kept"
+                icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />}
               >
-                <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                <span>Trim audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
-              </button>
+                {`Trim audio${customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}`}
+              </Button>
             )}
 
-            <button
+            <Button
               onClick={handleSaveProject}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors border border-slate-700"
-            >
-              {saveStatus?.kind === 'ok' ? (
+              icon={saveStatus?.kind === 'ok' ? (
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
               ) : saveStatus?.kind === 'error' ? (
                 <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
@@ -896,21 +890,19 @@ export default function VideoCreatorPage() {
               ) : (
                 <Save className="w-3.5 h-3.5 text-amber-400" />
               )}
-              <span className={saveStatus?.kind === 'error' ? 'text-red-300' : undefined}>{saveStatus?.text || 'Save project'}</span>
-            </button>
+              className={saveStatus?.kind === 'error' ? 'text-red-300' : undefined}
+            >
+              {saveStatus?.text || 'Save project'}
+            </Button>
           </div>
 
           <div className="lg:hidden">
             <OverflowMenu items={headerOverflowItems} />
           </div>
 
-          <button
-            onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-1.5 bg-gold hover:bg-gold-bright text-ink font-semibold text-xs rounded-md shadow-[0_2px_12px_-2px_rgba(201,162,39,0.5)] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-bright focus-visible:ring-offset-2 focus-visible:ring-offset-ink"
-          >
-            <Sparkles className="w-4 h-4 fill-current" />
-            <span>Export</span>
-          </button>
+          <Button variant="primary" size="md" onClick={() => setIsExportModalOpen(true)} icon={<Sparkles className="w-4 h-4 fill-current" />}>
+            Export
+          </Button>
         </div>
       </header>
 
