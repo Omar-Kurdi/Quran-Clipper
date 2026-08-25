@@ -41,7 +41,8 @@ export interface VideoCanvasRef {
   getCanvas: () => HTMLCanvasElement | null;
   exportVideo: (
     audioElement: HTMLAudioElement,
-    durationSec: number,
+    /** Where in the recording the clip begins and ends, in seconds. */
+    range: { start: number; end: number },
     onProgress: (progress: number, speed: string, frame: number) => void,
     onComplete: (blob: Blob, renderTimeMs: number) => void,
     targetFps?: number
@@ -655,15 +656,27 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   useImperativeHandle(ref, () => ({
     getCanvas: () => canvasRef.current,
     stopExport: () => { isExportingRef.current = false; },
+    /**
+     * Records the canvas and the audio between two points on the recording.
+     *
+     * It used to always start at 0 and run to the full length of whatever was
+     * loaded. With a built-in reciter that is the entire chapter, so a
+     * three-ayah clip from Al-Baqarah exported as eighty-seven minutes of
+     * video, nearly all of it showing an ayah nobody selected. Capture is
+     * real-time, so that was also eighty-seven minutes of waiting.
+     */
     exportVideo: (
       audioElement: HTMLAudioElement,
-      durationSec: number,
+      range: { start: number; end: number },
       onProgress: (p: number, s: string, f: number) => void,
       onComplete: (blob: Blob, ms: number) => void,
       targetFps = 60
     ) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+      const startSec = Math.max(0, range.start);
+      const endSec = Math.max(startSec + 0.1, range.end);
+      const span = endSec - startSec;
       isExportingRef.current = true;
       const exportStart = performance.now();
       const prevMuted = audioElement.muted;
@@ -707,17 +720,32 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           isExportingRef.current = false;
         };
 
-        audioElement.currentTime = 0;
+        // Both elements have to be *at* the start before recording begins.
+        // Assigning `currentTime` only requests a seek, so playing straight
+        // afterwards captures however much of the previous position the
+        // browser had not finished leaving.
+        const seekTo = (el: HTMLAudioElement, time: number) =>
+          new Promise<void>(resolve => {
+            if (Math.abs(el.currentTime - time) < 0.05) return resolve();
+            const done = () => { el.removeEventListener('seeked', done); resolve(); };
+            el.addEventListener('seeked', done, { once: true });
+            setTimeout(done, 3000);
+            try { el.currentTime = time; } catch { done(); }
+          });
+
         audioElement.muted = true;
         audioElement.volume = 0;
+        await seekTo(audioElement, startSec);
+        await seekTo(expAudio, startSec);
+        if (!isExportingRef.current) return;
+
         audioElement.play();
-        expAudio.currentTime = 0;
         expAudio.play();
         rec.start();
 
         let frames = 0;
         const iv = setInterval(() => {
-          if (!isExportingRef.current || audioElement.ended || audioElement.currentTime >= durationSec) {
+          if (!isExportingRef.current || audioElement.ended || audioElement.currentTime >= endSec) {
             clearInterval(iv);
             rec.stop();
             audioElement.pause();
@@ -728,9 +756,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
             return;
           }
           frames++;
-          const pct = Math.min(99, Math.round((audioElement.currentTime / durationSec) * 100));
+          const played = Math.max(0, audioElement.currentTime - startSec);
+          const pct = Math.min(99, Math.round((played / span) * 100));
           const elapsed = (performance.now() - exportStart) / 1000;
-          const speed = elapsed > 0 ? (audioElement.currentTime / elapsed).toFixed(1) : '1.0';
+          const speed = elapsed > 0 ? (played / elapsed).toFixed(1) : '1.0';
           onProgress(pct, `${speed}x`, frames);
         }, 1000 / targetFps);
       };

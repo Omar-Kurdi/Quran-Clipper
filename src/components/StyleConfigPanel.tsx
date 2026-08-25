@@ -114,7 +114,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-4 text-xs">
+    // `p-3` matches the Inspector tab beside it. Without it this panel's cards,
+    // sliders and section headings all sat flush against the column border,
+    // because the container in page.tsx only scrolls -- it does not pad.
+    <div className="flex flex-col gap-4 text-xs p-3">
       {/* Tab navigation.
 
           Format, Typography and Branding used to be three tabs of their own,

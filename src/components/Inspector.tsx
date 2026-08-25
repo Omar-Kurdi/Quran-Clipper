@@ -108,9 +108,11 @@ export const Inspector: React.FC<InspectorProps> = ({
         />
       </div>
 
-      {/* Both boxes open tall enough to hold a whole ayah without scrolling --
-          two rows showed about a third of one -- and both are drag-resizable.
-          The grip is easy to miss on a dark panel, so each one says so. */}
+      {/* Both boxes open at the same height -- explicitly, because `rows` counts
+          lines and the two use different type sizes, so matching row counts
+          still rendered the translation shorter than the Arabic. Both are
+          drag-resizable, and the grip is easy to miss on a dark panel, so each
+          one says so. */}
       <div>
         <label htmlFor="insp-arabic" className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2">
           <span>Arabic</span>
@@ -122,7 +124,7 @@ export const Inspector: React.FC<InspectorProps> = ({
           onChange={e => onText('textUthmani', e.target.value)}
           dir="rtl"
           rows={4}
-          className="w-full min-h-32 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-amiri leading-loose"
+          className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-amiri leading-loose"
         />
       </div>
 
@@ -136,7 +138,7 @@ export const Inspector: React.FC<InspectorProps> = ({
           value={verse.displayTranslation || verse.translation}
           onChange={e => onText('translation', e.target.value)}
           rows={5}
-          className="w-full min-h-28 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 leading-relaxed"
+          className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 leading-relaxed"
         />
       </div>
 

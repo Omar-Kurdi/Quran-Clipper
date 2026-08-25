@@ -18,6 +18,8 @@ interface GpuExportModalProps {
   ayahEnd: number;
   aspectRatio: string;
   onSaveExportRecord: (downloadUrl: string, durationSec: number, renderMs: number) => void;
+  /** Length of the clip that will be rendered -- the ayah range, not the whole file. */
+  exportSeconds: number;
 }
 
 export const GpuExportModal: React.FC<GpuExportModalProps> = ({
@@ -32,7 +34,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   ayahStart,
   ayahEnd,
   aspectRatio,
-  onSaveExportRecord
+  onSaveExportRecord,
+  exportSeconds
 }) => {
   // Report what this machine actually has rather than a hardcoded model name.
   const gpuName = useMemo(() => describeGpu(), []);
@@ -62,7 +65,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       const url = URL.createObjectURL(blob);
       setExportedBlobUrl(url);
       setRenderedMs(renderMs);
-      onSaveExportRecord(url, 45, renderMs);
+      // Was hardcoded to 45 seconds, so every saved record claimed the same
+      // length regardless of what was rendered.
+      onSaveExportRecord(url, exportSeconds, renderMs);
     });
   };
 
@@ -170,6 +175,14 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-400">Clip Title:</span>
                 <span className="font-semibold text-slate-100">{surahNameEnglish} ({surahNumber}:{ayahStart}-{ayahEnd})</span>
+              </div>
+              {/* Stated up front: capture is real-time, so this number is also
+                  roughly how long the export will take. */}
+              <div className="flex justify-between">
+                <span className="text-slate-400">Clip Length:</span>
+                <span className="font-mono text-amber-400">
+                  {Math.floor(exportSeconds / 60)}:{Math.floor(exportSeconds % 60).toString().padStart(2, '0')}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Aspect Format:</span>
