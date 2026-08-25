@@ -40,6 +40,8 @@ export const projects = pgTable('projects', {
   bgUrl: text('bg_url').notNull().default('https://videos.pexels.com/video-files/18953366/18953366-hd_1080_1920_30fps.mp4'),
   bgUrls: jsonb('bg_urls').$type<string[]>().default([]),
   bgMode: text('bg_mode').default('single'),
+  /** Hand-placed background blocks: [{ url, start, end }]. Used when bgMode is 'custom'. */
+  bgSegments: jsonb('bg_segments').$type<{ url: string; start: number; end: number }[]>().default([]),
   bgCycleSeconds: integer('bg_cycle_seconds').default(5),
   bgOverlayOpacity: integer('bg_overlay_opacity').notNull().default(40), // 0-100
   bgBlur: integer('bg_blur').notNull().default(0), // 0-20

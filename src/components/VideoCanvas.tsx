@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData } from '@/lib/quranData';
-import { backgroundAt, backgroundPlaylist, BackgroundConfig } from '@/lib/backgroundTimeline';
+import { backgroundAt, backgroundPlaylist, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 
 export interface VideoCanvasConfig {
   aspectRatio: string;
@@ -25,9 +25,11 @@ export interface VideoCanvasConfig {
   bgUrl: string;
   /** Extra backgrounds for the non-single modes. `bgUrl` stays the single-background case. */
   bgUrls?: string[];
-  bgMode?: 'single' | 'per-ayah' | 'cycle' | 'shuffle';
+  bgMode?: BackgroundMode;
   /** Seconds each background holds in 'cycle' mode. */
   bgCycleSeconds?: number;
+  /** Hand-placed background blocks, authoritative in 'custom' mode. */
+  bgSegments?: BackgroundSegment[];
   bgOverlayOpacity: number;
   bgBlur: number;
   cardBgOpacity: number;
@@ -173,15 +175,25 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     bgType: config.bgType,
     bgUrl: config.bgUrl,
     bgUrls: config.bgUrls,
-    bgMode: config.bgMode
-  }), [config.bgType, config.bgUrl, config.bgUrls, config.bgMode]);
+    bgMode: config.bgMode,
+    bgSegments: config.bgSegments
+  }), [config.bgType, config.bgUrl, config.bgUrls, config.bgMode, config.bgSegments]);
 
   const bgConfig = useMemo<BackgroundConfig>(
     () => ({ ...bgSources, bgCycleSeconds: config.bgCycleSeconds }),
     [bgSources, config.bgCycleSeconds]
   );
 
-  const bgPlaylist = useMemo(() => backgroundPlaylist(bgSources), [bgSources]);
+  /**
+   * Keyed on the clips themselves rather than the list object.
+   *
+   * Dragging a block on the timeline rewrites `bgSegments` on every pointer
+   * move; without this the pool effect would see a new array each frame and
+   * re-`play()` every background for the length of the drag. The set of clips
+   * to keep warm is what it actually cares about, and that rarely changes.
+   */
+  const playlistKey = useMemo(() => backgroundPlaylist(bgSources).join('\n'), [bgSources]);
+  const bgPlaylist = useMemo(() => (playlistKey ? playlistKey.split('\n') : []), [playlistKey]);
 
   const verseStarts = useMemo(() => sortedVerses.map(v => v.startTime), [sortedVerses]);
 
@@ -254,7 +266,14 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
    */
   const bgSegmentRef = useRef<{ key: string; url: string } | null>(null);
   useEffect(() => {
-    if (syncBackgroundVideo || !activeBg) return;
+    if (syncBackgroundVideo) return;
+    if (!activeBg) {
+      // A gap in a hand-cut lane. Forgetting the segment we came from means the
+      // clip restarts on the far side rather than resuming wherever it drifted
+      // to while nothing was watching it.
+      bgSegmentRef.current = null;
+      return;
+    }
     const previous = bgSegmentRef.current;
     if (previous?.key === activeBg.key) return;
     bgSegmentRef.current = { key: activeBg.key, url: activeBg.url };

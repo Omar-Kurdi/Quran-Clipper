@@ -1,4 +1,5 @@
 import { BACKGROUND_VIDEOS } from './quranData';
+import { MIN_SEGMENT } from './verseEdits';
 
 /**
  * Where each background sits in time.
@@ -20,9 +21,23 @@ export interface BackgroundConfig {
   bgType: string;
   bgUrl: string;
   bgUrls?: string[];
-  bgMode?: 'single' | 'per-ayah' | 'cycle' | 'shuffle';
+  bgMode?: BackgroundMode;
   bgCycleSeconds?: number;
+  /**
+   * Hand-placed backgrounds, authoritative in `custom` mode.
+   *
+   * The other four modes *derive* where a clip sits from the ayah timings or a
+   * timer, which is why a block could not simply be dragged: there was nothing
+   * to drag it in. Dragging one bakes the derived layout into this list and
+   * switches to `custom`; picking an automatic mode again clears it.
+   */
+  bgSegments?: BackgroundSegment[];
 }
+
+export type BackgroundMode = 'single' | 'per-ayah' | 'cycle' | 'shuffle' | 'custom';
+
+/** The automatic layouts, and the only values a saved project may name besides `custom`. */
+export const BACKGROUND_MODES: BackgroundMode[] = ['single', 'per-ayah', 'cycle', 'shuffle', 'custom'];
 
 /**
  * Backgrounds in play, in order -- duplicates included.
@@ -35,6 +50,11 @@ export interface BackgroundConfig {
  */
 export function backgroundPlaylist(config: BackgroundConfig): string[] {
   if (config.bgType !== 'video') return [];
+  if (config.bgMode === 'custom') {
+    // Order carries no meaning here -- the lane's times do -- so this is just
+    // the set of clips the pool has to keep warm, deduplicated.
+    return Array.from(new Set((config.bgSegments || []).map(s => s.url).filter(Boolean)));
+  }
   const many = (config.bgUrls || []).filter(Boolean);
   if (config.bgMode && config.bgMode !== 'single' && many.length > 0) return many;
   return config.bgUrl ? [config.bgUrl] : [];
@@ -73,12 +93,25 @@ export function backgroundAt(
   verseStarts: number[],
   time: number
 ): { url: string; start: number; key: string } | null {
+  const at = Math.max(0, time);
+
+  if (config.bgMode === 'custom') {
+    const segments = config.bgSegments || [];
+    // Last match wins, and a time in no segment is genuinely no background --
+    // a hand-cut lane is allowed to have gaps, and a gap shows the gradient.
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (at >= segments[i].start && at < segments[i].end) {
+        return { url: segments[i].url, start: segments[i].start, key: `s${i}` };
+      }
+    }
+    return null;
+  }
+
   const playlist = backgroundPlaylist(config);
   const count = playlist.length;
   if (count === 0) return null;
   if (count === 1) return { url: playlist[0], start: 0, key: 'only' };
 
-  const at = Math.max(0, time);
   switch (config.bgMode) {
     case 'per-ayah':
     case 'shuffle': {
@@ -107,6 +140,8 @@ export function backgroundSegments(
   verseStarts: number[],
   duration: number
 ): BackgroundSegment[] {
+  if (config.bgMode === 'custom') return config.bgSegments || [];
+
   const playlist = backgroundPlaylist(config);
   const count = playlist.length;
   if (count === 0 || !(duration > 0)) return [];
@@ -150,4 +185,106 @@ export function backgroundLabel(url: string): string {
     // Not a parseable url -- fall through to the generic name.
   }
   return 'Background';
+}
+
+// ---------------------------------------------------------------------------
+// Editing a hand-cut lane
+//
+// Every operation below returns a new list sorted by start, with no two blocks
+// overlapping. Gaps are allowed -- an empty stretch is a deliberate "nothing
+// here", and the canvas draws its gradient through it -- but overlaps are not,
+// because two clips claiming the same instant has no honest answer.
+// ---------------------------------------------------------------------------
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+/** The room a block has, given the blocks either side of it. */
+function neighbours(segments: BackgroundSegment[], index: number, duration: number) {
+  return {
+    floor: index > 0 ? segments[index - 1].end : 0,
+    ceiling: index + 1 < segments.length ? segments[index + 1].start : Math.max(duration, 0)
+  };
+}
+
+/**
+ * Slides a block to a new start, keeping its length.
+ *
+ * The whole block is clamped as one against its neighbours rather than each
+ * edge separately: clamping the edges independently lets a block quietly change
+ * length when it runs into something, which reads as a bug rather than a limit.
+ */
+export function moveSegmentTo(
+  segments: BackgroundSegment[],
+  index: number,
+  desiredStart: number,
+  duration: number
+): BackgroundSegment[] {
+  const seg = segments[index];
+  if (!seg) return segments;
+  const { floor, ceiling } = neighbours(segments, index, duration);
+  const length = seg.end - seg.start;
+  const start = round2(clamp(desiredStart, floor, Math.max(floor, ceiling - length)));
+  if (start === seg.start) return segments;
+  return segments.map((s, i) => (i === index ? { ...s, start, end: round2(start + length) } : s));
+}
+
+/**
+ * Drags one edge of a block.
+ *
+ * Lengthening past the clip's own running time is fine and needs nothing built:
+ * background video elements loop, and each block restarts its clip at its own
+ * start, so a thirty-second block of a five-second clip simply plays it six
+ * times.
+ */
+export function resizeSegment(
+  segments: BackgroundSegment[],
+  index: number,
+  edge: 'start' | 'end',
+  value: number,
+  duration: number
+): BackgroundSegment[] {
+  const seg = segments[index];
+  if (!seg) return segments;
+  const { floor, ceiling } = neighbours(segments, index, duration);
+  const next = edge === 'start'
+    ? { ...seg, start: round2(clamp(value, floor, seg.end - MIN_SEGMENT)) }
+    : { ...seg, end: round2(clamp(value, seg.start + MIN_SEGMENT, ceiling)) };
+  if (next.start === seg.start && next.end === seg.end) return segments;
+  return segments.map((s, i) => (i === index ? next : s));
+}
+
+/** Drops a block, leaving a gap where it was. */
+export function removeSegment(segments: BackgroundSegment[], index: number): BackgroundSegment[] {
+  return segments.filter((_, i) => i !== index);
+}
+
+/**
+ * Puts a clip at the end of the lane.
+ *
+ * With room to spare the newcomer takes it. With the lane already full it takes
+ * the back half of the last block instead -- otherwise picking a background in
+ * a full lane would appear to do nothing at all.
+ */
+export function appendSegment(
+  segments: BackgroundSegment[],
+  url: string,
+  duration: number
+): BackgroundSegment[] {
+  if (!(duration > 0)) return segments;
+  const last = segments[segments.length - 1];
+  if (!last) return [{ url, start: 0, end: round2(duration) }];
+
+  if (last.end <= duration - MIN_SEGMENT) {
+    return [...segments, { url, start: round2(last.end), end: round2(duration) }];
+  }
+
+  const half = (last.end - last.start) / 2;
+  if (half < MIN_SEGMENT) return segments;
+  const split = round2(last.start + half);
+  return [
+    ...segments.slice(0, -1),
+    { ...last, end: split },
+    { url, start: split, end: round2(last.end) }
+  ];
 }

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { 
   VideoCanvasConfig 
 } from './VideoCanvas';
-import { backgroundLabel } from '@/lib/backgroundTimeline';
+import { backgroundLabel, appendSegment, removeSegment } from '@/lib/backgroundTimeline';
 import { ColorField } from './ColorField';
 import { 
   BACKGROUND_VIDEOS, 
@@ -30,11 +30,19 @@ import {
 interface StyleConfigPanelProps {
   config: VideoCanvasConfig;
   onChangeConfig: (newConfig: VideoCanvasConfig) => void;
+  /** Length of the clip, so a background added here lands somewhere real on the lane. */
+  clipDuration?: number;
+  /** The block picked on the timeline, so both surfaces act on the same one. */
+  selectedBackground?: number | null;
+  onSelectBackground?: (index: number | null) => void;
 }
 
 export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   config,
-  onChangeConfig
+  onChangeConfig,
+  clipDuration = 0,
+  selectedBackground = null,
+  onSelectBackground
 }) => {
   const [activeTab, setActiveTab] = useState<'design' | 'background' | 'card'>('design');
 
@@ -58,8 +66,16 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     }
   };
 
-  const multiBackground = (config.bgMode || 'single') !== 'single';
+  // A lane cut by hand on the timeline. It is not something you switch to from
+  // here -- it is what dragging a block turns the layout into -- so it has no
+  // button of its own; picking any automatic mode is how you leave it.
+  const customBackground = config.bgMode === 'custom';
+  const laneSegments = config.bgSegments || [];
+  const multiBackground = !customBackground && (config.bgMode || 'single') !== 'single';
   const bgSequence = config.bgUrls || [];
+
+  const setLane = (next: typeof laneSegments) =>
+    onChangeConfig({ ...config, bgType: 'video', bgSegments: next });
 
   /**
    * Rewrites the background sequence.
@@ -224,9 +240,12 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 <button
                   key={mode}
                   title={hint}
-                  onClick={() => onChangeConfig({ ...config, bgMode: mode })}
+                  onClick={() => {
+                    onSelectBackground?.(null);
+                    onChangeConfig({ ...config, bgMode: mode, bgSegments: [] });
+                  }}
                   className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
-                    (config.bgMode || 'single') === mode
+                    !customBackground && (config.bgMode || 'single') === mode
                       ? 'bg-amber-500 text-slate-950 border-amber-500'
                       : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
                   }`}
@@ -236,7 +255,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               ))}
             </div>
 
-            {(config.bgMode || 'single') === 'cycle' && (
+            {!customBackground && (config.bgMode || 'single') === 'cycle' && (
               <div className="mt-3">
                 <div className="flex justify-between text-slate-300 mb-1 text-xs">
                   <span>Seconds per background:</span>
@@ -250,6 +269,53 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   onChange={(e) => updateConfig('bgCycleSeconds', parseInt(e.target.value, 10))}
                   className="w-full accent-amber-500"
                 />
+              </div>
+            )}
+
+            {customBackground && (
+              <div className="mt-3">
+                <p className="text-[11px] text-slate-300 bg-lapis-bright/10 border border-lapis-bright/30 rounded-lg p-2">
+                  Cut by hand on the timeline — {laneSegments.length} block{laneSegments.length === 1 ? '' : 's'}.
+                  Drag a block to move it, or an edge to change how long it runs; stretching one past the
+                  clip&apos;s own length just plays it again. Pick a mode above to go back to automatic.
+                </p>
+                {laneSegments.length > 0 && (
+                  <ol className="flex flex-col gap-1 mt-2">
+                    {laneSegments.map((seg, i) => (
+                      <li
+                        key={`${seg.url}-${i}`}
+                        onPointerDown={() => onSelectBackground?.(i)}
+                        className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 border cursor-pointer ${
+                          selectedBackground === i
+                            ? 'bg-lapis-bright/20 border-lapis-bright/60'
+                            : 'bg-slate-950 border-slate-800'
+                        }`}
+                      >
+                        <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
+                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{backgroundLabel(seg.url)}</span>
+                        <span className="shrink-0 text-[10px] font-mono text-slate-400 tabular-nums">
+                          {seg.start.toFixed(1)}–{seg.end.toFixed(1)}s
+                        </span>
+                        <button
+                          onClick={() => {
+                            setLane(removeSegment(laneSegments, i));
+                            onSelectBackground?.(
+                              selectedBackground === null || selectedBackground === i
+                                ? null
+                                : selectedBackground > i
+                                  ? selectedBackground - 1
+                                  : selectedBackground
+                            );
+                          }}
+                          aria-label={`Remove ${backgroundLabel(seg.url)} at ${seg.start.toFixed(1)}s`}
+                          className="p-0.5 text-slate-400 hover:text-red-400"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
             )}
 
@@ -304,7 +370,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
           <div>
             <label className="font-semibold text-slate-200 text-sm block mb-2">
-              {(config.bgMode || 'single') === 'single' ? 'Preset Video Loop Backgrounds:' : 'Pick your backgrounds:'}
+              {customBackground
+                ? 'Add a background to the end of the lane:'
+                : (config.bgMode || 'single') === 'single' ? 'Preset Video Loop Backgrounds:' : 'Pick your backgrounds:'}
             </label>
             {/* No inner scroller. Capping this at 224px put a second scrollbar
                 inside a panel that was already scrolling, and showed four
@@ -313,8 +381,16 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               {BACKGROUND_VIDEOS.map((bg) => (
                 <button
                   key={bg.id}
-                  title={multiBackground ? 'Add to the sequence — tap again to use it more than once' : bg.title}
+                  title={
+                    customBackground ? 'Add a block for this clip at the end of the lane'
+                      : multiBackground ? 'Add to the sequence — tap again to use it more than once'
+                      : bg.title
+                  }
                   onClick={() => {
+                    if (customBackground) {
+                      setLane(appendSegment(laneSegments, bg.url, clipDuration));
+                      return;
+                    }
                     if (!multiBackground) {
                       onChangeConfig({ ...config, bgType: 'video', bgUrl: bg.url });
                       return;
@@ -325,7 +401,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     setSequence([...bgSequence, bg.url]);
                   }}
                   className={`relative group rounded-xl overflow-hidden border transition-all aspect-[9/16] ${
-                    (multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url)
+                    (customBackground
+                      ? laneSegments.some(seg => seg.url === bg.url)
+                      : multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url)
                       ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
                       : 'border-slate-800 hover:border-slate-600'
                   }`}
@@ -353,7 +431,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     <span className="text-[11px] font-semibold text-slate-100 leading-tight">{bg.title}</span>
                     <span className="text-[9px] text-amber-400 uppercase tracking-wider">{bg.category}</span>
                   </div>
-                  {!multiBackground && config.bgUrl === bg.url && (
+                  {!multiBackground && !customBackground && config.bgUrl === bg.url && (
                     <div className="absolute top-2 right-2 bg-amber-500 text-slate-950 p-1 rounded-full shadow">
                       <Check className="w-3 h-3" />
                     </div>

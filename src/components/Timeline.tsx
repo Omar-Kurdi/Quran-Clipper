@@ -34,6 +34,13 @@ interface TimelineProps {
    * the ayahs rather than only discoverable by watching the preview.
    */
   backgroundSegments?: BackgroundSegment[];
+  /** Drag of a background block's body: where the user wants it to start. */
+  onMoveBackground?: (index: number, desiredStart: number) => void;
+  /** Drag of a background block's edge. Extending simply loops the clip. */
+  onResizeBackground?: (index: number, edge: 'start' | 'end', value: number) => void;
+  /** Selecting a block, so the panel can act on the same one the eye is on. */
+  selectedBackground?: number | null;
+  onSelectBackground?: (index: number | null) => void;
 }
 
 const ZOOMS = [1, 2, 4, 8];
@@ -54,7 +61,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere,
   onTrim, trimHint, isMuted, volume, onToggleMute, onVolume,
-  backgroundSegments = []
+  backgroundSegments = [], onMoveBackground, onResizeBackground,
+  selectedBackground = null, onSelectBackground
 }) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -70,6 +78,21 @@ export const Timeline: React.FC<TimelineProps> = ({
   // survive between events -- re-rendering the whole timeline on every
   // pointermove of a scrub would be the one thing that makes it feel heavy.
   const scrubbingRef = useRef(false);
+
+  /**
+   * A background block being dragged: which one, which handle, and -- for a
+   * body drag -- how far into the block the pointer landed, so it does not
+   * jump its own left edge under the cursor on the first move.
+   */
+  const [bgDrag, setBgDrag] = useState<{ index: number; edge: 'start' | 'end' | 'move'; grabOffset: number } | null>(null);
+  const bgDragRef = useRef(bgDrag);
+  const bgMoveRef = useRef(onMoveBackground);
+  const bgResizeRef = useRef(onResizeBackground);
+  useEffect(() => {
+    bgDragRef.current = bgDrag;
+    bgMoveRef.current = onMoveBackground;
+    bgResizeRef.current = onResizeBackground;
+  }, [bgDrag, onMoveBackground, onResizeBackground]);
 
   // Read by the pointer handler so a drag does not rebuild its listeners on
   // every frame as the verses change underneath it.
@@ -122,6 +145,25 @@ export const Timeline: React.FC<TimelineProps> = ({
       window.removeEventListener('pointerup', up);
     };
   }, [drag, xToTime]);
+
+  // Background blocks drag the same way, through the same window listeners.
+  useEffect(() => {
+    if (!bgDrag) return;
+    const move = (e: PointerEvent) => {
+      const d = bgDragRef.current;
+      if (!d) return;
+      const t = xToTime(e.clientX);
+      if (d.edge === 'move') bgMoveRef.current?.(d.index, t - d.grabOffset);
+      else bgResizeRef.current?.(d.index, d.edge, t);
+    };
+    const up = () => setBgDrag(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [bgDrag, xToTime]);
 
   // Keep the playhead in view when zoomed in.
   useEffect(() => {
@@ -290,25 +332,67 @@ export const Timeline: React.FC<TimelineProps> = ({
             />
           </div>
 
-          {/* Background lane. Read-only: it answers "which clip is on screen
-              here, and how long for", which was invisible before -- the ayah
-              blocks sat over a background that changed with nothing to show it. */}
+          {/* Background lane.
+
+              Each block is where one clip plays. In the automatic modes it is
+              read-only -- the times come from the ayahs or a timer, so there is
+              nothing to drag. Once a block is dragged the layout is baked to a
+              hand-cut lane and stays where it is put. Empty space is a real
+              gap: nothing plays there and the frame falls back to its gradient. */}
           {backgroundSegments.length > 0 && (
-            <div className="relative h-5 border-b border-slate-800/70 bg-slate-950/40" aria-label="Backgrounds">
+            <div
+              className="relative h-7 border-b border-slate-800/70 bg-slate-950/40"
+              aria-label="Backgrounds"
+              onPointerDown={e => { if (e.target === e.currentTarget) onSelectBackground?.(null); }}
+            >
               {backgroundSegments.map((seg, i) => {
                 const left = pct(seg.start);
                 const width = Math.max(0.3, pct(seg.end) - left);
+                const editable = Boolean(onMoveBackground && onResizeBackground);
+                const active = selectedBackground === i;
                 return (
-                  <span
-                    key={`${seg.url}-${seg.start}-${i}`}
-                    title={`${backgroundLabel(seg.url)} · ${formatTime(seg.start)} – ${formatTime(seg.end)}`}
-                    className="absolute inset-y-0.5 rounded-sm border border-lapis-bright/40 bg-lapis-bright/15 px-1 overflow-hidden flex items-center"
+                  <div
+                    key={`${seg.url}-${i}`}
+                    title={`${backgroundLabel(seg.url)} · ${formatTime(seg.start)} – ${formatTime(seg.end)}${
+                      editable ? ' · drag to move, drag an edge to resize' : ''
+                    }`}
+                    onPointerDown={e => {
+                      onSelectBackground?.(i);
+                      if (!editable) return;
+                      e.stopPropagation();
+                      setBgDrag({ index: i, edge: 'move', grabOffset: xToTime(e.clientX) - seg.start });
+                    }}
+                    className={`absolute inset-y-0.5 rounded-sm border overflow-hidden flex items-center touch-none ${
+                      editable ? 'cursor-grab active:cursor-grabbing' : ''
+                    } ${
+                      active
+                        ? 'border-lapis-bright bg-lapis-bright/30 ring-1 ring-lapis-bright/60 z-10'
+                        : 'border-lapis-bright/40 bg-lapis-bright/15 hover:bg-lapis-bright/25'
+                    }`}
                     style={{ left: `${left}%`, width: `${width}%` }}
                   >
-                    <span className="text-[9px] leading-none text-slate-300 truncate">
+                    <span className="px-1 text-[9px] leading-none text-slate-300 truncate pointer-events-none">
                       {backgroundLabel(seg.url)}
                     </span>
-                  </span>
+
+                    {/* Resize handles, inside the block and above the body drag
+                        so grabbing an edge never turns into a move. */}
+                    {editable && (['start', 'end'] as const).map(edge => (
+                      <span
+                        key={edge}
+                        onPointerDown={e => {
+                          e.stopPropagation();
+                          onSelectBackground?.(i);
+                          setBgDrag({ index: i, edge, grabOffset: 0 });
+                        }}
+                        role="separator"
+                        aria-label={`Move ${edge === 'start' ? 'start' : 'end'} of ${backgroundLabel(seg.url)}`}
+                        className={`absolute inset-y-0 w-2 cursor-ew-resize touch-none hover:bg-lapis-bright/60 ${
+                          edge === 'start' ? 'left-0' : 'right-0'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 );
               })}
             </div>

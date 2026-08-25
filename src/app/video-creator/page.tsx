@@ -19,7 +19,9 @@ import {
 } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import { trimTimeline } from '@/lib/matchTimeline';
-import { backgroundSegments } from '@/lib/backgroundTimeline';
+import {
+  backgroundSegments, moveSegmentTo, resizeSegment, BackgroundSegment, BACKGROUND_MODES, BackgroundMode
+} from '@/lib/backgroundTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
@@ -149,6 +151,9 @@ export default function VideoCreatorPage() {
   const [exportProgress, setExportProgress] = useState<number>(0);
   const [exportSpeed, setExportSpeed] = useState<string>('1.0x');
   const [saveStatus, setSaveStatus] = useState<{ text: string; kind: 'pending' | 'ok' | 'error' } | null>(null);
+  // Which background block the panel acts on, so picking one in the lane and
+  // removing it in the Style panel refer to the same block.
+  const [selectedBackground, setSelectedBackground] = useState<number | null>(null);
 
   // Studio Canvas Configuration
   const [canvasConfig, setCanvasConfig] = useState<VideoCanvasConfig>({
@@ -172,6 +177,7 @@ export default function VideoCreatorPage() {
     bgUrl: 'https://videos.pexels.com/video-files/18953366/18953366-hd_1080_1920_30fps.mp4',
     bgUrls: [],
     bgMode: 'single',
+    bgSegments: [],
     bgCycleSeconds: 5,
     bgOverlayOpacity: 40,
     bgBlur: 0,
@@ -652,6 +658,7 @@ export default function VideoCreatorPage() {
         bgUrls: canvasConfig.bgUrls,
         bgMode: canvasConfig.bgMode,
         bgCycleSeconds: canvasConfig.bgCycleSeconds,
+        bgSegments: canvasConfig.bgSegments,
         bgOverlayOpacity: canvasConfig.bgOverlayOpacity,
         bgBlur: canvasConfig.bgBlur,
         cardBgOpacity: canvasConfig.cardBgOpacity,
@@ -821,13 +828,44 @@ export default function VideoCreatorPage() {
    * The background lane under the timeline: the same segments the canvas plays,
    * so clip changes are visible next to the ayahs they land on.
    */
+  const verseStarts = useMemo(
+    () => [...verses].sort((a, b) => a.startTime - b.startTime).map(v => v.startTime),
+    [verses]
+  );
+
   const bgSegments = useMemo(
-    () => backgroundSegments(
-      canvasConfig,
-      [...verses].sort((a, b) => a.startTime - b.startTime).map(v => v.startTime),
-      audioDuration
-    ),
-    [canvasConfig, verses, audioDuration]
+    () => backgroundSegments(canvasConfig, verseStarts, audioDuration),
+    [canvasConfig, verseStarts, audioDuration]
+  );
+
+  /**
+   * The selection, derived rather than stored, so it cannot outlive the block
+   * it points at. A lane that shrinks -- a block removed, or an automatic mode
+   * picked, which throws the lane away entirely -- would otherwise leave the
+   * index dangling past the end and the highlight sitting on nothing.
+   */
+  const activeBackground =
+    selectedBackground !== null && selectedBackground < bgSegments.length ? selectedBackground : null;
+
+  /**
+   * Applies an edit to the background lane.
+   *
+   * The automatic modes have no blocks to move -- where a clip sits is derived
+   * from the ayah timings or a timer. So the first drag bakes whatever is
+   * currently on screen into a hand-cut lane and edits that. Picking an
+   * automatic mode again in the Style panel throws the lane away.
+   */
+  const editBackgroundLane = useCallback(
+    (mutate: (segments: BackgroundSegment[]) => BackgroundSegment[]) => {
+      setCanvasConfig(cfg => {
+        const base = cfg.bgMode === 'custom' && cfg.bgSegments?.length
+          ? cfg.bgSegments
+          : backgroundSegments(cfg, verseStarts, audioDuration);
+        if (base.length === 0) return cfg;
+        return { ...cfg, bgMode: 'custom' as BackgroundMode, bgSegments: mutate(base) };
+      });
+    },
+    [verseStarts, audioDuration]
   );
 
   // Start Video Export Pipeline
@@ -910,7 +948,8 @@ export default function VideoCreatorPage() {
       bgType: proj.bgType || 'video',
       bgUrl: proj.bgUrl || 'https://videos.pexels.com/video-files/18953366/18953366-hd_1080_1920_30fps.mp4',
       bgUrls: Array.isArray(proj.bgUrls) ? proj.bgUrls : [],
-      bgMode: ['single', 'per-ayah', 'cycle', 'shuffle'].includes(proj.bgMode) ? proj.bgMode : 'single',
+      bgMode: BACKGROUND_MODES.includes(proj.bgMode) ? proj.bgMode : 'single',
+      bgSegments: Array.isArray(proj.bgSegments) ? proj.bgSegments : [],
       bgCycleSeconds: proj.bgCycleSeconds || 5,
       bgOverlayOpacity: proj.bgOverlayOpacity ?? 40,
       bgBlur: proj.bgBlur ?? 0,
@@ -1504,7 +1543,13 @@ export default function VideoCreatorPage() {
                   onAdd={() => { const r = addVerseAfter(verses, selectedIndex); setVerses(r.verses); setSelectedIndex(r.insertedAt); }}
                 />
               ) : (
-                <StyleConfigPanel config={canvasConfig} onChangeConfig={setCanvasConfig} />
+                <StyleConfigPanel
+                  config={canvasConfig}
+                  onChangeConfig={setCanvasConfig}
+                  clipDuration={audioDuration}
+                  selectedBackground={activeBackground}
+                  onSelectBackground={setSelectedBackground}
+                />
               )}
             </div>
           </aside>
@@ -1521,6 +1566,12 @@ export default function VideoCreatorPage() {
           onSeek={handleSeek}
           onPlayPause={togglePlayPause}
           backgroundSegments={bgSegments}
+          selectedBackground={activeBackground}
+          onSelectBackground={setSelectedBackground}
+          onMoveBackground={(i, start) =>
+            editBackgroundLane(segs => moveSegmentTo(segs, i, start, audioDuration))}
+          onResizeBackground={(i, edge, value) =>
+            editBackgroundLane(segs => resizeSegment(segs, i, edge, value, audioDuration))}
           onMoveBoundary={(i, edge, value) => setVerses(setBoundary(verses, i, edge, value, audioDuration))}
           onMarkHere={handleMarkHere}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}

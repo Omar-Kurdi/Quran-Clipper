@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { desc, eq } from 'drizzle-orm';
+import { BACKGROUND_MODES } from '@/lib/backgroundTimeline';
 
 const memoryProjects: any[] = [];
 
@@ -62,7 +63,8 @@ export async function POST(req: NextRequest) {
       bgType: body.bgType || 'video',
       bgUrl: body.bgUrl || 'https://videos.pexels.com/video-files/18953366/18953366-hd_1080_1920_30fps.mp4',
       bgUrls: Array.isArray(body.bgUrls) ? body.bgUrls : [],
-      bgMode: ['single', 'per-ayah', 'cycle', 'shuffle'].includes(body.bgMode) ? body.bgMode : 'single',
+      bgMode: BACKGROUND_MODES.includes(body.bgMode) ? body.bgMode : 'single',
+      bgSegments: Array.isArray(body.bgSegments) ? body.bgSegments : [],
       bgCycleSeconds: body.bgCycleSeconds || 5,
       bgOverlayOpacity: body.bgOverlayOpacity ?? 40,
       bgBlur: body.bgBlur ?? 0,
