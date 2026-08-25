@@ -19,6 +19,7 @@ import {
 } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import { trimTimeline } from '@/lib/matchTimeline';
+import { backgroundSegments } from '@/lib/backgroundTimeline';
 import type { TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
@@ -155,8 +156,8 @@ export default function VideoCreatorPage() {
     fontArabic: 'Scheherazade New',
     fontTranslation: 'Inter',
     arabicFontSize: 38,
-    translationFontSize: 20,
-    ayahNumberFontSize: 34,
+    translationFontSize: 38,
+    ayahNumberFontSize: 40,
     textAlignment: 'center',
     textColor: '#ffffff',
     accentColor: '#b8c7dc',
@@ -176,7 +177,7 @@ export default function VideoCreatorPage() {
     bgBlur: 0,
     cardBgOpacity: 30,
     cardBorder: true,
-    watermarkText: '@QuranClips',
+    watermarkText: '@QuranClipper',
     watermarkPosition: 'bottom-right',
     fps: 60,
     gpuAccelerated: true
@@ -815,6 +816,19 @@ export default function VideoCreatorPage() {
     }
     return { start, end, span: end - start };
   }, [verses, audioDuration]);
+
+  /**
+   * The background lane under the timeline: the same segments the canvas plays,
+   * so clip changes are visible next to the ayahs they land on.
+   */
+  const bgSegments = useMemo(
+    () => backgroundSegments(
+      canvasConfig,
+      [...verses].sort((a, b) => a.startTime - b.startTime).map(v => v.startTime),
+      audioDuration
+    ),
+    [canvasConfig, verses, audioDuration]
+  );
 
   // Start Video Export Pipeline
   const handleStartExport = (targetFps: number, onComplete: (blob: Blob, renderMs: number) => void) => {
@@ -1506,6 +1520,7 @@ export default function VideoCreatorPage() {
           onSelect={setSelectedIndex}
           onSeek={handleSeek}
           onPlayPause={togglePlayPause}
+          backgroundSegments={bgSegments}
           onMoveBoundary={(i, edge, value) => setVerses(setBoundary(verses, i, edge, value, audioDuration))}
           onMarkHere={handleMarkHere}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { 
   VideoCanvasConfig 
 } from './VideoCanvas';
+import { backgroundLabel } from '@/lib/backgroundTimeline';
 import { ColorField } from './ColorField';
 import { 
   BACKGROUND_VIDEOS, 
@@ -20,7 +21,10 @@ import {
   Upload, 
   Palette,
   Check,
-  ExternalLink
+  ExternalLink,
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface StyleConfigPanelProps {
@@ -52,6 +56,35 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         bgUrl: url
       });
     }
+  };
+
+  const multiBackground = (config.bgMode || 'single') !== 'single';
+  const bgSequence = config.bgUrls || [];
+
+  /**
+   * Rewrites the background sequence.
+   *
+   * Everything here works on *position*, never on url: the sequence is allowed
+   * to repeat a clip -- "this one at the start and again at the end" -- and a
+   * url-keyed remove would take out the wrong occurrence. `bgUrl` keeps
+   * pointing at something real because it is still the single-mode value, the
+   * saved-project field and the fallback when the list is emptied.
+   */
+  const setSequence = (next: string[]) => {
+    onChangeConfig({
+      ...config,
+      bgType: 'video',
+      bgUrls: next,
+      bgUrl: next[0] || config.bgUrl
+    });
+  };
+
+  const moveInSequence = (from: number, to: number) => {
+    if (to < 0 || to >= bgSequence.length) return;
+    const next = [...bgSequence];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setSequence(next);
   };
 
   const [urlDraft, setUrlDraft] = useState('');
@@ -220,12 +253,52 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               </div>
             )}
 
-            {(config.bgMode || 'single') !== 'single' && (
-              <p className="text-[11px] text-slate-400 mt-2">
-                {(config.bgUrls || []).length === 0
-                  ? 'Tap thumbnails below to add backgrounds. With none selected this behaves as a single background.'
-                  : `${(config.bgUrls || []).length} selected — tap to add or remove, in the order they play.`}
-              </p>
+            {multiBackground && (
+              bgSequence.length === 0 ? (
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Tap thumbnails below to add backgrounds. With none selected this behaves as a single background.
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <p className="text-[11px] text-slate-400 mb-1.5">
+                    {bgSequence.length} in the sequence, in play order — the same clip may appear more than once.
+                  </p>
+                  <ol className="flex flex-col gap-1">
+                    {bgSequence.map((url, i) => (
+                      <li
+                        key={`${url}-${i}`}
+                        className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5"
+                      >
+                        <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
+                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{backgroundLabel(url)}</span>
+                        <button
+                          onClick={() => moveInSequence(i, i - 1)}
+                          disabled={i === 0}
+                          aria-label={`Move ${backgroundLabel(url)} earlier`}
+                          className="p-0.5 text-slate-400 hover:text-slate-100 disabled:opacity-30"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => moveInSequence(i, i + 1)}
+                          disabled={i === bgSequence.length - 1}
+                          aria-label={`Move ${backgroundLabel(url)} later`}
+                          className="p-0.5 text-slate-400 hover:text-slate-100 disabled:opacity-30"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setSequence(bgSequence.filter((_, j) => j !== i))}
+                          aria-label={`Remove ${backgroundLabel(url)} from position ${i + 1}`}
+                          className="p-0.5 text-slate-400 hover:text-red-400"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )
             )}
           </div>
 
@@ -240,38 +313,30 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               {BACKGROUND_VIDEOS.map((bg) => (
                 <button
                   key={bg.id}
+                  title={multiBackground ? 'Add to the sequence — tap again to use it more than once' : bg.title}
                   onClick={() => {
-                    const multi = (config.bgMode || 'single') !== 'single';
-                    if (!multi) {
+                    if (!multiBackground) {
                       onChangeConfig({ ...config, bgType: 'video', bgUrl: bg.url });
                       return;
                     }
-                    const current = config.bgUrls || [];
-                    const next = current.includes(bg.url)
-                      ? current.filter(u => u !== bg.url)
-                      : [...current, bg.url];
-                    // Keep bgUrl pointing at something real: it is the
-                    // single-mode value, the saved-project field, and the
-                    // fallback when the list is emptied.
-                    onChangeConfig({
-                      ...config,
-                      bgType: 'video',
-                      bgUrls: next,
-                      bgUrl: next[0] || config.bgUrl
-                    });
+                    // Adds rather than toggles, so the same clip can appear at
+                    // several points in one video. Removal is by position, in
+                    // the sequence list above.
+                    setSequence([...bgSequence, bg.url]);
                   }}
                   className={`relative group rounded-xl overflow-hidden border transition-all aspect-[9/16] ${
-                    ((config.bgMode || 'single') === 'single'
-                      ? config.bgUrl === bg.url
-                      : (config.bgUrls || []).includes(bg.url))
+                    (multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url)
                       ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
                       : 'border-slate-800 hover:border-slate-600'
                   }`}
                 >
                   {/* Play order, so a multi-background sequence is readable at a glance. */}
-                  {(config.bgMode || 'single') !== 'single' && (config.bgUrls || []).includes(bg.url) && (
-                    <span className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
-                      {(config.bgUrls || []).indexOf(bg.url) + 1}
+                  {multiBackground && bgSequence.includes(bg.url) && (
+                    <span className="absolute top-1 left-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
+                      {(() => {
+                        const uses = bgSequence.filter(u => u === bg.url).length;
+                        return uses > 1 ? `x${uses}` : bgSequence.indexOf(bg.url) + 1;
+                      })()}
                     </span>
                   )}
                   <img
@@ -288,7 +353,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     <span className="text-[11px] font-semibold text-slate-100 leading-tight">{bg.title}</span>
                     <span className="text-[9px] text-amber-400 uppercase tracking-wider">{bg.category}</span>
                   </div>
-                  {config.bgUrl === bg.url && (
+                  {!multiBackground && config.bgUrl === bg.url && (
                     <div className="absolute top-2 right-2 bg-amber-500 text-slate-950 p-1 rounded-full shadow">
                       <Check className="w-3 h-3" />
                     </div>
@@ -632,8 +697,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         </div>
       )}
 
-      {/* Layout & Text, section 3: branding */}
-      {activeTab === 'design' && (
+      {/* Card & FX, section 2: branding. It belongs with the other things
+          stamped on top of the frame rather than with the ayah's typography. */}
+      {activeTab === 'card' && (
         <div className="flex flex-col gap-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />

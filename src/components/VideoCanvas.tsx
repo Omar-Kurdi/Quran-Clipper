@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData } from '@/lib/quranData';
+import { backgroundAt, backgroundPlaylist, BackgroundConfig } from '@/lib/backgroundTimeline';
 
 export interface VideoCanvasConfig {
   aspectRatio: string;
@@ -150,11 +151,6 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       || { verseNumber: 1, textUthmani: '', translation: '' } as unknown as VerseData,
     [sortedVerses, currentTime]
   );
-  const activeVerseIndex = useMemo(
-    () => Math.max(0, sortedVerses.indexOf(activeVerse as VerseData)),
-    [sortedVerses, activeVerse]
-  );
-
   /**
    * Backgrounds in play, in order.
    *
@@ -164,35 +160,42 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
    */
   const videoPoolRef = useRef<Map<string, HTMLVideoElement>>(new Map());
 
-  const bgPlaylist = useMemo(() => {
-    if (config.bgType !== 'video') return [] as string[];
-    const many = (config.bgUrls || []).filter(Boolean);
-    if (config.bgMode && config.bgMode !== 'single' && many.length > 0) return many;
-    return config.bgUrl ? [config.bgUrl] : [];
-  }, [config.bgType, config.bgUrl, config.bgUrls, config.bgMode]);
+  /**
+   * Two memos, not one, because they feed things with very different costs.
+   *
+   * `config` is a fresh object on every edit, so keying the pool effect off it
+   * would reload every clip whenever any slider moved. Narrowing to the fields
+   * that choose backgrounds fixes that -- but the cycle length is not one of
+   * them, and leaving it in meant dragging "seconds per background" rebuilt the
+   * playlist, and with it the pool, on every input event.
+   */
+  const bgSources = useMemo<BackgroundConfig>(() => ({
+    bgType: config.bgType,
+    bgUrl: config.bgUrl,
+    bgUrls: config.bgUrls,
+    bgMode: config.bgMode
+  }), [config.bgType, config.bgUrl, config.bgUrls, config.bgMode]);
 
-  const bgVideoSrc = useMemo(() => {
-    const count = bgPlaylist.length;
-    if (count === 0) return '';
-    if (count === 1) return bgPlaylist[0];
-    switch (config.bgMode) {
-      case 'per-ayah':
-        return bgPlaylist[activeVerseIndex % count];
-      case 'cycle': {
-        const hold = Math.max(1, config.bgCycleSeconds || 5);
-        return bgPlaylist[Math.floor(Math.max(0, currentTime) / hold) % count];
-      }
-      case 'shuffle': {
-        // Seeded from the segment index, never Math.random(): the value has to
-        // be identical on every frame and identical again during export, or the
-        // background would flicker and the render would not match the preview.
-        const hashed = Math.imul(activeVerseIndex + 1, 2654435761) >>> 0;
-        return bgPlaylist[hashed % count];
-      }
-      default:
-        return bgPlaylist[0];
-    }
-  }, [bgPlaylist, config.bgMode, config.bgCycleSeconds, activeVerseIndex, currentTime]);
+  const bgConfig = useMemo<BackgroundConfig>(
+    () => ({ ...bgSources, bgCycleSeconds: config.bgCycleSeconds }),
+    [bgSources, config.bgCycleSeconds]
+  );
+
+  const bgPlaylist = useMemo(() => backgroundPlaylist(bgSources), [bgSources]);
+
+  const verseStarts = useMemo(() => sortedVerses.map(v => v.startTime), [sortedVerses]);
+
+  /**
+   * Which background is on screen, and when its turn began.
+   *
+   * Shared with the timeline lane through `backgroundTimeline`, so the strip
+   * under the preview is drawn from the same answer the canvas paints.
+   */
+  const activeBg = useMemo(
+    () => backgroundAt(bgConfig, verseStarts, currentTime),
+    [bgConfig, verseStarts, currentTime]
+  );
+  const bgVideoSrc = activeBg?.url ?? '';
 
   /**
    * One <video> per background, all loaded and running at once.
@@ -239,6 +242,39 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   useEffect(() => {
     videoBgRef.current = bgVideoSrc ? videoPoolRef.current.get(bgVideoSrc) ?? null : null;
   }, [bgVideoSrc]);
+
+  /**
+   * Starts a decorative clip at its own beginning when its turn comes round.
+   *
+   * The pool plays and loops from the moment a background is chosen, so without
+   * this a clip is simply wherever its loop happened to have reached -- which is
+   * why exports opened mid-clip, ran to the end and jumped back to the start a
+   * second later. Only a *new* occurrence restarts: a sequence that repeats the
+   * same clip back to back keeps playing rather than stuttering at the seam.
+   */
+  const bgSegmentRef = useRef<{ key: string; url: string } | null>(null);
+  useEffect(() => {
+    if (syncBackgroundVideo || !activeBg) return;
+    const previous = bgSegmentRef.current;
+    if (previous?.key === activeBg.key) return;
+    bgSegmentRef.current = { key: activeBg.key, url: activeBg.url };
+    if (previous?.url === activeBg.url) return;
+
+    const vid = videoPoolRef.current.get(activeBg.url);
+    if (!vid) return;
+    // Only seek if it is not already there. A seek briefly drops `readyState`
+    // below the level the draw loop requires, which during a real-time export
+    // bakes a gradient frame into the file -- and a clip parked at 0 by the
+    // export setup below is already exactly where it needs to be.
+    if (vid.currentTime > 0.05) {
+      try {
+        vid.currentTime = 0;
+      } catch {
+        // Seeking before metadata lands throws; the clip plays from 0 anyway.
+      }
+    }
+    vid.play().catch(() => {});
+  }, [activeBg, syncBackgroundVideo]);
 
   /**
    * Keeps a synced background video in step with playback.
@@ -724,7 +760,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // Assigning `currentTime` only requests a seek, so playing straight
         // afterwards captures however much of the previous position the
         // browser had not finished leaving.
-        const seekTo = (el: HTMLAudioElement, time: number) =>
+        const seekTo = (el: HTMLMediaElement, time: number) =>
           new Promise<void>(resolve => {
             if (Math.abs(el.currentTime - time) < 0.05) return resolve();
             const done = () => { el.removeEventListener('seeked', done); resolve(); };
@@ -737,6 +773,30 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         audioElement.volume = 0;
         await seekTo(audioElement, startSec);
         await seekTo(expAudio, startSec);
+
+        /**
+         * Park the backgrounds before the first frame is captured.
+         *
+         * They have been playing and looping since the moment they were picked,
+         * so a recording started now would open at whatever arbitrary phase the
+         * loop had reached -- and because VP9 spends bits on motion, two exports
+         * of the same clip that only differed by where the background happened
+         * to be came out tens of megabytes apart. Every clip goes back to its
+         * own start; the one on screen picks up wherever the export begins
+         * inside its segment, which is 0 for the usual whole-clip export.
+         */
+        const activeBgVideo = syncBackgroundVideo ? null : videoBgRef.current;
+        for (const vid of Array.from(videoPoolRef.current.values())) {
+          if (vid === activeBgVideo || syncBackgroundVideo) continue;
+          vid.pause();
+          try { vid.currentTime = 0; } catch { /* metadata not in yet */ }
+        }
+        if (activeBgVideo) {
+          bgSegmentRef.current = activeBg ? { key: activeBg.key, url: activeBg.url } : null;
+          await seekTo(activeBgVideo, Math.max(0, startSec - (activeBg?.start ?? 0)));
+          activeBgVideo.play().catch(() => {});
+        }
+
         if (!isExportingRef.current) return;
 
         audioElement.play();

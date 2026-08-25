@@ -20,8 +20,8 @@ export const projects = pgTable('projects', {
   arabicFontSize: integer('arabic_font_size').notNull().default(38),
   /** @deprecated The studio no longer renders transliteration. Kept so existing rows load; nothing writes it. */
   transliterationFontSize: integer('transliteration_font_size').notNull().default(24),
-  translationFontSize: integer('translation_font_size').notNull().default(20),
-  ayahNumberFontSize: integer('ayah_number_font_size').notNull().default(34),
+  translationFontSize: integer('translation_font_size').notNull().default(38),
+  ayahNumberFontSize: integer('ayah_number_font_size').notNull().default(40),
   textAlignment: text('text_alignment').notNull().default('center'),
   textColor: text('text_color').notNull().default('#ffffff'),
   accentColor: text('accent_color').notNull().default('#b8c7dc'),
@@ -47,7 +47,7 @@ export const projects = pgTable('projects', {
   cardBorder: boolean('card_border').notNull().default(true),
   
   // Branding
-  watermarkText: text('watermark_text').default('@QuranClips'),
+  watermarkText: text('watermark_text').default('@QuranClipper'),
   watermarkPosition: text('watermark_position').default('bottom-right'),
   
   // Timestamps JSON array: [{ verseNumber, verseKey, arabicText, translationText, startTime, endTime }]

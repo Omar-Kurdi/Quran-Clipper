@@ -5,6 +5,7 @@ import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissor
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
 import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
+import { BackgroundSegment, backgroundLabel } from '@/lib/backgroundTimeline';
 
 interface TimelineProps {
   verses: VerseData[];
@@ -28,6 +29,11 @@ interface TimelineProps {
   volume: number;
   onToggleMute: () => void;
   onVolume: (v: number) => void;
+  /**
+   * Where each background sits in time, so the clip changes are visible against
+   * the ayahs rather than only discoverable by watching the preview.
+   */
+  backgroundSegments?: BackgroundSegment[];
 }
 
 const ZOOMS = [1, 2, 4, 8];
@@ -47,7 +53,8 @@ const ZOOMS = [1, 2, 4, 8];
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere,
-  onTrim, trimHint, isMuted, volume, onToggleMute, onVolume
+  onTrim, trimHint, isMuted, volume, onToggleMute, onVolume,
+  backgroundSegments = []
 }) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -58,6 +65,11 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [loaded, setLoaded] = useState<{ url: string; peaks: Float32Array | null } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ index: number; edge: 'startTime' | 'endTime' } | null>(null);
+
+  // A ref, not state: the ruler captures the pointer, so this only has to
+  // survive between events -- re-rendering the whole timeline on every
+  // pointermove of a scrub would be the one thing that makes it feel heavy.
+  const scrubbingRef = useRef(false);
 
   // Read by the pointer handler so a drag does not rebuild its listeners on
   // every frame as the verses change underneath it.
@@ -231,18 +243,76 @@ export const Timeline: React.FC<TimelineProps> = ({
 
       <div ref={viewportRef} className="overflow-x-auto overflow-y-hidden">
         <div ref={trackRef} className="relative select-none" style={{ width: `${zoom * 100}%` }}>
-          {/* Ruler */}
-          <div className="relative h-4 border-b border-slate-800/70">
+          {/* Ruler. Click or drag anywhere along it to move the playhead --
+              the tick labels are inert so a click near "10.0s" scrubs rather
+              than landing on the label and doing nothing. */}
+          <div
+            className="relative h-5 border-b border-slate-800/70 cursor-ew-resize touch-none"
+            role="slider"
+            aria-label="Playhead"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(duration)}
+            aria-valuenow={Math.round(currentTime)}
+            aria-valuetext={formatTime(currentTime)}
+            tabIndex={0}
+            onPointerDown={e => {
+              // Seek first. Capture is what keeps a drag alive once the pointer
+              // leaves the 20px strip, but it is also the one call here that can
+              // throw -- and a throw before the seek would lose the click.
+              scrubbingRef.current = true;
+              onSeek(xToTime(e.clientX));
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* drag ends at the strip edge */ }
+            }}
+            onPointerMove={e => { if (scrubbingRef.current) onSeek(xToTime(e.clientX)); }}
+            onPointerUp={e => {
+              scrubbingRef.current = false;
+              try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* never captured */ }
+            }}
+            onPointerCancel={() => { scrubbingRef.current = false; }}
+            onKeyDown={e => {
+              const step = e.shiftKey ? 1 : 0.1;
+              if (e.key === 'ArrowLeft') { e.preventDefault(); onSeek(Math.max(0, currentTime - step)); }
+              if (e.key === 'ArrowRight') { e.preventDefault(); onSeek(Math.min(duration, currentTime + step)); }
+            }}
+          >
             {ticks.map(t => (
               <span
                 key={t}
-                className="absolute top-0 bottom-0 border-l border-slate-800 pl-1 text-[9px] font-mono text-slate-400 leading-4 whitespace-nowrap"
+                className="absolute top-0 bottom-0 border-l border-slate-800 pl-1 text-[9px] font-mono text-slate-400 leading-5 whitespace-nowrap pointer-events-none"
                 style={{ left: `${pct(t)}%` }}
               >
                 {formatTime(t)}
               </span>
             ))}
+            <span
+              className="absolute inset-y-0 -ml-px w-0.5 bg-lapis-bright pointer-events-none"
+              style={{ left: `${pct(currentTime)}%` }}
+            />
           </div>
+
+          {/* Background lane. Read-only: it answers "which clip is on screen
+              here, and how long for", which was invisible before -- the ayah
+              blocks sat over a background that changed with nothing to show it. */}
+          {backgroundSegments.length > 0 && (
+            <div className="relative h-5 border-b border-slate-800/70 bg-slate-950/40" aria-label="Backgrounds">
+              {backgroundSegments.map((seg, i) => {
+                const left = pct(seg.start);
+                const width = Math.max(0.3, pct(seg.end) - left);
+                return (
+                  <span
+                    key={`${seg.url}-${seg.start}-${i}`}
+                    title={`${backgroundLabel(seg.url)} · ${formatTime(seg.start)} – ${formatTime(seg.end)}`}
+                    className="absolute inset-y-0.5 rounded-sm border border-lapis-bright/40 bg-lapis-bright/15 px-1 overflow-hidden flex items-center"
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                  >
+                    <span className="text-[9px] leading-none text-slate-300 truncate">
+                      {backgroundLabel(seg.url)}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
 
           {/* Waveform + ayah blocks. Clicking empty track seeks. */}
           <div
