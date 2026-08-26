@@ -1,5 +1,8 @@
 # Quran Clip Maker
 
+<p align="center">
+  <img src="docs/screenshots/Banner.png" alt="Banner.">
+</p>
 A Next.js studio for creating short-form Quran recitation videos. Select ayahs, choose a
 reciter or upload your own recitation, sync verse timings, style the canvas, pick an animated
 background, and export the result — all in the browser.
