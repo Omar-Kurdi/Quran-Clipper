@@ -10,7 +10,7 @@ only for timing. A word cannot go missing, come back garbled, or land in the wro
 those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
 
 <p align="center">
-  <img src="docs/screenshots/studio-slate.png" alt="The same studio in the Slate & Amber theme, showing the runtime theme switcher." width="49%">
+  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The same studio in the Slate & Amber theme, showing the runtime theme switcher." width="49%">
 </p>
 <p align="center"><sub>Five themes ship, switchable at runtime from the header.</sub></p>
 
@@ -62,6 +62,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   (repeatably, so a re-export matches the preview). Every selected clip is preloaded in its own
   element, so switching never stalls the render — which does mean each one decodes concurrently,
   so a handful is kinder to the export than all of them.
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The studio view showing the background picker section.">
+</p>
 - **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
   waveform of the recitation. Drag an edge to retime it, or tap SPACEBAR at each boundary while
   the audio plays. Changes cascade so the timeline stays contiguous.
@@ -72,6 +75,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   matched timeline down); the segment times adjust to the new clip automatically either way.
   Runs entirely in the browser, no upload or server round-trip, and is reachable from the top
   toolbar at any step.
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The studio view showing the trimmer section." width="49%">
+</p>
 - **Upload video as well as audio** (MP4 / MOV / WebM / MKV). The audio track drives the
   timing, and the footage can double as the clip background — kept frame-synced to playback
   rather than looped, so a recorded recitation stays in sync. Trimming the audio offsets the
@@ -82,6 +88,10 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - 11 Pexels video backgrounds, or paste any video/image URL, or upload a file.
 - Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
   Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card.
+<p align="center">
+ <img src="docs/screenshots/QuranClipper_Layout.png" alt="The studio view showing the trimmer section." width="49%">
+ <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The studio view showing the trimmer section." width="49%">
+</p>
 - Browser export via `canvas.captureStream()` + `MediaRecorder` (WebM, 18 Mbps, 30 or 60 FPS).
 - Save/load projects with PostgreSQL, or in-memory when no database is configured — see
   [Database](#database-optional) for a five-minute container setup.
