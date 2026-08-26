@@ -1,4 +1,4 @@
-# Quran Clip Maker
+# Quran Clipper - Studio
 
 <p align="center">
   <img src="docs/screenshots/Banner.png" alt="Banner.">
