@@ -10,7 +10,7 @@ only for timing. A word cannot go missing, come back garbled, or land in the wro
 those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The same studio in the Slate & Amber theme, showing the runtime theme switcher." width="49%">
+  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The same studio in the Slate & Amber theme, showing the runtime theme switcher.">
 </p>
 <p align="center"><sub>Five themes ship, switchable at runtime from the header.</sub></p>
 
@@ -76,7 +76,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   Runs entirely in the browser, no upload or server round-trip, and is reachable from the top
   toolbar at any step.
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The studio view showing the trimmer section." width="49%">
+  <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The studio view showing the trimmer section.">
 </p>
 - **Upload video as well as audio** (MP4 / MOV / WebM / MKV). The audio track drives the
   timing, and the footage can double as the clip background — kept frame-synced to playback
@@ -89,8 +89,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
   Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card.
 <p align="center">
- <img src="docs/screenshots/QuranClipper_Layout.png" alt="The studio view showing the trimmer section." width="49%">
- <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The studio view showing the trimmer section." width="49%">
+ <img src="docs/screenshots/QuranClipper_Layout.png" alt="The studio view showing the trimmer section.">
+ <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The studio view showing the trimmer section.">
 </p>
 - Browser export via `canvas.captureStream()` + `MediaRecorder` (WebM, 18 Mbps, 30 or 60 FPS).
 - Save/load projects with PostgreSQL, or in-memory when no database is configured — see
