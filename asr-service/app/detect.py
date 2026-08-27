@@ -21,6 +21,11 @@ from . import corpus
 
 log = logging.getLogger(__name__)
 
+#: How strongly a candidate position is pulled toward the rest of the
+#: recitation. Deliberately small: it is a tie-break between the Quran's
+#: verbatim repetitions, not a reason to prefer a worse match.
+NEARNESS_WEIGHT = 0.15
+
 #: Trigram votes to consider for a phrase before scoring candidates properly.
 MAX_CANDIDATES = 40
 
@@ -94,12 +99,21 @@ def locate_phrase(
     skeletons: list[str],
     index: dict,
     allowed: set[int] | None = None,
+    near: int | None = None,
 ) -> tuple[int, int, float] | None:
     """Best (start, end, score) span in the Quran for one decoded phrase.
 
     ``allowed`` restricts candidate positions to a set of corpus indices, used
     on the second pass so short fragments can only land inside surahs that
     substantial phrases already established.
+
+    ``near`` breaks ties toward a corpus position the rest of the recitation
+    already points at. The Quran repeats itself verbatim, so match quality
+    alone cannot choose between occurrences: 2:122 is word-for-word identical
+    to 2:47, and a recitation of 2:122-125 had its opening ayah placed at 2:47,
+    clustered away as a stray, and left out of the reference entirely -- so its
+    audio matched nothing and produced no segments at all. Being adjacent to
+    the rest of the passage is the evidence that separates them.
     """
     tokens = [corpus.skeleton(token) for token in decoded.split()]
     tokens = [token for token in tokens if token]
@@ -126,14 +140,20 @@ def locate_phrase(
             return None
 
     best: tuple[int, int, float] | None = None
+    best_score = 0.0
     ranked = [candidate for candidate in votes.most_common() if allowed is None or candidate[0] in allowed]
     for start, _ in ranked[:MAX_CANDIDATES]:
         if start < 0 or start >= len(skeletons):
             continue
         end = min(len(skeletons), start + len(tokens))
         ratio = difflib.SequenceMatcher(None, tokens, skeletons[start:end]).ratio()
-        if best is None or ratio > best[2]:
-            best = (start, end - 1, ratio)
+        # Small enough that it only ever separates near-equal matches -- a
+        # genuinely better match somewhere far away still wins.
+        score = ratio
+        if near is not None:
+            score -= NEARNESS_WEIGHT * min(abs(start - near), len(skeletons)) / max(len(skeletons), 1)
+        if best is None or score > best_score:
+            best, best_score = (start, end - 1, ratio), score
     return best
 
 
@@ -224,10 +244,17 @@ def detect_range(decoded_phrases: list[str]) -> DetectedRange | None:
     allowed = {p for p in range(len(words)) if surah_at(p) in established}
     log.info("anchored on surah(s) %s", ", ".join(str(s) for s in sorted(established)))
 
+    # Where pass 1 believes the recitation sits, for pass 2 to gravitate toward.
+    # The median rather than the mean, so one mislocated anchor cannot drag it.
+    centre = None
+    if anchors:
+        centres = sorted((start + end) // 2 for start, end, _ in anchors)
+        centre = centres[len(centres) // 2]
+
     # Pass 2 -- place every phrase, including short ones, inside those surahs.
     hits: list[tuple[int, int, float]] = []
     for decoded in decoded_phrases:
-        located = locate_phrase(decoded, skeletons, index, allowed)
+        located = locate_phrase(decoded, skeletons, index, allowed, near=centre)
         if located and located[2] >= MIN_PHRASE_MATCH:
             hits.append(located)
             log.info("phrase located at %s (%.2f): %r", words[located[0]][0], located[2], decoded[:48])

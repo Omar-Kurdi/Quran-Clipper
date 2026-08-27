@@ -77,18 +77,32 @@ _LETTERS = re.compile(r"[ء-ي]")
 def split_verse_words(text: str) -> list[str]:
     """Split a verse into recited words.
 
-    Uthmani script writes waqf and sajda marks as free-standing tokens. They
-    are notation, not words: nobody recites them and no audio frame can match
-    them. Left as separate entries they would shift every following word index
-    out of step with the app's own word list, so they are glued onto the
-    preceding word instead.
+    Uthmani script writes waqf, sajda and hizb marks as free-standing tokens.
+    They are notation, not words: nobody recites them and no audio frame can
+    match them. Left as separate entries they would shift every following word
+    index out of step with the app's own word list, which drops them (it keeps
+    only quran.com's ``char_type_name == "word"``), so they are glued onto a
+    neighbouring word instead.
+
+    A mark *before* the first word has to go onto the word that follows it, not
+    the one before -- there isn't one. 199 verses open with the hizb mark ۞,
+    and treating it as a word of its own made every index in those verses one
+    too high: the aligner's 2:124:1-7 was rendered as the app's 2:124:2-8, so
+    each segment showed a word from the next one and dropped its own first.
     """
     words: list[str] = []
+    leading: list[str] = []
     for token in text.split():
-        if _LETTERS.search(token) or not words:
-            words.append(token)
-        else:
+        if _LETTERS.search(token):
+            words.append(" ".join(leading + [token]))
+            leading = []
+        elif words:
             words[-1] = f"{words[-1]} {token}"
+        else:
+            leading.append(token)
+    if leading:
+        # A verse of nothing but notation cannot occur; never silently drop text.
+        words.append(" ".join(leading))
     return words
 
 
@@ -133,6 +147,7 @@ def skeleton(word: str) -> str:
     text = re.sub(r"[آأإٱ]", "ا", text)
     text = text.replace("ى", "ي").replace("ة", "ه")
     text = re.sub(r"[^ء-ي]", "", text)
+    text = text.replace("ؤ", "و").replace("ئ", "ي").replace("ء", "")
     text = text.replace("ا", "") or text
     return re.sub(r"[اويه]+$", "", text) or text
 

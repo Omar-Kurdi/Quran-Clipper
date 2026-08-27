@@ -858,6 +858,7 @@ def _skeleton(word: str) -> str:
     already uses for waqf/wasl endings.
     """
     base = normalize_for_vocab(word).replace("ة", "ه")
+    base = base.replace("ؤ", "و").replace("ئ", "ي").replace("ء", "")
     base = base.replace("ا", "") or base
     return re.sub(r"[اويه]+$", "", base) or base
 
@@ -1102,6 +1103,28 @@ def _absorb_orphan_words(
             " ".join(ref_words[w][2] for w in range(first, last + 1)),
         )
 
+    # The mirror case at the front: words the first phrase decoded but did not
+    # match, with no earlier segment to weigh against. The same-ayah guard is
+    # what keeps a reference range that starts an ayah or two early -- which
+    # auto-detection does when a passage opens on text the Quran repeats
+    # verbatim -- from having those unrecited ayahs pulled into segment one.
+    if repaired:
+        start, end, score, phrase_start, phrase_end = repaired[0]
+        # Only back to the top of the segment's own ayah -- never into an
+        # earlier one, which is how far the reference may legitimately reach.
+        first = start
+        while first > 0 and ref_words[first - 1][0] == ref_words[start][0]:
+            first -= 1
+        if first < start and start - first <= MAX_ORPHAN_WORDS and end - first + 1 <= MAX_PHRASE_WORDS:
+            log.info(
+                "phrase %.2f-%.2fs takes %d stranded word(s) at the start of its ayah: %r",
+                phrase_start,
+                phrase_end,
+                start - first,
+                " ".join(ref_words[w][2] for w in range(first, start)),
+            )
+            repaired[0] = (first, end, _match_ratio(decodes[0], ref_words, first, end), phrase_start, phrase_end)
+
     # A tail the last phrase decoded badly enough to fall short of -- there is
     # no next segment to weigh it against, and nothing else can ever carry it.
     if repaired:
@@ -1129,6 +1152,26 @@ def _absorb_orphan_words(
             )
 
     return repaired
+
+
+def _split_strands_words(decode, match_from, i: int, j: int, cursor: int) -> bool:
+    """Would keeping the candidate boundaries inside [i, j] lose reference words?
+
+    Walks the span one window at a time and asks whether each window picks up
+    where the last left off. A gap means a boundary fell inside a word: both
+    halves decode as fragments, neither matches, and the word between them is
+    lost. That -- not a better-looking match -- is what justifies merging.
+    """
+    at = cursor
+    for step in range(i, j):
+        match = match_from(decode(step, step + 1), at)
+        if match is None or match[2] < MIN_ASSIGN_SCORE:
+            return True
+        start, end, _ = match
+        if start > at:
+            return True
+        at = end + 1
+    return False
 
 
 def phrase_search() -> bool:
@@ -1174,6 +1217,7 @@ def assign_phrase_ranges_by_decode(
     an exact tie keeps the finer split.
     """
     decode = span_decoder(pcm, boundaries, decoded_phrases)
+    match_from = lambda text, at: match_decoded_to_range(text, ref_words, at)
     phrases = len(boundaries) - 1
     max_span = MAX_DECODE_SPAN if phrase_search() else 1
 
@@ -1187,6 +1231,16 @@ def assign_phrase_ranges_by_decode(
         cursor = assignments[-1][1] + 1 if assignments else 0
 
         for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
+            if j > i + 1 and not _split_strands_words(decode, match_from, i, j, cursor):
+                # Merging is only ever *allowed* to fix a cut that lost text.
+                # Nothing in a text-match score prefers a split -- a longer
+                # window has more context and no cut words, so it reads back at
+                # least as well -- which means an unconditional search merges
+                # every boundary it is offered. On real recitation that turned
+                # two correct segments either side of an audible pause into one
+                # 21-second segment. Stranded reference words are the evidence
+                # that a boundary landed inside a word rather than between two.
+                continue
             decoded = decode(i, j)
             match = match_decoded_to_range(decoded, ref_words, cursor)
             if match is None or match[2] < MIN_ASSIGN_SCORE:
