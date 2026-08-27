@@ -767,6 +767,16 @@ def _verse_starts(ref_words: list[tuple[str, int, str]]) -> dict[int, int]:
 #: than a few candidate dips is rare.
 MAX_BOUNDARY_SPAN = 3
 
+#: The same, for the decode-driven path, where it is a genuinely different
+#: tradeoff: a merged window decodes *better* than its halves (more context,
+#: no cut words), so nothing in a text-match score ever prefers a split and the
+#: search will merge as far as it is allowed to. Two is what the evidence
+#: supports -- on the reference clip a span of 2 recovered a phrase the dip
+#: detector had cut in half (7 of 11 segments correct against 6), while a span
+#: of 3 swallowed four real phrase boundaries into one 22-second segment and
+#: scored 5.
+MAX_DECODE_SPAN = 2
+
 
 def decode_window(emission, frame_start: int, frame_end: int) -> str:
     """Greedy CTC read-out of one window. Only meaningful for the nemo backend."""
@@ -800,6 +810,37 @@ def decode_phrases(pcm: np.ndarray, boundaries: list[float]) -> list[str]:
         emission = compute_emission(chunk)
         decoded.append(decode_window(emission, 0, emission.shape[1]))
     return decoded
+
+
+def span_decoder(
+    pcm: np.ndarray,
+    boundaries: list[float],
+    decoded_phrases: list[str] | None = None,
+):
+    """Greedy read-out of *any* span of candidate boundaries, computed on demand.
+
+    `decode_phrases` reads back adjacent pairs only, which is all range
+    detection needs. Choosing between candidate boundaries needs the read-out
+    of merged spans too, and those cannot be sliced out of the per-pair ones --
+    NeMo normalises features per window, so `[i, j]` decoded whole is a
+    different decode from `[i, i+1]` and `[i+1, j]` concatenated. Any
+    already-computed pairs are seeded in rather than decoded twice.
+    """
+    cache: dict[tuple[int, int], str] = {}
+    if decoded_phrases is not None:
+        cache.update({(i, i + 1): text for i, text in enumerate(decoded_phrases)})
+
+    def decode(i: int, j: int) -> str:
+        if (i, j) not in cache:
+            chunk = pcm[int(boundaries[i] * SAMPLE_RATE) : int(boundaries[j] * SAMPLE_RATE)]
+            if len(chunk) < SAMPLE_RATE // 4:
+                cache[(i, j)] = ""
+            else:
+                emission = compute_emission(chunk)
+                cache[(i, j)] = decode_window(emission, 0, emission.shape[1])
+        return cache[(i, j)]
+
+    return decode
 
 
 def _skeleton(word: str) -> str:
@@ -1090,6 +1131,15 @@ def _absorb_orphan_words(
     return repaired
 
 
+def phrase_search() -> bool:
+    """Whether a phrase may span more than one candidate boundary.
+
+    On by default. Set ASR_PHRASE_SEARCH=0 to pin every candidate boundary as a
+    hard split, which is what this path did before the search existed.
+    """
+    return (os.getenv("ASR_PHRASE_SEARCH") or "1").strip().lower() not in ("0", "false", "no")
+
+
 def assign_phrase_ranges_by_decode(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -1105,36 +1155,66 @@ def assign_phrase_ranges_by_decode(
     emission are genuinely different decodes. On the reference clip the
     full-clip read-out silently dropped both repeated phrases and returned
     empty text for one that decodes cleanly in isolation.
+
+    A phrase may span up to `MAX_BOUNDARY_SPAN` candidate boundaries, chosen by
+    search rather than fixed in advance. `detect_boundaries` calls its output
+    candidates "for the search to choose from", but this path used to treat
+    every one as a hard split -- so a dip inside a long madd cut a word in half,
+    both halves decoded as fragments, and the word was lost. Measured on real
+    recitation, loosening the dip threshold to catch a missed breath made
+    results *worse* for exactly this reason (2-5 of 11 segments correct against
+    6, with up to 22 reference words dropped), because every extra candidate was
+    another forced cut. Being able to decline a candidate is what makes a
+    generous candidate list safe.
+
+    Segmentations are compared on reference words explained -- each phrase's
+    match ratio weighted by how many words it covers -- rather than on the sum
+    of the ratios, which would grow with the number of phrases and so always
+    prefer splitting. Merging wins only when it genuinely matches better, and
+    an exact tie keeps the finer split.
     """
-    assignments: list[tuple[int, int, float, float, float]] = []
-    decodes: list[str] = []
-    cursor = 0
+    decode = span_decoder(pcm, boundaries, decoded_phrases)
+    phrases = len(boundaries) - 1
+    max_span = MAX_DECODE_SPAN if phrase_search() else 1
 
-    for i in range(len(boundaries) - 1):
-        phrase_start, phrase_end = boundaries[i], boundaries[i + 1]
-        if decoded_phrases is not None:
-            decoded = decoded_phrases[i] if i < len(decoded_phrases) else ""
-        else:
-            chunk = pcm[int(phrase_start * SAMPLE_RATE) : int(phrase_end * SAMPLE_RATE)]
-            if len(chunk) < SAMPLE_RATE // 4:
-                continue
-            phrase_emission = compute_emission(chunk)
-            decoded = decode_window(phrase_emission, 0, phrase_emission.shape[1])
-        match = match_decoded_to_range(decoded, ref_words, cursor)
-        if match is None:
-            log.info("phrase %.2f-%.2fs decoded to nothing -- skipped", phrase_start, phrase_end)
-            continue
+    # boundary index -> (words explained, phrases used, assignments, decodes)
+    states: dict[int, tuple[float, int, list, list[str]]] = {0: (0.0, 0, [], [])}
 
-        start, end, score = match
-        if score < MIN_ASSIGN_SCORE:
-            log.info(
-                "phrase %.2f-%.2fs matched the reference too weakly (%.2f) -- not emitting a segment: %r",
-                phrase_start,
-                phrase_end,
-                score,
-                decoded[:48],
-            )
+    for i in range(phrases):
+        if i not in states:
             continue
+        explained, used, assignments, decodes = states[i]
+        cursor = assignments[-1][1] + 1 if assignments else 0
+
+        for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
+            decoded = decode(i, j)
+            match = match_decoded_to_range(decoded, ref_words, cursor)
+            if match is None or match[2] < MIN_ASSIGN_SCORE:
+                # This span explains nothing. Still a legal step -- the audio may
+                # be silence, an intro, or a du'a -- it just earns no credit.
+                candidate = (explained, used + 1, assignments, decodes)
+            else:
+                start, end, score = match
+                candidate = (
+                    explained + score * (end - start + 1),
+                    used + 1,
+                    assignments + [(start, end, score, boundaries[i], boundaries[j])],
+                    decodes + [decoded],
+                )
+            current = states.get(j)
+            if current is None or candidate[:2] > current[:2]:
+                states[j] = candidate
+
+    if phrases not in states:
+        raise AlignError("Could not assign any phrase ranges -- the audio and reference text may not correspond.")
+
+    _, _, assignments, decodes = states[phrases]
+    claimed = {(a[3], a[4]) for a in assignments}
+    for i in range(phrases):
+        window = (boundaries[i], boundaries[i + 1])
+        if window not in claimed and not any(a[3] <= window[0] and window[1] <= a[4] for a in assignments):
+            log.info("phrase %.2f-%.2fs matched nothing in the reference -- no segment emitted", *window)
+    for (start, end, score, phrase_start, phrase_end), decoded in zip(assignments, decodes):
         log.info(
             "phrase %.2f-%.2fs -> %s:%d-%d (%.2f) %r",
             phrase_start,
@@ -1145,9 +1225,6 @@ def assign_phrase_ranges_by_decode(
             score,
             decoded[:60],
         )
-        assignments.append((start, end, score, phrase_start, phrase_end))
-        decodes.append(decoded)
-        cursor = end + 1
 
     return _absorb_orphan_words(assignments, decodes, ref_words)
 
