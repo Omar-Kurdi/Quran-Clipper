@@ -84,6 +84,23 @@ interface VideoCanvasProps {
 // ---------------------------------------------------------------------------
 // RoundRect polyfill
 // ---------------------------------------------------------------------------
+//: Floors for the verse-card shrink-to-fit. Reached only by a segment far
+//: longer than the card was designed for; below these the frame is unreadable
+//: anyway, and overflowing is the better failure than dropping recited words.
+const MIN_ARABIC_PX = 16;
+const MIN_TRANSLATION_PX = 10;
+
+type CardTextLayout = {
+  arabicLines: string[];
+  arabicLineHeight: number;
+  translationLines: string[];
+  translationLineHeight: number;
+  widest: number;
+  arabicSize: number;
+  translationSize: number;
+  stackHeight: number;
+};
+
 function drawRoundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -265,6 +282,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
    * same clip back to back keeps playing rather than stuttering at the seam.
    */
   const bgSegmentRef = useRef<{ key: string; url: string } | null>(null);
+  // Verse-card layouts, keyed by the text and sizing that produced them. The
+  // shrink-to-fit search wraps the text once per trial size, which is far too
+  // much to redo every frame for text that only changes per segment.
+  const textLayoutCache = useRef<Map<string, CardTextLayout>>(new Map());
   useEffect(() => {
     if (syncBackgroundVideo) return;
     if (!activeBg) {
@@ -591,118 +612,144 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
       const displayArabic = activeVerse ? getDisplayArabic(activeVerse) : '';
       if (activeVerse && displayArabic) {
-        let arabicRenderSize = config.arabicFontSize * (height / 1920) * 1.5;
-        const maxArabicBlockHeight = cardHeight * 0.34;
-        ctx.font = `bold ${arabicRenderSize}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
-        ctx.fillStyle = config.textColor || '#ffffff';
+        const translationText = activeVerse.displayTranslation || activeVerse.translation || '';
+        const withTranslation = Boolean(config.showTranslation && translationText);
+        const maxTextWidth = cardWidth - 80;
+        const ayahFontSize = (config.ayahNumberFontSize || 34) * (height / 1920);
+        // Ayah numeral, the gap around the divider, and the room under it.
+        const belowArabic = ayahFontSize + 48;
+        const cardPadding = 40;
+        const availableHeight = cardHeight - cardPadding * 2 - belowArabic;
+
+        const arabicFont = (size: number) =>
+          `bold ${size}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
+        const translationFont = (size: number) =>
+          `${size}px '${config.fontTranslation}', sans-serif`;
+
+        // Wraps greedily and never drops a word. A word too wide for the card
+        // still gets its own line; the fitting loop then shrinks the type until
+        // even that line fits, which is what keeps this from silently cutting.
+        const wrapAll = (text: string, limit: number) => {
+          const out: string[] = [];
+          let line = '';
+          for (const word of text.split(/\s+/).filter(Boolean)) {
+            const test = line ? `${line} ${word}` : word;
+            if (ctx.measureText(test).width > limit && line) { out.push(line); line = word; }
+            else line = test;
+          }
+          if (line) out.push(line);
+          return out;
+        };
+
+        const layoutAt = (arabic: number, translation: number) => {
+          ctx.font = arabicFont(arabic);
+          const arabicLines = wrapAll(displayArabic, maxTextWidth);
+          const arabicLineHeight = arabic * 1.45;
+          let widest = 0;
+          for (const line of arabicLines) widest = Math.max(widest, ctx.measureText(line).width);
+          let translationLines: string[] = [];
+          let translationLineHeight = 0;
+          if (withTranslation) {
+            ctx.font = translationFont(translation);
+            translationLines = wrapAll(translationText, maxTextWidth);
+            translationLineHeight = translation * 1.55;
+            for (const line of translationLines) widest = Math.max(widest, ctx.measureText(line).width);
+          }
+          return {
+            arabicLines, arabicLineHeight, translationLines, translationLineHeight, widest,
+            arabicSize: arabic, translationSize: translation,
+            stackHeight: arabicLines.length * arabicLineHeight
+              + translationLines.length * translationLineHeight,
+          };
+        };
+
+        // Shrink this segment's type until the whole stack fits. The previous
+        // behaviour capped the Arabic at five lines and the translation at
+        // whatever the card had room for, each with an ellipsis -- which drops
+        // recited words off the frame, the one thing a Quran caption must never
+        // do. A long segment gets smaller type; it does not get cut.
+        //
+        // Cached because the search runs a wrap per trial size and the frame
+        // loop is 144fps; the layout only changes when the text, the card or
+        // the configured sizes do. Font loading is in the key, so metrics
+        // measured against a fallback are recomputed once the real face lands.
+        const layoutKey = [
+          displayArabic, translationText, withTranslation, cardWidth, cardHeight,
+          config.fontArabic, config.fontTranslation, config.arabicFontSize,
+          config.translationFontSize, config.ayahNumberFontSize,
+          typeof document !== 'undefined' ? document.fonts.status : '',
+        ].join('|');
+
+        let layout = textLayoutCache.current.get(layoutKey);
+        if (!layout) {
+          let arabicSize = config.arabicFontSize * (height / 1920) * 1.5;
+          let translationSize = config.translationFontSize * (height / 1920) * 1.3;
+          layout = layoutAt(arabicSize, translationSize);
+          while (
+            (layout.stackHeight > availableHeight || layout.widest > maxTextWidth)
+            && arabicSize > MIN_ARABIC_PX
+          ) {
+            arabicSize -= 1;
+            translationSize = Math.max(MIN_TRANSLATION_PX, translationSize - 0.6);
+            layout = layoutAt(arabicSize, translationSize);
+          }
+          if (textLayoutCache.current.size > 64) textLayoutCache.current.clear();
+          textLayoutCache.current.set(layoutKey, layout);
+        }
+
+        // Baselines are 'top' throughout, so the block occupies exactly the
+        // height the fitting loop measured. Drawing the first line on an
+        // alphabetic baseline at the top of the block put its ascenders --
+        // which in Arabic carry the harakat -- above the space budgeted for it.
+        let y = cardY + Math.max(
+          cardPadding,
+          (cardHeight - (layout.stackHeight + belowArabic)) / 2
+        );
+
+        ctx.textBaseline = 'top';
         ctx.direction = 'rtl';
+        ctx.font = arabicFont(layout.arabicSize);
+        ctx.fillStyle = config.textColor || '#ffffff';
         if (config.textShadow) {
           ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
           ctx.shadowBlur = 12;
           ctx.shadowOffsetY = 4;
         }
-        const maxTextWidth = cardWidth - 80;
-        const arabicWords = displayArabic.split(/\s+/).filter(Boolean);
-        let lineHeight = arabicRenderSize * 1.45;
-        const buildArabicLines = (): string[] => {
-          const ls: string[] = [];
-          let cur = '';
-          for (const w of arabicWords) {
-            const t = cur ? `${cur} ${w}` : w;
-            if (ctx.measureText(t).width > maxTextWidth && cur) {
-              ls.push(cur);
-              cur = w;
-            } else { cur = t; }
-          }
-          if (cur) ls.push(cur);
-          return ls;
-        };
-        let lines = buildArabicLines();
-        while (lines.length * lineHeight > maxArabicBlockHeight && arabicRenderSize > 30) {
-          arabicRenderSize -= 2;
-          ctx.font = `bold ${arabicRenderSize}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
-          lineHeight = arabicRenderSize * 1.45;
-          lines = buildArabicLines();
+        for (const line of layout.arabicLines) {
+          ctx.fillText(line.trim(), textX, y);
+          y += layout.arabicLineHeight;
         }
-
-        // Measure the blocks below the Arabic before drawing anything, so the
-        // whole stack can be centred in the card. Anchoring the Arabic to a
-        // fixed top offset made short ayahs hug the top border and leave the
-        // card bottom-heavy with empty space, while long ones filled it -- the
-        // visual balance changed with every segment.
-        const ayahFontSize = (config.ayahNumberFontSize || 34) * (height / 1920);
-        const shownArabicLines = Math.min(lines.length, 5);
-        const arabicBlockHeight = shownArabicLines * lineHeight;
-
-        // Ayah number, the gap around the divider, and the breathing room
-        // under it before the translation starts.
-        let belowHeight = ayahFontSize * 0.65 + 48 + 18;
-
-        const measuredTranslation = activeVerse.displayTranslation || activeVerse.translation || '';
-        if (config.showTranslation && measuredTranslation) {
-          const ts = config.translationFontSize * (height / 1920) * 1.3;
-          ctx.font = `${ts}px '${config.fontTranslation}', sans-serif`;
-          belowHeight += wrapCanvasText(ctx, measuredTranslation, maxTextWidth, 12).length * ts * 1.55;
-        }
-
-        // Centre when it fits; otherwise fall back to a top margin and let the
-        // existing shrink-to-fit logic below handle the overflow.
-        const minPadding = 40;
-        const stackHeight = arabicBlockHeight + belowHeight;
-        let arabicStartY = cardHeight - stackHeight > minPadding * 2
-          ? cardY + (cardHeight - stackHeight) / 2
-          : cardY + minPadding;
-
-        ctx.font = `bold ${arabicRenderSize}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
-        ctx.fillStyle = config.textColor || '#ffffff';
-        lines.slice(0, 5).forEach((line, li) => {
-          ctx.fillText(`${line.trim()}${li === 4 && lines.length > 5 ? '…' : ''}`, textX, arabicStartY);
-          arabicStartY += lineHeight;
-        });
         ctx.direction = 'ltr';
         ctx.shadowColor = 'transparent';
+        ctx.shadowOffsetY = 0;
+
         ctx.font = `600 ${ayahFontSize}px '${config.fontArabic}', serif`;
         ctx.fillStyle = goldAccent;
         // U+FD3E opens and U+FD3F closes when read right-to-left, despite their
         // Unicode names ("ornate left/right parenthesis") suggesting the reverse.
-        ctx.fillText(`﴾ ${activeVerse.verseNumber} ﴿`, width / 2, arabicStartY - 6);
+        ctx.fillText(`﴾ ${activeVerse.verseNumber} ﴿`, width / 2, y);
+        y += ayahFontSize + 24;
 
-        const dividerY = arabicStartY + ayahFontSize * 0.65;
         ctx.strokeStyle = goldAccent;
         ctx.globalAlpha = 0.4;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(width / 2 - 120, dividerY);
-        ctx.lineTo(width / 2 + 120, dividerY);
+        ctx.moveTo(width / 2 - 120, y);
+        ctx.lineTo(width / 2 + 120, y);
         ctx.stroke();
         ctx.globalAlpha = 1.0;
+        y += 24;
 
-        let transY = dividerY + 48 + 18;
-
-        const translationText = activeVerse.displayTranslation || activeVerse.translation || '';
-        if (config.showTranslation && translationText) {
-          let ts = config.translationFontSize * (height / 1920) * 1.3;
-          let tlh = ts * 1.55;
-          const bottom = cardY + cardHeight - 44;
-          transY = Math.max(transY, dividerY + 42);
-          const avail = Math.max(tlh, bottom - transY);
-          ctx.textBaseline = 'top';
-          ctx.font = `${ts}px '${config.fontTranslation}', sans-serif`;
-          let tl = wrapCanvasText(ctx, translationText, maxTextWidth, 12);
-          while (tl.length * tlh > avail && ts > 12) {
-            ts -= 1; tlh = ts * 1.55;
-            ctx.font = `${ts}px '${config.fontTranslation}', sans-serif`;
-            tl = wrapCanvasText(ctx, translationText, maxTextWidth, 12);
-          }
+        if (withTranslation) {
+          ctx.font = translationFont(layout.translationSize);
           ctx.fillStyle = config.translationColor || '#e2e8f0';
           if (config.textShadow) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 8; }
-          const maxFit = Math.max(1, Math.floor(avail / tlh));
-          tl.slice(0, maxFit).forEach((l, li) => {
-            ctx.fillText(`${l.trim()}${li === maxFit - 1 && tl.length > maxFit ? '…' : ''}`, textX, transY);
-            transY += tlh;
-          });
-          ctx.textBaseline = 'alphabetic';
+          for (const line of layout.translationLines) {
+            ctx.fillText(line.trim(), textX, y);
+            y += layout.translationLineHeight;
+          }
         }
+        ctx.textBaseline = 'alphabetic';
       }
       ctx.restore();
 
