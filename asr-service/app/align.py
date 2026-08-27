@@ -694,14 +694,11 @@ MAX_BACK_OVERLAP = 4
 #: Beam width over phrase->range assignments.
 BEAM_WIDTH = 10
 
-#: Reference words a skipped phrase may hand back to its predecessor. A dip in
-#: the energy envelope can land *inside* a word -- a long madd or a shadda is
-#: quiet enough to look like a boundary -- which leaves the two halves decoding
-#: as fragments (`ٱلسَّيِّئَةَ` split into `الس` and `َةُ`). Neither fragment
-#: matches, so the word falls into the hole between the phrases on either side
-#: and is dropped from the output entirely. One word is the usual damage; the
-#: cap allows for a short phrase whose decode failed outright without letting a
-#: whole ayah get swept into its neighbour.
+#: Consecutive reference words one neighbouring phrase may take back when no
+#: phrase claimed them. One or two words is the usual damage from a mid-word
+#: boundary or a swallowed conjunction; the cap leaves room for a short phrase
+#: whose decode failed outright, while stopping a reference range wider than
+#: the audio from having whole ayahs swept into the nearest segment.
 MAX_ORPHAN_WORDS = 4
 
 #: A phrase whose decoded text matches the reference this poorly is not part of
@@ -981,47 +978,114 @@ def assign_phrase_ranges(
     return best[3]
 
 
+def _match_ratio(decoded: str, ref_words: list[tuple[str, int, str]], start: int, end: int) -> float:
+    """How well one phrase's decode matches a *given* reference range.
+
+    The similarity `match_decoded_to_range` ranks candidates by, minus its
+    proximity tie-break -- here the range is supplied rather than searched for.
+    """
+    tokens = [token for token in (_skeleton(t) for t in decoded.split()) if token]
+    if not tokens or end < start:
+        return 0.0
+    window = [_skeleton(ref_words[i][2]) for i in range(start, end + 1)]
+    return difflib.SequenceMatcher(None, tokens, window).ratio()
+
+
 def _absorb_orphan_words(
     assignments: list[tuple[int, int, float, float, float]],
+    decodes: list[str],
     ref_words: list[tuple[str, int, str]],
 ) -> list[tuple[int, int, float, float, float]]:
-    """Give reference words stranded by a skipped phrase back to its predecessor.
+    """Give reference words no phrase claimed to whichever neighbour loses least.
 
-    Only fires where *both* signals of a dropped phrase are present: reference
-    words no assignment claimed, and audio no assignment claimed either. A
-    reference gap on its own is a reciter skipping a word, and stretching a
-    segment over it would caption audio that never contained it; unclaimed
-    audio on its own is silence or an intro, which nothing should be assigned.
-    Together they mean a phrase really was recited and really was lost, and the
-    previous segment is where its words and its frames belong -- the split
-    happens mid-word, so its first half already decoded into that phrase.
+    Every reference word was recited -- that is what makes it reference text --
+    so a word no segment contains has been *dropped from the output*, not
+    merely unmatched. Two mechanisms strand words, and both leave the audio
+    fully claimed, so unclaimed *time* is not the signal:
+
+    * a boundary lands inside a word (a long madd or a shadda dips as quietly
+      as a breath), leaving the head in one window and the tail in the other,
+      so neither fragment matches -- `ٱلسَّيِّئَةَ` split into `الس` and `َةُ`;
+    * the decoder drops a leading conjunction at a phrase edge, so the match
+      starts one word late -- `وَصَدَقَ` read back as `صَدَقَ`.
+
+    Which neighbour should take them is decided by evidence rather than by a
+    fixed side: each is re-scored with the orphans folded in, and the one whose
+    match degrades least gets them. On real recitation that picks a different
+    side in different places -- `وَصَدَقَ` costs the phrase before it 0.13 and
+    the phrase after it 0.06, while `وَمِنْهُم` costs 0.11 before and 0.20
+    after -- which a "always extend the previous segment" rule gets wrong half
+    the time.
+
+    The taker's score is recomputed rather than kept, so a segment holding a
+    word its decode never read back says so.
     """
     repaired = list(assignments)
+
     for i in range(len(repaired) - 1):
         start, end, score, phrase_start, phrase_end = repaired[i]
-        next_start, _, _, next_phrase_start, _ = repaired[i + 1]
+        next_start, next_end, next_score, next_phrase_start, next_phrase_end = repaired[i + 1]
 
-        orphans = next_start - (end + 1)
-        if orphans <= 0 or orphans > MAX_ORPHAN_WORDS:
+        first, last = end + 1, next_start - 1
+        if last < first or last - first + 1 > MAX_ORPHAN_WORDS:
             continue
-        if next_phrase_start <= phrase_end:
+        # A phrase never spans an ayah boundary, so only a neighbour in the
+        # orphans' own ayah may take them.
+        verse_key = ref_words[first][0]
+        if any(ref_words[w][0] != verse_key for w in range(first, last + 1)):
             continue
-        # A phrase never spans an ayah boundary, so a segment may only take
-        # back orphans from its own ayah.
-        verse_key = ref_words[end][0]
-        if any(ref_words[w][0] != verse_key for w in range(end + 1, next_start)):
+
+        to_previous = ref_words[end][0] == verse_key and last - start + 1 <= MAX_PHRASE_WORDS
+        to_next = ref_words[next_start][0] == verse_key and next_end - first + 1 <= MAX_PHRASE_WORDS
+        if not to_previous and not to_next:
             continue
-        if next_start - start > MAX_PHRASE_WORDS:
-            continue
+
+        previous_extended = _match_ratio(decodes[i], ref_words, start, last)
+        next_extended = _match_ratio(decodes[i + 1], ref_words, first, next_end)
+        previous_cost = _match_ratio(decodes[i], ref_words, start, end) - previous_extended
+        next_cost = _match_ratio(decodes[i + 1], ref_words, next_start, next_end) - next_extended
+
+        if to_previous and (not to_next or previous_cost <= next_cost):
+            # Any audio the skipped phrase left unclaimed goes with the words.
+            repaired[i] = (start, last, previous_extended, phrase_start, max(phrase_end, next_phrase_start))
+            taker, cost = "%.2f-%.2fs" % (phrase_start, phrase_end), previous_cost
+        else:
+            repaired[i + 1] = (first, next_end, next_extended, min(next_phrase_start, phrase_end), next_phrase_end)
+            taker, cost = "%.2f-%.2fs" % (next_phrase_start, next_phrase_end), next_cost
 
         log.info(
-            "phrase %.2f-%.2fs takes back %d word(s) stranded by the skipped phrase after it: %r",
-            phrase_start,
-            phrase_end,
-            orphans,
-            " ".join(ref_words[w][2] for w in range(end + 1, next_start)),
+            "phrase %s takes %d stranded word(s) at %.2f match cost: %r",
+            taker,
+            last - first + 1,
+            cost,
+            " ".join(ref_words[w][2] for w in range(first, last + 1)),
         )
-        repaired[i] = (start, next_start - 1, score, phrase_start, next_phrase_start)
+
+    # A tail the last phrase decoded badly enough to fall short of -- there is
+    # no next segment to weigh it against, and nothing else can ever carry it.
+    if repaired:
+        start, end, score, phrase_start, phrase_end = repaired[-1]
+        last = len(ref_words) - 1
+        if (
+            end < last
+            and last - end <= MAX_ORPHAN_WORDS
+            and last - start + 1 <= MAX_PHRASE_WORDS
+            and all(ref_words[w][0] == ref_words[end][0] for w in range(end + 1, last + 1))
+        ):
+            log.info(
+                "phrase %.2f-%.2fs takes %d stranded word(s) at the end of the reference: %r",
+                phrase_start,
+                phrase_end,
+                last - end,
+                " ".join(ref_words[w][2] for w in range(end + 1, last + 1)),
+            )
+            repaired[-1] = (
+                start,
+                last,
+                _match_ratio(decodes[-1], ref_words, start, last),
+                phrase_start,
+                phrase_end,
+            )
 
     return repaired
 
@@ -1043,6 +1107,7 @@ def assign_phrase_ranges_by_decode(
     empty text for one that decodes cleanly in isolation.
     """
     assignments: list[tuple[int, int, float, float, float]] = []
+    decodes: list[str] = []
     cursor = 0
 
     for i in range(len(boundaries) - 1):
@@ -1081,9 +1146,10 @@ def assign_phrase_ranges_by_decode(
             decoded[:60],
         )
         assignments.append((start, end, score, phrase_start, phrase_end))
+        decodes.append(decoded)
         cursor = end + 1
 
-    return _absorb_orphan_words(assignments, ref_words)
+    return _absorb_orphan_words(assignments, decodes, ref_words)
 
 
 def align_recitation(
