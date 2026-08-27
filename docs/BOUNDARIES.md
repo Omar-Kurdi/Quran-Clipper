@@ -40,3 +40,43 @@ Even with oracle boundaries, 3/11 fail:
 ## Consequence for the plan
 Widening candidates is only safe once the assignment can decline one. So the
 span search comes first, and is the thing to build.
+
+## When a phrase may span two candidates
+Nothing in a text-match score prefers a split: a longer window has more context
+and no cut words, so it reads back at least as well. An unconditional search
+therefore merges every boundary it is offered, which on test3.mp3 turned two
+correct segments either side of an audible pause into one 21-second segment.
+
+Merging needs positive evidence that the boundary was wrong, and two signals
+together supply it:
+
+* **stranded reference words** -- the windows either side do not join up, so
+  text fell between them;
+* **a fragment at the joint** -- the decoder read back orthography with no
+  consonants in it (`َةُ` for the tail of `ٱلسَّيِّئَةَ`, `ُ` for the tail of
+  `وَمِنْهُم`), which only happens when a cut went through a word.
+
+The second is what distinguishes a broken boundary from a good boundary next to
+a word the decoder simply garbled. `مُصَلًّى` read back as `مُصًا` strands a word
+too, but the window after it starts cleanly on `وَعَهِدْنَآ`; merging there would
+destroy a real pause. Orphan recovery is the right repair for that case, and it
+already handles it.
+
+## Orthography the decoder and Uthmani disagree about
+Three separate cases, all found the same way -- a word that never matched:
+
+| Uthmani | plain | mark | handling |
+|---|---|---|---|
+| `ٱلظَّـٰلِمِينَ` | `الظالمين` | superscript alef U+0670 | drop every alef from the skeleton |
+| `شَيْـًٔا` | `شَيْئًا` | hamza above U+0654 vs the letter `ئ` | fold hamza seats |
+| `إِبْرَٰهِـۧمَ` | `إبراهيم` | small high yeh U+06E7 | write it back as `ي` |
+
+The superscript alef cannot be written back as `ا`, because the words whose
+plain spelling *also* omits it (`هذا`, `ذلك`, `الله`, `الرحمن`) would then stop
+matching; dropping the letter on both sides collapses the two spellings
+instead. The small high **waw** is the same trap in reverse (`رَبُّهُۥ` is plainly
+`ربه`, not `ربوه`) and is left stripped. Dropping `و` and `ي` wholesale, for
+symmetry with alef, was tried and is worse: 388 -> 387 on relocation and
+test2.mp3 fell from 5/5 to 4/5.
+
+Relocation of phrases written in decoder orthography: 360 -> 388 of 400.

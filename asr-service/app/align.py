@@ -857,7 +857,7 @@ def _skeleton(word: str) -> str:
     spellings onto one form, the same trick the trailing weak-letter strip
     already uses for waqf/wasl endings.
     """
-    base = normalize_for_vocab(word).replace("ة", "ه")
+    base = normalize_for_vocab(word.replace("\u06E7", "ي")).replace("ة", "ه")
     base = base.replace("ؤ", "و").replace("ئ", "ي").replace("ء", "")
     base = base.replace("ا", "") or base
     return re.sub(r"[اويه]+$", "", base) or base
@@ -1154,6 +1154,30 @@ def _absorb_orphan_words(
     return repaired
 
 
+def _cuts_a_word(decode, i: int, j: int) -> bool:
+    """Does a boundary inside [i, j] look like it landed inside a word?
+
+    A cut through a word leaves half of it stranded at the edge of a window,
+    and the decoder reads that half back as orthography with no consonants at
+    all -- the tail of ٱلسَّيِّئَةَ came back as `َةُ`, the tail of وَمِنْهُم as
+    `ُ`. Anything that normalises to nothing is that: a piece of a word, not a
+    word. Its presence is what separates a boundary that broke a word from one
+    that merely sits next to a word the decoder garbled -- `مُصَلًّى` read back
+    as `مُصًا` is a bad decode, and merging the phrase away is the wrong repair
+    for it.
+    """
+    for step in range(i, j):
+        tail = decode(step, step + 1).split()
+        head = decode(step + 1, step + 2).split() if step + 1 < j else []
+        if tail and not normalize_for_vocab(tail[-1]):
+            return True
+        if head and not normalize_for_vocab(head[0]):
+            return True
+    # The window opening the *next* phrase is the other half of the last cut.
+    head = decode(j - 1, j).split()
+    return bool(head) and not normalize_for_vocab(head[0])
+
+
 def _split_strands_words(decode, match_from, i: int, j: int, cursor: int) -> bool:
     """Would keeping the candidate boundaries inside [i, j] lose reference words?
 
@@ -1231,7 +1255,10 @@ def assign_phrase_ranges_by_decode(
         cursor = assignments[-1][1] + 1 if assignments else 0
 
         for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
-            if j > i + 1 and not _split_strands_words(decode, match_from, i, j, cursor):
+            if j > i + 1 and not (
+                _split_strands_words(decode, match_from, i, j, cursor)
+                and _cuts_a_word(decode, i, j)
+            ):
                 # Merging is only ever *allowed* to fix a cut that lost text.
                 # Nothing in a text-match score prefers a split -- a longer
                 # window has more context and no cut words, so it reads back at

@@ -143,7 +143,7 @@ def skeleton(word: str) -> str:
     writes it out (الظالمين). Dropping the letter on both sides is what makes
     those agree; see `align._skeleton`, which mirrors this.
     """
-    text = _DIACRITICS.sub("", word)
+    text = _DIACRITICS.sub("", word.replace("\u06E7", "ي"))
     text = re.sub(r"[آأإٱ]", "ا", text)
     text = text.replace("ى", "ي").replace("ة", "ه")
     text = re.sub(r"[^ء-ي]", "", text)
