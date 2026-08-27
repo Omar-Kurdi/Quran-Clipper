@@ -694,6 +694,16 @@ MAX_BACK_OVERLAP = 4
 #: Beam width over phrase->range assignments.
 BEAM_WIDTH = 10
 
+#: Reference words a skipped phrase may hand back to its predecessor. A dip in
+#: the energy envelope can land *inside* a word -- a long madd or a shadda is
+#: quiet enough to look like a boundary -- which leaves the two halves decoding
+#: as fragments (`ٱلسَّيِّئَةَ` split into `الس` and `َةُ`). Neither fragment
+#: matches, so the word falls into the hole between the phrases on either side
+#: and is dropped from the output entirely. One word is the usual damage; the
+#: cap allows for a short phrase whose decode failed outright without letting a
+#: whole ayah get swept into its neighbour.
+MAX_ORPHAN_WORDS = 4
+
 #: A phrase whose decoded text matches the reference this poorly is not part of
 #: the passage being aligned -- it is silence, an intro, a du'a, or a surah the
 #: caller isn't aligning. Emitting it anyway produced segments captioned with
@@ -796,8 +806,21 @@ def decode_phrases(pcm: np.ndarray, boundaries: list[float]) -> list[str]:
 
 
 def _skeleton(word: str) -> str:
-    """Loose comparison form: consonant skeleton, weak final letters dropped."""
+    """Loose comparison form: consonant skeleton, alef and weak final letters dropped.
+
+    Dropping *every* alef is what makes this agree with a decoder's spelling.
+    Uthmani writes a pronounced long ā as a superscript alef wherever the rasm
+    omits the letter (ٱلظّـٰلِمِينَ, لَقَـٰدِرُونَ), and `normalize_for_vocab`
+    strips that as a diacritic -- so the reference reads الظلمين while the
+    decoder writes الظالمين and the two never match. Writing the superscript
+    alef back as ا only moves the problem: for the words whose plain spelling
+    also omits it (هذا, ذلك, الله, الرحمن) that breaks matches which
+    currently work. Removing the letter from both sides collapses the two
+    spellings onto one form, the same trick the trailing weak-letter strip
+    already uses for waqf/wasl endings.
+    """
     base = normalize_for_vocab(word).replace("ة", "ه")
+    base = base.replace("ا", "") or base
     return re.sub(r"[اويه]+$", "", base) or base
 
 
@@ -958,6 +981,51 @@ def assign_phrase_ranges(
     return best[3]
 
 
+def _absorb_orphan_words(
+    assignments: list[tuple[int, int, float, float, float]],
+    ref_words: list[tuple[str, int, str]],
+) -> list[tuple[int, int, float, float, float]]:
+    """Give reference words stranded by a skipped phrase back to its predecessor.
+
+    Only fires where *both* signals of a dropped phrase are present: reference
+    words no assignment claimed, and audio no assignment claimed either. A
+    reference gap on its own is a reciter skipping a word, and stretching a
+    segment over it would caption audio that never contained it; unclaimed
+    audio on its own is silence or an intro, which nothing should be assigned.
+    Together they mean a phrase really was recited and really was lost, and the
+    previous segment is where its words and its frames belong -- the split
+    happens mid-word, so its first half already decoded into that phrase.
+    """
+    repaired = list(assignments)
+    for i in range(len(repaired) - 1):
+        start, end, score, phrase_start, phrase_end = repaired[i]
+        next_start, _, _, next_phrase_start, _ = repaired[i + 1]
+
+        orphans = next_start - (end + 1)
+        if orphans <= 0 or orphans > MAX_ORPHAN_WORDS:
+            continue
+        if next_phrase_start <= phrase_end:
+            continue
+        # A phrase never spans an ayah boundary, so a segment may only take
+        # back orphans from its own ayah.
+        verse_key = ref_words[end][0]
+        if any(ref_words[w][0] != verse_key for w in range(end + 1, next_start)):
+            continue
+        if next_start - start > MAX_PHRASE_WORDS:
+            continue
+
+        log.info(
+            "phrase %.2f-%.2fs takes back %d word(s) stranded by the skipped phrase after it: %r",
+            phrase_start,
+            phrase_end,
+            orphans,
+            " ".join(ref_words[w][2] for w in range(end + 1, next_start)),
+        )
+        repaired[i] = (start, next_start - 1, score, phrase_start, next_phrase_start)
+
+    return repaired
+
+
 def assign_phrase_ranges_by_decode(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -1015,7 +1083,7 @@ def assign_phrase_ranges_by_decode(
         assignments.append((start, end, score, phrase_start, phrase_end))
         cursor = end + 1
 
-    return assignments
+    return _absorb_orphan_words(assignments, ref_words)
 
 
 def align_recitation(

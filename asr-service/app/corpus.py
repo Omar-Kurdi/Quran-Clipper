@@ -122,13 +122,18 @@ def skeleton(word: str) -> str:
     """Orthography-insensitive comparison form.
 
     Collapses everything ASR output and Uthmani script disagree about: harakat,
-    hamza seats, alef wasla, ta-marbuta, and the word-final long vowels that
-    differ between waqf and wasl pronunciation.
+    hamza seats, alef wasla, ta-marbuta, the word-final long vowels that differ
+    between waqf and wasl pronunciation, and alef itself -- Uthmani spells a
+    pronounced long ā as a superscript alef wherever the rasm drops the letter
+    (ٱلظّـٰلِمِينَ), which is stripped as a diacritic above, while a decoder
+    writes it out (الظالمين). Dropping the letter on both sides is what makes
+    those agree; see `align._skeleton`, which mirrors this.
     """
     text = _DIACRITICS.sub("", word)
     text = re.sub(r"[آأإٱ]", "ا", text)
     text = text.replace("ى", "ي").replace("ة", "ه")
     text = re.sub(r"[^ء-ي]", "", text)
+    text = text.replace("ا", "") or text
     return re.sub(r"[اويه]+$", "", text) or text
 
 

@@ -502,7 +502,33 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           ctx.font = `bold ${titleSize}px 'Amiri', serif`;
         }
         const subtitleSize = 20 * scale;
-        const badgeHeight = (subtitle ? titleSize + subtitleSize + 34 * scale : titleSize + 34 * scale);
+
+        // Place the text by where its glyphs actually are, not by the baseline
+        // convention. `textBaseline: 'middle'` centres on the font's em box,
+        // and Amiri's Arabic ink -- harakat and all -- sits well above that:
+        // measured on the default title it put the text 8px high in a 68px
+        // plate and pushed the diacritics of سُورَةُ through the gold border.
+        // actualBoundingBox* is where the glyphs really land.
+        const titleFont = `bold ${titleSize}px 'Amiri', serif`;
+        const subtitleFont = `600 ${subtitleSize}px 'Inter', sans-serif`;
+        const inkHeight = (text: string, font: string) => {
+          ctx.font = font;
+          const m = ctx.measureText(text);
+          return { ascent: m.actualBoundingBoxAscent, descent: m.actualBoundingBoxDescent };
+        };
+        const titleInk = inkHeight(title, titleFont);
+        const subtitleInk = subtitle ? inkHeight(subtitle, subtitleFont) : { ascent: 0, descent: 0 };
+        const stackGap = subtitle ? 8 * scale : 0;
+        const contentHeight =
+          titleInk.ascent + titleInk.descent + stackGap + subtitleInk.ascent + subtitleInk.descent;
+
+        // The plate keeps its old height so the badge doesn't resize itself
+        // with every change of wording; the max() is only a floor, for a title
+        // whose ink genuinely cannot fit inside the border.
+        const badgeHeight = Math.max(
+          subtitle ? titleSize + subtitleSize + 34 * scale : titleSize + 34 * scale,
+          contentHeight + 12 * scale
+        );
 
         // Darker plate than before: the badge sits over arbitrary footage, so
         // it has to carry its own contrast rather than hope the frame is dark.
@@ -514,16 +540,21 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.stroke();
 
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = 'alphabetic';
         ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
         ctx.shadowBlur = 6 * scale;
-        ctx.font = `bold ${titleSize}px 'Amiri', serif`;
+
+        // Centre the whole stack's ink box in the plate, then sit each line on
+        // its own baseline within it.
+        let inkTop = badgeY + (badgeHeight - contentHeight) / 2;
+        ctx.font = titleFont;
         ctx.fillStyle = goldAccent;
-        ctx.fillText(title, width / 2, badgeY + badgeHeight / 2 - (subtitle ? subtitleSize * 0.62 : 0));
+        ctx.fillText(title, width / 2, inkTop + titleInk.ascent);
         if (subtitle) {
-          ctx.font = `600 ${subtitleSize}px 'Inter', sans-serif`;
+          inkTop += titleInk.ascent + titleInk.descent + stackGap;
+          ctx.font = subtitleFont;
           ctx.fillStyle = 'rgba(237, 241, 247, 0.92)';
-          ctx.fillText(subtitle, width / 2, badgeY + badgeHeight / 2 + titleSize * 0.62);
+          ctx.fillText(subtitle, width / 2, inkTop + subtitleInk.ascent);
         }
         ctx.restore();
       }
