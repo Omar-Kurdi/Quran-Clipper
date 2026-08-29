@@ -117,16 +117,51 @@ said that no segment shows.
   `وَطَهرًا`) but the segment covering it was assigned only up to `وَإِسْمَـٰعِيلَ`,
   and forced alignment then smeared the extra speech into that last word.
 
-`detect_repeats` exists for this and is **not wired into the decode path**.
-Wiring it in is blocked on a real problem, not just plumbing: deciding whether
-extra words belong in a segment means comparing target sequences of *different
-lengths*, and `_fill_score` sums log-probabilities over the target, so a longer
-script always scores lower whether or not it is correct. Measured on test3, the
-correct 6-word script scored -1.23/frame against -0.39 for the incomplete
-4-word one. The gain-over-blank normalisation `detect_repeats` uses does not fix
-this either, because CTC emits blank on nearly every frame -- the blank baseline
-over 46 frames of *speech* came to -0.3, i.e. ~0.99 blank probability per frame.
+Both repeats are real, and confirmed rather than inferred: decoding overlapping
+windows around 94-99s of test3 gives `'طرًا منطَهِّرًا'` -- two utterances -- and
+27.0-28.8s and 28.7-30.5s of test.mp3 each decode to `قَالُوا`.
 
-A length-normalised model comparison is needed before repeat handling can be
-trusted here. Until then these cases will under-cover rather than mis-cover:
-the words are missing from a caption, never wrong in one.
+`detect_repeats` exists for this and is **not wired into the decode path**.
+
+An earlier note here said the blocker was that comparing target sequences of
+different lengths needs a length-normalised score. **That was wrong.**
+`torchaudio.functional.forced_align` returns one score per *frame*, and
+`_fill_score` sums those, so two candidate scripts are already scored over the
+same frames. There is nothing to normalise.
+
+The actual blockers are two, and both are about the emission rather than the
+scoring:
+
+1. **The aligner's emission is deaf where the repeat is.** `compute_emission`
+   stitches 30s windows, and NeMo normalises features per window; over the
+   frames carrying test3's second `أَن طَهِّرَا` the stitched emission puts ~0.99
+   blank probability on audio measuring -16.5 dB, while a chunk emission of the
+   same span reads `وَطَهْرًا` clearly. Any likelihood test run against the
+   stitched emission is asking a model that cannot hear the evidence.
+2. **The chunk emission does not support it either, when scored.** Aligning
+   test3's window 84.75-97.38 against the correct 6-word script scored
+   -8.58/frame against -7.89 for the incomplete 4-word one -- adding words that
+   a listener can hear still made the path worse. The second utterance is
+   quieter and faster than the first, and the posteriors do not carry it
+   strongly enough for a forced-alignment likelihood to find it.
+
+So repeat handling needs better evidence, not better arithmetic. Until then
+these cases under-cover rather than mis-cover: the words are missing from a
+caption, never wrong in one.
+
+## A promising direction that did not land
+The chunk and clip-wide emissions make *different* mistakes -- over three clips
+the chunk reading won 5 windows, the clip-wide reading won 6, and 18 were level.
+Keeping whichever matches the reference better repairs several failures at the
+point of first reading rather than leaving repair passes to notice a word went
+missing: `وَصَدَقَ` 0.93 -> 1.00, `تَبْدِيلًا` 0.80 -> 1.00, `ٱلسَّيِّئَةَ` 0.00 -> 1.00,
+`وَأَنِّى` 0.00 -> 0.67.
+
+It was tried and **reverted**. Reading windows that previously matched nothing
+turns them into one-word segments wedged between segments that already cover
+them, and the grouping downstream is not ready for that: four follow-on fixes
+(prefix-aware fragment detection, suppressing assignments that explain no new
+words, routing unclaimed audio by which segment owns the words it reads, and
+ranking ties toward fewer phrases) recovered test2 and test.mp3 but still left
+test3 two segments worse than without it. Worth returning to, with the grouping
+reworked first rather than patched.
