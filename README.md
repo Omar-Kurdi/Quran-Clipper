@@ -358,7 +358,7 @@ src/db/                      Drizzle ORM connection and schema
 src/lib/
   quranData.ts               Surahs, reciters, backgrounds, fonts, sample data
   quranCorpus.ts             Quran text fetch with a memoised chapter cache
-  arabic.ts                  Arabic normalisation and fuzzy word matching
+  arabic.ts                  Arabic normalisation
   matchTypes.ts              Shared segment/result shape for every provider
   matchTimeline.ts           Provider-agnostic segment -> timeline building
                              (also trimTimeline: clips/rebases segments to a trim window)
