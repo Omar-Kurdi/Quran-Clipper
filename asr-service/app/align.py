@@ -817,6 +817,9 @@ def span_decoder(
     pcm: np.ndarray,
     boundaries: list[float],
     decoded_phrases: list[str] | None = None,
+    emission=None,
+    sec_per_frame: float | None = None,
+    ref_words: list[tuple[str, int, str]] | None = None,
 ):
     """Greedy read-out of *any* span of candidate boundaries, computed on demand.
 
@@ -826,20 +829,53 @@ def span_decoder(
     NeMo normalises features per window, so `[i, j]` decoded whole is a
     different decode from `[i, i+1]` and `[i+1, j]` concatenated. Any
     already-computed pairs are seeded in rather than decoded twice.
-    """
-    cache: dict[tuple[int, int], str] = {}
-    if decoded_phrases is not None:
-        cache.update({(i, i + 1): text for i, text in enumerate(decoded_phrases)})
 
-    def decode(i: int, j: int) -> str:
-        if (i, j) not in cache:
+    Every span is read **twice** where possible: once from its own emission and
+    once out of the clip-wide one the aligner already computed. That same
+    per-window normalisation makes these genuinely different decodes, and
+    neither is reliably better -- measured over three clips the chunk reading
+    won 5 windows, the clip-wide reading won 6, and 18 were level. What matters
+    is that their mistakes are not the same mistakes. The clip-wide reading
+    recovered the leading conjunction of `وَصَدَقَ`, read `ٱلسَّيِّئَةَ` where the
+    chunk gave back the fragment `َةُ`, and got `تَبْدِيلًا` right where the chunk
+    said `تَبْْتِيلًا`; the chunk reading in turn carries windows the clip-wide
+    one reads as nothing at all. Keeping whichever matches the reference better
+    turns a wrong word into a right one at the point it is first read, rather
+    than leaving the repair passes downstream to notice a word went missing.
+    """
+    cache: dict[tuple[int, int], tuple[str, ...]] = {}
+    if decoded_phrases is not None:
+        cache.update({(i, i + 1): (text,) for i, text in enumerate(decoded_phrases)})
+
+    def readings(i: int, j: int) -> tuple[str, ...]:
+        options = cache.get((i, j))
+        if options is None:
             chunk = pcm[int(boundaries[i] * SAMPLE_RATE) : int(boundaries[j] * SAMPLE_RATE)]
             if len(chunk) < SAMPLE_RATE // 4:
-                cache[(i, j)] = ""
+                options = ("",)
             else:
-                emission = compute_emission(chunk)
-                cache[(i, j)] = decode_window(emission, 0, emission.shape[1])
-        return cache[(i, j)]
+                own = compute_emission(chunk)
+                options = (decode_window(own, 0, own.shape[1]),)
+            cache[(i, j)] = options
+        if emission is not None and sec_per_frame and len(options) == 1:
+            frame_start = max(0, int(boundaries[i] / sec_per_frame))
+            frame_end = min(emission.shape[1], int(boundaries[j] / sec_per_frame) + 1)
+            if frame_end - frame_start >= 2:
+                options = options + (decode_window(emission, frame_start, frame_end),)
+                cache[(i, j)] = options
+        return options
+
+    def decode(i: int, j: int, cursor: int = 0) -> str:
+        options = readings(i, j)
+        if len(options) == 1 or ref_words is None:
+            return options[0]
+        best_text, best_score = options[0], -1.0
+        for text in options:
+            match = match_decoded_to_range(text, ref_words, cursor)
+            score = match[2] if match else -1.0
+            if score > best_score:
+                best_text, best_score = text, score
+        return best_text
 
     return decode
 
@@ -1034,7 +1070,7 @@ def _match_ratio(decoded: str, ref_words: list[tuple[str, int, str]], start: int
     return difflib.SequenceMatcher(None, tokens, window).ratio()
 
 
-def _unclaimed_between(decode, boundaries, previous_end: float, next_start: float) -> str | None:
+def _unclaimed_between(decode, boundaries, previous_end: float, next_start: float, cursor: int) -> str | None:
     """Read-out of the window(s) no assignment claimed between two segments."""
     if next_start <= previous_end:
         return None
@@ -1042,7 +1078,7 @@ def _unclaimed_between(decode, boundaries, previous_end: float, next_start: floa
         i, j = boundaries.index(previous_end), boundaries.index(next_start)
     except ValueError:
         return None
-    return decode(i, j) if j > i else None
+    return decode(i, j, cursor) if j > i else None
 
 
 def _absorb_orphan_words(
@@ -1110,10 +1146,17 @@ def _absorb_orphan_words(
         # means it is the tail of the word before it and belongs backward.
         skipped = None
         if decode is not None and boundaries is not None:
-            skipped = _unclaimed_between(decode, boundaries, phrase_end, next_phrase_start)
+            skipped = _unclaimed_between(decode, boundaries, phrase_end, next_phrase_start, end + 1)
         if skipped is not None:
             opening = skipped.split()
-            prefer_previous = not (opening and _carries_a_word(opening[0]))
+            prefer_previous = not (opening and _carries_a_word(opening[0], ref_words, first))
+        # A stranded word carrying a stop mark *ends* a phrase, so it belongs to
+        # the segment it closes rather than the one that follows it. This is the
+        # same signal the segment splitter uses, read the other way round: the
+        # mushaf says a phrase may end here, so a word sitting on one is the
+        # last word of what came before, not the first of what comes next.
+        if _WAQF_MARKS.search(ref_words[last][2]):
+            prefer_previous = True
 
         if to_previous and (not to_next or prefer_previous):
             # Any audio the skipped phrase left unclaimed goes with the words.
@@ -1182,20 +1225,32 @@ def _absorb_orphan_words(
     return repaired
 
 
-def _carries_a_word(token: str) -> bool:
+def _carries_a_word(token: str, ref_words=None, expected: int | None = None) -> bool:
     """Is this read-out token a word, or a piece of one left by a cut?
 
-    Half a word comes back as orthography with no consonant in it -- the tail of
-    `ٱلسَّيِّئَةَ` reads as `َةُ`, the tail of `وَمِنْهُم` as `ُ`. Emptiness alone is
-    too weak a test: a bare ta-marbuta survives normalisation as a letter while
-    being no more a word than a lone vowel is. Long vowels, the hamza and the
-    ta-marbuta are all things a word can *end* on and none can carry it, so what
-    is left after removing them is the test.
+    A cut through a word leaves two kinds of debris. The tail comes back as
+    orthography with no consonant in it -- `ٱلسَّيِّئَةَ` splits into `الس` and
+    `َةُ`, `وَمِنْهُم` leaves `ُ`. Emptiness alone is too weak a test there: a bare
+    ta-marbuta survives normalisation as a letter while being no more a word
+    than a lone vowel, so what is left after removing the long vowels, the hamza
+    and the ta-marbuta is what decides.
+
+    The *head* is harder, because it is spelled like a real word -- `فَ` is a
+    plausible token in isolation. What gives it away is the reference: it is the
+    beginning of the word the reading is about to reach and not that word, so
+    comparing it against the expected word is what separates `فَ` from
+    `فَضَّلْتُكُمْ`.
     """
-    return bool(re.sub(r"[اويهةء]", "", normalize_for_vocab(token)))
+    if not re.sub(r"[اويهةء]", "", normalize_for_vocab(token)):
+        return False
+    if ref_words is not None and expected is not None and 0 <= expected < len(ref_words):
+        piece, whole = _skeleton(token), _skeleton(ref_words[expected][2])
+        if piece != whole and whole.startswith(piece):
+            return False
+    return True
 
 
-def _cuts_a_word(decode, i: int, j: int) -> bool:
+def _cuts_a_word(decode, i: int, j: int, cursor: int, ref_words=None, match_from=None) -> bool:
     """Does a boundary inside [i, j] look like it landed inside a word?
 
     A cut through a word leaves half of it stranded at the edge of a window,
@@ -1207,16 +1262,25 @@ def _cuts_a_word(decode, i: int, j: int) -> bool:
     as `مُصًا` is a bad decode, and merging the phrase away is the wrong repair
     for it.
     """
+    at = cursor
     for step in range(i, j):
-        tail = decode(step, step + 1).split()
-        head = decode(step + 1, step + 2).split() if step + 1 < j else []
-        if tail and not _carries_a_word(tail[-1]):
+        window = decode(step, step + 1, at)
+        tail = window.split()
+        # The word a trailing fragment would be the beginning of is the one
+        # after everything this window matched, not the one the window started
+        # on -- `فَ` at the end of a window reading `وَأَنِّي فَ` is the head of
+        # `فَضَّلْتُكُمْ`, two words along from where that window began.
+        match = match_from(window, at) if match_from is not None else None
+        after = (match[1] + 1) if match else at
+        head = decode(step + 1, step + 2, after).split() if step + 1 < j else []
+        if tail and not _carries_a_word(tail[-1], ref_words, after):
             return True
-        if head and not _carries_a_word(head[0]):
+        if head and not _carries_a_word(head[0], ref_words, after):
             return True
+        at = after
     # The window opening the *next* phrase is the other half of the last cut.
-    head = decode(j - 1, j).split()
-    return bool(head) and not _carries_a_word(head[0])
+    head = decode(j - 1, j, at).split()
+    return bool(head) and not _carries_a_word(head[0], ref_words, at)
 
 
 def _split_strands_words(decode, match_from, i: int, j: int, cursor: int) -> bool:
@@ -1229,7 +1293,7 @@ def _split_strands_words(decode, match_from, i: int, j: int, cursor: int) -> boo
     """
     at = cursor
     for step in range(i, j):
-        match = match_from(decode(step, step + 1), at)
+        match = match_from(decode(step, step + 1, at), at)
         if match is None or match[2] < MIN_ASSIGN_SCORE:
             return True
         start, end, _ = match
@@ -1252,6 +1316,8 @@ def _absorb_unclaimed_audio(
     assignments: list[tuple[int, int, float, float, float]],
     decode,
     boundaries: list[float] | None,
+    match_from=None,
+    ref_words=None,
 ) -> list[tuple[int, int, float, float, float]]:
     """Hand audio no segment claimed to the neighbour it belongs to.
 
@@ -1274,12 +1340,25 @@ def _absorb_unclaimed_audio(
         start, end, score, phrase_start, phrase_end = repaired[i]
         next_start, next_end, next_score, next_phrase_start, next_phrase_end = repaired[i + 1]
 
-        skipped = _unclaimed_between(decode, boundaries, phrase_end, next_phrase_start)
+        skipped = _unclaimed_between(decode, boundaries, phrase_end, next_phrase_start, end + 1)
         if skipped is None:
             continue
 
+        # Whichever segment already shows the words this window read is the one
+        # that should cover its audio: a window reading ٱلسَّيِّئَةَ again belongs
+        # to the segment ending on that word, not to the one starting after it.
         opening = skipped.split()
-        if opening and _carries_a_word(opening[0]):
+        forward = bool(opening and _carries_a_word(opening[0], ref_words, end + 1))
+        if match_from is not None:
+            match = match_from(skipped, start)
+            if match and match[0] <= end:
+                # Words already on screen in the previous segment: this window
+                # is that segment still being recited.
+                forward = False
+            elif match and ref_words is not None and _WAQF_MARKS.search(ref_words[match[1]][2]):
+                # It ends on a stop mark, so it closes the previous phrase.
+                forward = False
+        if forward:
             repaired[i + 1] = (next_start, next_end, next_score, phrase_end, next_phrase_end)
             taker = "%.2f-%.2fs" % (next_phrase_start, next_phrase_end)
         else:
@@ -1302,6 +1381,8 @@ def assign_phrase_ranges_by_decode(
     ref_words: list[tuple[str, int, str]],
     boundaries: list[float],
     decoded_phrases: list[str] | None = None,
+    emission=None,
+    sec_per_frame: float | None = None,
 ) -> list[tuple[int, int, float, float, float]]:
     """Decode each phrase, then locate what it said in the reference text.
 
@@ -1330,7 +1411,7 @@ def assign_phrase_ranges_by_decode(
     prefer splitting. Merging wins only when it genuinely matches better, and
     an exact tie keeps the finer split.
     """
-    decode = span_decoder(pcm, boundaries, decoded_phrases)
+    decode = span_decoder(pcm, boundaries, decoded_phrases, emission, sec_per_frame, ref_words)
     match_from = lambda text, at: match_decoded_to_range(text, ref_words, at)
     phrases = len(boundaries) - 1
     max_span = MAX_DECODE_SPAN if phrase_search() else 1
@@ -1348,20 +1429,17 @@ def assign_phrase_ranges_by_decode(
         cursor = assignments[-1][1] + 1 if assignments else 0
 
         for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
-            if j > i + 1 and not (
-                _split_strands_words(decode, match_from, i, j, cursor)
-                and _cuts_a_word(decode, i, j)
-            ):
-                # Merging is only ever *allowed* to fix a cut that lost text.
-                # Nothing in a text-match score prefers a split -- a longer
-                # window has more context and no cut words, so it reads back at
-                # least as well -- which means an unconditional search merges
-                # every boundary it is offered. On real recitation that turned
-                # two correct segments either side of an audible pause into one
-                # 21-second segment. Stranded reference words are the evidence
-                # that a boundary landed inside a word rather than between two.
+            if j > i + 1 and not _cuts_a_word(decode, i, j, cursor, ref_words, match_from):
+                # A longer window reads back at least as well as its halves --
+                # more context, no cut words -- so a better-matching merge is
+                # never on its own a reason to drop a boundary the audio found.
+                # Left unchecked the search merges to paper over a garbled
+                # decode, which is how two correct segments either side of an
+                # audible break became one 25-second caption. Merging needs
+                # evidence the boundary itself was wrong, and a word split
+                # across it is that evidence.
                 continue
-            decoded = decode(i, j)
+            decoded = decode(i, j, cursor)
             match = match_decoded_to_range(decoded, ref_words, cursor)
             if match is None or match[2] < MIN_ASSIGN_SCORE:
                 # This span explains nothing. Still a legal step -- the audio may
@@ -1369,20 +1447,33 @@ def assign_phrase_ranges_by_decode(
                 candidate = (explained, used + 1, assignments, decodes)
             else:
                 start, end, score = match
-                # Only words the reading had not already reached count. A
-                # restart legitimately re-covers text it has said before, and
-                # crediting those words twice let a segmentation score more
-                # than it explains -- two phrases overlapping on one word beat
-                # a single phrase covering the same span, so a boundary that
-                # had cut a word in half could never be undone.
-                fresh = max(0, end - max(reached(assignments), start - 1))
-                candidate = (
-                    explained + score * fresh,
-                    used + 1,
-                    assignments + [(start, end, score, boundaries[i], boundaries[j])],
-                    decodes + [decoded],
-                )
+                if end <= reached(assignments):
+                    # This window reaches no further into the reference than
+                    # what is already on screen, so it has nothing of its own
+                    # to show -- a second reading of a window can now match
+                    # text the first reading missed, and without this it
+                    # becomes a one-word caption wedged between two segments
+                    # that already carry that word. Leaving it unclaimed lets
+                    # the audio pass give its time to whichever of them owns it.
+                    #
+                    # Reaching *further* is a different thing entirely and is
+                    # kept: that is a restart, where the reciter goes back and
+                    # carries on past where they stopped, and it is a segment
+                    # in its own right.
+                    candidate = (explained, used + 1, assignments, decodes)
+                else:
+                    candidate = (
+                        explained + score * (end - start + 1),
+                        used + 1,
+                        assignments + [(start, end, score, boundaries[i], boundaries[j])],
+                        decodes + [decoded],
+                    )
             current = states.get(j)
+            # Rank on words explained, then on *more* phrases. A tie means both
+            # segmentations account for the same text equally well, and the
+            # finer one is the one that respects the pause the dip detector
+            # found. Segments that explain nothing new are suppressed above
+            # rather than merged away here.
             if current is None or candidate[:2] > current[:2]:
                 states[j] = candidate
 
@@ -1408,7 +1499,7 @@ def assign_phrase_ranges_by_decode(
         )
 
     assignments = _absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries)
-    return _absorb_unclaimed_audio(assignments, decode, boundaries)
+    return _absorb_unclaimed_audio(assignments, decode, boundaries, match_from, ref_words)
 
 
 #: The mushaf's own stop signs (U+06D6..U+06DC). Unlike the end-of-ayah mark
@@ -1531,7 +1622,9 @@ def align_recitation(
     if boundaries is None:
         boundaries = detect_boundaries(pcm)
     if align_backend() == "nemo":
-        assignments = assign_phrase_ranges_by_decode(pcm, ref_words, boundaries, decoded_phrases)
+        assignments = assign_phrase_ranges_by_decode(
+            pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame
+        )
     else:
         assignments = assign_phrase_ranges(emission, ref_words, boundaries, sec_per_frame)
 
