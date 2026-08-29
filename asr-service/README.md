@@ -8,7 +8,7 @@ It has two endpoints doing very different jobs.
 **`POST /align` — forced alignment. This is the one to use.** You supply the audio *and* the
 Quran text; it decides only the timing. Because the text is a fixed constraint rather than
 something to guess, a word cannot go missing, come back garbled, or land in the wrong surah.
-Consumed by the app's `align` and `hybrid` providers.
+Consumed by the app's `align` provider -- "Local" in the studio.
 
 **`POST /transcribe` — free decode plus pause detection.** Answers "which Arabic words were
 spoken, when, and where were the pauses?" with no reference text, for the app's `asr`
@@ -85,7 +85,7 @@ The symptom is unmistakable once you know it: NeMo fails to import against the w
 interpreter's protobuf/onnx, and every `/align` returns HTTP 400 with a `VersionError`. The
 service now checks for this at startup and prints which interpreter it is running as, which
 one it expected, and the command to fix it. `GET /health` reports the same via `alignReady`
-and `alignError`, and the studio shows it on the Forced Align button before you upload
+and `alignError`, and the studio shows it on the **Local** button before you upload
 anything.
 
 If you prefer not to use `run.sh`, call the binary directly — `.venv/bin/uvicorn app.main:app`
@@ -107,8 +107,7 @@ ASR_WARM_UP=0 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 `ASR_WARM_UP=0` skips loading the `ASR_BACKEND` model at startup, which is what `/transcribe`
-uses. If you only serve `/align` (the `align` and `hybrid` providers) that is a second large
-model held in memory for nothing.
+uses. If you only serve `/align` that is a second large model held in memory for nothing.
 
 ### Giving up range detection
 
@@ -124,9 +123,6 @@ environment problem — typically the service started outside its virtualenv —
 like a permanent limitation, and cost every user range detection without telling them. Now a
 broken NeMo raises an error naming the cause. `GET /health` reports the backend in use and a
 `canAutoDetectRange` flag.
-
-If you want cloud identification instead of a local decode, the app's `hybrid` provider has
-Gemini name the passage and the CPU aligner time it.
 
 ---
 
@@ -316,7 +312,7 @@ Two caveats:
   recitations you know are correct, raise `ALIGN_MIN_REFERENCE_COVERAGE` before concluding the
   alignment is wrong.
 - **Multi-block references are the fragile case.** A reference built from more than one block
-  (auto-detection, or the app's `hybrid` provider) is concatenated and walked with a forward
+  (auto-detection) is concatenated and walked with a forward
   cursor from word 0. If the first block isn't in the audio, the search may never escape it:
   a reference of `1:1-7` + `33:21-23` against audio containing only 33:21–23 emitted segments
   for 1:1–1:2 and never reached Al-Ahzab. Coverage caught it (0.10), but the timeline was

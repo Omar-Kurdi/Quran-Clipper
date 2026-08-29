@@ -84,7 +84,7 @@ export function nudgeBoundary(
 
 /**
  * Marks the current playback position as the end of `index`, and hands the
- * remainder to the next segment. This is what SPACEBAR does.
+ * remainder to the next segment. This is what the B key does.
  */
 export function markBoundaryAt(verses: VerseData[], index: number, atTime: number): VerseData[] | null {
   if (index >= verses.length) return null;

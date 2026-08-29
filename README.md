@@ -111,7 +111,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 | **Python 3.11 or 3.12** + **ffmpeg** on PATH | local forced alignment (recommended) |
 | **Hugging Face account** (free) | local forced alignment — its model is gated |
 | **PostgreSQL** | durable saved projects (optional) |
-| **Gemini API key** | cloud matching providers (optional) |
+| **Gemini API key** | the cloud matching provider (optional) |
 
 The app runs with Node alone. Everything else unlocks an optional capability.
 
@@ -242,8 +242,8 @@ The sidecar has its own settings (backend, device, thresholds), documented in
 ## Audio matching
 
 Upload a recitation, pick a matcher, and the studio produces a timeline of segments.
-All four providers return the same shape and flow through the same timeline-building code,
-so they can be swapped freely and compared on the same clip.
+Both providers return the same shape and flow through the same timeline-building code, so
+they can be swapped freely and compared on the same clip.
 
 | Provider | Needs | Who picks the ayah range | Timing accuracy |
 |---|---|---|---|
@@ -304,7 +304,7 @@ how the work actually goes.
 
 **Timeline — when each ayah happens**
 3. Each ayah is a block whose width is its real duration, drawn over the waveform of the audio.
-4. Press <kbd>SPACE</kbd> to play. Tap <kbd>SPACE</kbd> again at the end of each ayah to set its
+4. Press <kbd>SPACE</kbd> to play or pause. Tap <kbd>B</kbd> at the end of each ayah to set its
    boundary and move to the next one — the recitation keeps playing while you do.
 5. Drag either edge of a block to adjust it. Moving an end pushes the following ayahs along so
    the timeline stays contiguous.

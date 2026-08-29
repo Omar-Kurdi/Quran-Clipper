@@ -1,7 +1,7 @@
 /**
  * Provider-agnostic timeline building.
  *
- * Both the Gemini matcher and the local ASR aligner produce the same
+ * The local forced aligner and the Gemini matcher produce the same
  * `MatchSegment[]` shape (see `matchTypes.ts`). Everything from here on —
  * fetching verse text, deciding which words are actually on-screen, keeping
  * the timeline contiguous — is shared so the two providers can't drift apart.

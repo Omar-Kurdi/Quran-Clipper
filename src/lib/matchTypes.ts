@@ -1,6 +1,7 @@
 /**
- * Shared shapes produced by any audio-match provider (Gemini, local ASR, …)
- * before they're turned into a `VerseData[]` timeline by `matchTimeline.ts`.
+ * Shared shapes produced by either audio-match provider (local forced
+ * alignment, Gemini) before they're turned into a `VerseData[]` timeline by
+ * `matchTimeline.ts`.
  */
 
 export type MatchSegment = {

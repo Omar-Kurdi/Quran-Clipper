@@ -942,8 +942,8 @@ export default function VideoCreatorPage() {
       {/* onPlay/onPause track the element rather than only our own toggle.
           Playback can start or stop by routes this component does not own --
           clicking the preview, the export pipeline, media keys -- and
-          `isPlaying` now decides what SPACEBAR does, so a desync makes the key
-          do the wrong thing. */}
+          `isPlaying` decides whether SPACE plays or pauses, so a desync makes
+          the key do the wrong thing. */}
       <audio
         ref={audioElementRef}
         src={audioUrl}
