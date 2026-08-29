@@ -30,6 +30,7 @@ import difflib
 import logging
 import os
 import re
+import statistics
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 
@@ -1033,10 +1034,23 @@ def _match_ratio(decoded: str, ref_words: list[tuple[str, int, str]], start: int
     return difflib.SequenceMatcher(None, tokens, window).ratio()
 
 
+def _unclaimed_between(decode, boundaries, previous_end: float, next_start: float) -> str | None:
+    """Read-out of the window(s) no assignment claimed between two segments."""
+    if next_start <= previous_end:
+        return None
+    try:
+        i, j = boundaries.index(previous_end), boundaries.index(next_start)
+    except ValueError:
+        return None
+    return decode(i, j) if j > i else None
+
+
 def _absorb_orphan_words(
     assignments: list[tuple[int, int, float, float, float]],
     decodes: list[str],
     ref_words: list[tuple[str, int, str]],
+    decode=None,
+    boundaries: list[float] | None = None,
 ) -> list[tuple[int, int, float, float, float]]:
     """Give reference words no phrase claimed to whichever neighbour loses least.
 
@@ -1086,8 +1100,22 @@ def _absorb_orphan_words(
         next_extended = _match_ratio(decodes[i + 1], ref_words, first, next_end)
         previous_cost = _match_ratio(decodes[i], ref_words, start, end) - previous_extended
         next_cost = _match_ratio(decodes[i + 1], ref_words, next_start, next_end) - next_extended
+        prefer_previous = previous_cost <= next_cost
 
-        if to_previous and (not to_next or previous_cost <= next_cost):
+        # When a whole window went unclaimed, the stranded words were spoken in
+        # *it*, and its own read-out says which side it belongs to far more
+        # directly than a match score does. Opening on a real word means the
+        # window carries a word of its own and should go forward with the
+        # segment that follows; opening on a fragment -- or on nothing at all --
+        # means it is the tail of the word before it and belongs backward.
+        skipped = None
+        if decode is not None and boundaries is not None:
+            skipped = _unclaimed_between(decode, boundaries, phrase_end, next_phrase_start)
+        if skipped is not None:
+            opening = skipped.split()
+            prefer_previous = not (opening and _carries_a_word(opening[0]))
+
+        if to_previous and (not to_next or prefer_previous):
             # Any audio the skipped phrase left unclaimed goes with the words.
             repaired[i] = (start, last, previous_extended, phrase_start, max(phrase_end, next_phrase_start))
             taker, cost = "%.2f-%.2fs" % (phrase_start, phrase_end), previous_cost
@@ -1154,6 +1182,19 @@ def _absorb_orphan_words(
     return repaired
 
 
+def _carries_a_word(token: str) -> bool:
+    """Is this read-out token a word, or a piece of one left by a cut?
+
+    Half a word comes back as orthography with no consonant in it -- the tail of
+    `ٱلسَّيِّئَةَ` reads as `َةُ`, the tail of `وَمِنْهُم` as `ُ`. Emptiness alone is
+    too weak a test: a bare ta-marbuta survives normalisation as a letter while
+    being no more a word than a lone vowel is. Long vowels, the hamza and the
+    ta-marbuta are all things a word can *end* on and none can carry it, so what
+    is left after removing them is the test.
+    """
+    return bool(re.sub(r"[اويهةء]", "", normalize_for_vocab(token)))
+
+
 def _cuts_a_word(decode, i: int, j: int) -> bool:
     """Does a boundary inside [i, j] look like it landed inside a word?
 
@@ -1169,13 +1210,13 @@ def _cuts_a_word(decode, i: int, j: int) -> bool:
     for step in range(i, j):
         tail = decode(step, step + 1).split()
         head = decode(step + 1, step + 2).split() if step + 1 < j else []
-        if tail and not normalize_for_vocab(tail[-1]):
+        if tail and not _carries_a_word(tail[-1]):
             return True
-        if head and not normalize_for_vocab(head[0]):
+        if head and not _carries_a_word(head[0]):
             return True
     # The window opening the *next* phrase is the other half of the last cut.
     head = decode(j - 1, j).split()
-    return bool(head) and not normalize_for_vocab(head[0])
+    return bool(head) and not _carries_a_word(head[0])
 
 
 def _split_strands_words(decode, match_from, i: int, j: int, cursor: int) -> bool:
@@ -1205,6 +1246,55 @@ def phrase_search() -> bool:
     hard split, which is what this path did before the search existed.
     """
     return (os.getenv("ASR_PHRASE_SEARCH") or "1").strip().lower() not in ("0", "false", "no")
+
+
+def _absorb_unclaimed_audio(
+    assignments: list[tuple[int, int, float, float, float]],
+    decode,
+    boundaries: list[float] | None,
+) -> list[tuple[int, int, float, float, float]]:
+    """Hand audio no segment claimed to the neighbour it belongs to.
+
+    A window whose decode matched nothing leaves a hole in the timeline, and the
+    caption vanishes for a second or two in the middle of the recitation. The
+    window's own read-out says which side should cover it: reading back with no
+    consonant in it means it is the tail of a word a boundary cut, so it belongs
+    to the segment before; carrying a word of its own means it belongs to the
+    segment after, where that word is shown.
+
+    Separate from the stranded-word pass because the two do not always coincide
+    -- a boundary can cut a word late enough that the tail is still matched, so
+    no word is stranded while a second of audio is still left to no one.
+    """
+    if decode is None or boundaries is None:
+        return assignments
+
+    repaired = list(assignments)
+    for i in range(len(repaired) - 1):
+        start, end, score, phrase_start, phrase_end = repaired[i]
+        next_start, next_end, next_score, next_phrase_start, next_phrase_end = repaired[i + 1]
+
+        skipped = _unclaimed_between(decode, boundaries, phrase_end, next_phrase_start)
+        if skipped is None:
+            continue
+
+        opening = skipped.split()
+        if opening and _carries_a_word(opening[0]):
+            repaired[i + 1] = (next_start, next_end, next_score, phrase_end, next_phrase_end)
+            taker = "%.2f-%.2fs" % (next_phrase_start, next_phrase_end)
+        else:
+            repaired[i] = (start, end, score, phrase_start, next_phrase_start)
+            taker = "%.2f-%.2fs" % (phrase_start, phrase_end)
+
+        log.info(
+            "phrase %s covers the %.2f-%.2fs no segment claimed (%r)",
+            taker,
+            phrase_end,
+            next_phrase_start,
+            skipped[:24],
+        )
+
+    return repaired
 
 
 def assign_phrase_ranges_by_decode(
@@ -1307,7 +1397,109 @@ def assign_phrase_ranges_by_decode(
             decoded[:60],
         )
 
-    return _absorb_orphan_words(assignments, decodes, ref_words)
+    assignments = _absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries)
+    return _absorb_unclaimed_audio(assignments, decode, boundaries)
+
+
+#: The mushaf's own stop signs (U+06D6..U+06DC). Unlike the end-of-ayah mark
+#: and the hizb mark they carry no text of their own -- they are instructions
+#: to the reciter about where a pause is permitted, which is exactly the
+#: question segmentation has to answer. `split_verse_words` glues them onto the
+#: word they follow, so they arrive here attached to the word they license a
+#: stop after.
+_WAQF_MARKS = re.compile(r"[\u06D6-\u06DC]")
+
+#: A waqf mark says a stop is *allowed* there; these say the reciter took one.
+#: Expressed as a multiple of the recitation's own median inter-word gap so it
+#: travels across reciters and tempos rather than encoding one reading's speed,
+#: with a floor for very fast recitation.
+#:
+#: Measured across three clips: the gap at a waqf mark ran to a 1.41s median
+#: against 0.24s between ordinary words, and the one waqf mark the ground truth
+#: does *not* break at sat at 0.24s -- the reciter simply carried straight
+#: through it. Seven waqf marks is thin evidence for the exact number; the
+#: 6x separation behind it is not.
+WAQF_PAUSE_FACTOR = 1.5
+MIN_WAQF_PAUSE_SEC = 0.30
+
+
+def _split_at_pause_marks(
+    segments: list[Segment],
+    spans: list[list[AlignedWord]],
+    ref_words: list[tuple[str, int, str]],
+) -> list[Segment]:
+    """Break a segment where the mushaf permits a stop and the reciter took one.
+
+    Candidate boundaries come from the audio alone, and the audio does not carry
+    the distinction reliably: measured on real recitation, a 1.91s pause fell in
+    the middle of a phrase that should not be split, while a break the reader
+    plainly hears had only 0.56s of quiet. No threshold on loudness or on pause
+    length orders those two correctly, because what separates them is where the
+    sentence ends, not how quiet it got.
+
+    The reference text already carries that. Waqf marks are the tradition's own
+    annotation of where a reciter may stop, and they land on 18 of the 26
+    segment ends measured here -- including every one the dip detector could not
+    find. They are *permission*, not instruction, so a mark on its own would
+    over-split; pairing it with the reciter's own timing is what makes it a
+    decision. Both signals are weak alone and the conjunction is what carries.
+    """
+    gaps = [
+        max(0.0, nxt.start - word.end)
+        for span in spans
+        for word, nxt in zip(span, span[1:])
+        if word.verse_key == nxt.verse_key
+    ]
+    if not gaps:
+        return segments
+    threshold = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * statistics.median(gaps))
+
+    text_of = {(key, index): text for key, index, text in ref_words}
+    out: list[Segment] = []
+
+    for segment, span in zip(segments, spans):
+        cuts = [
+            i
+            for i, (word, nxt) in enumerate(zip(span, span[1:]))
+            if word.verse_key == nxt.verse_key
+            and _WAQF_MARKS.search(text_of.get((word.verse_key, word.word_index), ""))
+            and nxt.start - word.end >= threshold
+        ]
+        if not cuts or not span:
+            out.append(segment)
+            continue
+
+        piece_start = segment.start
+        first_index = 0
+        for cut in cuts + [len(span) - 1]:
+            first, last = span[first_index], span[cut]
+            final = cut == len(span) - 1
+            piece_end = segment.end if final else (last.end + span[cut + 1].start) / 2
+            out.append(
+                Segment(
+                    verse_key=first.verse_key,
+                    start_word=first.word_index,
+                    end_word=last.word_index,
+                    start=round(piece_start, 3),
+                    end=round(piece_end, 3),
+                    score=segment.score,
+                    # Only the opening piece inherits the restart flag; the rest
+                    # continue it rather than each re-announcing one.
+                    is_restart=segment.is_restart and first_index == 0,
+                )
+            )
+            piece_start = piece_end
+            first_index = cut + 1
+
+        log.info(
+            "phrase %.2f-%.2fs split at %d pause mark(s) the reciter stopped on: after %s",
+            segment.start,
+            segment.end,
+            len(cuts),
+            ", ".join(text_of.get((span[c].verse_key, span[c].word_index), "?") for c in cuts),
+        )
+
+    return out
 
 
 def align_recitation(
@@ -1350,6 +1542,10 @@ def align_recitation(
     total_frames = emission.shape[1]
     aligned: list[AlignedWord] = []
     segments: list[Segment] = []
+    # Each segment's own words, kept alongside it so the pause-mark pass can
+    # read their timings without having to find them again in `aligned`, where
+    # a repeat makes the same word appear more than once.
+    spans: list[list[AlignedWord]] = []
     previous_end = -1
 
     for start, end, value, phrase_start, phrase_end in assignments:
@@ -1408,7 +1604,10 @@ def align_recitation(
                 is_restart=start <= previous_end,
             )
         )
+        spans.append(span)
         previous_end = end
+
+    segments = _split_at_pause_marks(segments, spans, ref_words)
 
     mean_score = float(np.mean([w.score for w in aligned])) if aligned else 0.0
 
