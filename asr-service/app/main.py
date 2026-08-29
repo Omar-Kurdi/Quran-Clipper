@@ -88,6 +88,18 @@ def _startup() -> None:
             log.error("      cd asr-service && hash -r && ./run.sh")
         log.error("%s", "=" * 78)
 
+    if not ALIGN_STARTUP_ERROR and align.gated_model_needs_login():
+        # Not an error: the weights may already be cached from an authenticated
+        # run. But if they are not, the first /align request is where someone
+        # would otherwise discover the gate, which is far too late.
+        log.warning(
+            "%s is a gated model and no Hugging Face token was found. If its weights are "
+            "not already cached, alignment will fail on the first request. Accept the terms "
+            "at https://huggingface.co/%s, create a read token, then run `hf auth login`.",
+            align.align_model_name(),
+            align.align_model_name(),
+        )
+
     if backend != "nemo":
         # Only reachable by explicitly setting ASR_ALIGN_BACKEND, so this is an
         # informed choice rather than an accident -- but say what it costs, since

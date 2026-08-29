@@ -14,13 +14,23 @@ silero-vad==5.1.2
 # See "Running without a GPU" in README.md.
 torch>=2.2
 
-# Backend: wav2vec2 (default, ungated, CTC char offsets -> word timestamps)
+# Backend: wav2vec2 (ungated, CTC char offsets -> word timestamps)
 # Backend: whisper (Tarteel-fine-tuned, e.g. IJyad/whisper-large-v3-Tarteel)
 #   Both share this dependency -- no extra install needed for whisper.
 transformers>=4.44
 # Recommended for whisper: more memory-efficient large-model loading.
 #   pip install accelerate
-# Backend: nemo (FastConformer hybrid CTC/RNNT, native word timestamps)
-#   Heavy install. Uncomment only if you use ASR_BACKEND=nemo
-# nemo_toolkit[asr]>=2.0.0
+
+# Backend: nemo (FastConformer hybrid CTC/RNNT, native word timestamps).
+#
+# Required, not optional: ASR_ALIGN_BACKEND defaults to nemo, and it is the only
+# backend that can work the surah out from the audio. It is a heavy install --
+# pytorch-lightning, hydra-core, sentencepiece and more -- and it has no wheels
+# on Python 3.13+, which is why this service asks for 3.11 or 3.12.
+#
+# Its model is also gated; see "Enabling the NeMo backend" in README.md for the
+# three-step Hugging Face login. If it will not install on your platform at all,
+# comment this line out and set ASR_ALIGN_BACKEND=wav2vec2 -- everything else
+# keeps working, minus surah detection.
+nemo_toolkit[asr]>=2.0.0
 huggingface_hub>=0.24

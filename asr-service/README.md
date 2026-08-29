@@ -24,13 +24,22 @@ that clip correctly.** See [../docs/ALIGNMENT.md](../docs/ALIGNMENT.md) for the 
 ## Setup
 
 Requires **Python 3.11 or 3.12** and **ffmpeg** on PATH
-(`sudo apt install ffmpeg` / `brew install ffmpeg`).
+(`sudo apt install ffmpeg` / `brew install ffmpeg`). Not 3.13+: several dependencies have no
+wheels for it and fall back to building from source.
+
+The default align model is **gated**, so do this first, once:
+
+1. Accept its terms while logged in at <https://huggingface.co/Muno459/fastconformer-quran>.
+2. Create a read token at <https://huggingface.co/settings/tokens>.
+
+Then:
 
 ```bash
 cd asr-service
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+hf auth login                 # paste the read token
 ```
 
 On a machine **without an NVIDIA GPU**, install the CPU-only torch wheel first — the default
@@ -40,6 +49,11 @@ PyPI wheel bundles roughly 2–3 GB of CUDA libraries you will never load:
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
+
+`requirements.txt` includes `nemo_toolkit[asr]`, which is a large install. It is required
+rather than optional: `ASR_ALIGN_BACKEND` defaults to `nemo`, and NeMo is the only backend that
+can work the surah out from the audio. If it will not install on your platform, comment it out
+and set `ASR_ALIGN_BACKEND=wav2vec2` -- see [Giving up range detection](#giving-up-range-detection).
 
 ## Run
 
@@ -141,7 +155,7 @@ Gemini name the passage and the CPU aligner time it.
 | `ASR_BACKEND` | Model | Notes |
 |---|---|---|
 | `wav2vec2` (default) | `jonatasgrosman/wav2vec2-large-xlsr-53-arabic` | Ungated, CPU-viable, no extra install. A general Arabic model, so noticeably weaker on recitation — but for *alignment* that matters far less than for decoding. |
-| `nemo` | `Muno459/fastconformer-quran` | Best accuracy tested on recitation (trained on `tarteel-ai/everyayah`). Gated, and needs `pip install nemo_toolkit[asr]`. Required for range auto-detection. |
+| `nemo` | `Muno459/fastconformer-quran` | Best accuracy tested on recitation (trained on `tarteel-ai/everyayah`). Gated -- needs a Hugging Face login. Installed by `requirements.txt`. Required for range auto-detection. |
 | `whisper` | `tarteel-ai/whisper-base-ar-quran` | Encoder-decoder. Doesn't share NeMo's RNNT quirk, but has Whisper's own known habit of hallucinating repeated text into silence. Shares the `transformers` dependency — no extra install. |
 
 Whisper word timestamps are derived from cross-attention weights, which scale steeply with
@@ -150,19 +164,23 @@ model size — `IJyad/whisper-large-v3-Tarteel` exhausted a 16 GB GPU on this ta
 
 ### Enabling the NeMo backend
 
+Nothing to install -- `requirements.txt` already carries `nemo_toolkit[asr]`, and `nemo` is the
+default backend for `/align`. What it does need is access to its gated model:
+
 ```bash
 # 1. Accept the model terms while logged in at:
 #    https://huggingface.co/Muno459/fastconformer-quran
 # 2. Create a read token at https://huggingface.co/settings/tokens
-pip install -U huggingface_hub
+# 3. Log in from this service's virtualenv
 hf auth login          # `huggingface-cli login` on huggingface_hub < 1.0
-
-# 3. Install the heavy dependency
-pip install nemo_toolkit[asr]
-
-# 4. Run with it
-ASR_BACKEND=nemo uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+Without that the weights download returns 401 and `/align` fails on every request. The service
+looks for a stored token at startup and warns when it finds none, so this lands in the log
+rather than as a mystery 502 in the studio.
+
+To use NeMo for free decoding (`/transcribe`) as well, set `ASR_BACKEND=nemo`; `/align` already
+uses it.
 
 `nemo_toolkit[asr]` pulls in `pytorch-lightning`, `hydra-core`, `sentencepiece` and more. On
 Python 3.13+ some of these lack prebuilt wheels and will try to build from source — use a 3.11

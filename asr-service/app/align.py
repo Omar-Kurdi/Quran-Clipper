@@ -143,6 +143,24 @@ def probe_backend_error() -> str | None:
     return None
 
 
+def gated_model_needs_login() -> bool:
+    """Whether the default align model is gated and no HF credential is stored.
+
+    Reported as a warning, never as a backend failure: the weights may already
+    be in the local cache from an earlier authenticated run, in which case this
+    setup works fine. A false alarm that costs a line of log is acceptable; a
+    false alarm that greys the provider out in the studio would not be.
+    """
+    if align_backend() != "nemo" or align_model_name() != DEFAULT_NEMO_ALIGN_MODEL:
+        return False
+    try:
+        from huggingface_hub import get_token
+
+        return not get_token()
+    except Exception:
+        return False
+
+
 def align_model_name() -> str:
     explicit = (os.getenv("ASR_ALIGN_MODEL") or "").strip()
     if explicit:
@@ -265,7 +283,22 @@ def _load_nemo_aligner():
     log.info("loading nemo forced-alignment model=%s device=%s", name, _device())
 
     if name == DEFAULT_NEMO_ALIGN_MODEL:
-        path = hf_hub_download(repo_id=name, filename="nemo/fastconformer-quran.nemo")
+        # The default checkpoint is a gated repo: an unauthenticated fetch 401s.
+        # That is a Hugging Face access decision, not a broken install, and the
+        # raw HfHubHTTPError says nothing about how to get past it -- so name the
+        # three steps here rather than leave someone reading a stack trace.
+        try:
+            path = hf_hub_download(repo_id=name, filename="nemo/fastconformer-quran.nemo")
+        except Exception as exc:
+            raise AlignError(
+                f"Could not download {name} ({type(exc).__name__}: {exc}). This model is "
+                "gated, so it needs a Hugging Face account that has accepted its terms: "
+                f"1) accept them while logged in at https://huggingface.co/{name}, "
+                "2) create a read token at https://huggingface.co/settings/tokens, "
+                "3) run `hf auth login` (`huggingface-cli login` on huggingface_hub < 1.0) "
+                "in this service's virtualenv. Setting ASR_ALIGN_BACKEND=wav2vec2 uses an "
+                "ungated model instead but gives up detecting the surah from the audio."
+            ) from exc
         model = nemo_asr.models.ASRModel.restore_from(restore_path=path, map_location=_device())
     else:
         model = nemo_asr.models.ASRModel.from_pretrained(model_name=name, map_location=_device())

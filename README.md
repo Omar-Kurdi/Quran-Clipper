@@ -55,7 +55,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   | Raad Al-Kurdi | رعد محمد الكردي | Emotional | estimated |
 
 **Timing your own audio**
-- Four interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).
+- Two interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).
 - Forced alignment runs locally, on GPU or CPU, and never sends your audio anywhere.
 - Repeated phrases are detected acoustically and get their own segments.
 - Phrase-level display: each segment carries only the words actually spoken, so a repeated
@@ -69,8 +69,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The studio view showing the background picker section.">
 </p>
 - **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
-  waveform of the recitation. Drag an edge to retime it, or tap SPACEBAR at each boundary while
-  the audio plays. Changes cascade so the timeline stays contiguous.
+  waveform of the recitation. Drag an edge to retime it, or tap **B** at each boundary while
+  the audio plays (SPACE plays and pauses). Changes cascade so the timeline stays contiguous.
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
   ruler show exactly where you are, zoom (up to 16×) resolves the waveform for fine cuts, and
   start/end are entered as timecodes (`3:31.7`). Drag the handles, or park the playhead and
@@ -109,6 +109,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 |---|---|
 | **Node.js 20+** | the web app (required) |
 | **Python 3.11 or 3.12** + **ffmpeg** on PATH | local forced alignment (recommended) |
+| **Hugging Face account** (free) | local forced alignment — its model is gated |
 | **PostgreSQL** | durable saved projects (optional) |
 | **Gemini API key** | cloud matching providers (optional) |
 
@@ -124,9 +125,22 @@ npm run dev
 Open <http://localhost:3000/video-creator>. You can already browse surahs, load reciter audio,
 style the canvas, manually sync timings, and export.
 
-### 2. Install the alignment sidecar (recommended)
+### 2. Get access to the alignment model
+
+The alignment model is a **gated** Hugging Face repo, so an anonymous download returns 401.
+Three one-off steps, before installing anything:
+
+1. Accept its terms while logged in at
+   <https://huggingface.co/Muno459/fastconformer-quran>.
+2. Create a **read** token at <https://huggingface.co/settings/tokens>.
+3. Keep it to hand — you log in with it at the end of the next step.
+
+### 3. Install the alignment sidecar (recommended)
 
 This is what times uploaded audio accurately. It is a separate Python service.
+
+**Python 3.11 or 3.12 specifically.** Several of its dependencies have no wheels for 3.13+ and
+will try to build from source.
 
 ```bash
 cd asr-service
@@ -139,16 +153,20 @@ avoids pulling ~2–3 GB of unused CUDA libraries:
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements.txt
 ```
 
-**With an NVIDIA GPU:**
+Then, on any machine:
 
 ```bash
 pip install -r requirements.txt
+hf auth login          # paste the read token from step 2
 ```
 
-### 3. Start the sidecar
+That pulls the full alignment stack, NeMo included — a few GB, and several minutes on a slow
+connection. It is not optional: NeMo is the only backend that can work the surah out from the
+audio for you.
+
+### 4. Start the sidecar
 
 ```bash
 cd asr-service
@@ -166,7 +184,7 @@ The first start downloads model weights (~1.2 GB). Confirm it is up:
 curl http://127.0.0.1:8000/health     # alignReady must be true
 ```
 
-Then reload the studio page — the **Forced Align** matcher will show "Sidecar online".
+Then reload the studio page — the **Local** matcher will show "Ready".
 
 > **CPU-only hosts:** everything here runs on CPU — a 68-second clip aligns in about 4 seconds
 > on an 8-core machine, because it searches one fixed text rather than every possible sentence.
@@ -175,7 +193,7 @@ Then reload the studio page — the **Forced Align** matcher will show "Sidecar 
 > detection**, so reach for it only if NeMo genuinely won't install.
 > See [asr-service/README.md](asr-service/README.md#running-without-a-gpu).
 
-### 4. Configure keys (optional)
+### 5. Configure keys (optional)
 
 Copy `.env.example` to `.env.local` and fill in only what you need:
 
@@ -195,7 +213,7 @@ an optional capability, and the app degrades cleanly without it.
 | Variable | Required for | Default | Notes |
 |---|---|---|---|
 | `ASR_SERVICE_URL` | forced alignment | `http://127.0.0.1:8000` | Where the Python sidecar is listening. |
-| `AUDIO_MATCH_PROVIDER` | — | `gemini` | Default provider when the client doesn't pick one. Set to `align` if you run the sidecar. |
+| `AUDIO_MATCH_PROVIDER` | — | `gemini` | Fallback for API calls that name no provider. The studio always names one and defaults to `align`, so this only affects direct `/api/audio/match` requests. |
 | `GEMINI_API_KEY` | the `gemini` provider | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
 | `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |
 | `GEMINI_TIMEOUT_MS` | — | `180000` | Ceiling on a single Gemini request. |
@@ -475,6 +493,19 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
 `postgres://USER:PASSWORD@HOST:PORT/DATABASE` left uncommented in `.env.local`. The API only
 falls back to in-memory storage when the variable is *unset*, so a broken value fails every
 save. Either comment the line out or follow [Database](#database-optional).
+
+**`pip install -r requirements.txt` fails on `nemo_toolkit`**
+Almost always Python 3.13+, which has no wheels for several of its dependencies and falls back
+to building from source. Rebuild the virtualenv with `python3.12 -m venv .venv`. If NeMo will
+not install on your platform at all, comment it out of `asr-service/requirements.txt` and set
+`ASR_ALIGN_BACKEND=wav2vec2` — everything else keeps working, but the sidecar can no longer
+work the surah out from the audio, so `/align` uses the range selected in the studio.
+
+**`/align` fails with a 401 or `GatedRepoError`**
+`Muno459/fastconformer-quran` is a gated repo and the machine has no Hugging Face credential.
+Accept its terms at <https://huggingface.co/Muno459/fastconformer-quran>, create a read token,
+then run `hf auth login` inside `asr-service/.venv`. The sidecar warns about this at startup
+when it finds no stored token.
 
 **"Helper not running" on the Local button**
 The sidecar isn't running, or `ASR_SERVICE_URL` is wrong. Start it and check
