@@ -90,6 +90,54 @@ interface VideoCanvasProps {
 const MIN_ARABIC_PX = 16;
 const MIN_TRANSLATION_PX = 10;
 
+// Handed to `document.fonts.load` so the subsets a webfont actually needs are
+// the ones fetched. Google splits a family by unicode range, and the card
+// spans two of them: letters, harakat and the ornate brackets are Arabic,
+// while the ayah number itself is drawn from a JS number -- Western digits,
+// which live in the Latin subset -- as does the space between two words.
+const ARABIC_SAMPLE = 'بِسْمِ ٱللَّهِ ﴾١٢٣﴿ 0123456789';
+
+/**
+ * Row pitch for a block of fully vocalised Arabic.
+ *
+ * A flat multiple of the type size cannot know how far a face stacks its
+ * marks. The 1.45em used here sat under the ink of every Naskh on offer, so a
+ * fatha on one row landed inside the sukun of the row above it -- measured at
+ * 100px, Noto Naskh's ink spans 175px and Scheherazade New's 167px. Measure
+ * the rows instead: what has to clear is the deepest descender of each row
+ * against the highest mark of the row beneath it, and the widest such pair
+ * sets the pitch for the block. The rest is leading.
+ *
+ * Measured on the alphabetic baseline on purpose. actualBoundingBox* is
+ * reported against whatever `textBaseline` is current, and only from the
+ * baseline the glyphs are actually built on do the two numbers describe the
+ * gap between one row and the next.
+ */
+function arabicRowPitch(ctx: CanvasRenderingContext2D, lines: string[], size: number) {
+  const previousBaseline = ctx.textBaseline;
+  ctx.textBaseline = 'alphabetic';
+  const ascents: number[] = [];
+  const descents: number[] = [];
+  for (const line of lines) {
+    const m = ctx.measureText(line);
+    ascents.push(m.actualBoundingBoxAscent || 0);
+    descents.push(m.actualBoundingBoxDescent || 0);
+  }
+  ctx.textBaseline = previousBaseline;
+
+  let gap = 0;
+  for (let i = 0; i + 1 < lines.length; i++) {
+    gap = Math.max(gap, descents[i] + ascents[i + 1]);
+  }
+  // Nothing to clear, but the pitch is still this block's height for the
+  // centring above, so it is the one row's own ink.
+  if (lines.length < 2) gap = Math.max(0, ...ascents) + Math.max(0, ...descents);
+
+  // An engine that reports no ink metrics gets the tallest face's ratio.
+  if (!Number.isFinite(gap) || gap <= 0) return size * 1.8;
+  return Math.max(gap, size * 1.45) * 1.06;
+}
+
 type CardTextLayout = {
   arabicLines: string[];
   arabicLineHeight: number;
@@ -286,6 +334,39 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   // shrink-to-fit search wraps the text once per trial size, which is far too
   // much to redo every frame for text that only changes per segment.
   const textLayoutCache = useRef<Map<string, CardTextLayout>>(new Map());
+
+  // Fetch the faces the canvas is about to name.
+  //
+  // Naming a webfont in `ctx.font` does not load it the way rendering DOM text
+  // does: an absent family silently resolves to the system fallback, and the
+  // studio has been drawing every verse in whatever Naskh the OS ships rather
+  // than the font the user picked -- Scheherazade New, the default, appears
+  // nowhere in the DOM, so it was never fetched at all. The fallback places
+  // the harakat by its own anchors, which is what left marks sitting away from
+  // the letters they belong to.
+  //
+  // The layouts already in the cache were measured against those wrong
+  // metrics, so they go when the real faces land.
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    let cancelled = false;
+    const wanted: [string, string][] = [
+      [`bold 60px '${config.fontArabic}'`, ARABIC_SAMPLE],
+      [`600 60px '${config.fontArabic}'`, ARABIC_SAMPLE],
+      [`60px '${config.fontArabic}'`, ARABIC_SAMPLE],
+      // The surah badge draws in Amiri whatever the verse font is.
+      [`bold 60px 'Amiri'`, ARABIC_SAMPLE],
+      [`60px '${config.fontTranslation}'`, 'Ag'],
+    ];
+    Promise.all(
+      wanted.map(([spec, sample]) => document.fonts.load(spec, sample).catch(() => []))
+    ).then(() => {
+      if (cancelled) return;
+      textLayoutCache.current.clear();
+    });
+    return () => { cancelled = true; };
+  }, [config.fontArabic, config.fontTranslation]);
+
   useEffect(() => {
     if (syncBackgroundVideo) return;
     if (!activeBg) {
@@ -644,7 +725,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const layoutAt = (arabic: number, translation: number) => {
           ctx.font = arabicFont(arabic);
           const arabicLines = wrapAll(displayArabic, maxTextWidth);
-          const arabicLineHeight = arabic * 1.45;
+          const arabicLineHeight = arabicRowPitch(ctx, arabicLines, arabic);
           let widest = 0;
           for (const line of arabicLines) widest = Math.max(widest, ctx.measureText(line).width);
           let translationLines: string[] = [];
