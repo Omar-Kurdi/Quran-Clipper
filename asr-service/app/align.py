@@ -1338,6 +1338,9 @@ def assign_phrase_ranges_by_decode(
     # boundary index -> (words explained, phrases used, assignments, decodes)
     states: dict[int, tuple[float, int, list, list[str]]] = {0: (0.0, 0, [], [])}
 
+    def reached(assignments: list) -> int:
+        return max((end for _, end, _, _, _ in assignments), default=-1)
+
     for i in range(phrases):
         if i not in states:
             continue
@@ -1366,8 +1369,15 @@ def assign_phrase_ranges_by_decode(
                 candidate = (explained, used + 1, assignments, decodes)
             else:
                 start, end, score = match
+                # Only words the reading had not already reached count. A
+                # restart legitimately re-covers text it has said before, and
+                # crediting those words twice let a segmentation score more
+                # than it explains -- two phrases overlapping on one word beat
+                # a single phrase covering the same span, so a boundary that
+                # had cut a word in half could never be undone.
+                fresh = max(0, end - max(reached(assignments), start - 1))
                 candidate = (
-                    explained + score * (end - start + 1),
+                    explained + score * fresh,
                     used + 1,
                     assignments + [(start, end, score, boundaries[i], boundaries[j])],
                     decodes + [decoded],
