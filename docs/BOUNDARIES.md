@@ -165,3 +165,44 @@ words, routing unclaimed audio by which segment owns the words it reads, and
 ranking ties toward fewer phrases) recovered test2 and test.mp3 but still left
 test3 two segments worse than without it. Worth returning to, with the grouping
 reworked first rather than patched.
+
+
+## Repeats, resolved and unresolved
+
+A repeat at the **end** of a segment is now recovered (`_extend_over_repeated_tail`).
+The reciter says a phrase's closing words again before going on, leaving audio
+the segment's own words do not account for. Two approaches failed first and are
+worth not retrying:
+
+* scoring the tail acoustically -- the clip-wide emission puts ~0.99 blank
+  probability on those frames despite -16.5 dB of audio, and against the
+  phrase's own emission the correct longer script *still* aligns worse than the
+  incomplete short one (-8.58 vs -7.89 per frame);
+* matching the tail by word -- it read back as `وَ عِنَبًاطَهِّرًا`, which shares no
+  whole word with the reference and scores 0.00.
+
+Matching by **character** works, because garbling scrambles which letters land
+in which token but leaves most of the letters: `وعنبطهر` against `نطهر` agrees
+on four of them, and picks the right two words at 0.73.
+
+A repeat in the **middle** of a segment is not recoverable the same way: the
+hole is short (1.44s on test.mp3) and an isolated chunk that size decodes to
+noise (`طم`).
+
+### test.mp3 33:22 has no signal at all
+The break the listener hears after `قَالُوا۟` cannot be found, and this is now
+settled rather than open:
+
+* it is **not** a repeat. Earlier notes here said `قَالُوا۟` was recited twice,
+  inferred from two overlapping windows each decoding one. That was wrong --
+  a single window spanning both (26.5-31.4s) decodes `قَالُوا` exactly once, so
+  the two were the same utterance bleeding across a window edge;
+* 33:22 words 1-10 carry **no waqf mark**, so the pause-mark splitter has
+  nothing to act on;
+* no energy candidate falls near 28.6s, and loosening the dip threshold to
+  produce one costs more than it gains (measured above).
+
+It is a breath the reciter took where the mushaf marks no stop. Fixing it needs
+a signal none of audio energy, CTC blank posterior, decoded text, or the
+reference orthography carries -- most likely a phrase/prosody model. Left
+unfixed deliberately.
