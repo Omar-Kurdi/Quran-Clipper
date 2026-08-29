@@ -75,10 +75,9 @@ export default function VideoCreatorPage() {
   const [matchStatus, setMatchStatus] = useState<string | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [matchProvider, setMatchProvider] = useState<'gemini' | 'asr' | 'align' | 'hybrid'>('align');
+  const [matchProvider, setMatchProvider] = useState<'gemini' | 'align'>('align');
   const [providerStatus, setProviderStatus] = useState<{
     gemini: { configured: boolean };
-    asr: { configured: boolean; serviceUrl: string };
     align: {
       configured: boolean;
       serviceUrl: string;
@@ -86,7 +85,6 @@ export default function VideoCreatorPage() {
       alignReady?: boolean;
       alignError?: string | null;
     };
-    hybrid: { configured: boolean; serviceUrl: string; alignReady?: boolean; alignError?: string | null };
   } | null>(null);
 
   // Loaded Surah / Verse Data
@@ -383,11 +381,7 @@ export default function VideoCreatorPage() {
     setMatchStatus(
       matchProvider === 'align'
         ? 'Force-aligning the selected ayah range against your audio (first run loads the model — may take longer)...'
-        : matchProvider === 'hybrid'
-          ? 'Asking Gemini which ayahs these are, then timing them locally (first run loads the model — may take longer)...'
-          : matchProvider === 'asr'
-            ? 'Sending audio to the local ASR aligner (searching the full Quran — first run may take longer)...'
-            : 'Sending audio to Gemini for analysis...'
+        : 'Sending audio to Gemini for analysis...'
     );
 
     const formData = new FormData();
@@ -433,14 +427,7 @@ export default function VideoCreatorPage() {
       if (typeof data.audioDuration === 'number') setAudioDuration(data.audioDuration);
       setVerses(data.verses || verses);
       setIsSampleProject(false);
-      const providerLabel =
-        data.provider === 'align'
-          ? 'Forced alignment'
-          : data.provider === 'hybrid'
-            ? 'Gemini + forced alignment'
-            : data.provider === 'asr'
-              ? 'Local ASR'
-              : 'Gemini';
+      const providerLabel = data.provider === 'align' ? 'Forced alignment' : 'Gemini';
       // Kept user-facing and short: what was found, and what to do next. The
       // provider name, model, phrase counts and acoustic scores are diagnostics
       // -- they go to the console, not to someone making a video.
@@ -450,8 +437,7 @@ export default function VideoCreatorPage() {
       // range is right -- the acoustic score can't tell those apart (see
       // README.md). So when the range wasn't the user's own choice, ask them to
       // check it explicitly rather than implying the match verified itself.
-      const confirmRange =
-        data.provider === 'hybrid' || data.provider === 'align' || data.provider === 'asr';
+      const confirmRange = data.provider === 'align';
       setMatchStatus(
         (data.warning ? `⚠ ${data.warning} ` : '') +
           `Detected ${detectedLabel} — ${(data.verses || []).length} segment(s). ` +
@@ -546,11 +532,9 @@ export default function VideoCreatorPage() {
   }, [verses, selectedIndex, currentTime]);
 
   const markHereRef = useRef(handleMarkHere);
-  const isPlayingRef = useRef(isPlaying);
   useEffect(() => {
     markHereRef.current = handleMarkHere;
-    isPlayingRef.current = isPlaying;
-  }, [handleMarkHere, isPlaying]);
+  }, [handleMarkHere]);
 
   // Seek time
   const handleSeek = (seconds: number) => {
@@ -561,24 +545,39 @@ export default function VideoCreatorPage() {
   };
 
   /**
-   * SPACEBAR. Paused, it starts playback; playing, it marks the end of the
-   * current ayah -- which is exactly the workflow the instructions describe
-   * ("press Play and tap SPACEBAR at each boundary"). The old handler was
-   * labelled tap-to-sync but only ever toggled playback, which is why marking
-   * needed a separate button in a separate panel.
+   * Transport keys: SPACE always plays/pauses, B marks the end of the current
+   * ayah. Space used to do both -- play when paused, mark when playing -- which
+   * meant there was no way to pause without cutting a boundary you didn't want.
    *
-   * Skipped when a control has focus, so Space still activates a focused
-   * button or types into a field instead of being hijacked.
+   * The two keys guard differently, on purpose. Space skips a focused BUTTON so
+   * it still activates that button rather than being hijacked; B must not, or
+   * the key stops working the moment someone clicks Play -- which is exactly
+   * when they need it. Both skip text entry, and B ignores modifier chords so
+   * Ctrl/Cmd+B can't silently drop a boundary.
+   *
+   * `e.code` rather than `e.key`: it names the physical key regardless of the
+   * active layout, which matters here because someone captioning Arabic
+   * recitation may well have an Arabic layout selected while they work.
    */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || el?.isContentEditable) return;
-      e.preventDefault();
-      if (isPlayingRef.current) markHereRef.current();
-      else togglePlayPauseRef.current();
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable;
+      if (typing) return;
+
+      if (e.code === 'Space') {
+        if (tag === 'BUTTON') return;
+        e.preventDefault();
+        togglePlayPauseRef.current();
+        return;
+      }
+
+      if (e.code === 'KeyB') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        markHereRef.current();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -699,20 +698,21 @@ export default function VideoCreatorPage() {
   };
 
   /**
-   * Matching options, named by the outcome the user is choosing between.
+   * Matching options, named by where the work happens.
    *
    * These used to be labelled with their implementations -- "Forced Align",
-   * "Gemini + Align", "Local ASR" -- and three of them reported "Sidecar
+   * "Gemini + Align", "Local ASR" -- and most of them reported "Sidecar
    * unreachable", which is the vocabulary of the failing subsystem and tells
-   * someone who never installed a sidecar nothing they can act on. The real
-   * decision is only ever: how accurate do you need the timing, and will you
-   * send audio to the cloud. The implementation name is kept on hover for
-   * anyone who does want it.
+   * someone who never installed a sidecar nothing they can act on. What the
+   * user is actually choosing between is running it on this machine or sending
+   * the audio to Google, so the labels say that and the blurb underneath
+   * carries the consequence (measured timing vs estimated). The implementation
+   * name is kept on hover for anyone who does want it.
    */
   const matchOptions = [
     {
       id: 'align' as const,
-      label: 'Most accurate',
+      label: 'Local',
       technical: 'local forced alignment',
       Icon: Server,
       ready: !!providerStatus?.align.configured && providerStatus.align.alignReady !== false,
@@ -728,25 +728,8 @@ export default function VideoCreatorPage() {
       fix: 'This needs the local helper app running. Start it, then reload this page.'
     },
     {
-      id: 'hybrid' as const,
-      label: 'Best for unknown passages',
-      technical: 'Gemini identification + local alignment',
-      Icon: Sparkles,
-      ready: !!providerStatus?.hybrid.configured,
-      status: !providerStatus
-        ? 'Checking…'
-        : providerStatus.hybrid.configured
-          ? 'Ready'
-          : providerStatus.gemini.configured
-            ? 'Helper not running'
-            : 'Needs an API key',
-      blurb:
-        'Identifies which ayahs were recited in the cloud, then times them on your machine. Your audio is sent to Google. Best when you are not sure what the recording contains.',
-      fix: 'This needs both an API key and the local helper running.'
-    },
-    {
       id: 'gemini' as const,
-      label: 'No setup',
+      label: 'Online',
       technical: 'Gemini cloud matching',
       Icon: Sparkles,
       ready: !!providerStatus?.gemini.configured,
@@ -754,17 +737,6 @@ export default function VideoCreatorPage() {
       blurb:
         'Works with nothing installed, but the timing is estimated rather than measured, so expect to correct it by hand. Your audio is sent to Google.',
       fix: 'Add a Gemini API key to use this option.'
-    },
-    {
-      id: 'asr' as const,
-      label: 'Roughest',
-      technical: 'local transcription and search',
-      Icon: Server,
-      ready: !!providerStatus?.asr.configured,
-      status: !providerStatus ? 'Checking…' : providerStatus.asr.configured ? 'Ready' : 'Helper not running',
-      blurb:
-        'Transcribes the audio locally and searches the Quran for a match. The least reliable option; useful mainly when the others are unavailable.',
-      fix: 'This needs the local helper app running.'
     }
   ];
   const selectedMatchOption = matchOptions.find(o => o.id === matchProvider) ?? matchOptions[0];
@@ -1125,7 +1097,7 @@ export default function VideoCreatorPage() {
                   <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed mt-1.5">
                     <li><strong>Pick a reciter</strong> and a surah, or upload your own recitation.</li>
                     <li>Click <strong>&quot;Load ayahs &amp; audio&quot;</strong>. The ayahs appear on the timeline below.</li>
-                    <li>Press <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd> to play, then tap it again at the end of each ayah to set its boundary.</li>
+                    <li>Press <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd> to play or pause, and tap <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">B</kbd> at the end of each ayah to set its boundary.</li>
                     <li><strong>Drag the edge</strong> of any block on the timeline to fine-tune it.</li>
                     <li>Click a block to edit its text and words in the panel on the right.</li>
                     <li>Switch that panel to <strong>Style</strong>, then export.</li>

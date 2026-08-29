@@ -128,11 +128,9 @@ export async function getRange(surahNumber: number, start: number, end: number):
  * Ayahs the aligner is allowed to match against, scoped to one surah +/- a
  * padding window (plus Al-Fatihah and the next surah).
  *
- * Not currently called anywhere -- `asrAligner.ts` searches the full Quran
- * via `buildFullQuranPool()` instead, since the surah/ayah are discovered
- * from the audio rather than assumed from the UI's selection. Kept as a
- * correct, ready-to-use fast path for if a "I already know the surah, skip
- * the full search" mode is ever wanted.
+ * Not currently called anywhere. Kept as a correct, ready-to-use fast path
+ * for if a "I already know the surah, skip the full search" mode is ever
+ * wanted.
  */
 export async function buildCandidatePool(params: {
   surahNumber: number;

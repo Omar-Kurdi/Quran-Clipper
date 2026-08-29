@@ -3,10 +3,9 @@
  *
  * `runGeminiMatch` sends the uploaded audio inline to Gemini and asks it to
  * both *listen* and *segment* in one shot, returning approximate timestamps.
- * `runGeminiIdentify` asks it to do only the first half -- see
- * `hybridMatcher.ts`, which pairs that with the local forced aligner for the
- * timing Gemini structurally can't produce. See `asrAligner.ts` for the
- * alternative all-local pipeline.
+ * The timestamps are estimates -- an LLM has no frame-level grounding -- which
+ * is the whole reason `forcedAligner.ts` exists. This is the option for someone
+ * with nothing installed. See docs/ALIGNMENT.md.
  */
 
 import { getRange } from '@/lib/quranCorpus';
@@ -19,23 +18,6 @@ type GeminiRawResponse = {
   transcript?: string;
   segments?: MatchSegment[];
   notes?: string;
-};
-
-/** One contiguous block of ayahs, as identified (not timed) by Gemini. */
-export type GeminiRange = { surah: number; start: number; end: number };
-
-export type GeminiIdentifyResult = {
-  transcript?: string;
-  confidence?: number;
-  notes?: string;
-  ranges: GeminiRange[];
-};
-
-type GeminiIdentifyRaw = {
-  transcript?: string;
-  confidence?: number;
-  notes?: string;
-  ranges?: { surahNumber?: number; startAyah?: number; endAyah?: number }[];
 };
 
 function getAudioMimeType(file: File) {
@@ -175,37 +157,14 @@ const MATCH_SCHEMA = {
   required: ['segments']
 };
 
-const IDENTIFY_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    transcript: { type: 'STRING' },
-    confidence: { type: 'NUMBER' },
-    ranges: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          surahNumber: { type: 'INTEGER' },
-          startAyah: { type: 'INTEGER' },
-          endAyah: { type: 'INTEGER' }
-        },
-        required: ['surahNumber', 'startAyah', 'endAyah']
-      }
-    },
-    notes: { type: 'STRING' }
-  },
-  required: ['ranges']
-};
-
 /** Generous -- a long clip legitimately takes a while -- but finite. */
 const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 180_000;
 
 /**
  * Statuses worth trying again: 503 UNAVAILABLE ("this model is currently
  * experiencing high demand"), 429 rate limit, and transient 500s. Observed
- * three times in one testing session, and each one silently costs the hybrid
- * provider its Gemini-identified range -- it falls back to the UI's selection,
- * which may be wrong. One retry converts most of those back into a real answer.
+ * three times in one testing session, and each one fails the whole match. One
+ * retry converts most of those back into a real answer.
  */
 const RETRYABLE_STATUSES = new Set([429, 500, 503]);
 const GEMINI_RETRIES = 1;
@@ -244,9 +203,9 @@ async function callGemini<T>(params: {
         headers: { 'Content-Type': 'application/json' },
         body,
         // Audio requests are slow and Gemini's latency is highly variable -- a
-        // single identify call took 120s under load during testing. Without a
-        // ceiling the whole match request hangs on it indefinitely; with one,
-        // the hybrid provider can fall back to the selected range instead.
+        // single call took 120s under load during testing. Without a ceiling
+        // the whole match request hangs on it indefinitely; with one, the user
+        // gets an error they can act on.
         signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
       });
     } catch (err) {
@@ -314,97 +273,4 @@ export async function runGeminiMatch(params: {
     segments,
     notes: raw.notes
   };
-}
-
-/**
- * Identify-only pass: what was recited and in what order, with no timestamps
- * requested at all. Timestamps are exactly the thing an LLM has no frame-level
- * grounding for -- see docs/ALIGNMENT.md -- so the hybrid provider uses this
- * instead of `runGeminiMatch`, and hands the identified ranges to the local
- * forced aligner for timing.
- */
-function buildIdentifyPrompt(params: { selectedSurah: number; selectedStart: number; selectedEnd: number }) {
-  return `
-You are an expert Quran recitation identifier.
-
-Task:
-Listen to the uploaded Quran recitation audio and identify ONLY which Quran ayahs are recited and in what order. Do NOT estimate timestamps -- exact word timing is computed separately by a dedicated forced-alignment step; your only job is correctly identifying the text.
-
-Selected context, if the user already chose the correct range:
-- Selected surah number: ${params.selectedSurah}
-- Selected ayah range: ${params.selectedStart}-${params.selectedEnd}
-
-Instructions:
-1. Listen to the whole clip.
-2. List every contiguous block of ayahs recited, in recitation order (e.g. Al-Fatihah then the first five ayahs of Al-Baqarah is two blocks).
-3. If a phrase, ayah, or block is repeated, or the reciter restarts partway through and carries on, do NOT add a separate block for the repeat -- report each block's linear ayah range once. Repetition is detected separately, from the audio itself.
-4. If only part of an ayah is recited, still report the full ayah number it belongs to.
-5. Do not invent verses that are not present in the audio.
-6. If the audio starts at verse 40:14, the first block must start at ayah 14, not ayah 1.
-
-Return JSON only, matching the schema. Do not include Markdown code fences.
-`.trim();
-}
-
-export async function runGeminiIdentify(params: {
-  apiKey: string;
-  model: string;
-  audio: File;
-  selectedSurah: number;
-  selectedStart: number;
-  selectedEnd: number;
-}): Promise<GeminiIdentifyResult> {
-  const prompt = buildIdentifyPrompt(params);
-  const raw = await callGemini<GeminiIdentifyRaw>({
-    apiKey: params.apiKey,
-    model: params.model,
-    audio: params.audio,
-    prompt,
-    schema: IDENTIFY_SCHEMA
-  });
-
-  const ranges = validateRanges(raw.ranges || []);
-
-  return {
-    transcript: raw.transcript,
-    confidence: raw.confidence,
-    notes: raw.notes,
-    ranges
-  };
-}
-
-/** Cap on how much text one identify pass may hand to the aligner. Generous --
- * a full medium surah easily clears 50 ayahs -- but wide enough to catch a
- * hallucinated range before it reaches `getRange` and the sidecar. */
-const MAX_TOTAL_AYAHS = 200;
-
-/**
- * Drops or clamps anything the sidecar/`getRange` can't act on: surah numbers
- * outside 1-114, ayah numbers outside that surah's real range, and inverted
- * ranges. Forced alignment can't fail loudly (docs/ALIGNMENT.md again) --
- * a bad range doesn't error, it produces a complete, confident-looking, wrong
- * timeline -- so bad input is worth rejecting here rather than downstream.
- */
-function validateRanges(rawRanges: { surahNumber?: number; startAyah?: number; endAyah?: number }[]): GeminiRange[] {
-  const valid: GeminiRange[] = [];
-  let totalAyahs = 0;
-
-  for (const r of rawRanges) {
-    const surah = Math.trunc(Number(r.surahNumber));
-    const meta = SURAHS_LIST.find(s => s.number === surah);
-    if (!meta) continue;
-
-    const start = Math.max(1, Math.trunc(Number(r.startAyah)));
-    const end = Math.min(meta.numberOfAyahs, Math.trunc(Number(r.endAyah)));
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) continue;
-
-    totalAyahs += end - start + 1;
-    if (totalAyahs > MAX_TOTAL_AYAHS) {
-      console.warn(`[geminiMatcher] identify returned over ${MAX_TOTAL_AYAHS} ayahs total -- dropping the rest as implausible.`);
-      break;
-    }
-    valid.push({ surah, start, end });
-  }
-
-  return valid;
 }

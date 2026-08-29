@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SURAHS_LIST } from '@/lib/quranData';
 import { runGeminiMatch } from '@/lib/geminiMatcher';
-import { runAsrMatch } from '@/lib/asrAligner';
 import { runForcedAlignMatch } from '@/lib/forcedAligner';
-import { runHybridMatch } from '@/lib/hybridMatcher';
 import {
   fetchVersesByDetectedSegments,
   enforceTimelineOrder,
@@ -16,25 +14,20 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * `align` force-aligns the known text of the selected ayah range and is the
- * accurate path -- it cannot drop or garble a word. `hybrid` keeps that timing
- * but lets Gemini pick the range, so the user doesn't have to. `asr` discovers
- * the surah from the audio but is far less reliable; `gemini` is the zero-setup
- * cloud option. See docs/ALIGNMENT.md.
+ * `align` force-aligns the known text against the audio locally and is the
+ * accurate path -- it cannot drop or garble a word. `gemini` is the zero-setup
+ * cloud option, at the cost of estimated rather than measured timing. See
+ * docs/ALIGNMENT.md.
  */
-type Provider = 'gemini' | 'asr' | 'align' | 'hybrid';
+type Provider = 'gemini' | 'align';
 
-const PROVIDERS: Provider[] = ['gemini', 'asr', 'align', 'hybrid'];
-
-/** Only `asr` reports a confidence that means anything on its own. */
-const DECODE_REVIEW_THRESHOLD = 0.75;
+const PROVIDERS: Provider[] = ['gemini', 'align'];
 
 /**
  * Whether the UI should ask the user to check the result before publishing.
  *
- * Deliberately not a single threshold, because the four providers' `confidence`
- * values are not the same kind of number and only one of them is worth gating
- * on. `align`, the recommended path, is the only one that can come back clean.
+ * Deliberately not a single threshold: the two providers' `confidence` values
+ * are not the same kind of number, and only `align` can come back clean.
  */
 function needsReview(provider: Provider, confidence: number, warned: boolean): boolean {
   // The sidecar's coverage check found the text didn't match the audio.
@@ -47,20 +40,10 @@ function needsReview(provider: Provider, confidence: number, warned: boolean): b
     // gating on it would stay silent on exactly the least accurate provider.
     case 'gemini':
       return true;
-    // The range came from an LLM. Coverage catches an outright
-    // misidentification, but not a near miss: if the audio is 33:21-24 and
-    // Gemini says 21-23, coverage still reads 1.00 while ayah 24's audio gets
-    // force-fit into ayah 23's words. A human can see that; no score can.
-    case 'hybrid':
-      return true;
     // The user asserted the range themselves and the coverage check passed, so
     // there is nothing left to flag.
     case 'align':
       return false;
-    // Free decode plus a fuzzy search over the corpus -- its confidence is a
-    // real match quality, so a threshold is meaningful here.
-    case 'asr':
-      return confidence < DECODE_REVIEW_THRESHOLD;
   }
 }
 
@@ -122,16 +105,7 @@ export async function POST(req: NextRequest) {
         const error = err as Error;
         return NextResponse.json({ success: false, provider, error: error.message }, { status: 502 });
       }
-    } else if (provider === 'asr') {
-      const serviceUrl = defaultAsrServiceUrl();
-      try {
-        result = await runAsrMatch({ serviceUrl, audio });
-      } catch (err) {
-        const error = err as Error;
-        return NextResponse.json({ success: false, provider, error: error.message }, { status: 502 });
-      }
     } else {
-      // Both remaining providers call Gemini, so they share the key check.
       const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
       if (!geminiApiKey) {
         return NextResponse.json(
@@ -139,32 +113,21 @@ export async function POST(req: NextRequest) {
             success: false,
             provider,
             error:
-              'Gemini matcher is not configured. Set GEMINI_API_KEY or GOOGLE_API_KEY to enable it, or switch the provider to "align"/"asr" (requires the asr-service sidecar). Manual matching is available now.'
+              'Gemini matcher is not configured. Set GEMINI_API_KEY or GOOGLE_API_KEY to enable it, or switch the provider to "align" (requires the asr-service sidecar). Manual matching is available now.'
           },
           { status: 503 }
         );
       }
       try {
-        result =
-          provider === 'hybrid'
-            ? await runHybridMatch({
-                apiKey: geminiApiKey,
-                model: geminiModel(),
-                serviceUrl: defaultAsrServiceUrl(),
-                audio,
-                selectedSurah,
-                selectedStart,
-                selectedEnd
-              })
-            : await runGeminiMatch({
-                apiKey: geminiApiKey,
-                model: geminiModel(),
-                audio,
-                selectedSurah,
-                selectedStart,
-                selectedEnd,
-                reciter
-              });
+        result = await runGeminiMatch({
+          apiKey: geminiApiKey,
+          model: geminiModel(),
+          audio,
+          selectedSurah,
+          selectedStart,
+          selectedEnd,
+          reciter
+        });
       } catch (err) {
         const error = err as Error;
         return NextResponse.json({ success: false, provider, error: error.message }, { status: 502 });
@@ -173,14 +136,7 @@ export async function POST(req: NextRequest) {
 
     const segments = result.segments;
     if (segments.length === 0) {
-      const providerLabel =
-        provider === 'align'
-          ? 'The forced aligner'
-          : provider === 'hybrid'
-            ? 'The hybrid matcher'
-            : provider === 'asr'
-              ? 'The local ASR aligner'
-              : 'Gemini';
+      const providerLabel = provider === 'align' ? 'The forced aligner' : 'Gemini';
       return NextResponse.json(
         { success: false, provider, error: `${providerLabel} did not return any detected ayah segments. Try a clearer/shorter audio clip or use manual matching.` },
         { status: 422 }
@@ -190,8 +146,8 @@ export async function POST(req: NextRequest) {
     // Order matters, because the timeline gets clamped to this value and a
     // wrong one silently truncates a correct result.
     //
-    // Every provider except `gemini` runs through the sidecar, which actually
-    // decodes the file -- that duration is a measurement and wins outright.
+    // `align` runs through the sidecar, which actually decodes the file -- that
+    // duration is a measurement and wins outright.
     // Gemini only *estimates* it (108s for a 68.5s clip on the test file) and
     // stretches its segment times to match, so there the client's value, taken
     // from the browser's own decode of the uploaded file, is the better source.
@@ -233,16 +189,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      method:
-        provider === 'align'
-          ? 'ctc_forced_alignment'
-          : provider === 'hybrid'
-            ? 'gemini_identify_ctc_forced_alignment'
-            : provider === 'asr'
-              ? 'local_asr_quran_alignment'
-              : 'gemini_quran_audio_timeline_alignment',
+      method: provider === 'align' ? 'ctc_forced_alignment' : 'gemini_quran_audio_timeline_alignment',
       provider,
-      model: provider === 'gemini' || provider === 'hybrid' ? geminiModel() : undefined,
+      model: provider === 'gemini' ? geminiModel() : undefined,
       confidence,
       needsReview: needsReview(provider, confidence, Boolean(result.warning)),
       warning: result.warning || null,
@@ -299,23 +248,13 @@ export async function GET() {
   return NextResponse.json({
     providers: {
       gemini: { configured: geminiConfigured },
-      asr: { configured: asrAvailable, serviceUrl: asrServiceUrl },
-      // Same sidecar as `asr`, different endpoint on it. `configured` means the
-      // provider can actually run, so a sidecar whose align backend won't load
-      // is reported as not configured rather than as online-but-failing.
+      // `configured` means the provider can actually run, so a sidecar whose
+      // align backend won't load is reported as not configured rather than as
+      // online-but-failing.
       align: {
         configured: asrAvailable && alignReady,
         serviceUrl: asrServiceUrl,
         canAutoDetectRange,
-        alignReady,
-        alignError
-      },
-      // Needs both halves: Gemini to identify the passage, the sidecar to time
-      // it. Gemini also *replaces* the sidecar's own range detection, which is
-      // why this stays fully useful on a host where `canAutoDetectRange` is false.
-      hybrid: {
-        configured: geminiConfigured && asrAvailable && alignReady,
-        serviceUrl: asrServiceUrl,
         alignReady,
         alignError
       }

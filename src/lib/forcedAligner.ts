@@ -1,20 +1,18 @@
 /**
  * Forced-alignment matcher.
  *
- * `geminiMatcher.ts` and `asrAligner.ts` ask a model *what* was recited and
- * *when* at the same time, then repair the answer by searching the Quran text.
- * This one inverts that: the ayah range is known up front, so the Quran text
- * becomes a fixed constraint and the sidecar decides only when each word was
- * spoken.
+ * `geminiMatcher.ts` asks a model *what* was recited and *when* at the same
+ * time, then repairs the answer by searching the Quran text. This one inverts
+ * that: the ayah range is known up front, so the Quran text becomes a fixed
+ * constraint and the sidecar decides only when each word was spoken.
  *
  * What that buys, structurally rather than by tuning:
  *  - no word can go missing (every reference word is in the target sequence);
  *  - no word can be garbled (the output tokens *are* the Quran text);
  *  - nothing can land in the wrong surah (there is no corpus search at all).
  *
- * The cost is that the range has to come from somewhere: the UI's selection,
- * the sidecar's own detection, or `hybridMatcher.ts`, which has Gemini supply
- * it. See docs/ALIGNMENT.md.
+ * The cost is that the range has to come from somewhere: the sidecar's own
+ * detection, or failing that the UI's selection. See docs/ALIGNMENT.md.
  */
 
 import { getRange } from '@/lib/quranCorpus';
@@ -183,18 +181,10 @@ export async function runForcedAlignMatch(params: {
   surah?: number;
   start?: number;
   end?: number;
-  /**
-   * An ordered list of blocks to align against instead of a single range --
-   * e.g. Al-Fatihah followed by Al-Baqarah 1-5. Used by the hybrid provider,
-   * which gets this list from Gemini's identify pass rather than the UI's
-   * single surah/start/end selection. Takes priority over `surah`/`start`/`end`.
-   */
-  ranges?: { surah: number; start: number; end: number }[];
   autoDetect?: boolean;
   detectRepeats?: boolean;
 }): Promise<MatchResult> {
-  const explicitRanges = params.ranges?.length ? params.ranges : null;
-  const autoDetect = !explicitRanges && (params.autoDetect || !params.surah || !params.start || !params.end);
+  const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
   /** Set when auto-detect was asked for but the sidecar couldn't do it. */
   let fellBackToSelected = false;
 
@@ -205,7 +195,7 @@ export async function runForcedAlignMatch(params: {
   // than make it safer.
   let reference = '';
   if (!autoDetect) {
-    const rangesToAlign = explicitRanges || [{ surah: params.surah!, start: params.start!, end: params.end! }];
+    const rangesToAlign = [{ surah: params.surah!, start: params.start!, end: params.end! }];
     const versesPerRange = await Promise.all(rangesToAlign.map(r => getRange(r.surah, r.start, r.end)));
     const missing = rangesToAlign.filter((_, i) => !versesPerRange[i].length);
     if (missing.length) {
@@ -260,9 +250,9 @@ export async function runForcedAlignMatch(params: {
   }
 
   const detected = result.detectedRange;
-  const surah = detected?.surah ?? explicitRanges?.[0].surah ?? params.surah!;
-  const startAyah = detected?.start_ayah ?? explicitRanges?.[0].start ?? params.start!;
-  const endAyah = detected?.end_ayah ?? explicitRanges?.[0].end ?? params.end!;
+  const surah = detected?.surah ?? params.surah!;
+  const startAyah = detected?.start_ayah ?? params.start!;
+  const endAyah = detected?.end_ayah ?? params.end!;
 
   // Display text comes from the app's corpus. Fetch *every* passage that was
   // aligned, not just the primary one -- a recitation that opens with
@@ -270,7 +260,7 @@ export async function runForcedAlignMatch(params: {
   // text at all.
   const ranges = detected?.ranges?.length
     ? detected.ranges.map(r => ({ surah: r.surah, start: r.start_ayah, end: r.end_ayah }))
-    : explicitRanges || [{ surah, start: startAyah, end: endAyah }];
+    : [{ surah, start: startAyah, end: endAyah }];
   const verses = (await Promise.all(ranges.map(r => getRange(r.surah, r.start, r.end).catch(() => [])))).flat();
 
   if (!result.words?.length) {
@@ -322,9 +312,9 @@ export async function runForcedAlignMatch(params: {
     console.warn(`[forcedAligner] ${result.warning}`);
   }
 
-  // Label every block that was aligned, not just the first -- a hybrid or
-  // auto-detected run routinely covers Al-Fatihah plus another surah, and a
-  // single-range label would silently under-report what the timeline contains.
+  // Label every block that was aligned, not just the first -- an auto-detected
+  // run routinely covers Al-Fatihah plus another surah, and a single-range
+  // label would silently under-report what the timeline contains.
   const rangeLabel = ranges.map(r => `${r.surah}:${r.start}-${r.end}`).join(', ') || `${surah}:${startAyah}-${endAyah}`;
   console.log(
     `[forcedAligner] aligned ${result.words.length} word(s) from ${rangeLabel} ` +

@@ -19,7 +19,7 @@ interface TimelineProps {
   onPlayPause: () => void;
   /** Drag of a segment edge. Committed continuously so the preview tracks it. */
   onMoveBoundary: (index: number, edge: 'startTime' | 'endTime', value: number) => void;
-  /** SPACEBAR / button: end the current segment here and start the next. */
+  /** B key / button: end the current segment here and start the next. */
   onMarkHere: () => void;
   /** Opens the trim modal. Omitted when there is no uploaded file to trim. */
   onTrim?: () => void;
@@ -216,12 +216,12 @@ export const Timeline: React.FC<TimelineProps> = ({
             it used to sit in the far panel while the preview played opposite. */}
         <button
           onClick={onMarkHere}
-          title="Mark the end of this ayah at the playhead (SPACEBAR)"
+          title="Mark the end of this ayah at the playhead (B)"
           className="ml-1 flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
         >
           <Zap className="w-3.5 h-3.5 text-amber-400" />
           <span className="hidden sm:inline">Mark ayah end</span>
-          <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">SPACE</kbd>
+          <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">B</kbd>
         </button>
 
         {/* Trimming belongs beside marking: both are edits to where the audio

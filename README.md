@@ -194,9 +194,9 @@ an optional capability, and the app degrades cleanly without it.
 
 | Variable | Required for | Default | Notes |
 |---|---|---|---|
-| `ASR_SERVICE_URL` | forced alignment, local ASR | `http://127.0.0.1:8000` | Where the Python sidecar is listening. |
+| `ASR_SERVICE_URL` | forced alignment | `http://127.0.0.1:8000` | Where the Python sidecar is listening. |
 | `AUDIO_MATCH_PROVIDER` | — | `gemini` | Default provider when the client doesn't pick one. Set to `align` if you run the sidecar. |
-| `GEMINI_API_KEY` | `gemini` and `hybrid` providers | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
+| `GEMINI_API_KEY` | the `gemini` provider | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
 | `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |
 | `GEMINI_TIMEOUT_MS` | — | `180000` | Ceiling on a single Gemini request. |
 | `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
@@ -229,29 +229,17 @@ so they can be swapped freely and compared on the same clip.
 
 | Provider | Needs | Who picks the ayah range | Timing accuracy |
 |---|---|---|---|
-| **Forced Align** (`align`) | sidecar | detected from audio, or you | **Exact** — cannot drop or garble a word |
-| **Gemini + Align** (`hybrid`) | API key **and** sidecar | Gemini identifies it | **Exact** — same aligner |
-| **Gemini** (`gemini`) | API key | you | Approximate |
-| **Local ASR** (`asr`) | sidecar | detected from audio | Low |
+| **Local** (`align`) | sidecar | detected from audio, or you | **Exact** — cannot drop or garble a word |
+| **Online** (`gemini`) | API key | you | Approximate |
 
-**Forced Align** is the recommended path. It is *given* the Quran text rather than asked to
+**Local** is the recommended path. It is *given* the Quran text rather than asked to
 guess it: the text becomes a fixed CTC target and the model decides only *when* each word was
 spoken. Every reference word therefore gets a timestamp by construction, and there is no
 corpus search that could put a phrase in the wrong surah.
 
-**Gemini + Align** asks each model only the question it can actually answer. Gemini listens
-and reports *which ayahs were recited, in what order* — no timestamps at all — and those
-ranges become the reference text for the same local aligner. Recognition is a genuine LLM
-strength; frame-accurate timing is not. This gives you exact timing without having to select
-the right range yourself.
-
-**Gemini** does both jobs in one call. Zero local setup, but an LLM has no frame-level time
-grounding, so its timestamps are plausible estimates rather than measurements. Prefer `hybrid`
-when the sidecar is available.
-
-**Local ASR** freely transcribes the audio and fuzzy-searches the result against the whole
-Quran. Kept for the case where no range is known and no API key is available; whatever the
-recogniser mishears is simply lost. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md) for why.
+**Online** does both jobs in one call. Zero local setup, but an LLM has no frame-level time
+grounding, so its timestamps are plausible estimates rather than measurements — expect to
+correct the boundaries by hand. Prefer `align` whenever the sidecar is available.
 
 ### Checking a match before you publish
 
@@ -266,14 +254,13 @@ most of itself. The sidecar raises a warning below 75% coverage and the studio s
 The response also carries `needsReview`, which is set when:
 
 - the coverage warning fired, or
-- the provider is `hybrid` (the range came from an LLM, so confirm it), or
 - the provider is `gemini` (its timing is always an estimate).
 
 `align` with a range you chose yourself and clean coverage is the only combination that comes
 back without a review prompt.
 
 **Do not read `confidence` as "this is the right passage."** For `gemini` it is a
-self-assessed score that runs high regardless. For `align`/`hybrid` it is mean per-word
+self-assessed score that runs high regardless. For `align` it is mean per-word
 acoustic sharpness, which is useful for spotting a muddy recording but does *not* separate a
 correct range from a wrong one — [docs/ALIGNMENT.md](docs/ALIGNMENT.md) has the measurements.
 
@@ -290,9 +277,8 @@ how the work actually goes.
 1. Choose a reciter, surah and ayah range, then **Load ayahs & audio**.
 2. Or upload your own recitation — audio **or video**. For a video, its audio drives the timing
    and a checkbox offers the footage as the background, synced to playback.
-   - **Most accurate** detects the passage from the audio and times every word locally.
-   - **Best for unknown passages** identifies it in the cloud, then times it on your machine.
-   - **No setup** works with nothing installed, but the timing is estimated rather than measured.
+   - **Local** detects the passage from the audio and times every word locally.
+   - **Online** works with nothing installed, but the timing is estimated rather than measured.
    - Options that need something you do not have say so, and say what to do about it.
    - **Trim audio** is in the top toolbar and available at any point — before matching, after
      styling, even after a first export. Existing segment times are adjusted for you, so your
@@ -341,7 +327,7 @@ App routes:
 |---|---|---|
 | `GET` | `/api/quran/surahs` | All 114 surahs |
 | `GET` | `/api/quran/verses?surah=&start=&end=&reciter=` | Verse data and audio URL |
-| `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|hybrid\|gemini\|asr`) |
+| `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|gemini`) |
 | `GET` | `/api/audio/match` | Which providers are configured and reachable |
 | `GET` `POST` | `/api/projects` | List / save projects |
 | `GET` `POST` | `/api/exports` | List / save export records |
@@ -376,10 +362,8 @@ src/lib/
   matchTypes.ts              Shared segment/result shape for every provider
   matchTimeline.ts           Provider-agnostic segment -> timeline building
                              (also trimTimeline: clips/rebases segments to a trim window)
-  forcedAligner.ts           Forced-align provider (recommended)
-  hybridMatcher.ts           Gemini identifies, the local aligner times
-  geminiMatcher.ts           Gemini provider
-  asrAligner.ts              Local ASR provider
+  forcedAligner.ts           Local forced-align provider (recommended)
+  geminiMatcher.ts           Online Gemini provider
   audioTrim.ts               In-browser decode/slice/re-encode for the trim editor
   waveform.ts                Cached peak data for the timeline's waveform track
   verseEdits.ts              Pure timeline edits shared by the timeline and inspector
@@ -492,12 +476,12 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
 falls back to in-memory storage when the variable is *unset*, so a broken value fails every
 save. Either comment the line out or follow [Database](#database-optional).
 
-**"Sidecar unreachable" on the Forced Align / Local ASR buttons**
+**"Helper not running" on the Local button**
 The sidecar isn't running, or `ASR_SERVICE_URL` is wrong. Start it and check
 `curl http://127.0.0.1:8000/health`. The provider selector polls on page load, so reload
 afterwards.
 
-**"Backend not loaded" on Forced Align, or `/align` returns a `VersionError` about protobuf/onnx**
+**"Backend not loaded" on Local, or `/align` returns a `VersionError` about protobuf/onnx**
 The sidecar is running under the wrong Python. Even with the virtualenv activated, bash can
 still use a cached path to a different `uvicorn`. Fix it with:
 
@@ -532,7 +516,7 @@ The model ID in `GEMINI_MODEL` has been retired. Pick a current one from
 
 **Gemini returns 503 "high demand"**
 A transient capacity error on Google's side. The client retries once automatically; if it
-still fails, `hybrid` falls back to your selected range and says so in the result notes.
+still fails, switch to the **Local** matcher or try again in a minute.
 
 **No audio after "Load Ayahs & Audio Data"**
 An error banner names the specific cause. Try a different reciter or upload your own file.

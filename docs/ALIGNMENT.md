@@ -168,10 +168,9 @@ Two caveats worth knowing:
 
 ### What the app does with this
 
-`needsReview` is set when coverage warns, always for `hybrid` (an LLM chose the range, and
-coverage cannot catch a near-miss such as 21–24 identified as 21–23), and always for `gemini`
-(its timing is an estimate by construction). Only `align` with a user-chosen range and clean
-coverage returns without a review prompt.
+`needsReview` is set when coverage warns, and always for `gemini` (its timing is an estimate
+by construction). Only `align` with a user-chosen range and clean coverage returns without a
+review prompt.
 
 ---
 
@@ -179,20 +178,14 @@ coverage returns without a review prompt.
 
 | Provider | Identifies the text | Produces timing |
 |---|---|---|
-| `align` | sidecar decode, or the user | forced alignment |
-| `hybrid` | Gemini | forced alignment |
-| `gemini` | Gemini | Gemini (estimated) |
-| `asr` | free decode + corpus search | free decode |
+| `align` ("Local") | sidecar decode, or the user | forced alignment |
+| `gemini` ("Online") | Gemini | Gemini (estimated) |
 
-`hybrid` exists because the two halves of the problem have different best answers. Identifying
-"this is Al-Ahzab 33:21–23" is pattern recognition over a known corpus, which a large
-multimodal model does well. Placing word boundaries to the centisecond is frame-level acoustic
-work, which it cannot do at all. Asking each component only the question it can answer gives
-exact timing without requiring the user to know the passage in advance.
-
-`asr` is retained for comparison and for the case where neither a range nor an API key is
-available. Its reliability is low for the reasons in the first section, and it is not
-recommended.
+Two further providers were removed: `hybrid`, which had Gemini identify the range and the local
+aligner time it, and `asr`, a free decode fuzzy-searched against the whole Quran. `hybrid` was
+the better idea of the two — it paired each component with the question it could answer — but
+both required the sidecar anyway, which is the setup cost `align` already carries, and neither
+earned its share of the provider matrix. Their reasoning is preserved in the git history.
 
 ---
 
