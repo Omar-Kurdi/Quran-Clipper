@@ -572,7 +572,11 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   }`}
                 >
                   <span className="block font-bold text-sm text-slate-100">{f.name}</span>
-                  <span className="block text-lg font-amiri text-amber-400 mt-1" dir="rtl">
+                  {/* Each face previews itself. Hardcoding font-amiri here
+                      showed five identical samples -- and kept every other
+                      family out of the DOM, so the canvas never fetched the
+                      one it was about to draw with. */}
+                  <span className={`block text-lg ${f.className} text-amber-400 mt-1`} dir="rtl">
                     بِسْمِ ٱللَّهِ
                   </span>
                 </button>
