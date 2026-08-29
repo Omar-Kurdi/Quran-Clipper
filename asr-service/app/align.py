@@ -1524,6 +1524,105 @@ WAQF_PAUSE_FACTOR = 1.5
 MIN_WAQF_PAUSE_SEC = 0.30
 
 
+#: Unexplained audio at the end of a segment worth investigating for a repeat.
+#: Every segment carries some trailing decay before the next boundary -- 1.0 to
+#: 1.5s across the clips measured -- while the one phrase a reciter said twice
+#: left 3.6s.
+MIN_REPEAT_TAIL_SEC = 1.5
+
+#: Skeleton characters that tail has to read back before it counts as speech
+#: rather than a stray letter at the edge of a decode. The tails that are simply
+#: silence read back as nothing at all; the one carrying a repeat read back
+#: seven characters, against one for the closest thing to a false positive.
+MIN_REPEAT_TAIL_CHARS = 3
+
+#: Agreement between what the tail reads and the words that follow it.
+MIN_REPEAT_TAIL_MATCH = 0.6
+
+
+def _extend_over_repeated_tail(
+    segments: list[Segment],
+    spans: list[list[AlignedWord]],
+    ref_words: list[tuple[str, int, str]],
+    pcm: np.ndarray,
+) -> list[Segment]:
+    """Carry a segment over words it recited a second time at its own end.
+
+    A reciter finishing a phrase often says its closing words again before
+    going on, so the same text belongs to two consecutive segments. A
+    straight-line reference cannot express that, and the second utterance --
+    quieter and quicker than the first -- is read back too poorly for ordinary
+    matching to find: `أَن طَهِّرَا` came back as `وَ عِنَبًاطَهِّرًا`, which shares no
+    whole word with the reference and scores 0.00.
+
+    So the comparison is by character rather than by word. Garbling scrambles
+    which letters land in which token but leaves most of the letters, and
+    `وعنبطهر` against `نطهر` agrees on four of them. That is enough to say what
+    was said without needing the decode to be legible.
+
+    Scored against the reference this way rather than acoustically, because the
+    acoustic test cannot answer it: the clip-wide emission puts ~0.99 blank
+    probability on these frames despite -16.5 dB of audio, and against the
+    phrase's own emission the correct longer script still aligns worse than the
+    incomplete short one.
+    """
+    index_of = {(key, position): i for i, (key, position, _) in enumerate(ref_words)}
+    out: list[Segment] = []
+
+    for segment, span in zip(segments, spans):
+        out.append(segment)
+        if not span:
+            continue
+        spoken_until = max(word.end for word in span)
+        if segment.end - spoken_until < MIN_REPEAT_TAIL_SEC:
+            continue
+        last = index_of.get((segment.verse_key, segment.end_word))
+        if last is None:
+            continue
+
+        chunk = pcm[int(spoken_until * SAMPLE_RATE) : int(segment.end * SAMPLE_RATE)]
+        if len(chunk) < SAMPLE_RATE // 4:
+            continue
+        emission = compute_emission(chunk)
+        heard = "".join(_skeleton(t) for t in decode_window(emission, 0, emission.shape[1]).split())
+        if len(heard) < MIN_REPEAT_TAIL_CHARS:
+            continue
+
+        best = None
+        for length in range(1, MAX_ORPHAN_WORDS + 1):
+            sequence = list(range(last + 1, last + 1 + length))
+            if sequence[-1] >= len(ref_words) or ref_words[sequence[-1]][0] != segment.verse_key:
+                break
+            spelled = "".join(_skeleton(ref_words[i][2]) for i in sequence)
+            ratio = difflib.SequenceMatcher(None, heard, spelled).ratio()
+            if best is None or ratio > best[0]:
+                best = (ratio, sequence)
+
+        if best is None or best[0] < MIN_REPEAT_TAIL_MATCH:
+            continue
+        ratio, sequence = best
+        log.info(
+            "phrase %.2f-%.2fs says %d more word(s) in its last %.1fs than its text covered (%.2f): %r",
+            segment.start,
+            segment.end,
+            len(sequence),
+            segment.end - spoken_until,
+            ratio,
+            " ".join(ref_words[i][2] for i in sequence),
+        )
+        out[-1] = Segment(
+            verse_key=segment.verse_key,
+            start_word=segment.start_word,
+            end_word=ref_words[sequence[-1]][1],
+            start=segment.start,
+            end=segment.end,
+            score=segment.score,
+            is_restart=segment.is_restart,
+        )
+
+    return out
+
+
 def _split_at_pause_marks(
     segments: list[Segment],
     spans: list[list[AlignedWord]],
@@ -1710,6 +1809,7 @@ def align_recitation(
         spans.append(span)
         previous_end = end
 
+    segments = _extend_over_repeated_tail(segments, spans, ref_words, pcm)
     segments = _split_at_pause_marks(segments, spans, ref_words)
 
     mean_score = float(np.mean([w.score for w in aligned])) if aligned else 0.0
