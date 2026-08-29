@@ -80,3 +80,53 @@ symmetry with alef, was tried and is worse: 388 -> 387 on relocation and
 test2.mp3 fell from 5/5 to 4/5.
 
 Relocation of phrases written in decoder orthography: 360 -> 388 of 400.
+
+
+## What actually solved it: the mushaf's own stop signs
+
+Every acoustic approach above failed for the same reason. On test.mp3 a **1.91s
+pause** sits in the middle of a phrase that must not be split, while a break the
+listener plainly hears has only **0.56s** of quiet. No threshold on loudness or
+on pause length orders those two correctly, because what separates them is where
+the sentence ends, not how quiet it got.
+
+Waqf marks (U+06D6..U+06DC) are the tradition's annotation of exactly that, and
+they are already in the Uthmani text the aligner loads. Measured against the
+ground truth for three clips:
+
+* **18 of 26** segment ends fall on a waqf mark or an ayah end;
+* the gap at a waqf mark runs to a **1.41s median** against **0.24s** between
+  ordinary words (n=7 vs n=117);
+* the one waqf mark the ground truth does *not* break at sits at 0.24s -- the
+  reciter carried straight through it.
+
+So a mark is *permission* and the reciter's own timing is the *decision*. The
+threshold is a multiple of each recitation's median inter-word gap, which keeps
+it free of any one reading's tempo. This took test.mp3 from 7/11 to 9/11 and
+found the 36.5s break that no dip setting ever did.
+
+## What is still unsolved: repeats
+
+Every remaining failure across all three clips is one class -- text the reciter
+said that no segment shows.
+
+* test.mp3 33:22 -- `قَالُوا۟` is recited **twice** (27.0-28.8s and 28.7-30.5s,
+  confirmed by decoding those windows directly). A straight-line reference has
+  one of it, so the two utterances cannot both be captioned.
+* test3.mp3 2:125 -- `أَن طَهِّرَا` is audible at 93-97s (that span decodes to
+  `وَطَهرًا`) but the segment covering it was assigned only up to `وَإِسْمَـٰعِيلَ`,
+  and forced alignment then smeared the extra speech into that last word.
+
+`detect_repeats` exists for this and is **not wired into the decode path**.
+Wiring it in is blocked on a real problem, not just plumbing: deciding whether
+extra words belong in a segment means comparing target sequences of *different
+lengths*, and `_fill_score` sums log-probabilities over the target, so a longer
+script always scores lower whether or not it is correct. Measured on test3, the
+correct 6-word script scored -1.23/frame against -0.39 for the incomplete
+4-word one. The gain-over-blank normalisation `detect_repeats` uses does not fix
+this either, because CTC emits blank on nearly every frame -- the blank baseline
+over 46 frames of *speech* came to -0.3, i.e. ~0.99 blank probability per frame.
+
+A length-normalised model comparison is needed before repeat handling can be
+trusted here. Until then these cases will under-cover rather than mis-cover:
+the words are missing from a caption, never wrong in one.
