@@ -22,7 +22,7 @@ import { trimTimeline } from '@/lib/matchTimeline';
 import {
   backgroundSegments, moveSegmentTo, resizeSegment, BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
-import type { TrimResult } from '@/lib/audioTrim';
+import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
 import { 
@@ -148,7 +148,8 @@ export default function VideoCreatorPage() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<number>(0);
   const [exportSpeed, setExportSpeed] = useState<string>('1.0x');
-  const [saveStatus, setSaveStatus] = useState<{ text: string; kind: 'pending' | 'ok' | 'error' } | null>(null);
+  /** `detail` carries why a save failed, so the reason is one hover away rather than console-only. */
+  const [saveStatus, setSaveStatus] = useState<{ text: string; kind: 'pending' | 'ok' | 'error'; detail?: string } | null>(null);
   // Which background block the panel acts on, so picking one in the lane and
   // removing it in the Style panel refer to the same block.
   const [selectedBackground, setSelectedBackground] = useState<number | null>(null);
@@ -369,6 +370,26 @@ export default function VideoCreatorPage() {
       `Trimmed to ${formatDuration(result.duration)}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`
     );
     setShowTrimModal(false);
+  };
+
+  /**
+   * The trim dialog's edit, applied from the timeline.
+   *
+   * Same decode, same slice, same `handleApplyTrim` -- the only difference is
+   * where the two numbers came from. Decoding here rather than holding a buffer
+   * open costs a second on a long file and keeps exactly one copy of the audio
+   * in memory the rest of the time.
+   */
+  const handleTrimRange = async (start: number, end: number) => {
+    if (!customAudioFile || !(end > start)) return;
+    setMatchStatus('Trimming the audio to the clip you marked…');
+    try {
+      const buffer = await decodeAudioFile(customAudioFile);
+      const result = buildTrimmedFile(buffer, start, end, customAudioFile.name);
+      handleApplyTrim({ ...result, trimStart: start, trimEnd: end });
+    } catch {
+      setMatchStatus('Could not trim this file. Try the Trim audio dialog, which reports what went wrong.');
+    }
   };
 
   const handleAutoMatchUploadedAudio = async () => {
@@ -686,14 +707,20 @@ export default function VideoCreatorPage() {
         setTimeout(() => setSaveStatus(null), 3000);
       } else {
         const data = await res.json().catch(() => null);
-        console.error('Save failed:', data?.error || res.status);
-        setSaveStatus({ text: 'Save Failed', kind: 'error' });
-        setTimeout(() => setSaveStatus(null), 5000);
+        const reason = data?.error || `The server answered ${res.status}.`;
+        console.error('Save failed:', reason);
+        // The reason rides along on the status rather than living only in the
+        // console: "Save Failed" on its own is the one thing nobody can act on,
+        // and the usual cause -- a database that is not running -- is fixable in
+        // one command once it is named.
+        setSaveStatus({ text: 'Save Failed', kind: 'error', detail: reason });
+        setTimeout(() => setSaveStatus(null), 8000);
       }
     } catch (err) {
-      console.error('Save failed:', err);
-      setSaveStatus({ text: 'Save Failed', kind: 'error' });
-      setTimeout(() => setSaveStatus(null), 5000);
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error('Save failed:', reason);
+      setSaveStatus({ text: 'Save Failed', kind: 'error', detail: reason });
+      setTimeout(() => setSaveStatus(null), 8000);
     }
   };
 
@@ -768,7 +795,7 @@ export default function VideoCreatorPage() {
     {
       key: 'save',
       label: 'Save project',
-      hint: saveStatus?.text,
+      hint: saveStatus?.detail || saveStatus?.text,
       icon: <Save className="w-4 h-4" />,
       onSelect: handleSaveProject
     }
@@ -1023,6 +1050,7 @@ export default function VideoCreatorPage() {
 
             <Button
               onClick={handleSaveProject}
+              title={saveStatus?.detail || 'Save this clip to the saved-projects list'}
               icon={saveStatus?.kind === 'ok' ? (
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
               ) : saveStatus?.kind === 'error' ? (
@@ -1547,6 +1575,7 @@ export default function VideoCreatorPage() {
           onMoveBoundary={(i, edge, value) => setVerses(setBoundary(verses, i, edge, value, audioDuration))}
           onMarkHere={handleMarkHere}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
+          onTrimRange={customAudioFile ? handleTrimRange : undefined}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}
@@ -1625,7 +1654,6 @@ export default function VideoCreatorPage() {
           key={`${customAudioFile.name}-${customAudioFile.size}-${customAudioFile.lastModified}`}
           isOpen={showTrimModal}
           file={customAudioFile}
-          audioUrl={customAudioUrl}
           onCancel={() => setShowTrimModal(false)}
           onApply={handleApplyTrim}
         />

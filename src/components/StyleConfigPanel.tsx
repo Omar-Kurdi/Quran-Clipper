@@ -1,11 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { 
   VideoCanvasConfig 
 } from './VideoCanvas';
-import { backgroundLabel, appendSegment, removeSegment } from '@/lib/backgroundTimeline';
+import {
+  backgroundLabel, appendSegment, removeSegment, mediaKind, rememberMediaKind, MediaKind
+} from '@/lib/backgroundTimeline';
 import { ColorField } from './ColorField';
+import { ConfirmDialog } from './ConfirmDialog';
 import { 
   BACKGROUND_VIDEOS, 
   FONTS_ARABIC, 
@@ -23,9 +26,68 @@ import {
   Check,
   ExternalLink,
   X,
+  Trash2,
+  Film,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+
+/** A background the user added themselves, kept beside the presets. */
+interface LibraryItem {
+  url: string;
+  kind: MediaKind;
+  label: string;
+}
+
+const LIBRARY_KEY = 'qc-background-library';
+
+/**
+ * The user's own backgrounds, held outside React.
+ *
+ * `localStorage` is an external system, so it is read through
+ * `useSyncExternalStore` rather than copied into state by an effect: reading it
+ * during render would break server rendering, and an effect that calls
+ * `setLibrary` on mount is a cascading render the linter rightly rejects. The
+ * server snapshot is a constant empty list, so the first paint matches the
+ * markup and the real list arrives on hydration.
+ */
+let libraryCache: LibraryItem[] | null = null;
+const EMPTY_LIBRARY: LibraryItem[] = [];
+const libraryListeners = new Set<() => void>();
+
+function readLibrary(): LibraryItem[] {
+  if (libraryCache) return libraryCache;
+  try {
+    const raw = localStorage.getItem(LIBRARY_KEY);
+    const saved = raw ? JSON.parse(raw) : [];
+    libraryCache = Array.isArray(saved)
+      ? saved.filter((item: LibraryItem) => item?.url && !item.url.startsWith('blob:'))
+      : EMPTY_LIBRARY;
+  } catch {
+    // Unreadable or unavailable storage just means an empty library.
+    libraryCache = EMPTY_LIBRARY;
+  }
+  libraryCache.forEach(item => rememberMediaKind(item.url, item.kind));
+  return libraryCache;
+}
+
+function writeLibrary(next: LibraryItem[]): void {
+  libraryCache = next;
+  try {
+    // Only http(s) entries survive a reload: an upload is a `blob:` url that
+    // dies with the page, and a list full of dead thumbnails is worse than a
+    // short one.
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(next.filter(item => !item.url.startsWith('blob:'))));
+  } catch {
+    // The entries still work for this session.
+  }
+  libraryListeners.forEach(listener => listener());
+}
+
+function subscribeToLibrary(listener: () => void): () => void {
+  libraryListeners.add(listener);
+  return () => { libraryListeners.delete(listener); };
+}
 
 interface StyleConfigPanelProps {
   config: VideoCanvasConfig;
@@ -53,17 +115,32 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     });
   };
 
+  /** Backgrounds the user added, shown after the presets. */
+  const library = useSyncExternalStore(subscribeToLibrary, readLibrary, () => EMPTY_LIBRARY);
+  const [pendingDelete, setPendingDelete] = useState<
+    { title: string; message: string; confirmLabel?: string; run: () => void } | null
+  >(null);
+
+  const rememberInLibrary = (item: LibraryItem) => {
+    const current = readLibrary();
+    if (current.some(existing => existing.url === item.url)) return;
+    writeLibrary([...current, item]);
+  };
+
+  const forgetFromLibrary = (url: string) => {
+    writeLibrary(readLibrary().filter(item => item.url !== url));
+  };
+
   const handleCustomFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      const isVideo = file.type.startsWith('video');
-      onChangeConfig({
-        ...config,
-        bgType: isVideo ? 'video' : 'image',
-        bgUrl: url
-      });
-    }
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const kind: MediaKind = file.type.startsWith('image') ? 'image' : 'video';
+    rememberMediaKind(url, kind);
+    rememberInLibrary({ url, kind, label: file.name });
+    addBackground(url, kind);
+    // Let the same file be picked again after it has been removed from the list.
+    e.target.value = '';
   };
 
   // A lane cut by hand on the timeline. It is not something you switch to from
@@ -75,7 +152,20 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   const bgSequence = config.bgUrls || [];
 
   const setLane = (next: typeof laneSegments) =>
-    onChangeConfig({ ...config, bgType: 'video', bgSegments: next });
+    onChangeConfig({ ...config, bgType: kindOf(next[0]?.url), bgSegments: next });
+
+  /**
+   * `bgType` for a list is the kind of whatever leads it.
+   *
+   * These setters used to hardcode `'video'`, which silently undid an image
+   * selection the moment anything else in the panel was touched. It only really
+   * matters for the single-background case now -- the playlist reads each url's
+   * own kind -- but leaving a stale value in the saved payload would mislead
+   * whoever reads it next.
+   */
+  function kindOf(url: string | undefined): string {
+    return url ? mediaKind(url) : config.bgType;
+  }
 
   /**
    * Rewrites the background sequence.
@@ -89,10 +179,82 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   const setSequence = (next: string[]) => {
     onChangeConfig({
       ...config,
-      bgType: 'video',
+      bgType: kindOf(next[0] || config.bgUrl),
       bgUrls: next,
       bgUrl: next[0] || config.bgUrl
     });
+  };
+
+  /**
+   * Puts a background wherever the current mode actually reads from.
+   *
+   * Uploading a file and pasting a link both used to write `bgUrl` and nothing
+   * else. In every mode but `single` that field is not what plays: the sequence
+   * reads `bgUrls` and a hand-cut lane reads `bgSegments`, so with "shuffle" or
+   * "one per ayah" selected -- exactly when someone is gathering several
+   * backgrounds -- adding one appeared to do nothing at all.
+   */
+  const addBackground = (url: string, kind: MediaKind) => {
+    rememberMediaKind(url, kind);
+    if (customBackground) {
+      setLane(appendSegment(laneSegments, url, clipDuration));
+      return;
+    }
+    if (multiBackground) {
+      setSequence([...bgSequence, url]);
+      return;
+    }
+    onChangeConfig({ ...config, bgType: kind, bgUrl: url });
+  };
+
+  /**
+   * The presets and the user's own backgrounds, in one grid.
+   *
+   * They behave identically once added -- the only difference is that a preset
+   * cannot be deleted, because it is not the user's to lose.
+   */
+  const gallery = [
+    ...BACKGROUND_VIDEOS.map(bg => ({
+      id: bg.id,
+      url: bg.url,
+      title: bg.title,
+      category: bg.category,
+      thumbnail: bg.thumbnail as string | null,
+      kind: 'video' as MediaKind,
+      removable: false
+    })),
+    ...library.map(item => ({
+      id: `library-${item.url}`,
+      url: item.url,
+      title: item.label,
+      category: 'Yours',
+      thumbnail: item.kind === 'image' ? item.url : null,
+      kind: item.kind,
+      removable: true
+    }))
+  ];
+
+  /**
+   * Deletes a background the user added, and every use of it.
+   *
+   * Leaving it in the sequence or the lane after removing it from the list
+   * would keep it in the exported video while showing nowhere in the panel --
+   * the deletion has to mean what it says.
+   */
+  const removeFromEverywhere = (url: string) => {
+    forgetFromLibrary(url);
+    const nextUrls = bgSequence.filter(u => u !== url);
+    const nextSegments = laneSegments.filter(seg => seg.url !== url);
+    const fallback = nextUrls[0] || nextSegments[0]?.url || BACKGROUND_VIDEOS[0]?.url || '';
+    const nextUrl = config.bgUrl === url ? fallback : config.bgUrl;
+    onChangeConfig({
+      ...config,
+      bgUrl: nextUrl,
+      bgType: kindOf(nextUrl),
+      bgUrls: nextUrls,
+      bgSegments: nextSegments
+    });
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
   };
 
   const moveInSequence = (from: number, to: number) => {
@@ -106,13 +268,33 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   const [urlDraft, setUrlDraft] = useState('');
   const [urlStatus, setUrlStatus] = useState<{ kind: 'busy' | 'error' | 'ok'; message: string } | null>(null);
 
-  const applyDirectUrl = (url: string) => {
-    const isVideo = /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
-    onChangeConfig({
-      ...config,
-      bgType: isVideo ? 'video' : 'image',
-      bgUrl: url
+  /**
+   * What a link points at, when the path does not say.
+   *
+   * Plenty of CDNs serve stills from extensionless urls, and guessing "video"
+   * for one of those puts a <video> element on an image and draws nothing. An
+   * `Image()` that loads is proof; one that fails is not proof of much, but
+   * video is the right thing to assume for a background.
+   */
+  const probeKind = (url: string): Promise<MediaKind> =>
+    new Promise(resolve => {
+      const probe = new Image();
+      const settle = (kind: MediaKind) => { probe.onload = null; probe.onerror = null; resolve(kind); };
+      probe.onload = () => settle('image');
+      probe.onerror = () => settle('video');
+      probe.src = url;
+      setTimeout(() => settle('video'), 6000);
     });
+
+  const applyDirectUrl = async (url: string, label?: string) => {
+    const extension = /\.(mp4|webm|mov|avi|m4v|ogv)(\?|#|$)/i.test(url)
+      ? 'video'
+      : /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?|#|$)/i.test(url)
+        ? 'image'
+        : null;
+    const kind: MediaKind = extension ?? (await probeKind(url));
+    rememberInLibrary({ url, kind, label: label || backgroundLabel(url) });
+    addBackground(url, kind);
   };
 
   /**
@@ -137,8 +319,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
     const isPexelsPage = /(^|\.)pexels\.com$/.test(host) && !/^videos?\.|^images\./.test(host);
     if (!isPexelsPage) {
-      applyDirectUrl(url);
-      setUrlStatus({ kind: 'ok', message: 'Background set.' });
+      setUrlStatus({ kind: 'busy', message: 'Checking that link…' });
+      await applyDirectUrl(url);
+      setUrlStatus({ kind: 'ok', message: 'Added to your backgrounds.' });
       setUrlDraft('');
       return;
     }
@@ -151,10 +334,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         setUrlStatus({ kind: 'error', message: data?.error || 'Could not resolve that Pexels link.' });
         return;
       }
-      applyDirectUrl(data.url);
+      await applyDirectUrl(data.url, data.credit ? `${data.credit} (Pexels)` : undefined);
       setUrlStatus({
         kind: 'ok',
-        message: data.credit ? `Background set — ${data.credit} on Pexels.` : 'Background set.'
+        message: data.credit ? `Added — ${data.credit} on Pexels.` : 'Added to your backgrounds.'
       });
       setUrlDraft('');
     } catch {
@@ -297,16 +480,23 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                           {seg.start.toFixed(1)}–{seg.end.toFixed(1)}s
                         </span>
                         <button
-                          onClick={() => {
-                            setLane(removeSegment(laneSegments, i));
-                            onSelectBackground?.(
-                              selectedBackground === null || selectedBackground === i
-                                ? null
-                                : selectedBackground > i
-                                  ? selectedBackground - 1
-                                  : selectedBackground
-                            );
-                          }}
+                          onClick={() =>
+                            setPendingDelete({
+                              title: 'Remove this block?',
+                              message: `“${backgroundLabel(seg.url)}” runs from ${seg.start.toFixed(1)}s to ${seg.end.toFixed(1)}s. Removing it leaves a gap there, which shows the plain gradient.`,
+                              confirmLabel: 'Remove block',
+                              run: () => {
+                                setLane(removeSegment(laneSegments, i));
+                                onSelectBackground?.(
+                                  selectedBackground === null || selectedBackground === i
+                                    ? null
+                                    : selectedBackground > i
+                                      ? selectedBackground - 1
+                                      : selectedBackground
+                                );
+                              }
+                            })
+                          }
                           aria-label={`Remove ${backgroundLabel(seg.url)} at ${seg.start.toFixed(1)}s`}
                           className="p-0.5 text-slate-400 hover:text-red-400"
                         >
@@ -354,7 +544,14 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                           <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => setSequence(bgSequence.filter((_, j) => j !== i))}
+                          onClick={() =>
+                            setPendingDelete({
+                              title: 'Remove from the sequence?',
+                              message: `“${backgroundLabel(url)}” will stop playing at position ${i + 1}. It stays in your backgrounds below, ready to add again.`,
+                              confirmLabel: 'Remove',
+                              run: () => setSequence(bgSequence.filter((_, j) => j !== i))
+                            })
+                          }
                           aria-label={`Remove ${backgroundLabel(url)} from position ${i + 1}`}
                           className="p-0.5 text-slate-400 hover:text-red-400"
                         >
@@ -372,72 +569,104 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             <label className="font-semibold text-slate-200 text-sm block mb-2">
               {customBackground
                 ? 'Add a background to the end of the lane:'
-                : (config.bgMode || 'single') === 'single' ? 'Preset Video Loop Backgrounds:' : 'Pick your backgrounds:'}
+                : (config.bgMode || 'single') === 'single' ? 'Backgrounds:' : 'Pick your backgrounds:'}
             </label>
+            <p className="text-[11px] text-slate-400 mb-2">
+              Presets first, then anything you have uploaded or pasted below. Hover one of your own to
+              delete it.
+            </p>
             {/* No inner scroller. Capping this at 224px put a second scrollbar
                 inside a panel that was already scrolling, and showed four
                 thumbnails above a screen of empty space. */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {BACKGROUND_VIDEOS.map((bg) => (
-                <button
-                  key={bg.id}
-                  title={
-                    customBackground ? 'Add a block for this clip at the end of the lane'
-                      : multiBackground ? 'Add to the sequence — tap again to use it more than once'
-                      : bg.title
-                  }
-                  onClick={() => {
-                    if (customBackground) {
-                      setLane(appendSegment(laneSegments, bg.url, clipDuration));
-                      return;
-                    }
-                    if (!multiBackground) {
-                      onChangeConfig({ ...config, bgType: 'video', bgUrl: bg.url });
-                      return;
-                    }
-                    // Adds rather than toggles, so the same clip can appear at
-                    // several points in one video. Removal is by position, in
-                    // the sequence list above.
-                    setSequence([...bgSequence, bg.url]);
-                  }}
-                  className={`relative group rounded-xl overflow-hidden border transition-all aspect-[9/16] ${
-                    (customBackground
-                      ? laneSegments.some(seg => seg.url === bg.url)
-                      : multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url)
-                      ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
-                      : 'border-slate-800 hover:border-slate-600'
-                  }`}
-                >
-                  {/* Play order, so a multi-background sequence is readable at a glance. */}
-                  {multiBackground && bgSequence.includes(bg.url) && (
-                    <span className="absolute top-1 left-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
-                      {(() => {
-                        const uses = bgSequence.filter(u => u === bg.url).length;
-                        return uses > 1 ? `x${uses}` : bgSequence.indexOf(bg.url) + 1;
-                      })()}
-                    </span>
-                  )}
-                  <img
-                    src={bg.thumbnail}
-                    alt={bg.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => {
-                      const t = e.currentTarget;
-                      t.style.display = 'none';
-                      t.parentElement!.style.background = 'linear-gradient(180deg, #0f172a, #1e1b4b)';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent flex flex-col justify-end p-2 text-left">
-                    <span className="text-[11px] font-semibold text-slate-100 leading-tight">{bg.title}</span>
-                    <span className="text-[9px] text-amber-400 uppercase tracking-wider">{bg.category}</span>
+              {gallery.map((bg) => {
+                const inUse = customBackground
+                  ? laneSegments.some(seg => seg.url === bg.url)
+                  : multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url;
+                return (
+                  <div key={bg.id} className="relative group rounded-xl overflow-hidden">
+                    <button
+                      title={
+                        customBackground ? 'Add a block for this clip at the end of the lane'
+                          : multiBackground ? 'Add to the sequence — tap again to use it more than once'
+                          : bg.title
+                      }
+                      onClick={() => addBackground(bg.url, bg.kind)}
+                      className={`block w-full rounded-xl overflow-hidden border transition-all aspect-[9/16] ${
+                        inUse
+                          ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
+                          : 'border-slate-800 hover:border-slate-600'
+                      }`}
+                    >
+                      {/* Play order, so a multi-background sequence is readable at a glance. */}
+                      {multiBackground && bgSequence.includes(bg.url) && (
+                        <span className="absolute top-1 left-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
+                          {(() => {
+                            const uses = bgSequence.filter(u => u === bg.url).length;
+                            return uses > 1 ? `x${uses}` : bgSequence.indexOf(bg.url) + 1;
+                          })()}
+                        </span>
+                      )}
+                      {bg.thumbnail ? (
+                        <img
+                          src={bg.thumbnail}
+                          alt={bg.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => {
+                            const t = e.currentTarget;
+                            t.style.display = 'none';
+                            t.parentElement!.style.background = 'linear-gradient(180deg, #0f172a, #1e1b4b)';
+                          }}
+                        />
+                      ) : (
+                        // A clip the user added has no thumbnail to fetch, so it
+                        // previews itself -- muted, unplayed, one poster frame.
+                        <video
+                          src={`${bg.url}#t=0.1`}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-cover bg-slate-950"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent flex flex-col justify-end p-2 text-left">
+                        <span className="text-[11px] font-semibold text-slate-100 leading-tight line-clamp-2">{bg.title}</span>
+                        <span className="text-[9px] text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                          {bg.kind === 'image' ? <ImageIcon className="w-2.5 h-2.5" /> : <Film className="w-2.5 h-2.5" />}
+                          {bg.category}
+                        </span>
+                      </div>
+                      {!multiBackground && !customBackground && config.bgUrl === bg.url && (
+                        <div className="absolute top-2 right-2 bg-amber-500 text-slate-950 p-1 rounded-full shadow">
+                          <Check className="w-3 h-3" />
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Outside the tile button rather than inside it: a button
+                        nested in a button is invalid, and the browser picks
+                        whichever it likes when you click. */}
+                    {bg.removable && (
+                      <button
+                        onClick={() =>
+                          setPendingDelete({
+                            title: 'Remove this background?',
+                            message: `“${bg.title}” will be taken out of your backgrounds${
+                              inUse ? ', and out of this video where it is used' : ''
+                            }. Presets are not affected.`,
+                            run: () => removeFromEverywhere(bg.url)
+                          })
+                        }
+                        title="Remove from your backgrounds"
+                        aria-label={`Remove ${bg.title} from your backgrounds`}
+                        className="absolute top-1 right-1 z-10 p-1 rounded-full bg-slate-950/80 text-slate-300 hover:text-red-300 hover:bg-slate-950 border border-slate-700 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
-                  {!multiBackground && !customBackground && config.bgUrl === bg.url && (
-                    <div className="absolute top-2 right-2 bg-amber-500 text-slate-950 p-1 rounded-full shadow">
-                      <Check className="w-3 h-3" />
-                    </div>
-                  )}
-                </button>
-              ))}
+                );
+              })}
             </div>
 
             <div className="text-center mt-2">
@@ -671,6 +900,18 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title={pendingDelete?.title || ''}
+        message={pendingDelete?.message || ''}
+        confirmLabel={pendingDelete?.confirmLabel}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          pendingDelete?.run();
+          setPendingDelete(null);
+        }}
+      />
 
       {/* Card & FX */}
       {activeTab === 'card' && (

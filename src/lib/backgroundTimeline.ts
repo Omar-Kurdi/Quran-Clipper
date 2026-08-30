@@ -36,6 +36,32 @@ export interface BackgroundConfig {
 
 export type BackgroundMode = 'single' | 'per-ayah' | 'cycle' | 'shuffle' | 'custom';
 
+/** What a background actually is: footage, or a still. */
+export type MediaKind = 'video' | 'image';
+
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?|#|$)/i;
+
+/**
+ * Kinds we were told rather than guessed.
+ *
+ * An upload becomes a `blob:` url with no extension, and plenty of image CDNs
+ * serve stills from extensionless paths -- so the kind has to be recorded where
+ * it is actually known (the `File.type` at upload, a probe at paste time)
+ * instead of re-derived from a string later. Module-level and deliberately not
+ * persisted: `blob:` urls die with the page anyway, and a saved project's
+ * http(s) urls carry enough in their path to be read back below.
+ */
+const knownKinds = new Map<string, MediaKind>();
+
+export function rememberMediaKind(url: string, kind: MediaKind): void {
+  if (url) knownKinds.set(url, kind);
+}
+
+/** Footage unless we know or can see otherwise -- video is what the studio is mostly given. */
+export function mediaKind(url: string): MediaKind {
+  return knownKinds.get(url) ?? (IMAGE_EXTENSIONS.test(url) ? 'image' : 'video');
+}
+
 /** The automatic layouts, and the only values a saved project may name besides `custom`. */
 export const BACKGROUND_MODES: BackgroundMode[] = ['single', 'per-ayah', 'cycle', 'shuffle', 'custom'];
 
@@ -49,7 +75,11 @@ export const BACKGROUND_MODES: BackgroundMode[] = ['single', 'per-ayah', 'cycle'
  * is an ordinary thing to want, and the list is a sequence, not a set.
  */
 export function backgroundPlaylist(config: BackgroundConfig): string[] {
-  if (config.bgType !== 'video') return [];
+  // Stills belong here too. This used to be `!== 'video'`, so choosing an image
+  // emptied the playlist, left the canvas with nothing to draw, and fell through
+  // to the gradient -- an upload that appeared to do nothing at all. Only the
+  // two url-less types have genuinely no media to play.
+  if (config.bgType === 'gradient' || config.bgType === 'color') return [];
   if (config.bgMode === 'custom') {
     // Order carries no meaning here -- the lane's times do -- so this is just
     // the set of clips the pool has to keep warm, deduplicated.
@@ -177,7 +207,11 @@ export function backgroundSegments(
 export function backgroundLabel(url: string): string {
   const preset = BACKGROUND_VIDEOS.find(bg => bg.url === url);
   if (preset) return preset.title;
-  if (url.startsWith('blob:')) return 'Uploaded clip';
+  const kind = mediaKind(url);
+  if (url.startsWith('blob:')) return kind === 'image' ? 'Uploaded image' : 'Uploaded clip';
+  // A data: url's "path" is the file itself -- naming it after that would put a
+  // kilobyte of base64 in the list.
+  if (url.startsWith('data:')) return kind === 'image' ? 'Pasted image' : 'Pasted clip';
   try {
     const file = new URL(url).pathname.split('/').filter(Boolean).pop();
     if (file) return decodeURIComponent(file).replace(/\.[a-z0-9]+$/i, '');

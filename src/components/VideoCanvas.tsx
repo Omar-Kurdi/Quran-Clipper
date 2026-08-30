@@ -2,7 +2,22 @@
 
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData } from '@/lib/quranData';
-import { backgroundAt, backgroundPlaylist, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
+import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
+
+/**
+ * A background is a clip or a still, and the two are interchangeable
+ * everywhere except where a clip has to be told to play.
+ */
+type BackgroundMedia = HTMLVideoElement | HTMLImageElement;
+
+const isClip = (el: BackgroundMedia): el is HTMLVideoElement => el.tagName === 'VIDEO';
+
+/** Drawable: decoded enough to have pixels. A broken source never gets here. */
+const mediaReady = (el: BackgroundMedia | null): boolean =>
+  !!el && (isClip(el) ? el.readyState >= 2 : el.complete && el.naturalWidth > 0);
+
+const mediaSize = (el: BackgroundMedia) =>
+  isClip(el) ? { w: el.videoWidth, h: el.videoHeight } : { w: el.naturalWidth, h: el.naturalHeight };
 
 export interface VideoCanvasConfig {
   aspectRatio: string;
@@ -193,7 +208,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   backgroundTimeOffset = 0
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const videoBgRef = useRef<HTMLVideoElement | null>(null);
+  const bgMediaRef = useRef<BackgroundMedia | null>(null);
   const isExportingRef = useRef<boolean>(false);
   const videoErrorRef = useRef<boolean>(false);
 
@@ -225,7 +240,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
    * schema and the API payload keep working untouched; `bgUrls` only takes over
    * once a multi mode is selected and something is actually in the list.
    */
-  const videoPoolRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const mediaPoolRef = useRef<Map<string, BackgroundMedia>>(new Map());
 
   /**
    * Two memos, not one, because they feed things with very different costs.
@@ -275,49 +290,65 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   const bgVideoSrc = activeBg?.url ?? '';
 
   /**
-   * One <video> per background, all loaded and running at once.
+   * One element per background, all loaded at once -- a <video> for footage, an
+   * <img> for a still.
    *
    * Swapping `src` on a single element would stall while the next clip buffers,
    * and export records the canvas in real time -- so that stall bakes into the
    * output as black frames rather than merely looking rough in the preview.
-   * Keeping every clip warm makes switching a choice of which element to draw.
+   * Keeping every background warm makes switching a choice of which element to
+   * draw.
    */
   useEffect(() => {
     videoErrorRef.current = false;
-    const pool = videoPoolRef.current;
+    const pool = mediaPoolRef.current;
 
     for (const url of bgPlaylist) {
-      let vid = pool.get(url);
-      if (!vid) {
-        vid = document.createElement('video');
-        vid.crossOrigin = 'anonymous';
-        vid.muted = true;
-        vid.playsInline = true;
-        vid.preload = 'auto';
-        vid.src = url;
-        vid.addEventListener('error', () => { videoErrorRef.current = true; }, { once: true });
-        pool.set(url, vid);
-        vid.load();
+      let media = pool.get(url);
+      if (!media) {
+        if (mediaKind(url) === 'image') {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.decoding = 'async';
+          img.src = url;
+          media = img;
+        } else {
+          const vid = document.createElement('video');
+          vid.crossOrigin = 'anonymous';
+          vid.muted = true;
+          vid.playsInline = true;
+          vid.preload = 'auto';
+          vid.src = url;
+          vid.addEventListener('error', () => { videoErrorRef.current = true; }, { once: true });
+          vid.load();
+          media = vid;
+        }
+        pool.set(url, media);
       }
+      if (!isClip(media)) continue;
       // Decorative footage loops forever on its own. A synced recitation must
       // not: it is driven by the sync effect below, and looping would send it
       // back to 0 mid-verse.
-      vid.loop = !syncBackgroundVideo;
-      if (!syncBackgroundVideo) vid.play().catch(() => {});
+      media.loop = !syncBackgroundVideo;
+      if (!syncBackgroundVideo) media.play().catch(() => {});
     }
 
-    for (const [url, vid] of Array.from(pool.entries())) {
+    for (const [url, media] of Array.from(pool.entries())) {
       if (bgPlaylist.includes(url)) continue;
-      vid.pause();
-      vid.removeAttribute('src');
-      vid.load();
+      // A still needs no unwinding, and blanking its `src` would only fire a
+      // spurious error on the way out.
+      if (isClip(media)) {
+        media.pause();
+        media.removeAttribute('src');
+        media.load();
+      }
       pool.delete(url);
     }
   }, [bgPlaylist, syncBackgroundVideo]);
 
   // Point the draw loop at whichever pooled clip is current.
   useEffect(() => {
-    videoBgRef.current = bgVideoSrc ? videoPoolRef.current.get(bgVideoSrc) ?? null : null;
+    bgMediaRef.current = bgVideoSrc ? mediaPoolRef.current.get(bgVideoSrc) ?? null : null;
   }, [bgVideoSrc]);
 
   /**
@@ -381,8 +412,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     bgSegmentRef.current = { key: activeBg.key, url: activeBg.url };
     if (previous?.url === activeBg.url) return;
 
-    const vid = videoPoolRef.current.get(activeBg.url);
-    if (!vid) return;
+    const vid = mediaPoolRef.current.get(activeBg.url);
+    // A still has no playhead to rewind; its turn beginning is simply the draw
+    // loop pointing at it.
+    if (!vid || !isClip(vid)) return;
     // Only seek if it is not already there. A seek briefly drops `readyState`
     // below the level the draw loop requires, which during a real-time export
     // bakes a gradient frame into the file -- and a clip parked at 0 by the
@@ -407,8 +440,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
    * smooth while staying visually in sync.
    */
   useEffect(() => {
-    const vid = videoBgRef.current;
-    if (!vid || !bgVideoSrc || !syncBackgroundVideo || videoErrorRef.current) return;
+    const vid = bgMediaRef.current;
+    if (!vid || !isClip(vid) || !bgVideoSrc || !syncBackgroundVideo || videoErrorRef.current) return;
 
     const target = currentTime + backgroundTimeOffset;
     if (Number.isFinite(target) && Math.abs(vid.currentTime - target) > 0.25) {
@@ -426,15 +459,16 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   // Cleanup on unmount -- the whole pool, not just the visible clip, or every
   // background ever selected keeps its buffer alive for the page's lifetime.
   useEffect(() => {
-    const pool = videoPoolRef.current;
+    const pool = mediaPoolRef.current;
     return () => {
-      for (const vid of pool.values()) {
-        vid.pause();
-        vid.removeAttribute('src');
-        vid.load();
+      for (const media of pool.values()) {
+        if (!isClip(media)) continue;
+        media.pause();
+        media.removeAttribute('src');
+        media.load();
       }
       pool.clear();
-      videoBgRef.current = null;
+      bgMediaRef.current = null;
     };
   }, []);
 
@@ -504,17 +538,23 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Background (video or gradient fallback)
-      const vid = videoBgRef.current;
-      if (vid && vid.readyState >= 2 && !videoErrorRef.current) {
+      // 1. Background (clip, still, or gradient fallback).
+      //
+      // Readiness alone decides. It used to also require `!videoErrorRef`, a
+      // single flag shared by every background in the pool -- so one clip that
+      // failed to load blanked the ones that had not.
+      const media = bgMediaRef.current;
+      if (mediaReady(media)) {
+        const source = media as BackgroundMedia;
         ctx.save();
         if (config.bgBlur > 0) ctx.filter = `blur(${config.bgBlur * 2.5}px)`;
-        const vRatio = vid.videoWidth / vid.videoHeight;
+        const { w, h } = mediaSize(source);
+        const vRatio = w / h;
         const cRatio = width / height;
         let dw = width, dh = height, dx = 0, dy = 0;
         if (vRatio > cRatio) { dw = height * vRatio; dx = (width - dw) / 2; }
         else { dh = width / vRatio; dy = (height - dh) / 2; }
-        ctx.drawImage(vid, dx, dy, dw, dh);
+        ctx.drawImage(source, dx, dy, dw, dh);
         ctx.restore();
       } else {
         // Gradient fallback
@@ -963,11 +1003,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
          * own start; the one on screen picks up wherever the export begins
          * inside its segment, which is 0 for the usual whole-clip export.
          */
-        const activeBgVideo = syncBackgroundVideo ? null : videoBgRef.current;
-        for (const vid of Array.from(videoPoolRef.current.values())) {
-          if (vid === activeBgVideo || syncBackgroundVideo) continue;
-          vid.pause();
-          try { vid.currentTime = 0; } catch { /* metadata not in yet */ }
+        const current = syncBackgroundVideo ? null : bgMediaRef.current;
+        const activeBgVideo = current && isClip(current) ? current : null;
+        for (const media of Array.from(mediaPoolRef.current.values())) {
+          if (media === current || syncBackgroundVideo || !isClip(media)) continue;
+          media.pause();
+          try { media.currentTime = 0; } catch { /* metadata not in yet */ }
         }
         if (activeBgVideo) {
           bgSegmentRef.current = activeBg ? { key: activeBg.key, url: activeBg.url } : null;

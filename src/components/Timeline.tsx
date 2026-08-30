@@ -23,6 +23,14 @@ interface TimelineProps {
   onMarkHere: () => void;
   /** Opens the trim modal. Omitted when there is no uploaded file to trim. */
   onTrim?: () => void;
+  /**
+   * Cuts the uploaded audio down to `[start, end]` of the current clip.
+   *
+   * The same edit the trim dialog makes, reachable without covering the thing
+   * being trimmed: the handles live on this timeline, and dragging one moves the
+   * playhead with it, so the preview above shows the moment being cut to.
+   */
+  onTrimRange?: (start: number, end: number) => void;
   /** Length of the uploaded clip, shown on the trim button. */
   trimHint?: string;
   isMuted: boolean;
@@ -60,7 +68,7 @@ const ZOOMS = [1, 2, 4, 8];
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere,
-  onTrim, trimHint, isMuted, volume, onToggleMute, onVolume,
+  onTrim, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground
 }) => {
@@ -93,6 +101,16 @@ export const Timeline: React.FC<TimelineProps> = ({
     bgMoveRef.current = onMoveBackground;
     bgResizeRef.current = onResizeBackground;
   }, [bgDrag, onMoveBackground, onResizeBackground]);
+
+  /**
+   * The stretch of audio to keep, while it is being chosen.
+   *
+   * Stamped with the url it was chosen against, so it is discarded rather than
+   * misapplied when the audio changes underneath it -- including the moment a
+   * trim lands, which replaces the file with the shorter one.
+   */
+  const [clip, setClip] = useState<{ url: string; start: number; end: number } | null>(null);
+  const [clipDrag, setClipDrag] = useState<'start' | 'end' | null>(null);
 
   // Read by the pointer handler so a drag does not rebuild its listeners on
   // every frame as the verses change underneath it.
@@ -165,6 +183,35 @@ export const Timeline: React.FC<TimelineProps> = ({
     };
   }, [bgDrag, xToTime]);
 
+  /**
+   * Dragging a clip handle also seeks.
+   *
+   * That is the whole point of trimming here rather than in a dialog: the
+   * preview is right above this, so the frame and the sound at the cut are
+   * visible while it is being placed.
+   */
+  useEffect(() => {
+    if (!clipDrag) return;
+    const move = (e: PointerEvent) => {
+      const t = xToTime(e.clientX);
+      setClip(prev => {
+        const current = prev ?? { url: audioUrl, start: 0, end: duration };
+        const next = clipDrag === 'start'
+          ? { ...current, url: audioUrl, start: Math.min(t, current.end - MIN_SEGMENT) }
+          : { ...current, url: audioUrl, end: Math.max(t, current.start + MIN_SEGMENT) };
+        return { ...next, start: Math.max(0, next.start), end: Math.min(duration, next.end) };
+      });
+      onSeek(Math.max(0, Math.min(t, duration)));
+    };
+    const up = () => setClipDrag(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [clipDrag, xToTime, duration, audioUrl, onSeek]);
+
   // Keep the playhead in view when zoomed in.
   useEffect(() => {
     const vp = viewportRef.current;
@@ -186,6 +233,10 @@ export const Timeline: React.FC<TimelineProps> = ({
   }, [duration, zoom]);
 
   const zoomIndex = ZOOMS.indexOf(zoom);
+
+  // A selection made against another file is no selection at all.
+  const clipRange = clip && clip.url === audioUrl ? clip : { start: 0, end: duration };
+  const clipIsWhole = clipRange.start <= 0.05 && clipRange.end >= duration - 0.05;
 
   return (
     <section aria-label="Timeline" className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
@@ -239,6 +290,28 @@ export const Timeline: React.FC<TimelineProps> = ({
           </button>
         )}
 
+        {/* Only offered once the handles have actually been moved: a button that
+            cuts the clip to exactly itself is a button that does nothing. */}
+        {onTrimRange && !clipIsWhole && (
+          <>
+            <button
+              onClick={() => onTrimRange(clipRange.start, clipRange.end)}
+              title={`Cut the audio down to ${formatTime(clipRange.start)} – ${formatTime(clipRange.end)}`}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-[11px] font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              <span>Keep {formatTime(clipRange.end - clipRange.start)}</span>
+            </button>
+            <button
+              onClick={() => setClip(null)}
+              title="Put the clip handles back to the whole recording"
+              className="px-2 py-1.5 text-[11px] font-semibold text-slate-300 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              Reset
+            </button>
+          </>
+        )}
+
         <span className="flex-1" />
 
         <button
@@ -285,6 +358,47 @@ export const Timeline: React.FC<TimelineProps> = ({
 
       <div ref={viewportRef} className="overflow-x-auto overflow-y-hidden">
         <div ref={trackRef} className="relative select-none" style={{ width: `${zoom * 100}%` }}>
+          {/* Clip handles.
+
+              A strip of its own above the ruler, so grabbing one can never be
+              confused with scrubbing, dragging an ayah edge or moving a
+              background block. What falls outside is dimmed all the way down
+              the timeline -- the cut has to be legible against the ayahs it
+              will take with it, not just against its own row. */}
+          {onTrimRange && (
+            <div className="relative h-4 border-b border-slate-800/70 bg-slate-950/60">
+              <span
+                className="absolute inset-y-0 left-0 bg-slate-950/70 pointer-events-none"
+                style={{ width: `${pct(clipRange.start)}%` }}
+              />
+              <span
+                className="absolute inset-y-0 right-0 bg-slate-950/70 pointer-events-none"
+                style={{ width: `${Math.max(0, 100 - pct(clipRange.end))}%` }}
+              />
+              <span
+                className="absolute inset-y-0 border-x-2 border-gold/80 pointer-events-none"
+                style={{ left: `${pct(clipRange.start)}%`, width: `${Math.max(0, pct(clipRange.end) - pct(clipRange.start))}%` }}
+              />
+              {(['start', 'end'] as const).map(edge => (
+                <span
+                  key={edge}
+                  onPointerDown={e => {
+                    e.stopPropagation();
+                    setClipDrag(edge);
+                    onSeek(xToTime(e.clientX));
+                  }}
+                  role="separator"
+                  aria-label={edge === 'start' ? 'Move the start of the clip' : 'Move the end of the clip'}
+                  title={edge === 'start' ? 'Drag to move where the audio starts' : 'Drag to move where the audio ends'}
+                  className="absolute inset-y-0 -ml-2 w-4 cursor-ew-resize touch-none hover:bg-gold/40"
+                  style={{ left: `${pct(edge === 'start' ? clipRange.start : clipRange.end)}%` }}
+                />
+              ))}
+              <span className="absolute left-1 top-0 text-[9px] font-mono leading-4 text-slate-400 pointer-events-none">
+                clip
+              </span>
+            </div>
+          )}
           {/* Ruler. Click or drag anywhere along it to move the playhead --
               the tick labels are inert so a click near "10.0s" scrubs rather
               than landing on the label and doing nothing. */}
@@ -449,6 +563,20 @@ export const Timeline: React.FC<TimelineProps> = ({
                 </div>
               );
             })}
+
+            {/* What the clip handles above would cut away. */}
+            {onTrimRange && !clipIsWhole && (
+              <>
+                <span
+                  className="absolute inset-y-0 left-0 bg-slate-950/65 pointer-events-none z-10"
+                  style={{ width: `${pct(clipRange.start)}%` }}
+                />
+                <span
+                  className="absolute inset-y-0 right-0 bg-slate-950/65 pointer-events-none z-10"
+                  style={{ width: `${Math.max(0, 100 - pct(clipRange.end))}%` }}
+                />
+              </>
+            )}
 
             {/* Playhead */}
             <span

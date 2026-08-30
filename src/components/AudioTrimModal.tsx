@@ -8,7 +8,6 @@ import { Dialog } from './Dialog';
 interface AudioTrimModalProps {
   isOpen: boolean;
   file: File;
-  audioUrl: string;
   onCancel: () => void;
   onApply: (result: TrimResult & { trimStart: number; trimEnd: number }) => void;
 }
@@ -58,10 +57,36 @@ const TICKS_PER_SCREEN = 6;
 
 type DragTarget = 'start' | 'end' | 'playhead';
 
-export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, audioUrl, onCancel, onApply }) => {
+/**
+ * Trimming, against the audio that is actually going to be cut.
+ *
+ * The preview used to be an `<audio>` element pointed at the original file
+ * while the waveform, the handles and the cut itself all came from the decoded
+ * buffer. Those are two different clocks: a container's reported duration is a
+ * header value -- an estimate, for a VBR mp3 without a Xing header -- and the
+ * decoded buffer is the samples. Drawing `audio.currentTime` as a fraction of
+ * `buffer.duration` mixed the two, so the playhead sat somewhere the sound was
+ * not, and a selection placed by ear came out seconds wide of where it was set.
+ *
+ * Playback now comes from the same `AudioBuffer` the waveform is drawn from and
+ * `buildTrimmedFile` slices, so what you hear, what you see and what you get
+ * are one timeline.
+ */
+export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, onCancel, onApply }) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const previewRef = useRef<HTMLAudioElement | null>(null);
+  /**
+   * Playback state, in refs because the rAF loop reads it every frame.
+   * `startedAt` is on the context's clock and `offset` on the buffer's, so the
+   * playhead is `offset + (ctx.currentTime - startedAt)` -- sample-accurate,
+   * and the same arithmetic whether or not a re-render has happened.
+   */
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const playFromRef = useRef<{ startedAt: number; offset: number } | null>(null);
+  /** Where a scrub has reached, and whether playback owes it a resume. */
+  const scrubToRef = useRef(0);
+  const resumeAfterScrubRef = useRef(false);
 
   const [isDecoding, setIsDecoding] = useState(true);
   const [isApplying, setIsApplying] = useState(false);
@@ -226,15 +251,98 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
     vp.scrollLeft = Math.max(0, Math.min(x - vp.clientWidth / 2, vp.scrollWidth - vp.clientWidth));
   }, [duration]);
 
+  /** Silences whatever is playing. Safe to call when nothing is. */
+  const stopSource = useCallback(() => {
+    const source = sourceRef.current;
+    sourceRef.current = null;
+    playFromRef.current = null;
+    if (!source) return;
+    source.onended = null;
+    try { source.stop(); } catch { /* already stopped */ }
+    source.disconnect();
+  }, []);
+
+  /**
+   * Plays from `seconds`, optionally stopping at `stopAt`.
+   *
+   * The stop is scheduled on the audio clock rather than checked on a frame:
+   * requestAnimationFrame does not run while the tab is hidden, and a preview
+   * of the selection that only stops when someone is looking is not a preview
+   * of the selection. The frame loop still checks, so dragging the end handle
+   * mid-preview can still cut it short.
+   */
+  const playFrom = useCallback(
+    (seconds: number, stopAt?: number) => {
+      if (!buffer) return;
+      const ctx =
+        audioCtxRef.current ??
+        (audioCtxRef.current = new (window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)());
+      // Created inside a click, but a context can still come back suspended
+      // after the tab has been in the background.
+      ctx.resume().catch(() => {});
+      stopSource();
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      const from = Math.max(0, Math.min(seconds, buffer.duration - 0.01));
+      source.onended = () => {
+        // Only the source that is still current may end playback -- a seek
+        // stops the old one, and its `onended` must not pause the new one.
+        // (`stopSource` clears this handler first, so a manual stop never
+        // arrives here at all.)
+        if (sourceRef.current !== source) return;
+        stopSource();
+        setIsPlaying(false);
+        setPlayhead(Math.min(stopAt ?? buffer.duration, buffer.duration));
+      };
+      source.start(0, from);
+      if (stopAt !== undefined && stopAt > from) source.stop(ctx.currentTime + (stopAt - from));
+      sourceRef.current = source;
+      playFromRef.current = { startedAt: ctx.currentTime, offset: from };
+      setIsPlaying(true);
+    },
+    [buffer, stopSource]
+  );
+
   const seek = useCallback(
     (seconds: number) => {
       const clamped = Math.max(0, Math.min(seconds, duration));
+      scrubToRef.current = clamped;
       setPlayhead(clamped);
-      const audio = previewRef.current;
-      if (audio) audio.currentTime = clamped;
+      // Playing through a seek restarts from the new point, which is what an
+      // element-based player did for free. A selection preview keeps its end.
+      if (sourceRef.current) playFrom(clamped, stopAtSelectionEndRef.current ? trimEndRef.current : undefined);
     },
-    [duration]
+    [duration, playFrom]
   );
+
+  // Nothing keeps playing after the dialog is gone.
+  useEffect(() => () => {
+    stopSource();
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+  }, [stopSource]);
+
+  /**
+   * Starts a playhead drag.
+   *
+   * Playback stops for the length of the scrub and resumes from wherever it
+   * ends. Seeking mid-playback restarts the buffer source, and a drag emits one
+   * move per frame -- re-arming on each of those would build and discard sixty
+   * source nodes a second, which is audible as a buzz. An `<audio>` element got
+   * this for free by having a `currentTime` to assign.
+   */
+  const beginScrub = () => {
+    stopAtSelectionEndRef.current = false;
+    scrubToRef.current = playhead;
+    if (sourceRef.current) {
+      resumeAfterScrubRef.current = true;
+      stopSource();
+      setIsPlaying(false);
+    }
+    setDragging('playhead');
+  };
 
   // Drag handles and the playhead via window-level listeners, so the pointer
   // can leave the track without losing the drag -- a plain onPointerMove on
@@ -249,42 +357,49 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
       } else if (dragging === 'end') {
         setTrimEnd(Math.max(t, trimStart + MIN_TRIM_SECONDS));
       } else {
-        stopAtSelectionEndRef.current = false;
         seek(t);
       }
     };
-    const handleUp = () => setDragging(null);
+    const handleUp = () => {
+      setDragging(null);
+      if (!resumeAfterScrubRef.current) return;
+      resumeAfterScrubRef.current = false;
+      playFrom(scrubToRef.current);
+    };
     window.addEventListener('pointermove', handleMove);
     window.addEventListener('pointerup', handleUp);
     return () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
     };
-  }, [dragging, xToTime, seek, trimStart, trimEnd]);
+  }, [dragging, xToTime, seek, playFrom, trimStart, trimEnd]);
 
   // Moves the indicator to wherever playback actually is, and cuts the preview
   // off at the end of the selection. Everything this reads that changes
   // mid-playback is behind a ref, so the rAF loop below survives a handle drag
   // -- `trimEnd` changes on every frame of one -- without being rebuilt.
   const syncPlayhead = useCallback(() => {
-    const audio = previewRef.current;
-    if (!audio) return;
-    const t = audio.currentTime;
-    setPlayhead(t);
+    const ctx = audioCtxRef.current;
+    const from = playFromRef.current;
+    if (!ctx || !from) return;
+    const t = from.offset + (ctx.currentTime - from.startedAt);
+    setPlayhead(Math.min(t, duration));
     if (stopAtSelectionEndRef.current && t >= trimEndRef.current) {
-      audio.pause();
+      stopSource();
+      setIsPlaying(false);
+      setPlayhead(trimEndRef.current);
     } else if (!draggingRef.current) {
       // Never auto-scroll mid-drag; it would yank the track out from under the
       // pointer just as the user is placing a trim point.
       scrollToTime(t, 'ensure');
     }
-  }, [scrollToTime]);
+  }, [scrollToTime, duration, stopSource]);
 
-  // requestAnimationFrame gives a playhead that moves smoothly, where the audio
-  // element's own `timeupdate` fires ~4x a second and visibly stutters. But rAF
-  // is paused entirely while the tab is hidden, so `timeupdate` stays wired up
-  // on the element as the coarse fallback -- otherwise a backgrounded preview
-  // would sail straight past the end of the selection.
+  // requestAnimationFrame drives the playhead. It is paused while the tab is
+  // hidden, so a backgrounded preview can run past the end of the selection --
+  // the check on the next visible frame stops it, and the elapsed time is
+  // computed from the audio clock rather than accumulated per frame, so the
+  // playhead is still correct when it comes back.
   useEffect(() => {
     if (!isPlaying) return;
     let raf = 0;
@@ -327,15 +442,16 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
   const zoomIndex = ZOOM_LEVELS.indexOf(zoom);
 
   const togglePlayback = (fromSelection: boolean) => {
-    const audio = previewRef.current;
-    if (!audio) return;
-    if (isPlaying) {
-      audio.pause();
+    if (!buffer) return;
+    if (isPlaying && !fromSelection) {
+      stopSource();
+      setIsPlaying(false);
       return;
     }
     stopAtSelectionEndRef.current = fromSelection;
-    if (fromSelection || playhead >= duration - 0.01) seek(trimStart);
-    audio.play().catch(() => {});
+    const from = fromSelection || playhead >= duration - 0.01 ? trimStart : playhead;
+    setPlayhead(from);
+    playFrom(from, fromSelection ? trimEnd : undefined);
   };
 
   const handleReset = () => {
@@ -476,9 +592,8 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                 className="relative select-none overflow-hidden touch-none cursor-text"
                 style={{ width: `${zoom * 100}%` }}
                 onPointerDown={e => {
-                  stopAtSelectionEndRef.current = false;
+                  beginScrub();
                   seek(xToTime(e.clientX));
-                  setDragging('playhead');
                 }}
               >
                 {/* Ruler */}
@@ -521,8 +636,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                 <div
                   onPointerDown={e => {
                     e.stopPropagation();
-                    stopAtSelectionEndRef.current = false;
-                    setDragging('playhead');
+                    beginScrub();
                   }}
                   title="Drag to move the playhead"
                   className="absolute top-0 h-5 -ml-2.5 w-5 cursor-ew-resize flex justify-center items-start pt-0.5 touch-none group"
@@ -531,17 +645,25 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                   <div className="w-2.5 h-2.5 rounded-full bg-lapis-bright group-hover:bg-lapis ring-2 ring-slate-950/60" />
                 </div>
 
-                {/* Trim handles -- `top-5` keeps them clear of the ruler (h-5). */}
+                {/* Trim handles -- `top-5` keeps them clear of the ruler (h-5).
+
+                    The grab area is wide and invisible. A fat pill used to sit
+                    in the middle of each one, and it covered the very thing it
+                    was pointing at: the boundary is a single instant, and a
+                    6px-wide blob straddling it hides which side of the waveform
+                    is being kept. The 2px region border is now the only mark on
+                    the line, and the strip merely tints on hover to say it can
+                    be dragged. */}
                 <div
                   onPointerDown={e => {
                     e.stopPropagation();
                     setDragging('start');
                   }}
                   title="Drag to move the start of the selection"
-                  className="absolute top-5 bottom-0 -ml-2.5 w-5 cursor-ew-resize flex items-center justify-center touch-none group"
+                  className="absolute top-5 bottom-0 -ml-2.5 w-5 cursor-ew-resize flex items-stretch justify-center touch-none group"
                   style={{ left: `${startPct}%` }}
                 >
-                  <div className="w-1.5 h-12 rounded-full bg-amber-400 group-hover:bg-amber-300 shadow-lg" />
+                  <div className="w-0.5 bg-transparent group-hover:bg-amber-300/80 transition-colors" />
                 </div>
                 <div
                   onPointerDown={e => {
@@ -549,10 +671,10 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
                     setDragging('end');
                   }}
                   title="Drag to move the end of the selection"
-                  className="absolute top-5 bottom-0 -ml-2.5 w-5 cursor-ew-resize flex items-center justify-center touch-none group"
+                  className="absolute top-5 bottom-0 -ml-2.5 w-5 cursor-ew-resize flex items-stretch justify-center touch-none group"
                   style={{ left: `${endPct}%` }}
                 >
-                  <div className="w-1.5 h-12 rounded-full bg-amber-400 group-hover:bg-amber-300 shadow-lg" />
+                  <div className="w-0.5 bg-transparent group-hover:bg-amber-300/80 transition-colors" />
                 </div>
               </div>
             </div>
@@ -642,15 +764,6 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, au
               </button>
             </div>
 
-            <audio
-              ref={previewRef}
-              src={audioUrl}
-              className="hidden"
-              onTimeUpdate={syncPlayhead}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
-            />
           </>
         )}
 

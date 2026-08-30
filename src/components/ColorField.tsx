@@ -15,18 +15,26 @@ interface ColorFieldProps {
  *
  * `<input type="color">` hands the job to the operating system, and the OS puts
  * its dialog wherever it likes -- on a multi-monitor setup that turned out to
- * be a different screen from the studio. Everything here is ordinary markup in
- * the panel, so the picker opens where the swatch is.
+ * be a different screen from the studio. So the sliders and the hex field are
+ * ordinary markup in the panel and always work where the swatch is.
+ *
+ * The native picker is still offered, as the last cell of the swatch grid:
+ * eleven quick picks read as the only eleven colours on offer, and an eyedropper
+ * and a colour wheel are worth a wandering dialog when you actually want them.
  *
  * It expands in the flow rather than floating: the inspector column scrolls,
  * and an absolutely positioned popover either clips against that scroller or
  * needs collision handling to avoid it.
  */
 
+/**
+ * Eleven quick picks and, in the twelfth cell of the grid, the system colour
+ * picker -- the swatches are a shortcut, never the whole offering.
+ */
 const PRESETS = [
   '#ffffff', '#f5eee0', '#e8eef7', '#b8c7dc',
   '#d4af37', '#f59e0b', '#c9a227', '#5fb59b',
-  '#7fd3dd', '#d5dfec', '#94a3b8', '#0b0f19'
+  '#7fd3dd', '#d5dfec', '#94a3b8'
 ];
 
 type Hsl = { h: number; s: number; l: number };
@@ -145,6 +153,26 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
                 style={{ background: hex }}
               />
             ))}
+            {/* Any colour at all. The input is transparent and stretched over
+                the cell so the cell itself is the swatch: a bare
+                `<input type="color">` renders as a chunky OS-styled button that
+                sits nothing like the eleven beside it. */}
+            <label
+              title="Pick any colour"
+              className="relative h-6 rounded border border-slate-700 overflow-hidden cursor-pointer transition-transform hover:scale-105"
+              style={{
+                background:
+                  'conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)'
+              }}
+            >
+              <span className="sr-only">{`${label}: pick any colour`}</span>
+              <input
+                type="color"
+                value={normalizeHex(value) ?? '#ffffff'}
+                onChange={e => applyPreset(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+            </label>
           </div>
 
           <label className="block">

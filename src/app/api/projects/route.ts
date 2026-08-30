@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { desc, eq } from 'drizzle-orm';
 import { BACKGROUND_MODES } from '@/lib/backgroundTimeline';
+import { describeDbError } from '@/lib/dbError';
 
 const memoryProjects: any[] = [];
 
@@ -22,8 +23,7 @@ export async function GET() {
     const list = await bindings.db.select().from(bindings.projects).orderBy(desc(bindings.projects.updatedAt)).limit(20);
     return NextResponse.json({ success: true, source: 'database', projects: list });
   } catch (err: unknown) {
-    const error = err as Error;
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: describeDbError(err) }, { status: 500 });
   }
 }
 
@@ -96,7 +96,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, source: 'database', project: projectData });
   } catch (err: unknown) {
-    const error = err as Error;
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: describeDbError(err) }, { status: 500 });
   }
 }

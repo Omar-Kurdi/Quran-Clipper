@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { desc } from 'drizzle-orm';
+import { describeDbError } from '@/lib/dbError';
 
 const memoryExports: any[] = [];
 
@@ -21,8 +22,7 @@ export async function GET() {
     const list = await bindings.db.select().from(bindings.exportsTable).orderBy(desc(bindings.exportsTable.createdAt)).limit(20);
     return NextResponse.json({ success: true, source: 'database', exports: list });
   } catch (err: unknown) {
-    const error = err as Error;
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: describeDbError(err) }, { status: 500 });
   }
 }
 
@@ -55,7 +55,6 @@ export async function POST(req: NextRequest) {
     await bindings.db.insert(bindings.exportsTable).values(exportRecord);
     return NextResponse.json({ success: true, source: 'database', exportRecord });
   } catch (err: unknown) {
-    const error = err as Error;
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: describeDbError(err) }, { status: 500 });
   }
 }
