@@ -62,9 +62,15 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   half-ayah shows exactly those words rather than the whole verse.
 - Full-ayah English translation under the Arabic.
 - **Multiple backgrounds, four ways** — one clip, one per ayah, cycling on a timer, or shuffled
-  (repeatably, so a re-export matches the preview). Every selected clip is preloaded in its own
-  element, so switching never stalls the render — which does mean each one decodes concurrently,
-  so a handful is kinder to the export than all of them.
+  (repeatably, so a re-export matches the preview). Video and stills mix freely in one sequence.
+  Every selected background is preloaded in its own element, so switching never stalls the
+  render — which does mean each one decodes concurrently, so a handful is kinder to the export
+  than all of them.
+- **Your own backgrounds.** Uploading a file or pasting a link adds it to the list beside the
+  presets, and to whichever mode is selected — the sequence in the multi modes, the lane in a
+  hand-cut one. Your entries are kept between sessions (pasted links only; an uploaded file is
+  a blob URL that dies with the page) and can be deleted, with a confirmation first. Deleting
+  one takes it out of the sequence and the lane with it.
 <p align="center">
   <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The studio view showing the background picker section.">
 </p>
@@ -76,8 +82,13 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   start/end are entered as timecodes (`3:31.7`). Drag the handles, or park the playhead and
   press *Start here* / *End here*. Works before matching (cut dead air first) or after (cut the
   matched timeline down); the segment times adjust to the new clip automatically either way.
-  Runs entirely in the browser, no upload or server round-trip, and is reachable from the top
-  toolbar at any step.
+  Preview plays the decoded buffer the cut is taken from, not the original container, so what
+  you hear is sample-for-sample what you get. Runs entirely in the browser, no upload or server
+  round-trip, and is reachable from the top toolbar at any step.
+- **Trim from the timeline too.** With an uploaded file loaded, a clip lane sits above the
+  ruler; drag either handle and the playhead follows it, so the preview shows the frame and
+  the sound at the cut while you place it. **Keep 0:09.0** applies it — the same edit the
+  dialog makes, without covering the thing being trimmed.
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The studio view showing the trimmer section.">
 </p>
@@ -88,16 +99,21 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 
 **Styling and export**
 - Aspect ratios 9:16, 16:9, 1:1, 4:5.
-- 11 Pexels video backgrounds, or paste any video/image URL, or upload a file.
+- 11 Pexels video backgrounds, plus any video or image you paste a link to or upload — stills
+  render exactly like footage.
 - Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
-  Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card.
+  Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card. Each colour
+  offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
+  picker in the last cell of the grid.
 <p align="center">
  <img src="docs/screenshots/QuranClipper_Layout.png" alt="The studio view showing the trimmer section.">
  <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The studio view showing the trimmer section.">
 </p>
 - Browser export via `canvas.captureStream()` + `MediaRecorder` (WebM, 18 Mbps, 30 or 60 FPS).
-- Save/load projects with PostgreSQL, or in-memory when no database is configured — see
-  [Database](#database-optional) for a five-minute container setup.
+- Save, reopen and delete projects with PostgreSQL, or in-memory when no database is
+  configured — see [Database](#database-optional) for a five-minute container setup. Deleting
+  asks for confirmation and only drops the row from the drawer once the server confirms it is
+  gone.
 
 ---
 
@@ -348,6 +364,7 @@ App routes:
 | `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|gemini`) |
 | `GET` | `/api/audio/match` | Which providers are configured and reachable |
 | `GET` `POST` | `/api/projects` | List / save projects |
+| `DELETE` | `/api/projects?id=` | Delete one saved project (`404` if it is already gone) |
 | `GET` `POST` | `/api/exports` | List / save export records |
 
 Sidecar routes (default `http://127.0.0.1:8000`) are documented in
@@ -475,11 +492,13 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
 - **Re-run `npm run db:push` after editing `src/db/schema.ts`.**
 - **Exported videos are not stored in the database.** Only metadata is; the video itself is a
   browser blob URL that dies with the tab.
-- **If the container is not running, saves fail with a 500** — the same symptom as a bad
-  `DATABASE_URL`, because the app cannot tell the difference. `--restart=unless-stopped` brings
-  it back after a reboot, but only once the container runtime itself starts; on a desktop that
-  usually needs `systemctl --user enable --now podman-restart.service`. Check with
-  `podman ps` before assuming the app is at fault.
+- **If the container is not running, saves fail with a 500.** The response says which failure
+  it was — `connect ECONNREFUSED 127.0.0.1:5432 — the database named by DATABASE_URL is not
+  reachable…` — and the reason is on the **Save project** button as a tooltip. Start the
+  container and try again. `--restart=unless-stopped` brings it back after a reboot, but only
+  once the container runtime itself starts; on a desktop that usually needs
+  `systemctl --user enable --now podman-restart.service`. Check with `podman ps` before
+  assuming the app is at fault.
 - Stop and start the database with `podman stop quranclipper-db` / `podman start
   quranclipper-db`. To wipe it completely, `podman rm -f quranclipper-db && podman volume rm
   quranclipper-pgdata`.
@@ -489,10 +508,14 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
 ## Troubleshooting
 
 **`POST /api/projects 500` and saving fails**
-`DATABASE_URL` is set to something that cannot be reached — most often the placeholder
-`postgres://USER:PASSWORD@HOST:PORT/DATABASE` left uncommented in `.env.local`. The API only
-falls back to in-memory storage when the variable is *unset*, so a broken value fails every
-save. Either comment the line out or follow [Database](#database-optional).
+Read the `error` in the response — it names the cause and, for the two common ones, the fix.
+Hovering **Save project** in the studio shows the same line. `connect ECONNREFUSED` means the
+database is not running (`podman start quranclipper-db`); `column … does not exist` means the
+schema is behind (`npm run db:push`). The other frequent cause is a `DATABASE_URL` that is set
+but unreachable — most often the placeholder `postgres://USER:PASSWORD@HOST:PORT/DATABASE`
+left uncommented in `.env.local`. The API only falls back to in-memory storage when the
+variable is *unset*, so a broken value fails every save. Either comment the line out or follow
+[Database](#database-optional).
 
 **`pip install -r requirements.txt` fails on `nemo_toolkit`**
 Almost always Python 3.13+, which has no wheels for several of its dependencies and falls back

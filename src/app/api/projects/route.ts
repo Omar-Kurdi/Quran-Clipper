@@ -27,6 +27,44 @@ export async function GET() {
   }
 }
 
+/**
+ * Deletes one saved project.
+ *
+ * `id` comes from the query string rather than a body: DELETE bodies are legal
+ * but poorly served by caches and proxies, and there is nothing else to send.
+ * A miss is a 404 rather than a silent 200, so the drawer can say the row was
+ * already gone instead of leaving it on screen.
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const id = req.nextUrl.searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'No project id given.' }, { status: 400 });
+    }
+
+    const bindings = await getDbBindings();
+    if (!bindings) {
+      const idx = memoryProjects.findIndex(p => p.id === id);
+      if (idx < 0) {
+        return NextResponse.json({ success: false, error: 'That project no longer exists.' }, { status: 404 });
+      }
+      memoryProjects.splice(idx, 1);
+      return NextResponse.json({ success: true, source: 'memory', id });
+    }
+
+    const removed = await bindings.db
+      .delete(bindings.projects)
+      .where(eq(bindings.projects.id, id))
+      .returning({ id: bindings.projects.id });
+    if (removed.length === 0) {
+      return NextResponse.json({ success: false, error: 'That project no longer exists.' }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, source: 'database', id });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: describeDbError(err) }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
