@@ -66,11 +66,18 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   Every selected background is preloaded in its own element, so switching never stalls the
   render — which does mean each one decodes concurrently, so a handful is kinder to the export
   than all of them.
-- **Your own backgrounds.** Uploading a file or pasting a link adds it to the list beside the
-  presets, and to whichever mode is selected — the sequence in the multi modes, the lane in a
-  hand-cut one. Your entries are kept between sessions (pasted links only; an uploaded file is
-  a blob URL that dies with the page) and can be deleted, with a confirmation first. Deleting
-  one takes it out of the sequence and the lane with it.
+- **Your own backgrounds, kept between sessions.** Uploading a file or pasting a link adds it
+  to the list beside the presets, and to whichever mode is selected — the sequence in the multi
+  modes, the lane in a hand-cut one. Uploaded files are stored in the browser's IndexedDB, so
+  they are still there after a restart; links are stored as links. An entry whose file can no
+  longer be found — cleared browser storage, a link that stopped working — is kept as a
+  placeholder rather than silently dropped, so you can add it again or remove it deliberately.
+  Deleting asks for confirmation and takes the background out of the sequence and the lane
+  with it.
+
+  Saved *projects* still reference backgrounds by URL, so a project that used an uploaded file
+  will not find it again in a later session — the background list will have it, but the project
+  will not re-select it.
 <p align="center">
   <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The studio view showing the background picker section.">
 </p>
@@ -110,6 +117,11 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
  <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The studio view showing the trimmer section.">
 </p>
 - Browser export via `canvas.captureStream()` + `MediaRecorder` (WebM, 18 Mbps, 30 or 60 FPS).
+  The save dialog offers `[Surah]_[surah]:[first]-[last]_[timestamp].webm` — for example
+  `Al-Fatihah_1:1-7_1764503112000.webm` — so several renders of the same passage can sit in one
+  folder without colliding. The range is read off the timeline rather than the ayahs you asked
+  for, so a clip trimmed down to ayahs 2–3 is named `1:2-3` and not `1:1-7`. Windows has no
+  colon in filenames and the browser substitutes one character when saving there.
 - Save, reopen and delete projects with PostgreSQL, or in-memory when no database is
   configured — see [Database](#database-optional) for a five-minute container setup. Deleting
   asks for confirmation and only drops the row from the drawer once the server confirms it is

@@ -22,6 +22,28 @@ interface GpuExportModalProps {
   exportSeconds: number;
 }
 
+/**
+ * What the save dialog offers to call the file.
+ *
+ * `Al-Fatihah_1:1-7_1764503112000.webm`: the surah, the exact range, and a
+ * stamp so two exports of the same passage do not land on top of each other in
+ * a downloads folder. The name used to say `QuranClip`, which told you nothing
+ * about which clip it was once several had been rendered.
+ *
+ * Characters that are illegal in filenames are stripped -- but not the colon
+ * the format asks for, which is legal on Linux and macOS; on Windows the
+ * browser substitutes it when saving.
+ */
+export function exportFileName(
+  surahNameEnglish: string,
+  surahNumber: number,
+  ayahStart: number,
+  ayahEnd: number
+): string {
+  const name = surahNameEnglish.trim().replace(/\s+/g, '_').replace(/[/\\?%*|"<>]/g, '') || 'QuranClip';
+  return `${name}_${surahNumber}:${ayahStart}-${ayahEnd}_${Date.now()}.webm`;
+}
+
 export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   isOpen,
   onClose,
@@ -60,7 +82,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
   const handleExport = () => {
     setExportedBlobUrl(null);
-    setDownloadFileName(`${surahNameEnglish.replace(/\s+/g, '_')}_QuranClip_${Date.now()}.webm`);
+    setDownloadFileName(exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd));
     onStartExport(selectedFps, (blob, renderMs) => {
       const url = URL.createObjectURL(blob);
       setExportedBlobUrl(url);

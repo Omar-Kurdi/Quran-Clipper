@@ -824,6 +824,29 @@ export default function VideoCreatorPage() {
   }, [verses, audioDuration]);
 
   /**
+   * The passage the export actually contains, read off the timeline.
+   *
+   * `ayahStart`/`ayahEnd` are the *request* -- what was asked for from the
+   * reciter, or what a match reported -- and the timeline drifts from them as
+   * soon as it is edited: trimming drops the ayahs that fell outside the cut
+   * without rewriting either number. Naming a file, or labelling a clip, from
+   * the request would then describe ayahs the video does not contain. A
+   * timeline spanning more than one surah has no single range to state, so that
+   * falls back to the request.
+   */
+  const clipPassage = useMemo(() => {
+    const parsed = verses
+      .map(verse => (verse.verseKey || '').split(':').map(Number))
+      .filter(([surah, ayah]) => Number.isFinite(surah) && Number.isFinite(ayah));
+    const surahs = new Set(parsed.map(([surah]) => surah));
+    if (parsed.length === 0 || surahs.size !== 1) {
+      return { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd };
+    }
+    const ayahs = parsed.map(([, ayah]) => ayah);
+    return { surahNumber: parsed[0][0], start: Math.min(...ayahs), end: Math.max(...ayahs) };
+  }, [verses, selectedSurah, ayahStart, ayahEnd]);
+
+  /**
    * The background lane under the timeline: the same segments the canvas plays,
    * so clip changes are visible next to the ayahs they land on.
    */
@@ -1633,9 +1656,9 @@ export default function VideoCreatorPage() {
         exportProgress={exportProgress}
         exportSpeed={exportSpeed}
         surahNameEnglish={surahNameEnglish}
-        surahNumber={selectedSurah}
-        ayahStart={ayahStart}
-        ayahEnd={ayahEnd}
+        surahNumber={clipPassage.surahNumber}
+        ayahStart={clipPassage.start}
+        ayahEnd={clipPassage.end}
         aspectRatio={canvasConfig.aspectRatio}
         exportSeconds={exportRange.span}
         onSaveExportRecord={handleSaveExportRecord}

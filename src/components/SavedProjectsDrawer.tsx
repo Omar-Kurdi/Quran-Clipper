@@ -223,11 +223,14 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                 {exp.fileUrl && (
                   <a
                     href={exp.fileUrl}
-                    download="QuranClip.mp4"
+                    // The recorder writes WebM; this used to promise an .mp4
+                    // that was never produced, so the saved file opened in
+                    // whatever a mislabelled container opens in.
+                    download={`${exp.title.replace(/\s+/g, '_').replace(/[/\\?%*|"<>]/g, '')}.webm`}
                     className="mt-1 w-full py-2 bg-emerald-500/20 hover:bg-emerald-500 hover:text-slate-950 text-emerald-300 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 border border-emerald-500/30"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Download MP4 File</span>
+                    <span>Download WebM File</span>
                   </a>
                 )}
               </div>

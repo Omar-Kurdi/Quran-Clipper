@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { 
   VideoCanvasConfig 
 } from './VideoCanvas';
@@ -9,6 +9,10 @@ import {
 } from '@/lib/backgroundTimeline';
 import { ColorField } from './ColorField';
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+  LibraryItem, subscribeToLibrary, librarySnapshot, serverLibrarySnapshot, hydrateLibrary,
+  addLibraryUpload, addLibraryLink, removeLibraryItem
+} from '@/lib/backgroundLibrary';
 import { 
   BACKGROUND_VIDEOS, 
   FONTS_ARABIC, 
@@ -28,66 +32,10 @@ import {
   X,
   Trash2,
   Film,
+  FileQuestion,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-
-/** A background the user added themselves, kept beside the presets. */
-interface LibraryItem {
-  url: string;
-  kind: MediaKind;
-  label: string;
-}
-
-const LIBRARY_KEY = 'qc-background-library';
-
-/**
- * The user's own backgrounds, held outside React.
- *
- * `localStorage` is an external system, so it is read through
- * `useSyncExternalStore` rather than copied into state by an effect: reading it
- * during render would break server rendering, and an effect that calls
- * `setLibrary` on mount is a cascading render the linter rightly rejects. The
- * server snapshot is a constant empty list, so the first paint matches the
- * markup and the real list arrives on hydration.
- */
-let libraryCache: LibraryItem[] | null = null;
-const EMPTY_LIBRARY: LibraryItem[] = [];
-const libraryListeners = new Set<() => void>();
-
-function readLibrary(): LibraryItem[] {
-  if (libraryCache) return libraryCache;
-  try {
-    const raw = localStorage.getItem(LIBRARY_KEY);
-    const saved = raw ? JSON.parse(raw) : [];
-    libraryCache = Array.isArray(saved)
-      ? saved.filter((item: LibraryItem) => item?.url && !item.url.startsWith('blob:'))
-      : EMPTY_LIBRARY;
-  } catch {
-    // Unreadable or unavailable storage just means an empty library.
-    libraryCache = EMPTY_LIBRARY;
-  }
-  libraryCache.forEach(item => rememberMediaKind(item.url, item.kind));
-  return libraryCache;
-}
-
-function writeLibrary(next: LibraryItem[]): void {
-  libraryCache = next;
-  try {
-    // Only http(s) entries survive a reload: an upload is a `blob:` url that
-    // dies with the page, and a list full of dead thumbnails is worse than a
-    // short one.
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(next.filter(item => !item.url.startsWith('blob:'))));
-  } catch {
-    // The entries still work for this session.
-  }
-  libraryListeners.forEach(listener => listener());
-}
-
-function subscribeToLibrary(listener: () => void): () => void {
-  libraryListeners.add(listener);
-  return () => { libraryListeners.delete(listener); };
-}
 
 interface StyleConfigPanelProps {
   config: VideoCanvasConfig;
@@ -116,31 +64,45 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   };
 
   /** Backgrounds the user added, shown after the presets. */
-  const library = useSyncExternalStore(subscribeToLibrary, readLibrary, () => EMPTY_LIBRARY);
+  const library = useSyncExternalStore(subscribeToLibrary, librarySnapshot, serverLibrarySnapshot);
   const [pendingDelete, setPendingDelete] = useState<
     { title: string; message: string; confirmLabel?: string; run: () => void } | null
   >(null);
+  /**
+   * Links that turned out not to load. An upload announces itself missing by
+   * having no url at all; a link only finds out when something tries to draw
+   * it, so the thumbnail reports it here and the tile becomes a placeholder
+   * like any other.
+   */
+  const [brokenUrls, setBrokenUrls] = useState<string[]>([]);
+  /** Reported under the upload box. `urlStatus` belongs to the paste field, several cards away. */
+  const [uploadStatus, setUploadStatus] = useState<{ kind: 'ok' | 'error'; message: string } | null>(null);
+  const markBroken = (url: string) =>
+    setBrokenUrls(prev => (prev.includes(url) ? prev : [...prev, url]));
 
-  const rememberInLibrary = (item: LibraryItem) => {
-    const current = readLibrary();
-    if (current.some(existing => existing.url === item.url)) return;
-    writeLibrary([...current, item]);
-  };
+  // Reading the stored files is asynchronous, so the list arrives after the
+  // first paint rather than during it. The store notifies; nothing is copied
+  // into component state.
+  useEffect(() => { hydrateLibrary(); }, []);
 
-  const forgetFromLibrary = (url: string) => {
-    writeLibrary(readLibrary().filter(item => item.url !== url));
-  };
-
-  const handleCustomFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    const kind: MediaKind = file.type.startsWith('image') ? 'image' : 'video';
-    rememberMediaKind(url, kind);
-    rememberInLibrary({ url, kind, label: file.name });
-    addBackground(url, kind);
     // Let the same file be picked again after it has been removed from the list.
     e.target.value = '';
+    const kind: MediaKind = file.type.startsWith('image') ? 'image' : 'video';
+    const { item, stored } = await addLibraryUpload(file, kind);
+    if (item.url) addBackground(item.url, kind);
+    setUploadStatus(
+      stored
+        ? { kind: 'ok', message: `“${file.name}” added — it will still be here next time.` }
+        : {
+            kind: 'error',
+            message:
+              `“${file.name}” is in this video, but could not be stored for next time — ` +
+              'the browser refused it, usually because it is out of space for this site.'
+          }
+    );
   };
 
   // A lane cut by hand on the timeline. It is not something you switch to from
@@ -216,22 +178,29 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   const gallery = [
     ...BACKGROUND_VIDEOS.map(bg => ({
       id: bg.id,
-      url: bg.url,
+      libraryId: null as string | null,
+      url: bg.url as string | null,
       title: bg.title,
       category: bg.category,
       thumbnail: bg.thumbnail as string | null,
       kind: 'video' as MediaKind,
-      removable: false
+      removable: false,
+      missing: false
     })),
-    ...library.map(item => ({
-      id: `library-${item.url}`,
-      url: item.url,
-      title: item.label,
-      category: 'Yours',
-      thumbnail: item.kind === 'image' ? item.url : null,
-      kind: item.kind,
-      removable: true
-    }))
+    ...library.map(item => {
+      const missing = !item.url || brokenUrls.includes(item.url);
+      return {
+        id: `library-${item.id}`,
+        libraryId: item.id,
+        url: item.url,
+        title: item.label,
+        category: missing ? 'Missing' : 'Yours',
+        thumbnail: !missing && item.kind === 'image' ? item.url : null,
+        kind: item.kind,
+        removable: true,
+        missing
+      };
+    })
   ];
 
   /**
@@ -241,8 +210,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
    * would keep it in the exported video while showing nowhere in the panel --
    * the deletion has to mean what it says.
    */
-  const removeFromEverywhere = (url: string) => {
-    forgetFromLibrary(url);
+  const removeFromEverywhere = (libraryId: string, url: string | null) => {
+    removeLibraryItem(libraryId);
+    if (!url) return;
     const nextUrls = bgSequence.filter(u => u !== url);
     const nextSegments = laneSegments.filter(seg => seg.url !== url);
     const fallback = nextUrls[0] || nextSegments[0]?.url || BACKGROUND_VIDEOS[0]?.url || '';
@@ -254,7 +224,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       bgUrls: nextUrls,
       bgSegments: nextSegments
     });
-    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
   };
 
   const moveInSequence = (from: number, to: number) => {
@@ -293,7 +262,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         ? 'image'
         : null;
     const kind: MediaKind = extension ?? (await probeKind(url));
-    rememberInLibrary({ url, kind, label: label || backgroundLabel(url) });
+    addLibraryLink(url, kind, label || backgroundLabel(url));
     addBackground(url, kind);
   };
 
@@ -580,26 +549,31 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 thumbnails above a screen of empty space. */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {gallery.map((bg) => {
-                const inUse = customBackground
+                const inUse = !bg.url ? false : customBackground
                   ? laneSegments.some(seg => seg.url === bg.url)
                   : multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url;
                 return (
                   <div key={bg.id} className="relative group rounded-xl overflow-hidden">
                     <button
+                      disabled={bg.missing}
                       title={
-                        customBackground ? 'Add a block for this clip at the end of the lane'
+                        bg.missing
+                          ? 'This file is no longer on this computer, or the link stopped working'
+                          : customBackground ? 'Add a block for this clip at the end of the lane'
                           : multiBackground ? 'Add to the sequence — tap again to use it more than once'
                           : bg.title
                       }
-                      onClick={() => addBackground(bg.url, bg.kind)}
+                      onClick={() => { if (bg.url) addBackground(bg.url, bg.kind); }}
                       className={`block w-full rounded-xl overflow-hidden border transition-all aspect-[9/16] ${
-                        inUse
-                          ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
-                          : 'border-slate-800 hover:border-slate-600'
+                        bg.missing
+                          ? 'border-dashed border-slate-700 bg-slate-950 cursor-not-allowed'
+                          : inUse
+                            ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
+                            : 'border-slate-800 hover:border-slate-600'
                       }`}
                     >
                       {/* Play order, so a multi-background sequence is readable at a glance. */}
-                      {multiBackground && bgSequence.includes(bg.url) && (
+                      {multiBackground && bg.url && bgSequence.includes(bg.url) && (
                         <span className="absolute top-1 left-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
                           {(() => {
                             const uses = bgSequence.filter(u => u === bg.url).length;
@@ -607,16 +581,22 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                           })()}
                         </span>
                       )}
-                      {bg.thumbnail ? (
+                      {bg.missing ? (
+                        // Kept rather than dropped: the entry records a choice
+                        // the user made, and only they can say whether to find
+                        // the file again or let it go.
+                        <span className="w-full h-full flex flex-col items-center justify-center gap-1 text-center px-2">
+                          <FileQuestion className="w-5 h-5 text-slate-500" />
+                          <span className="text-[9px] text-slate-400 leading-tight">
+                            File not found — add it again, or remove it
+                          </span>
+                        </span>
+                      ) : bg.thumbnail ? (
                         <img
                           src={bg.thumbnail}
                           alt={bg.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          onError={(e) => {
-                            const t = e.currentTarget;
-                            t.style.display = 'none';
-                            t.parentElement!.style.background = 'linear-gradient(180deg, #0f172a, #1e1b4b)';
-                          }}
+                          onError={() => { if (bg.libraryId && bg.url) markBroken(bg.url); }}
                         />
                       ) : (
                         // A clip the user added has no thumbnail to fetch, so it
@@ -627,12 +607,17 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                           playsInline
                           preload="metadata"
                           className="w-full h-full object-cover bg-slate-950"
+                          onError={() => { if (bg.libraryId && bg.url) markBroken(bg.url); }}
                         />
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent flex flex-col justify-end p-2 text-left">
                         <span className="text-[11px] font-semibold text-slate-100 leading-tight line-clamp-2">{bg.title}</span>
-                        <span className="text-[9px] text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                          {bg.kind === 'image' ? <ImageIcon className="w-2.5 h-2.5" /> : <Film className="w-2.5 h-2.5" />}
+                        <span className={`text-[9px] uppercase tracking-wider flex items-center gap-1 ${
+                          bg.missing ? 'text-slate-400' : 'text-amber-400'
+                        }`}>
+                          {bg.missing
+                            ? <FileQuestion className="w-2.5 h-2.5" />
+                            : bg.kind === 'image' ? <ImageIcon className="w-2.5 h-2.5" /> : <Film className="w-2.5 h-2.5" />}
                           {bg.category}
                         </span>
                       </div>
@@ -651,15 +636,19 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         onClick={() =>
                           setPendingDelete({
                             title: 'Remove this background?',
-                            message: `“${bg.title}” will be taken out of your backgrounds${
-                              inUse ? ', and out of this video where it is used' : ''
-                            }. Presets are not affected.`,
-                            run: () => removeFromEverywhere(bg.url)
+                            message: bg.missing
+                              ? `“${bg.title}” cannot be found any more. Removing it just clears the entry.`
+                              : `“${bg.title}” will be taken out of your backgrounds${
+                                  inUse ? ', and out of this video where it is used' : ''
+                                }. Presets are not affected.`,
+                            run: () => { if (bg.libraryId) removeFromEverywhere(bg.libraryId, bg.url); }
                           })
                         }
                         title="Remove from your backgrounds"
                         aria-label={`Remove ${bg.title} from your backgrounds`}
-                        className="absolute top-1 right-1 z-10 p-1 rounded-full bg-slate-950/80 text-slate-300 hover:text-red-300 hover:bg-slate-950 border border-slate-700 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                        className={`absolute top-1 right-1 z-10 p-1 rounded-full bg-slate-950/80 text-slate-300 hover:text-red-300 hover:bg-slate-950 border border-slate-700 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 ${
+                          bg.missing ? 'opacity-100' : 'opacity-0'
+                        }`}
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -743,6 +732,22 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 <span className="text-xs font-medium">Browse Video or Image file</span>
               </div>
             </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Kept in this browser, so it is still in the list next time. Clearing site data
+              removes it, and the entry then shows as missing rather than disappearing.
+            </p>
+            {uploadStatus && (
+              <p
+                role="status"
+                className={`text-[11px] mt-1.5 rounded-md p-2 border ${
+                  uploadStatus.kind === 'error'
+                    ? 'text-red-300 bg-red-500/10 border-red-500/25'
+                    : 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
+                }`}
+              >
+                {uploadStatus.message}
+              </p>
+            )}
           </div>
 
           {/* Overlay Sliders */}
