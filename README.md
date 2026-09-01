@@ -293,16 +293,23 @@ Forced alignment cannot fail loudly: hand it any text and any audio and it retur
 confident-looking timeline. A **wrong ayah range therefore produces plausible garbage, not an
 error.**
 
-The guard against that is `referenceCoverage` — the fraction of the supplied text the aligner
-could actually account for. A correct reference gets walked to its end; a wrong one strands
-most of itself. The sidecar raises a warning below 75% coverage and the studio surfaces it.
+The guard against that is `decodeAgreement` — how far what the recogniser *heard* in each
+second agrees with what the aligner *placed* there. Two independent readings of the same audio
+describe the same recitation when the text is right, and stop agreeing when it is not: measured
+across two clips, 0.89 and 0.87 for the correct range against 0.01–0.12 for six wrong ones. The
+sidecar raises a warning below 0.40 and the studio surfaces it.
+
+`referenceCoverage` used to be this guard and no longer can be. Timing now comes from one
+global forced alignment, which gives every reference word a timestamp by construction, so
+coverage reads 1.00 for a wrong range as readily as for the right one. It is still reported as
+a completeness check — how much of the text you supplied was actually recited.
 
 The response also carries `needsReview`, which is set when:
 
-- the coverage warning fired, or
+- the sidecar warning fired, or
 - the provider is `gemini` (its timing is always an estimate).
 
-`align` with a range you chose yourself and clean coverage is the only combination that comes
+`align` with a range you chose yourself and no warning is the only combination that comes
 back without a review prompt.
 
 **Do not read `confidence` as "this is the right passage."** For `gemini` it is a
@@ -598,7 +605,7 @@ npx next dev --webpack
 ## Limitations
 
 - **Always review an AI-generated timeline before publishing.** Forced alignment cannot report
-  that it was handed the wrong text; coverage is a strong guard, not a guarantee.
+  that it was handed the wrong text; decode agreement is a strong guard, not a guarantee.
 - Range auto-detection needs the `nemo` align backend (the default), since it has to read the
   audio. Setting `ASR_ALIGN_BACKEND=wav2vec2` turns detection off and makes you supply the
   range; the studio shows a warning when the sidecar is in that state. If NeMo fails to load,
@@ -610,12 +617,14 @@ npx next dev --webpack
   that deliberately jumps between distant ayahs of the same surah is narrowed to its main
   span. That trade buys immunity to a single mislocated fragment widening a correct range.
 - A multi-block reference (e.g. Al-Fatihah followed by another surah) is fragile: if the first
-  block isn't actually in the audio, the phrase search can stall inside it. Low coverage flags
-  this, but prefer one tight range when you know it.
-- Word-level *timing accuracy* has not been formally measured — only coverage and ordering.
+  block isn't actually in the audio, the phrase search can stall inside it. Low decode
+  agreement flags this, but prefer one tight range when you know it.
+- Word-level *timing accuracy* has been measured on one 220-second recitation against per-ayah
+  ground truth: all 177 words placed, mean ayah-start error 0.48s. Segment-level accuracy is
+  tracked by `scripts/eval_segments.py`, currently 9 of 11 on the reference clip.
 - The aligner holds the whole clip's CTC emissions in memory. Overlapping windows are stitched
-  so it degrades gracefully, but this has been verified only at around 70 seconds; test before
-  relying on it for long recordings.
+  so it degrades gracefully; verified at 220 seconds, so test before relying on it for
+  substantially longer recordings.
 - Repeat-detection thresholds in `align.py` were tuned on a single clip. Multi-word repeats
   clear them comfortably; single-word matches on very common words sit near the threshold.
 - Gemini inline audio is limited to about 18 MB (roughly 15–20 minutes of MP3). Compress or

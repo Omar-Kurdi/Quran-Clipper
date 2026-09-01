@@ -137,7 +137,8 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |
 | `ASR_WARM_UP` | `1` | Load the decode model at startup instead of on first request. |
 | `ASR_NEMO_DECODER` | `rnnt` | `rnnt` or `ctc` for the hybrid NeMo model. |
-| `ALIGN_MIN_REFERENCE_COVERAGE` | `0.75` | Below this fraction of matched text, `/align` sets `warning`. |
+| `ALIGN_MIN_DECODE_AGREEMENT` | `0.40` | Below this agreement between decode and alignment, `/align` sets `warning`. This is the wrong-passage guard. |
+| `ALIGN_MIN_REFERENCE_COVERAGE` | `0.75` | Below this fraction of the supplied text being recited at all, `/align` sets `warning`. |
 | `ALIGN_DIP_PERCENTILE` | `15` | Energy percentile treated as a phrase boundary. |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit. |
 | `MAX_CHUNK_SECONDS` | `25` | Max decode chunk length for `/transcribe`. |
@@ -266,15 +267,18 @@ with a log line naming them.
   ],
   "detectedRange": { "surah": 33, "start_ayah": 21, "end_ayah": 23,
                      "confidence": 0.9, "matched_phrases": 10, "total_phrases": 11 },
-  "meanScore": 0.2923,
+  "meanScore": 0.6960,
   "referenceCoverage": 1.0,
+  "decodeAgreement": 0.888,
   "warning": null
 }
 ```
 
-Segments are phrase-level: boundaries come from the audio's own energy dips and each phrase's
-word range from decoding it. **Consecutive segments may overlap in word range** — that is a
-reciter restarting an earlier phrase and carrying further (`is_restart`), not a bug.
+Segments are groupings of consecutive aligned words, so a segment never spans audio its own
+words do not cover. A line ends at an ayah boundary, where the reciter went back on themselves,
+at a mushaf stop mark they actually paused on, or at a long enough silence.
+**Consecutive segments may overlap in word range** — that is a reciter restarting an earlier
+phrase and carrying further (`is_restart`), not a bug.
 
 ### Reading the confidence fields
 
@@ -282,35 +286,45 @@ Forced alignment cannot fail loudly: hand it any text and any audio and it retur
 monotonic, confident-looking timeline. A wrong ayah range produces plausible garbage, not an
 error.
 
-**`referenceCoverage` is the field that detects this**, not `meanScore`. It is the fraction of
-the supplied text the phrase assignment actually consumed — a correct reference gets walked to
-its end, a wrong one strands most of itself. Measured on the reference clip against six wrong
-ranges and one too-wide range:
+**`decodeAgreement` is the field that detects this**, not `meanScore` and no longer
+`referenceCoverage`. It compares two independent readings of the same seconds: what the
+recogniser freely heard there, against what the aligner placed there. Measured across two clips:
 
-| Reference | `meanScore` | `referenceCoverage` |
-|---|---|---|
-| **33:21–23 (correct)** | 0.2923 | **1.00** |
-| 1:1–7 | 0.1475 | 0.28 |
-| 2:1–10 | 0.2077 | 0.26 |
-| 36:1–12 | 0.2263 | 0.07 |
-| 112:1–4 | **0.2550** | 0.60 |
-| 33:1–5 | 0.2057 | 0.07 |
-| 18:60–82 | 0.2086 | 0.04 |
-| 33:21–30 (too wide) | 0.2923 | 0.33 |
+| Clip | Reference | `decodeAgreement` | `meanScore` | `referenceCoverage` |
+|---|---|---|---|---|
+| test.mp3 | **33:21–23 (correct)** | **0.888** | 0.696 | 1.000 |
+| test.mp3 | 2:1–5 | 0.020 | 0.947 | 0.028 |
+| test.mp3 | 33:1–3 (same surah) | 0.121 | 0.348 | 0.097 |
+| test.mp3 | 36:1–8 | 0.035 | 0.001 | 1.000 |
+| test.mp3 | 18:10–12 | 0.020 | 0.947 | 0.031 |
+| test.mp3 | 33:21–22 (real subset) | 0.479 | 0.651 | 1.000 |
+| test3.mp3 | **2:121–125 (correct)** | **0.873** | 0.684 | 0.824 |
+| test3.mp3 | 7:40–45 | 0.010 | 0.000 | 1.000 |
 
-An unrelated 15-word surah reaches 87% of the correct `meanScore`, so no threshold on that
-column works. Coverage separates every case. `warning` is set below
-`ALIGN_MIN_REFERENCE_COVERAGE` (0.75) — the exact cut is not load-bearing given that
-separation.
+Two wrong ranges score **0.947** on `meanScore` against 0.696 for a correct one — a confident
+path over the wrong words is still a confident path. And `referenceCoverage` reads 1.000 on
+three wrong ranges: one global forced alignment gives every reference word a timestamp whether
+the text belongs to the audio or not, so coverage is now a completeness check on the sidecar
+rather than evidence about the passage. A reference covering only *part* of its audio lands
+between the two (0.479), which is the right shape — it is narrow, not wrong.
+
+`warning` is set below `ALIGN_MIN_DECODE_AGREEMENT` (0.40), and separately when coverage shows
+supplied text that was never recited.
+
+**This check only runs on the `nemo` align backend.** The threshold is calibrated against a
+Quran-tuned decode; the general Arabic model used by `ASR_ALIGN_BACKEND=wav2vec2` free-decodes
+into unreadable text, so it would disagree just as much with a *correct* alignment. On that
+backend `decodeAgreement` comes back `null` and the guard sits out — which also means a wrong
+ayah range goes undetected there.
 
 Treat `meanScore` as a diagnostic of alignment *sharpness*, not of whether the passage is right.
 
 Two caveats:
 
-- **Validated on one 68-second clip.** On long audio the phrase beam search may legitimately
-  fail to walk a several-hundred-word reference to its end. If coverage warnings appear on
-  recitations you know are correct, raise `ALIGN_MIN_REFERENCE_COVERAGE` before concluding the
-  alignment is wrong.
+- **The separation is measured on two clips, not many.** If agreement warnings appear on
+  recitations you know are correct, raise `ALIGN_MIN_DECODE_AGREEMENT` before concluding the
+  alignment is wrong — and note that a heavily reverberant or very fast recording lowers the
+  decode side without the alignment being wrong.
 - **Multi-block references are the fragile case.** A reference built from more than one block
   (auto-detection) is concatenated and walked with a forward
   cursor from word 0. If the first block isn't in the audio, the search may never escape it:

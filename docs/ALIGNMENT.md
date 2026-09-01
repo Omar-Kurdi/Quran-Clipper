@@ -75,6 +75,67 @@ runs comfortably on CPU — about 4 seconds for this clip on an 8-core machine.
 
 ---
 
+## What decides what
+
+Splitting "what was recited" from "when" is the architecture, but the split has to be
+*enforced*, and for a long time it was not. Reading the audio back decided both: energy dips
+fixed the phrase boundaries, each phrase's decode was searched for in the reference, and the
+timeline was whatever that search returned. Every stage could go wrong, and one stage going
+wrong took the rest with it.
+
+It did, reproducibly. On a 220s recitation of Ghafir 40:13–25:
+
+1. A candidate boundary landed **inside** the word `رِزْقًا`, leaving its tail as a phrase.
+2. That tail read back as `ْقًا`, whose consonant skeleton is the single letter `ق`.
+3. A one-letter skeleton carries no positional information, and against a corpus of any size it
+   finds a perfect match somewhere. It matched `قُوَّةً` — eight ayahs later — at **1.00**, while
+   scoring **0.00** against the `رزق` it actually came from.
+4. The assignment search kept that route, because at that boundary it was worth +0.97 against
+   the honest route's +0.00. The search keyed its state on the boundary alone, so the winner
+   *evicted* the honest route rather than running alongside it.
+5. Every later phrase then said text now "behind" the surviving route's cursor, and was dropped
+   for explaining nothing new — **34 correctly-decoded phrases discarded**.
+6. The gap-filling pass handed all 139 unclaimed seconds to the one 0.9s segment before it.
+
+The result was one caption holding a single word for **111 seconds**, 10% of the reference
+words placed, and a reported `referenceCoverage` of **1.00**. Every individual rule behaved as
+designed; the composition was what failed.
+
+### The order now
+
+| Stage | Decides | Cannot decide |
+|---|---|---|
+| Decode + corpus search | which words, and where the reciter went back | when anything was said |
+| One global forced alignment | when every word was said | which words |
+| Grouping | where a line breaks | either of the above |
+
+Three things keep stage 1 from repeating the failure. A read-out that carries no position of
+its own may **continue** the reading but never relocate it (`carries_position`). The search
+keys its state on the boundary *and* the reference position, so routes that are behind on score
+but ahead on truth stay alive to be compared at the end, where the honest route explains ~170
+words against the poisoned one's ~70. And nothing downstream reads assignment *times* any more,
+so there is no gap-filling pass left to hand a segment two minutes it never earned.
+
+Measured against per-ayah ground truth on that same 220s passage, the single alignment placed
+**all 177 words**, monotonic, with a mean ayah-start error of **0.48s**.
+
+### Where a line breaks
+
+Segments are a grouping of consecutive aligned words, so a segment can never span audio its own
+words do not cover. A line ends at an ayah boundary, where the reciter went back on themselves,
+at a mushaf stop mark the reciter *actually paused on*, or at a silence long enough that
+something must have ended.
+
+Pause length alone cannot make this decision, and the measurements say so plainly: a **1.91s**
+pause fell inside a phrase that must not be split, while a break the reader plainly hears had
+only **0.56s** of quiet. Nor can the energy dips — they are candidates offered generously for
+the search to choose from, and treating every one as a decision is what split a continuous
+`وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` across a breath the reciter never took. What works is the
+conjunction: a dip **and** a measurable gap in the alignment, or a stop mark **and** a pause on
+it. Both signals are weak alone.
+
+---
+
 ## Repeated phrases
 
 Reciters repeat themselves, and a straight-line reference cannot represent that. Linear
@@ -106,10 +167,22 @@ The curve has a clear interior maximum at k=5 — it climbs, peaks, then falls b
 no-repeat baseline. That *shape* is the result: a mechanical "more tokens always score better"
 bias would rise monotonically. The reciter says `لَّقَدْ كَانَ لَكُمْ فِى رَسُولِ` twice.
 
-This is the mechanism the shipped repeat detection uses: for each unexplained gap, score
-candidate runs of nearby reference text against only that gap's frames, with "these frames are
-blank" as the null hypothesis. Scoring must stay local — across a whole clip the tens of nats
-separating a real repeat are swamped by the thousands in the rest of the path.
+`detect_repeats` implemented exactly this — for each unexplained gap, score candidate runs of
+nearby reference text against only that gap's frames, with "these frames are blank" as the null
+hypothesis — and **it has been removed.** The table above is a spike result, not a shipped one.
+
+Wiring it into the pipeline was tried and measured worse: on the reference clip it missed all
+four restarts in the ground truth and inserted two spurious one-word repeats, dropping segment
+accuracy from 9/11 to 4/11. Two reasons were visible in its design. It only examined gaps
+*between* aligned words, so a recitation that opens by restarting — which this clip does —
+leaves its evidence in a leading gap the loop never looked at. And a tiny word could win a gap
+it did not remotely fill, because the per-frame gain ranking candidates never required the
+inserted text to account for the gap's *duration*. Both are fixable, and the reasoning above is
+worth keeping; the code is in the git history rather than sitting unused in the module.
+
+What handles repeats today is the decode: a phrase recited twice simply matches near the same
+place in the reference twice, and the overlap falls out as a restart. That is what produces the
+deliberately overlapping segments in `scripts/expected_segments.txt`, and it recovers them.
 
 ---
 
@@ -143,32 +216,53 @@ The reason is that phrase assignment scores only the words it actually placed. A
 reference is given *short* word ranges per phrase, and those few words still score plausibly;
 the mean barely moves even as the alignment becomes meaningless.
 
-### Reference coverage does
+### Reference coverage used to, and no longer can
 
-`referenceCoverage` — how far through the supplied text the phrase assignment actually got —
-separates every case completely. It works for a structural reason rather than a tuned one:
-each phrase is only assigned reference words that explain its frames, so a correct reference
-gets walked to its end and a wrong one strands most of itself. It is also close to scale-free,
-unlike a score or a words-per-second rate, so it does not move with reciter speed or clip
-length.
+`referenceCoverage` — how far through the supplied text phrase assignment got — separated every
+case in the table above, and while assignment decided the timeline that was a structural
+property rather than a tuned one: a phrase was only given reference words that explained its
+frames, so a wrong reference stranded most of itself.
 
-The sidecar raises a warning below 75% coverage (`ALIGN_MIN_REFERENCE_COVERAGE`), and the app
-turns that into a review prompt.
+**That reasoning does not survive the pipeline change below.** Timing now comes from one global
+forced alignment, which places every reference word by construction, so coverage reads 1.00 for
+a wrong range as readily as for the right one. It is still reported, and it is now computed
+honestly — distinct words that received a timestamp, rather than how far into the reference the
+pipeline reached — but it is a completeness check on the sidecar, not evidence about the
+passage. The old measure was actively misleading: it read **1.00 on a run that placed only 10%
+of the words**, because one stray match near the end was enough to make it look complete.
 
-Two caveats worth knowing:
+### Decode agreement does
 
-- **Validated on one clip.** The separation above is total here, but on much longer audio the
-  phrase beam search may legitimately fail to walk a several-hundred-word reference to its end.
-  If coverage warnings appear on recitations you know are correct, raise the threshold before
-  concluding the alignment is wrong.
-- **Multi-block references are the fragile case.** A reference built from more than one block
-  is concatenated and walked with a forward cursor from word 0. If the *first* block isn't
-  actually in the audio, the search may never escape it. Coverage catches this, but the
-  resulting timeline is unusable rather than merely padded — prefer one tight range when known.
+The replacement compares two *independent* readings of the same seconds: what the recogniser
+freely heard there, against what the aligner placed there. It involves no corpus search, so
+unlike coverage it cannot be talked into agreeing with itself.
+
+| Clip | Reference aligned | `decodeAgreement` | `meanScore` | `referenceCoverage` |
+|---|---|---|---|---|
+| test.mp3 | **33:21–23 (correct)** | **0.888** | 0.696 | 1.000 |
+| test.mp3 | 2:1–5 | 0.020 | 0.947 | 0.028 |
+| test.mp3 | 33:1–3 (same surah) | 0.121 | 0.348 | 0.097 |
+| test.mp3 | 36:1–8 | 0.035 | 0.001 | 1.000 |
+| test.mp3 | 18:10–12 | 0.020 | 0.947 | 0.031 |
+| test.mp3 | 33:21–22 (real subset) | 0.479 | 0.651 | 1.000 |
+| test3.mp3 | **2:121–125 (correct)** | **0.873** | 0.684 | 0.824 |
+| test3.mp3 | 7:40–45 | 0.010 | 0.000 | 1.000 |
+
+Read the `meanScore` column before trusting it ever again: two wrong ranges scored **0.947**
+against 0.696 for a correct one. A confident path over the wrong words is still a confident
+path. And `referenceCoverage` reads 1.000 on three wrong ranges.
+
+A reference covering only *part* of its audio lands in between (0.479) rather than at either
+extreme, which is the right shape — it is not a wrong passage, just a narrow one.
+
+The sidecar warns below 0.40 (`ALIGN_MIN_DECODE_AGREEMENT`), and separately when coverage shows
+supplied text that was never recited. The check runs on the `nemo` backend only: the threshold
+assumes a Quran-tuned decode, and the general Arabic model would disagree just as much with a
+correct alignment. On `wav2vec2` the field is `null` and nothing guards the passage.
 
 ### What the app does with this
 
-`needsReview` is set when coverage warns, and always for `gemini` (its timing is an estimate
+`needsReview` is set when the sidecar warns, and always for `gemini` (its timing is an estimate
 by construction). Only `align` with a user-chosen range and clean coverage returns without a
 review prompt.
 
@@ -199,5 +293,8 @@ asr-service/.venv/bin/python scripts/spike_forced_align.py path/to/clip.mp3 33 2
 asr-service/.venv/bin/python scripts/spike_detect_repeat.py path/to/clip.mp3
 
 # segment-level evaluation against expected output
-asr-service/.venv/bin/python scripts/eval_segments.py
+asr-service/.venv/bin/python scripts/eval_segments.py test.mp3 33 21 23
+
+# the alignment rules themselves -- no audio, no model, runs in milliseconds
+asr-service/.venv/bin/python scripts/test_alignment_rules.py
 ```

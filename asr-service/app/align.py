@@ -1,8 +1,9 @@
 """CTC forced alignment of *known* Quran text against recitation audio.
 
 The difference from `asr.py` is the whole point of this module: nothing here
-decodes. The caller supplies the Uthmani text, that text becomes a fixed CTC
-target sequence, and the model only chooses *when* each character was spoken.
+decodes in order to decide *timing*. The caller supplies the Uthmani text, that
+text becomes a fixed CTC target sequence, and the model only chooses when each
+character was spoken.
 
 Three failure modes of the free-decode pipeline are therefore structurally
 impossible rather than merely mitigated:
@@ -10,22 +11,30 @@ impossible rather than merely mitigated:
 * a word cannot be dropped -- every reference word is in the target sequence,
   so the Viterbi path must assign it frames;
 * a word cannot be garbled -- the output tokens *are* the Quran text, so the
-  malformed-token artifact seen with NeMo's CTC branch (`يُؤْمُِونَ`) has no way
+  malformed-token artifact seen with NeMo's CTC branch (`يُؤْمِنُونَ`) has no way
   to occur;
-* a phrase cannot land in the wrong surah -- there is no search over the
-  corpus at all.
+* a word cannot be placed out of order -- the path is monotonic.
 
 Because the search space is one fixed sequence rather than every possible
 sequence, acoustic model quality matters far less here than for free decoding.
 A model whose free decode of a clip was unreadable still placed all 53 words of
 that clip correctly under forced alignment -- see docs/ALIGNMENT.md.
 
-Repeats (`detect_repeats`) are handled separately, because a straight-line
-reference cannot represent a phrase said twice.
+Reading the audio back still happens, and still decides two things nothing else
+can: which passage this is, and where the reciter went back on themselves. What
+it no longer decides is *when* anything was said. That separation is load-
+bearing rather than tidy. When timing came from the read-out too, a phrase
+boundary landing inside `رِزْقًا` left a one-letter tail, the tail matched a word
+eight ayahs away exactly, 34 correctly-decoded phrases were then discarded for
+being "behind" it, and 139 seconds of recitation collapsed into one caption
+holding a single word -- at a reported confidence of 1.00. `carries_position`
+and the state keying in `assign_phrase_ranges_by_decode` are what stop that;
+`align_recitation` documents the order.
 """
 
 from __future__ import annotations
 
+import bisect
 import difflib
 import logging
 import os
@@ -51,24 +60,6 @@ DEFAULT_ALIGN_MODEL = "jonatasgrosman/wav2vec2-large-xlsr-53-arabic"
 # stitched at the *emission* level, then aligned in one pass.
 EMISSION_WINDOW_SEC = 30.0
 EMISSION_OVERLAP_SEC = 4.0
-
-
-#: Forced alignment always succeeds -- given any text and any audio it returns
-#: a complete, monotonic, confident-*looking* timeline. That is the flip side
-#: of its main strength, and it means a user who picks the wrong ayah range
-#: gets plausible-looking garbage rather than an error.
-#:
-#: **This threshold is a backstop, not a wrong-passage detector.** Mean score
-#: cannot do that job: phrase-wise assignment averages only over the words it
-#: actually placed, so a wrong reference gets *short* word ranges whose few
-#: words still score plausibly. Measured against six wrong ranges, the correct
-#: one scored 0.2923 and the wrong ones 0.1475-0.2550 -- an unrelated 15-word
-#: surah reached 0.2550, and this threshold fired for none of them.
-#:
-#: `RecitationResult.reference_coverage` is the field that detects a wrong
-#: passage; it separated the same cases completely. This threshold only catches
-#: degenerate emissions.
-MIN_PLAUSIBLE_MEAN_SCORE = 0.03
 
 
 class AlignError(RuntimeError):
@@ -578,37 +569,6 @@ def align_script(
 # Repeat detection
 # ---------------------------------------------------------------------------
 
-#: A hole this long between two aligned words is suspicious -- either a real
-#: pause, or audio the linear reference has no text for (i.e. a repeat).
-REPEAT_GAP_SEC = 0.6
-
-#: Longest phrase we will consider as having been repeated.
-MAX_REPEAT_WORDS = 12
-
-#: A candidate repeat is accepted on *per-frame* gain over the blank baseline,
-#: not total gain -- a long gap accumulates more nats than a short one purely
-#: by being long, so an absolute threshold would scale with gap length rather
-#: than with evidence.
-#:
-#: Measured on real recitation, the separation is wide and the sign is the real
-#: discriminator: a true repeat scored +0.075/frame, while genuine pauses
-#: scored -0.077 and -0.126/frame -- every candidate at a real pause came out
-#: *worse* than assuming silence. This threshold sits between those bands.
-MIN_REPEAT_GAIN_PER_FRAME = 0.03
-
-#: Floor on total gain as well, so a very short gap can't trip the per-frame
-#: test on a handful of noisy frames.
-#:
-#: Both thresholds were set from a single reference clip, so they are the least
-#: validated numbers in this module. A multi-word repeat clears them by a wide
-#: margin; a one-word match on a very common word (ٱللَّهَ, مَا, مِن) can sit just
-#: above them on thin evidence. If false repeats show up, raise these before
-#: reaching for anything more elaborate.
-MIN_REPEAT_GAIN_TOTAL = 5.0
-
-#: Cap on insertions, so a pathological clip cannot loop indefinitely.
-MAX_REPEAT_INSERTIONS = 12
-
 # ---------------------------------------------------------------------------
 # Phrase detection
 # ---------------------------------------------------------------------------
@@ -761,28 +721,30 @@ class RecitationResult:
     words: list[AlignedWord]
     segments: list[Segment]
     mean_score: float
-    #: Fraction of the reference text the phrase assignment actually consumed.
+    #: Fraction of the reference text that was actually given time.
     #:
-    #: This is the signal `mean_score` was wrongly believed to provide: whether
-    #: the audio plausibly *is* this passage. It works because a phrase is only
-    #: given reference words that explain its frames, so a correct reference
-    #: gets walked end to end while a wrong one strands most of itself.
+    #: Under one global forced alignment this is 1.0 for any input the aligner
+    #: accepts, because every scripted word is given frames by construction --
+    #: so it is a completeness check on this pipeline, *not* the wrong-passage
+    #: signal it used to be relied on as. Use `decode_agreement` for that.
     #:
-    #: Measured on the reference clip: the correct range covered 1.00, while six
-    #: wrong ranges covered 0.04-0.28. Unlike a score threshold, this is close to
-    #: scale-free -- it does not move with reciter speed, clip length, or how
-    #: much text was supplied.
-    #:
-    #: A legitimately partial recitation (reference wider than the audio) also
-    #: reads low. That is not a false alarm: the range genuinely does not match
-    #: the audio, and the caller should narrow it.
-    #:
-    #: Precisely, this is *how far into* the reference the assignment reached,
-    #: not what fraction of it was assigned -- a reading covering words 0-5 and
-    #: 60-68 of 69 scores 1.00. That matches `assign_phrase_ranges`' own
-    #: `covered` semantics, and it separated every case measured, but it is a
-    #: weaker claim than "every word was accounted for".
+    #: It is still worth reporting, and it is now computed honestly: distinct
+    #: words that received a timestamp, rather than how far into the reference
+    #: the pipeline reached. The old measure read 1.00 on a run that placed
+    #: only 10% of the words, because one stray match near the end was enough
+    #: to make it look complete.
     reference_coverage: float = 0.0
+    #: Independent cross-check that the audio really is this passage, from
+    #: comparing what the decoder heard against what the aligner placed there.
+    #: `None` when there was nothing to compare. See `decode_agreement`.
+    #:
+    #: Measured on two clips: 0.888 and 0.873 for the correct range against
+    #: 0.010-0.121 for six wrong ones, and 0.479 for a reference covering only
+    #: part of its audio. This is the signal `mean_score` and
+    #: `reference_coverage` were both wrongly relied on for -- on the same
+    #: cases mean score was *higher* for wrong ranges than the right one
+    #: (0.947 against 0.696) and coverage read 1.000 for two of them.
+    decode_agreement: float | None = None
 
 
 def _verse_starts(ref_words: list[tuple[str, int, str]]) -> dict[int, int]:
@@ -933,10 +895,26 @@ def _skeleton(word: str) -> str:
     return re.sub(r"[اويه]+$", "", base) or base
 
 
+def carries_position(decoded: str) -> bool:
+    """Is there enough in this read-out to say *where* in the reference it is?
+
+    A boundary landing inside a word leaves a tail that reads back as a letter
+    or two, and a one-letter skeleton carries no positional information at all.
+    Against a corpus of any size it always finds a perfect match somewhere: the
+    tail of رِزْقًا reduces to `ق`, which matches قُوَّةً eight ayahs away *exactly*
+    (1.00) while scoring 0.00 against the رزق it actually came from. That single
+    match is what sent a whole recitation off the rails -- so a fragment may
+    still continue where the reading already is, but it may never relocate it.
+    """
+    tokens = [t for t in (_skeleton(t) for t in decoded.split()) if t]
+    return len(tokens) >= MIN_ANCHOR_TOKENS and sum(len(t) for t in tokens) >= MIN_ANCHOR_CHARS
+
+
 def match_decoded_to_range(
     decoded: str,
     ref_words: list[tuple[str, int, str]],
     cursor: int,
+    near_only: bool = False,
 ) -> tuple[int, int, float] | None:
     """Locate what a phrase decoded to within the reference text.
 
@@ -959,7 +937,14 @@ def match_decoded_to_range(
     n = len(corpus)
     best: tuple[int, int, float] | None = None
 
-    for start in range(n):
+    # A read-out with no position of its own may only continue the reading, not
+    # move it. See `carries_position`.
+    first, last = 0, n - 1
+    if near_only:
+        first = max(0, cursor - MAX_BACK_OVERLAP)
+        last = min(n - 1, cursor + MAX_BACK_OVERLAP)
+
+    for start in range(first, last + 1):
         verse_key = ref_words[start][0]
         # A phrase never spans an ayah boundary.
         limit = start
@@ -1316,26 +1301,6 @@ def _cuts_a_word(decode, i: int, j: int, cursor: int, ref_words=None, match_from
     return bool(head) and not _carries_a_word(head[0], ref_words, at)
 
 
-def _split_strands_words(decode, match_from, i: int, j: int, cursor: int) -> bool:
-    """Would keeping the candidate boundaries inside [i, j] lose reference words?
-
-    Walks the span one window at a time and asks whether each window picks up
-    where the last left off. A gap means a boundary fell inside a word: both
-    halves decode as fragments, neither matches, and the word between them is
-    lost. That -- not a better-looking match -- is what justifies merging.
-    """
-    at = cursor
-    for step in range(i, j):
-        match = match_from(decode(step, step + 1, at), at)
-        if match is None or match[2] < MIN_ASSIGN_SCORE:
-            return True
-        start, end, _ = match
-        if start > at:
-            return True
-        at = end + 1
-    return False
-
-
 def phrase_search() -> bool:
     """Whether a phrase may span more than one candidate boundary.
 
@@ -1343,70 +1308,6 @@ def phrase_search() -> bool:
     hard split, which is what this path did before the search existed.
     """
     return (os.getenv("ASR_PHRASE_SEARCH") or "1").strip().lower() not in ("0", "false", "no")
-
-
-def _absorb_unclaimed_audio(
-    assignments: list[tuple[int, int, float, float, float]],
-    decode,
-    boundaries: list[float] | None,
-    match_from=None,
-    ref_words=None,
-) -> list[tuple[int, int, float, float, float]]:
-    """Hand audio no segment claimed to the neighbour it belongs to.
-
-    A window whose decode matched nothing leaves a hole in the timeline, and the
-    caption vanishes for a second or two in the middle of the recitation. The
-    window's own read-out says which side should cover it: reading back with no
-    consonant in it means it is the tail of a word a boundary cut, so it belongs
-    to the segment before; carrying a word of its own means it belongs to the
-    segment after, where that word is shown.
-
-    Separate from the stranded-word pass because the two do not always coincide
-    -- a boundary can cut a word late enough that the tail is still matched, so
-    no word is stranded while a second of audio is still left to no one.
-    """
-    if decode is None or boundaries is None:
-        return assignments
-
-    repaired = list(assignments)
-    for i in range(len(repaired) - 1):
-        start, end, score, phrase_start, phrase_end = repaired[i]
-        next_start, next_end, next_score, next_phrase_start, next_phrase_end = repaired[i + 1]
-
-        skipped = _unclaimed_between(decode, boundaries, phrase_end, next_phrase_start, end + 1)
-        if skipped is None:
-            continue
-
-        # Whichever segment already shows the words this window read is the one
-        # that should cover its audio: a window reading ٱلسَّيِّئَةَ again belongs
-        # to the segment ending on that word, not to the one starting after it.
-        opening = skipped.split()
-        forward = bool(opening and _carries_a_word(opening[0], ref_words, end + 1))
-        if match_from is not None:
-            match = match_from(skipped, start)
-            if match and match[0] <= end:
-                # Words already on screen in the previous segment: this window
-                # is that segment still being recited.
-                forward = False
-            elif match and ref_words is not None and _WAQF_MARKS.search(ref_words[match[1]][2]):
-                # It ends on a stop mark, so it closes the previous phrase.
-                forward = False
-        if forward:
-            repaired[i + 1] = (next_start, next_end, next_score, phrase_end, next_phrase_end)
-            taker = "%.2f-%.2fs" % (next_phrase_start, next_phrase_end)
-        else:
-            repaired[i] = (start, end, score, phrase_start, next_phrase_start)
-            taker = "%.2f-%.2fs" % (phrase_start, phrase_end)
-
-        log.info(
-            "phrase %s covers the %.2f-%.2fs no segment claimed (%r)",
-            taker,
-            phrase_end,
-            next_phrase_start,
-            skipped[:24],
-        )
-
-    return repaired
 
 
 def assign_phrase_ranges_by_decode(
@@ -1449,38 +1350,55 @@ def assign_phrase_ranges_by_decode(
     phrases = len(boundaries) - 1
     max_span = MAX_DECODE_SPAN if phrase_search() else 1
 
-    # boundary index -> (words explained, phrases used, assignments, decodes)
-    states: dict[int, tuple[float, int, list, list[str]]] = {0: (0.0, 0, [], [])}
-
-    def reached(assignments: list) -> int:
-        return max((end for _, end, _, _, _ in assignments), default=-1)
+    # (boundary index, how far into the reference this route has got) -> route.
+    #
+    # Keying on the boundary *and* the reference position is the whole
+    # correction here. It used to key on the boundary alone, which quietly made
+    # the search wrong rather than merely approximate: how well a route can
+    # continue depends entirely on where in the text it left off, so two routes
+    # reaching the same boundary at different places are not comparable and the
+    # better-scoring one must not be allowed to evict the other.
+    #
+    # That is exactly how a whole recitation was lost. A one-letter fragment
+    # matched a word eight ayahs ahead for +0.97, which beat the honest route's
+    # +0.00 at that boundary and replaced it -- and because the surviving route
+    # had jumped the cursor to ayah 21, all 34 phrases that followed said text
+    # now "behind" it and were dropped as explaining nothing new. Keeping both
+    # routes alive lets the comparison happen where it is meaningful, at the
+    # end: the honest route explains ~170 words, the poisoned one ~70.
+    states: dict[int, dict[int, tuple[float, int, list, list[str]]]] = {0: {-1: (0.0, 0, [], [])}}
 
     for i in range(phrases):
         if i not in states:
             continue
-        explained, used, assignments, decodes = states[i]
-        cursor = assignments[-1][1] + 1 if assignments else 0
+        # Bounded so the extra dimension cannot make this expensive: only the
+        # strongest few routes at each boundary are ever extended.
+        routes = sorted(states[i].values(), key=lambda route: route[:2], reverse=True)[:BEAM_WIDTH]
 
-        for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
-            if j > i + 1 and not _cuts_a_word(decode, i, j, cursor, ref_words, match_from):
-                # A longer window reads back at least as well as its halves --
-                # more context, no cut words -- so a better-matching merge is
-                # never on its own a reason to drop a boundary the audio found.
-                # Left unchecked the search merges to paper over a garbled
-                # decode, which is how two correct segments either side of an
-                # audible break became one 25-second caption. Merging needs
-                # evidence the boundary itself was wrong, and a word split
-                # across it is that evidence.
-                continue
-            decoded = decode(i, j, cursor)
-            match = match_decoded_to_range(decoded, ref_words, cursor)
-            if match is None or match[2] < MIN_ASSIGN_SCORE:
-                # This span explains nothing. Still a legal step -- the audio may
-                # be silence, an intro, or a du'a -- it just earns no credit.
-                candidate = (explained, used + 1, assignments, decodes)
-            else:
-                start, end, score = match
-                if end <= reached(assignments):
+        for explained, used, assignments, decodes in routes:
+            reached = assignments[-1][1] if assignments else -1
+            cursor = reached + 1
+
+            for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
+                if j > i + 1 and not _cuts_a_word(decode, i, j, cursor, ref_words, match_from):
+                    # A longer window reads back at least as well as its halves --
+                    # more context, no cut words -- so a better-matching merge is
+                    # never on its own a reason to drop a boundary the audio found.
+                    # Left unchecked the search merges to paper over a garbled
+                    # decode, which is how two correct segments either side of an
+                    # audible break became one 25-second caption. Merging needs
+                    # evidence the boundary itself was wrong, and a word split
+                    # across it is that evidence.
+                    continue
+                decoded = decode(i, j, cursor)
+                match = match_decoded_to_range(
+                    decoded, ref_words, cursor, near_only=not carries_position(decoded)
+                )
+                if match is None or match[2] < MIN_ASSIGN_SCORE:
+                    # This span explains nothing. Still a legal step -- the audio may
+                    # be silence, an intro, or a du'a -- it just earns no credit.
+                    candidate = (explained, used + 1, assignments, decodes)
+                elif match[1] <= reached:
                     # This window reaches no further into the reference than
                     # what is already on screen, so it has nothing of its own
                     # to show -- a second reading of a window can now match
@@ -1495,25 +1413,26 @@ def assign_phrase_ranges_by_decode(
                     # in its own right.
                     candidate = (explained, used + 1, assignments, decodes)
                 else:
+                    start, end, score = match
                     candidate = (
                         explained + score * (end - start + 1),
                         used + 1,
                         assignments + [(start, end, score, boundaries[i], boundaries[j])],
                         decodes + [decoded],
                     )
-            current = states.get(j)
-            # Rank on words explained, then on *more* phrases. A tie means both
-            # segmentations account for the same text equally well, and the
-            # finer one is the one that respects the pause the dip detector
-            # found. Segments that explain nothing new are suppressed above
-            # rather than merged away here.
-            if current is None or candidate[:2] > current[:2]:
-                states[j] = candidate
 
-    if phrases not in states:
-        raise AlignError("Could not assign any phrase ranges -- the audio and reference text may not correspond.")
+                slot = states.setdefault(j, {})
+                landed = candidate[2][-1][1] if candidate[2] else -1
+                # Rank on words explained, then on *more* phrases. A tie means both
+                # segmentations account for the same text equally well, and the
+                # finer one is the one that respects the pause the dip detector
+                # found. Segments that explain nothing new are suppressed above
+                # rather than merged away here.
+                current = slot.get(landed)
+                if current is None or candidate[:2] > current[:2]:
+                    slot[landed] = candidate
 
-    _, _, assignments, decodes = states[phrases]
+    _, _, assignments, decodes = max(states[phrases].values(), key=lambda route: route[:2])
     claimed = {(a[3], a[4]) for a in assignments}
     for i in range(phrases):
         window = (boundaries[i], boundaries[i + 1])
@@ -1531,8 +1450,7 @@ def assign_phrase_ranges_by_decode(
             decoded[:60],
         )
 
-    assignments = _absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries)
-    return _absorb_unclaimed_audio(assignments, decode, boundaries, match_from, ref_words)
+    return _absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries)
 
 
 #: The mushaf's own stop signs (U+06D6..U+06DC). Unlike the end-of-ayah mark
@@ -1656,83 +1574,183 @@ def _extend_over_repeated_tail(
     return out
 
 
-def _split_at_pause_marks(
-    segments: list[Segment],
-    spans: list[list[AlignedWord]],
-    ref_words: list[tuple[str, int, str]],
-) -> list[Segment]:
-    """Break a segment where the mushaf permits a stop and the reciter took one.
+# ---------------------------------------------------------------------------
+# Segmentation from the aligned timeline
+# ---------------------------------------------------------------------------
 
-    Candidate boundaries come from the audio alone, and the audio does not carry
-    the distinction reliably: measured on real recitation, a 1.91s pause fell in
-    the middle of a phrase that should not be split, while a break the reader
-    plainly hears had only 0.56s of quiet. No threshold on loudness or on pause
-    length orders those two correctly, because what separates them is where the
-    sentence ends, not how quiet it got.
+#: Backstop for a silence so long that something must have ended, with no waqf
+#: mark to license it. Deliberately far above the waqf threshold, because pause
+#: length on its own does not order these cases: measured on real recitation a
+#: 1.91s pause fell *inside* a phrase that must not be split, while a break the
+#: reader plainly hears had only 0.56s of quiet. The mark is what makes a short
+#: pause meaningful; length alone is only trustworthy at the extreme.
+BREATH_PAUSE_FACTOR = 8.0
+MIN_BREATH_PAUSE_SEC = 2.0
 
-    The reference text already carries that. Waqf marks are the tradition's own
-    annotation of where a reciter may stop, and they land on 18 of the 26
-    segment ends measured here -- including every one the dip detector could not
-    find. They are *permission*, not instruction, so a mark on its own would
-    over-split; pairing it with the reciter's own timing is what makes it a
-    decision. Both signals are weak alone and the conjunction is what carries.
+#: Evidence a decoded phrase must carry before it is allowed to say anything
+#: about *where* in the reference the reciter is. See `carries_position`.
+MIN_ANCHOR_TOKENS = 2
+MIN_ANCHOR_CHARS = 4
+
+
+def _segment_the_timeline(
+    aligned: list[AlignedWord],
+    script: list[int],
+    duration: float,
+    boundaries: list[float] | None = None,
+) -> tuple[list[Segment], list[list[AlignedWord]]]:
+    """Cut the aligned word sequence into on-screen segments.
+
+    Segments are read *off* the alignment rather than decided before it. The
+    old path did the opposite -- energy dips fixed the phrases, each phrase's
+    decode was searched for in the corpus, and the timeline was whatever that
+    search returned -- which let a single mismatched fragment place a word two
+    minutes from where it was said. Here the path decides when every word was
+    spoken first, and a segment is only ever a *grouping* of consecutive words,
+    so no segment can span audio its own words do not cover.
+
+    A line breaks where a reader would break it: at the end of an ayah, where
+    the reciter went back to repeat something, at a mushaf stop mark the
+    reciter actually paused on, or at a silence long enough to be a breath.
+    Note what is *not* a reason to break -- a dip in the energy envelope. The
+    dip detector is deliberately generous ("candidates for the search to choose
+    from"), and treating its output as decisions is what split a continuous
+    `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` into two captions across a breath the
+    reciter never took.
     """
-    gaps = [
+    if not aligned:
+        return [], []
+
+    gaps = sorted(
         max(0.0, nxt.start - word.end)
-        for span in spans
-        for word, nxt in zip(span, span[1:])
+        for word, nxt in zip(aligned, aligned[1:])
         if word.verse_key == nxt.verse_key
-    ]
-    if not gaps:
-        return segments
-    threshold = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * statistics.median(gaps))
+    )
+    # The gap between two words of one breath, from the clip's own timing, so
+    # the thresholds travel across reciters and tempos. Taken from the lower
+    # half rather than the median of everything: the pauses are in this list
+    # too, and letting them set the scale of "no pause" pulls the bar up until
+    # nothing clears it -- which silently under-split every clip it was tried on.
+    typical = statistics.median(gaps[: max(1, len(gaps) // 2)]) if gaps else 0.0
+    waqf_pause = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * typical)
+    breath_pause = max(MIN_BREATH_PAUSE_SEC, BREATH_PAUSE_FACTOR * typical)
 
-    text_of = {(key, index): text for key, index, text in ref_words}
-    out: list[Segment] = []
+    dips = sorted(boundaries or ())
 
-    for segment, span in zip(segments, spans):
-        cuts = [
-            i
-            for i, (word, nxt) in enumerate(zip(span, span[1:]))
-            if word.verse_key == nxt.verse_key
-            and _WAQF_MARKS.search(text_of.get((word.verse_key, word.word_index), ""))
-            and nxt.start - word.end >= threshold
-        ]
-        if not cuts or not span:
-            out.append(segment)
+    def dipped(after: float, before: float) -> bool:
+        """Did the energy envelope find a dip in this gap too?
+
+        The dip detector measures something the word gap does not -- sustained
+        low energy over a 20ms envelope -- so where the two agree the pause is
+        real. Neither is enough alone: a dip on its own is only a candidate,
+        and acting on every one of them is what split a continuous
+        `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` where the reciter never paused. A
+        gap on its own does not order these cases either -- 0.48s ends a line
+        here while 0.56s two words earlier does not. The conjunction carries.
+        """
+        i = bisect.bisect_left(dips, after - 0.05)
+        return i < len(dips) and dips[i] <= before + 0.05
+
+    # Index of the last word of each piece.
+    cuts: list[int] = []
+    for i, (word, nxt) in enumerate(zip(aligned, aligned[1:])):
+        gap = nxt.start - word.end
+        if word.verse_key != nxt.verse_key:
+            cuts.append(i)
+        elif script[i + 1] <= script[i]:
+            # The reciter went back rather than on: a restart starts its own line.
+            cuts.append(i)
+        elif gap >= waqf_pause and (_WAQF_MARKS.search(word.text) or dipped(word.end, nxt.start)):
+            cuts.append(i)
+        elif gap >= breath_pause:
+            cuts.append(i)
+    cuts.append(len(aligned) - 1)
+
+    segments: list[Segment] = []
+    spans: list[list[AlignedWord]] = []
+    first = 0
+    previous_end = -1
+    for cut in cuts:
+        span = aligned[first : cut + 1]
+        if not span:
             continue
-
-        piece_start = segment.start
-        first_index = 0
-        for cut in cuts + [len(span) - 1]:
-            first, last = span[first_index], span[cut]
-            final = cut == len(span) - 1
-            piece_end = segment.end if final else (last.end + span[cut + 1].start) / 2
-            out.append(
-                Segment(
-                    verse_key=first.verse_key,
-                    start_word=first.word_index,
-                    end_word=last.word_index,
-                    start=round(piece_start, 3),
-                    end=round(piece_end, 3),
-                    score=segment.score,
-                    # Only the opening piece inherits the restart flag; the rest
-                    # continue it rather than each re-announcing one.
-                    is_restart=segment.is_restart and first_index == 0,
-                )
+        scores = [w.score for w in span if w.score > 0]
+        segments.append(
+            Segment(
+                verse_key=span[0].verse_key,
+                start_word=span[0].word_index,
+                end_word=span[-1].word_index,
+                start=round(span[0].start, 3),
+                end=round(span[-1].end, 3),
+                score=round(float(np.mean(scores)) if scores else 0.0, 4),
+                is_restart=script[first] <= previous_end,
             )
-            piece_start = piece_end
-            first_index = cut + 1
-
-        log.info(
-            "phrase %.2f-%.2fs split at %d pause mark(s) the reciter stopped on: after %s",
-            segment.start,
-            segment.end,
-            len(cuts),
-            ", ".join(text_of.get((span[c].verse_key, span[c].word_index), "?") for c in cuts),
         )
+        spans.append(span)
+        previous_end = script[cut]
+        first = cut + 1
 
-    return out
+    # Close the gaps between consecutive segments, so a caption never blinks
+    # out during the breath before the next line. Splitting the silence rather
+    # than extending either side keeps each segment over its own audio.
+    for earlier, later in zip(segments, segments[1:]):
+        middle = round((earlier.end + later.start) / 2, 3)
+        earlier.end = middle
+        later.start = middle
+    if segments and 0 < duration - segments[-1].end < 2.0:
+        segments[-1].end = round(duration, 3)
+
+    return segments, spans
+
+
+def decode_agreement(
+    aligned: list[AlignedWord],
+    boundaries: list[float],
+    decoded_phrases: list[str],
+) -> float | None:
+    """How far the free decode and the forced path agree on what is where.
+
+    Forced alignment cannot fail loudly. Give it any text and any audio and it
+    returns a complete, monotonic, confident-looking timeline -- so a user who
+    picked the wrong ayah range gets plausible garbage rather than an error.
+
+    `reference_coverage` used to be the guard, on the reasoning that a wrong
+    reference cannot be walked to its end. Under a single global alignment that
+    reasoning no longer holds: every reference word is placed by construction,
+    correct range or not, so coverage reads 1.00 either way and separates
+    nothing. (It read 1.00 on the run that dropped ayahs 14-20 entirely.)
+
+    This separates them because it is an *independent* reading of the same
+    audio. For each phrase, what the decoder heard is compared with the words
+    the alignment placed in those seconds -- two different methods answering
+    the same question. On the right text they describe the same recitation; on
+    the wrong text the aligner is fitting text to audio that never said it, and
+    the two stop agreeing. No corpus search is involved, so unlike the old
+    coverage figure this cannot be talked into agreeing with itself.
+    """
+    if align_backend() != "nemo":
+        # The threshold this feeds is calibrated against the Quran-tuned
+        # decode. The general Arabic model's free output is unreadable -- the
+        # transcript in docs/ALIGNMENT.md is the example -- so it disagrees
+        # just as much with a *correct* alignment, and comparing it against
+        # that threshold would warn on every clip. Unmeasurable, not zero.
+        return None
+
+    ratios: list[float] = []
+    for i, text in enumerate(decoded_phrases):
+        if i + 1 >= len(boundaries):
+            break
+        tokens = [t for t in (_skeleton(t) for t in text.split()) if t]
+        if len(tokens) < MIN_ANCHOR_TOKENS or sum(len(t) for t in tokens) < MIN_ANCHOR_CHARS:
+            # Too little read back to be evidence either way -- see MIN_ANCHOR_TOKENS.
+            continue
+        start, end = boundaries[i], boundaries[i + 1]
+        here = [_skeleton(w.text) for w in aligned if w.start < end and w.end > start]
+        ratios.append(difflib.SequenceMatcher(None, tokens, here).ratio() if here else 0.0)
+
+    # None, not 0.0: nothing was read back to compare against, which is not
+    # the same as reading back something that disagreed.
+    return round(float(np.mean(ratios)), 4) if ratios else None
 
 
 def align_recitation(
@@ -1741,7 +1759,31 @@ def align_recitation(
     boundaries: list[float] | None = None,
     decoded_phrases: list[str] | None = None,
 ) -> RecitationResult:
-    """Full pipeline: phrases from audio, word ranges per phrase, times from alignment.
+    """Full pipeline: decide *what* was recited, then align it, then group it.
+
+    Each stage now does only the job it is good at, which is the change that
+    matters. Reading the audio back says which words were said and where the
+    reciter went back on themselves -- it is reliable at that and nothing else
+    replaces it. One forced alignment then decides *when* every one of those
+    words was said. Segments are only a grouping of consecutive aligned words.
+
+    Timing used to come from the read-out too, and that is what broke long
+    recitations. Energy dips fixed the phrases, each phrase's decode was
+    searched for in the corpus, and the timeline was whatever came back -- so a
+    boundary landing inside a word left a one-letter tail, the tail matched a
+    word eight ayahs away exactly, and 34 correctly-decoded phrases were then
+    dropped for being "behind" it. 139 seconds of recitation became a single
+    one-word caption, reported at confidence 1.00. Two things stop that here:
+    the search can no longer be moved by a read-out that carries no position
+    (`carries_position`), and it no longer discards routes that are behind on
+    score but ahead on truth (see the state keying in the assignment search).
+
+    Taking timing off the alignment fixes the quieter half of the same problem.
+    A dip in the energy envelope is evidence of a pause, not proof of one, and
+    treating every dip as a segment break split a continuous
+    `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` across a breath the reciter never took.
+    Segments now break where a reader would break them -- see
+    `_segment_the_timeline`.
 
     `boundaries` and `decoded_phrases` may be passed in when the caller has
     already computed them -- range auto-detection needs the same decodes, and
@@ -1761,102 +1803,51 @@ def align_recitation(
         assignments = assign_phrase_ranges(emission, ref_words, boundaries, sec_per_frame)
 
     # The script is every assigned range concatenated, so a restart appears as
-    # the same reference words twice -- which is exactly what was recited.
+    # the same reference words twice -- which is exactly what was recited, and
+    # what gives the alignment below text to put over the second utterance
+    # instead of stretching its neighbours across it.
     script: list[int] = []
-    for start, end, _, _, _ in assignments:
-        script.extend(range(start, end + 1))
+    for begin, finish, _, _, _ in assignments:
+        script.extend(range(begin, finish + 1))
     if not script:
         script = list(range(len(ref_words)))
 
-    # Time each phrase *within its own window* rather than running one global
-    # alignment over the whole clip. A global pass is free to spread the script
-    # across the entire timeline, so a word could be placed far outside the
-    # phrase whose decode produced it -- on a 10-minute recitation the first
-    # word landed at 2.15-2.23s for a phrase spanning 0.82-9.67s. Constraining
-    # each phrase to its own frames keeps segment times and audio in step.
-    total_frames = emission.shape[1]
-    aligned: list[AlignedWord] = []
-    segments: list[Segment] = []
-    # Each segment's own words, kept alongside it so the pause-mark pass can
-    # read their timings without having to find them again in `aligned`, where
-    # a repeat makes the same word appear more than once.
-    spans: list[list[AlignedWord]] = []
-    previous_end = -1
+    # The one pass that decides all timing, over the whole clip at once.
+    # Monotonic and gapless by construction: every scripted word is given
+    # frames, in order, so no word can be placed outside the path and none can
+    # be dropped. Measured against per-ayah ground truth on a 220s recitation,
+    # this placed all 177 words with a mean ayah-start error of 0.48s.
+    aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
-    for start, end, value, phrase_start, phrase_end in assignments:
-        frame_start = max(0, int(phrase_start / sec_per_frame))
-        frame_end = min(total_frames, int(phrase_end / sec_per_frame) + 1)
-        indices = list(range(start, end + 1))
-
-        span: list[AlignedWord] = []
-        if frame_end - frame_start >= 2:
-            try:
-                span, _ = align_script(
-                    emission[:, frame_start:frame_end, :], ref_words, indices, sec_per_frame
-                )
-            except AlignError:
-                span = []
-
-        if span:
-            for word in span:
-                word.start = round(word.start + phrase_start, 3)
-                word.end = round(word.end + phrase_start, 3)
-        else:
-            # Too much text for the window to fit; spread it evenly rather than
-            # dropping the segment, and let the low score flag it.
-            step = (phrase_end - phrase_start) / max(len(indices), 1)
-            span = [
-                AlignedWord(
-                    text=ref_words[i][2],
-                    verse_key=ref_words[i][0],
-                    word_index=ref_words[i][1],
-                    start=round(phrase_start + n * step, 3),
-                    end=round(phrase_start + (n + 1) * step, 3),
-                    score=0.0,
-                )
-                for n, i in enumerate(indices)
-            ]
-
-        for word in span:
-            word.is_repeat = start <= previous_end
-        aligned.extend(span)
-
-        # A segment is a *display* unit, so it spans its whole phrase rather
-        # than only the words the decoder happened to catch. Using the tight
-        # word span put a caption on screen for 0.08s of an 8.85s phrase when
-        # the decode picked up one word of the basmala. Per-word times stay
-        # exact in `words` for anything that needs them.
-        segments.append(
-            Segment(
-                verse_key=ref_words[start][0],
-                start_word=ref_words[start][1],
-                end_word=ref_words[end][1],
-                start=round(phrase_start, 3),
-                end=round(phrase_end, 3),
-                # Already a 0-1 text-match ratio from `match_decoded_to_range`;
-                # it is not a log-probability and must not be exponentiated.
-                score=round(max(0.0, min(1.0, float(value))), 4),
-                is_restart=start <= previous_end,
-            )
-        )
-        spans.append(span)
-        previous_end = end
-
+    # Only the dips the assignment search *kept*. The candidate list is
+    # deliberately generous and includes dips that search declined because
+    # using one would have cut a word in half; those are the ones that must not
+    # come back as segment breaks here.
+    kept_dips = sorted({edge for _, _, _, start, end in assignments for edge in (start, end)})
+    segments, spans = _segment_the_timeline(aligned, script, duration, kept_dips)
     segments = _extend_over_repeated_tail(segments, spans, ref_words, pcm)
-    segments = _split_at_pause_marks(segments, spans, ref_words)
 
-    mean_score = float(np.mean([w.score for w in aligned])) if aligned else 0.0
+    if decoded_phrases is None and align_backend() == "nemo":
+        # Not free, but this is the only check that can catch a wrong ayah
+        # range, and a supplied reference is exactly where one gets picked.
+        try:
+            decoded_phrases = decode_phrases(pcm, boundaries)
+        except AlignError:
+            decoded_phrases = []
+    agreement = decode_agreement(aligned, boundaries, decoded_phrases or [])
 
-    # How far through the reference the assignment actually got. Computed from
-    # the assignments rather than from `aligned`, because a repeat inserts the
-    # same words twice and would otherwise push this above 1.0.
-    reached = max((end for _, end, _, _, _ in assignments), default=-1)
-    coverage = (reached + 1) / len(ref_words) if ref_words else 0.0
+    mean_score = float(np.mean([word.score for word in aligned])) if aligned else 0.0
+
+    # Distinct reference words that were actually given time -- not how far
+    # into the reference the pipeline reached, which is what this used to
+    # measure and which read 1.00 on a run that placed only 10% of the words.
+    assigned = {(word.verse_key, word.word_index) for word in aligned}
+    coverage = len(assigned) / len(ref_words) if ref_words else 0.0
     if coverage < 1.0:
         log.info(
-            "reference coverage %.2f -- the reading reached word %d of %d",
+            "reference coverage %.2f -- %d of %d word(s) were never recited",
             coverage,
-            reached + 1,
+            len(ref_words) - len(assigned),
             len(ref_words),
         )
 
@@ -1865,103 +1856,6 @@ def align_recitation(
         segments=segments,
         mean_score=mean_score,
         reference_coverage=round(coverage, 4),
+        decode_agreement=agreement,
     )
 
-
-def detect_repeats(
-    emission,
-    ref_words: list[tuple[str, int, str]],
-    sec_per_frame: float,
-) -> tuple[list[int], list[dict]]:
-    """Grow a linear script into one that accounts for repeated phrases.
-
-    Framed as "what text explains this unexplained audio?" rather than "was
-    the preceding phrase repeated?". For each gap the current alignment cannot
-    account for, the candidates are the runs of reference words immediately
-    before and after the gap -- a reciter repeating themselves says text
-    adjacent to where they are -- and each is scored by forced-aligning it
-    against *only the gap's frames*. The null hypothesis is that those frames
-    are blank; a candidate is accepted only if it explains them better.
-
-    Two things make this robust where a naive version isn't. Scoring is local:
-    over a whole clip the tens of nats separating a real repeat are swamped by
-    the thousands in the rest of the path. And candidates are drawn from both
-    sides of the gap, because in an ambiguous region the linear alignment may
-    have placed the first utterance *after* the hole rather than before it.
-    """
-    script = list(range(len(ref_words)))
-    aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
-    total_frames = emission.shape[1]
-    applied: list[dict] = []
-
-    #: Safety net against pathological input: a recitation that is more than
-    #: half repeats is possible, one that is twice its own reference text is
-    #: a bug somewhere upstream.
-    max_script_length = 2 * len(ref_words)
-
-    for _ in range(MAX_REPEAT_INSERTIONS):
-        if len(script) >= max_script_length:
-            log.warning("repeat detection stopped: script grew to %d words from %d", len(script), len(ref_words))
-            break
-
-        best = None  # (gain per frame, insert_at, sequence, total gain)
-
-        for gap_idx in range(len(aligned) - 1):
-            gap = aligned[gap_idx + 1].start - aligned[gap_idx].end
-            if gap <= REPEAT_GAP_SEC:
-                continue
-
-            # Pad slightly so a word onset/decay at the edge isn't clipped off.
-            frame_start = max(0, int((aligned[gap_idx].end - 0.1) / sec_per_frame))
-            frame_end = min(total_frames, int((aligned[gap_idx + 1].start + 0.1) / sec_per_frame) + 1)
-            if frame_end - frame_start < 4:
-                continue
-
-            null = _blank_score(emission, frame_start, frame_end)
-
-            candidates: list[list[int]] = []
-            for length in range(1, MAX_REPEAT_WORDS + 1):
-                if gap_idx + 1 - length >= 0:  # text just recited
-                    candidates.append(script[gap_idx + 1 - length : gap_idx + 1])
-                if gap_idx + 1 + length <= len(script):  # text about to be recited
-                    candidates.append(script[gap_idx + 1 : gap_idx + 1 + length])
-
-            frames = frame_end - frame_start
-            for sequence in candidates:
-                if not sequence:
-                    continue
-                gain = _fill_score(emission, ref_words, sequence, frame_start, frame_end) - null
-                if gain == float("-inf"):
-                    continue
-                if gain < MIN_REPEAT_GAIN_TOTAL or gain / frames < MIN_REPEAT_GAIN_PER_FRAME:
-                    continue
-                # Rank across gaps by per-frame gain so a long gap doesn't win
-                # on length alone.
-                if best is None or gain / frames > best[0]:
-                    best = (gain / frames, gap_idx + 1, list(sequence), gain)
-
-        if best is None:
-            break
-
-        _, insert_at, sequence, gain = best
-        repeated = " ".join(ref_words[i][2] for i in sequence)
-        log.info(
-            "repeat detected: %d word(s) at %.1fs (+%.1f nats over blank) -- %r",
-            len(sequence),
-            aligned[insert_at - 1].end,
-            gain,
-            repeated,
-        )
-        applied.append(
-            {
-                "atSeconds": round(aligned[insert_at - 1].end, 2),
-                "words": len(sequence),
-                "gain": round(gain, 1),
-                "text": repeated,
-            }
-        )
-
-        script = script[:insert_at] + sequence + script[insert_at:]
-        aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
-
-    return script, applied

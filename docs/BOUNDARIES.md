@@ -32,7 +32,8 @@ Even with oracle boundaries, 3/11 fail:
   words at a window edge. Decoding 27.0-28.8 alone yields `قَالُوا` correctly.
 * `قالوا` is recited TWICE (27.0-28.8 and 28.7-30.5). The linear reference
   cannot represent that; it shows up as a 1.43s "hole" in the forced alignment.
-  `detect_repeats` exists for this but is not wired into the by_decode path.
+  Restarts are recovered from the decode instead: a phrase said twice matches
+  the same place twice and the overlap becomes a restart segment.
 * The decoder's leading conjunction is unstable at phrase edges -- it writes
   `وَقَالُوا` where the reference has `قَالُوا۟`, and `صَدَقَ` where the reference
   has `وَصَدَقَ`. `_skeleton` treats those as entirely different tokens.
@@ -121,7 +122,8 @@ Both repeats are real, and confirmed rather than inferred: decoding overlapping
 windows around 94-99s of test3 gives `'طرًا منطَهِّرًا'` -- two utterances -- and
 27.0-28.8s and 28.7-30.5s of test.mp3 each decode to `قَالُوا`.
 
-`detect_repeats` exists for this and is **not wired into the decode path**.
+A gap-filling `detect_repeats` was written for this and removed after measuring
+worse than the decode-derived restarts; see docs/ALIGNMENT.md.
 
 An earlier note here said the blocker was that comparing target sequences of
 different lengths needs a length-normalised score. **That was wrong.**

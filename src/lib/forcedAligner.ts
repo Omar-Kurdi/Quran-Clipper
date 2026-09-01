@@ -50,11 +50,22 @@ type AlignResponse = {
   }[];
   meanScore: number;
   /**
-   * Fraction of the supplied reference text the aligner could actually account
-   * for. This -- not `meanScore` -- is what distinguishes a correct ayah range
-   * from a wrong one; see the sidecar's `RecitationResult.reference_coverage`.
+   * Fraction of the supplied reference text that was given any time at all.
+   * A completeness check on the sidecar, not evidence about the passage: one
+   * global forced alignment places every reference word by construction, so
+   * this reads 1 for a wrong ayah range as readily as for the right one.
    */
   referenceCoverage?: number;
+  /**
+   * How far what the recogniser heard and what the aligner placed there agree.
+   * This -- not `meanScore`, and no longer `referenceCoverage` -- is what
+   * distinguishes a correct ayah range from a wrong one, because it is an
+   * independent reading rather than a property of the alignment being checked.
+   * Roughly 0.9 when the text matches the audio and below 0.15 when it does
+   * not; `null` when there was nothing to compare. See the sidecar's
+   * `align.decode_agreement`.
+   */
+  decodeAgreement?: number | null;
   /** Present when no reference was supplied and the passage was found from the audio. */
   detectedRange: {
     /** Every passage found. A recitation is often Al-Fatihah plus a surah. */
@@ -83,12 +94,10 @@ async function requestAlignment(params: {
   serviceUrl: string;
   audio: File;
   reference: string;
-  detectRepeats: boolean;
 }): Promise<AlignResponse> {
   const formData = new FormData();
   formData.append('audio', params.audio);
   formData.append('reference', params.reference);
-  formData.append('detect_repeats', String(params.detectRepeats));
 
   const base = params.serviceUrl.replace(/\/$/, '');
   let res: Response;
@@ -182,7 +191,6 @@ export async function runForcedAlignMatch(params: {
   start?: number;
   end?: number;
   autoDetect?: boolean;
-  detectRepeats?: boolean;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
   /** Set when auto-detect was asked for but the sidecar couldn't do it. */
@@ -212,8 +220,7 @@ export async function runForcedAlignMatch(params: {
     result = await requestAlignment({
       serviceUrl: params.serviceUrl,
       audio: params.audio,
-      reference,
-      detectRepeats: params.detectRepeats ?? true
+      reference
     });
   } catch (err) {
     // Retry with the user's range only when the sidecar said auto-detection is
@@ -243,8 +250,7 @@ export async function runForcedAlignMatch(params: {
       audio: params.audio,
       reference: selected
         .map(verse => `${verse.verseKey}\t${verse.words.map(word => word.arabic).join(' ')}`)
-        .join('\n'),
-      detectRepeats: params.detectRepeats ?? true
+        .join('\n')
     });
     fellBackToSelected = true;
   }
@@ -319,7 +325,8 @@ export async function runForcedAlignMatch(params: {
   console.log(
     `[forcedAligner] aligned ${result.words.length} word(s) from ${rangeLabel} ` +
       `(${detected ? 'auto-detected' : 'selected'}) into ${segments.length} segment(s); ${restarts} restart(s); ` +
-      `mean ${meanScore.toFixed(4)}, coverage ${result.referenceCoverage ?? 'n/a'}.`
+      `mean ${meanScore.toFixed(4)}, coverage ${result.referenceCoverage ?? 'n/a'}, ` +
+      `agreement ${result.decodeAgreement ?? 'n/a'}.`
   );
 
   return {

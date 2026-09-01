@@ -39,6 +39,10 @@ MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "200"))
 #: what it must avoid is nagging about a correct alignment that stops a couple of
 #: words short, which the phrase search can legitimately do at a trailing pause.
 MIN_REFERENCE_COVERAGE = float(os.getenv("ALIGN_MIN_REFERENCE_COVERAGE", "0.75"))
+#: Below this, what the recogniser heard and what the aligner placed there stop
+#: describing the same recitation, which in practice means the text is not what
+#: this audio says. See `align.decode_agreement` for the measurements.
+MIN_DECODE_AGREEMENT = float(os.getenv("ALIGN_MIN_DECODE_AGREEMENT", "0.40"))
 # Long voiced spans are split so a single forward pass never blows up memory.
 MAX_CHUNK_SECONDS = float(os.getenv("MAX_CHUNK_SECONDS", "25"))
 
@@ -286,7 +290,6 @@ async def transcribe(
 async def align_endpoint(
     audio: UploadFile = File(...),
     reference: str = Form(""),
-    detect_repeats: bool = Form(True),
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -388,35 +391,42 @@ async def align_endpoint(
     segments = result.segments
     mean_score = result.mean_score
     coverage = result.reference_coverage
+    agreement = result.decode_agreement
     warning = None
 
     # Alignment cannot fail loudly -- it fits whatever text it is given -- so
     # this is the only place a wrong ayah range gets caught.
     #
-    # Coverage is checked first because it is the signal that works. Mean score
-    # does not: measured on the reference clip, six wrong ranges scored
-    # 0.1475-0.2550 against 0.2923 for the correct one, and
-    # MIN_PLAUSIBLE_MEAN_SCORE fired for none of them. Coverage separated the
-    # same cases completely (1.00 vs 0.04-0.60), because a wrong reference
-    # cannot be walked to its end.
-    if coverage < MIN_REFERENCE_COVERAGE:
+    # Neither figure this used to test can do the job now, and one of them
+    # never could. Mean score does not separate the cases at all: over six
+    # wrong ranges it ran *higher* than the correct one (0.947 against 0.696),
+    # because a confident path over the wrong words is still a confident path.
+    # Coverage did separate them while phrase assignment decided the timeline,
+    # but one global forced alignment places every reference word by
+    # construction, so it now reads 1.00 for right and wrong alike -- it is a
+    # completeness check on this pipeline, not evidence about the passage.
+    #
+    # Decode agreement replaces it because it is an independent reading rather
+    # than a property of the thing being checked: what the recogniser heard in
+    # each second, against what the aligner put there. Measured across two
+    # clips, 0.888 and 0.873 for the correct range against 0.010-0.121 for six
+    # wrong ones, and 0.479 for a reference covering only part of its audio.
+    if agreement is not None and agreement < MIN_DECODE_AGREEMENT:
         warning = (
-            f"Only {coverage:.0%} of the supplied text could be matched to this audio. "
-            "The ayah range probably does not match the recording, or the recording covers "
-            "only part of it."
+            f"What this recording says and the supplied text only agree {agreement:.0%} of the way. "
+            "The ayah range probably does not match the recording."
         )
         log.warning("%s (reference was %d words, mean score %.4f)", warning, len(ref_words), mean_score)
-    elif mean_score < align.MIN_PLAUSIBLE_MEAN_SCORE:
+    elif coverage < MIN_REFERENCE_COVERAGE:
         warning = (
-            f"Mean per-word confidence is {mean_score:.4f}, far below what a correct match produces. "
-            "The selected ayah range probably does not match this audio."
+            f"Only {coverage:.0%} of the supplied text was given any time in this recording. "
+            "The range is probably wider than the audio."
         )
         log.warning("%s (reference was %d words)", warning, len(ref_words))
-
     elapsed = time.perf_counter() - started
     log.info(
         "aligned %d reference word(s) into %d segment(s) (%d restart(s)) over %.1fs of audio in %.1fs, "
-        "mean score %.3f, coverage %.2f",
+        "mean score %.3f, coverage %.2f, decode agreement %s",
         len(ref_words),
         len(segments),
         sum(1 for segment in segments if segment.is_restart),
@@ -424,6 +434,7 @@ async def align_endpoint(
         elapsed,
         mean_score,
         coverage,
+        "n/a" if agreement is None else "%.2f" % agreement,
     )
 
     return {
@@ -437,5 +448,6 @@ async def align_endpoint(
         "segments": [segment.to_dict() for segment in segments],
         "meanScore": round(mean_score, 4),
         "referenceCoverage": coverage,
+        "decodeAgreement": agreement,
         "warning": warning,
     }
