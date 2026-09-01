@@ -312,6 +312,10 @@ earned its share of the provider matrix. Their reasoning is preserved in the git
 
 ## Reproducing the measurements
 
+The recitation clips these figures come from are **not in the repo** — they are large binaries
+that belong to whoever is testing, and `.gitignore` excludes audio. Supply your own paths; the
+ground truth in `scripts/expected_segments.txt` is specific to the 33:21–23 clip.
+
 ```bash
 # forced alignment vs. free decoding
 asr-service/.venv/bin/python scripts/spike_forced_align.py path/to/clip.mp3 33 21 23

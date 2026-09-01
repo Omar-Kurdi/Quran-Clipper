@@ -56,3 +56,12 @@ asr-service/=*
 # rather than tracked. Remove these two lines if you would rather commit them.
 /AGENTS.md
 /CLAUDE.md
+
+# Recitation clips used for evaluation. Kept out of the repo because they are
+# large binaries that change often and belong to whoever is testing, not to the
+# project. `scripts/eval_segments.py` and the sidecar both take an audio path,
+# so point them at your own files -- see docs/ALIGNMENT.md.
+*.mp3
+*.wav
+*.m4a
+*.ogg
