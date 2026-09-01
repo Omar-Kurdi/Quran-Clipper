@@ -1505,18 +1505,24 @@ def _extend_over_repeated_tail(
     index_of = {(key, position): i for i, (key, position, _) in enumerate(ref_words)}
     out: list[Segment] = []
 
-    for segment, span in zip(segments, spans):
+    for position, (segment, span) in enumerate(zip(segments, spans)):
         out.append(segment)
         if not span:
             continue
         spoken_until = max(word.end for word in span)
-        if segment.end - spoken_until < MIN_REPEAT_TAIL_SEC:
+        # Up to where the next segment's first word begins -- the whole of the
+        # audio no word accounts for. Not `segment.end`: segments are made to
+        # meet later, and measuring against a boundary that has already been
+        # closed leaves only half the gap to read.
+        following = next((s for s in spans[position + 1 :] if s), None)
+        unclaimed_until = min(s.start for s in following) if following else segment.end
+        if unclaimed_until - spoken_until < MIN_REPEAT_TAIL_SEC:
             continue
         last = index_of.get((segment.verse_key, segment.end_word))
         if last is None:
             continue
 
-        chunk = pcm[int(spoken_until * SAMPLE_RATE) : int(segment.end * SAMPLE_RATE)]
+        chunk = pcm[int(spoken_until * SAMPLE_RATE) : int(unclaimed_until * SAMPLE_RATE)]
         if len(chunk) < SAMPLE_RATE // 4:
             continue
         emission = compute_emission(chunk)
@@ -1542,7 +1548,7 @@ def _extend_over_repeated_tail(
             segment.start,
             segment.end,
             len(sequence),
-            segment.end - spoken_until,
+            unclaimed_until - spoken_until,
             ratio,
             " ".join(ref_words[i][2] for i in sequence),
         )
@@ -1551,7 +1557,10 @@ def _extend_over_repeated_tail(
             start_word=segment.start_word,
             end_word=ref_words[sequence[-1]][1],
             start=segment.start,
-            end=segment.end,
+            # It was still reciting right up to the next segment, so it should
+            # still be on screen: this is a caption that ended too early, not
+            # only one missing words.
+            end=round(unclaimed_until, 3),
             score=segment.score,
             is_restart=segment.is_restart,
         )
@@ -1634,6 +1643,25 @@ def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, 
     if run is not None and (len(db) - run) * window_sec >= MIN_PAUSE_SEC:
         spans.append((run * window_sec, len(db) * window_sec))
     return spans
+
+
+def _close_gaps(segments: list[Segment], duration: float) -> list[Segment]:
+    """Make consecutive segments meet, so a caption never blinks out.
+
+    Runs *after* `_extend_over_repeated_tail`, and has to. Closing first hides
+    the very evidence that pass reads: it looks at the audio between a
+    segment's last aligned word and the next segment's first, and once the two
+    have been made to meet in the middle only half of that is left. Decoding
+    that half of one gap gave `وَامٌ وَاقب`, which matches nothing, where the
+    whole gap reads `عِلَف طَهِّرًا` and matches at once.
+    """
+    for earlier, later in zip(segments, segments[1:]):
+        middle = round((earlier.end + later.start) / 2, 3)
+        earlier.end = middle
+        later.start = middle
+    if segments and 0 < duration - segments[-1].end < 2.0:
+        segments[-1].end = round(duration, 3)
+    return segments
 
 
 def _segment_the_timeline(
@@ -1755,16 +1783,6 @@ def _segment_the_timeline(
         previous_end = script[cut]
         first = cut + 1
 
-    # Close the gaps between consecutive segments, so a caption never blinks
-    # out during the breath before the next line. Splitting the silence rather
-    # than extending either side keeps each segment over its own audio.
-    for earlier, later in zip(segments, segments[1:]):
-        middle = round((earlier.end + later.start) / 2, 3)
-        earlier.end = middle
-        later.start = middle
-    if segments and 0 < duration - segments[-1].end < 2.0:
-        segments[-1].end = round(duration, 3)
-
     return segments, spans
 
 
@@ -1885,7 +1903,7 @@ def align_recitation(
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
     segments, spans = _segment_the_timeline(aligned, script, duration, quiet_spans(pcm))
-    segments = _extend_over_repeated_tail(segments, spans, ref_words, pcm)
+    segments = _close_gaps(_extend_over_repeated_tail(segments, spans, ref_words, pcm), duration)
 
     if decoded_phrases is None and align_backend() == "nemo":
         # Not free, but this is the only check that can catch a wrong ayah

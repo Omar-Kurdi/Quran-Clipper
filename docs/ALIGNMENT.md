@@ -203,6 +203,14 @@ What handles repeats today is the decode: a phrase recited twice simply matches 
 place in the reference twice, and the overlap falls out as a restart. That is what produces the
 deliberately overlapping segments in `scripts/expected_segments.txt`, and it recovers them.
 
+The narrower case of a reciter repeating only the *closing* words of a phrase before going on is
+handled by `_extend_over_repeated_tail`, which reads the audio between one segment's last aligned
+word and the next segment's first. **Its pass order is load-bearing.** Segments are made to meet
+each other (`_close_gaps`) only *after* it runs: closing first leaves it half the gap to read, and
+that half decodes to `وَامٌ وَاقب`, which matches nothing, where the whole gap reads `عِلَف طَهِّرًا`
+and matches at once. Getting that order wrong silently dropped `أَن طَهِّرَا` from the segment that
+recited it.
+
 ---
 
 ## The wrong-passage problem

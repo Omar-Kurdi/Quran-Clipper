@@ -163,6 +163,23 @@ check(
     f"split into {[(s.start_word, s.end_word) for s in segments]}",
 )
 
+# The tail pass reads the audio between one segment's last word and the next
+# segment's first. Closing that gap before it runs leaves it only half to read,
+# which is how a segment silently stopped picking up words the reciter repeated
+# at its end. So the splitter must hand back *tight* segments.
+tight, _ = align._segment_the_timeline(run, script, 5.0, pauses=[(1.85, 2.65)])
+check(
+    "segments come back tight, leaving the gap for the tail pass to read",
+    all(b.start > a.end for a, b in zip(tight, tight[1:])),
+    f"got {[(s.start, s.end) for s in tight]}",
+)
+closed = align._close_gaps(tight, 5.0)
+check(
+    "and closing them afterwards leaves no hole for a caption to blink out in",
+    all(abs(b.start - a.end) < 1e-6 for a, b in zip(closed, closed[1:])),
+    f"got {[(s.start, s.end) for s in closed]}",
+)
+
 print("\nrestarts")
 # The reciter says words 0-2, goes back, and carries on past where they stopped.
 back = [
