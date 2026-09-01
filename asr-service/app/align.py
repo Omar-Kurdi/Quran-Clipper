@@ -34,7 +34,6 @@ and the state keying in `assign_phrase_ranges_by_decode` are what stop that;
 
 from __future__ import annotations
 
-import bisect
 import difflib
 import logging
 import os
@@ -1461,20 +1460,6 @@ def assign_phrase_ranges_by_decode(
 #: stop after.
 _WAQF_MARKS = re.compile(r"[\u06D6-\u06DC]")
 
-#: A waqf mark says a stop is *allowed* there; these say the reciter took one.
-#: Expressed as a multiple of the recitation's own median inter-word gap so it
-#: travels across reciters and tempos rather than encoding one reading's speed,
-#: with a floor for very fast recitation.
-#:
-#: Measured across three clips: the gap at a waqf mark ran to a 1.41s median
-#: against 0.24s between ordinary words, and the one waqf mark the ground truth
-#: does *not* break at sat at 0.24s -- the reciter simply carried straight
-#: through it. Seven waqf marks is thin evidence for the exact number; the
-#: 6x separation behind it is not.
-WAQF_PAUSE_FACTOR = 1.5
-MIN_WAQF_PAUSE_SEC = 0.30
-
-
 #: Unexplained audio at the end of a segment worth investigating for a repeat.
 #: Every segment carries some trailing decay before the next boundary -- 1.0 to
 #: 1.5s across the clips measured -- while the one phrase a reciter said twice
@@ -1578,26 +1563,84 @@ def _extend_over_repeated_tail(
 # Segmentation from the aligned timeline
 # ---------------------------------------------------------------------------
 
-#: Backstop for a silence so long that something must have ended, with no waqf
-#: mark to license it. Deliberately far above the waqf threshold, because pause
-#: length on its own does not order these cases: measured on real recitation a
-#: 1.91s pause fell *inside* a phrase that must not be split, while a break the
-#: reader plainly hears had only 0.56s of quiet. The mark is what makes a short
-#: pause meaningful; length alone is only trustworthy at the extreme.
-BREATH_PAUSE_FACTOR = 8.0
-MIN_BREATH_PAUSE_SEC = 2.0
-
 #: Evidence a decoded phrase must carry before it is allowed to say anything
 #: about *where* in the reference the reciter is. See `carries_position`.
 MIN_ANCHOR_TOKENS = 2
 MIN_ANCHOR_CHARS = 4
 
 
+#: A pause on a stop mark only has to be long enough to be deliberate; the
+#: mark carries the rest of the decision. Expressed against the clip's own
+#: word gaps so it travels across reciters and tempos.
+WAQF_PAUSE_FACTOR = float(os.getenv("ALIGN_WAQF_PAUSE_FACTOR", "1.5"))
+MIN_WAQF_PAUSE_SEC = float(os.getenv("ALIGN_MIN_WAQF_PAUSE_SEC", "0.30"))
+
+#: Rank of the frame-energy distribution treated as "the reciter is not making
+#: sound right now". A rank rather than a level, because how quiet a recording
+#: gets between phrases is a property of the room: on two clips measured here
+#: the same absolute drop found 28 real pauses in one and 4 in the other, and
+#: the second was not the one with fewer pauses -- it was the reverberant one.
+QUIET_PERCENTILE = float(os.getenv("ALIGN_QUIET_PERCENTILE", "16"))
+
+#: Quiet shorter than this is the ordinary articulation gap between two words,
+#: not a stop.
+MIN_PAUSE_SEC = float(os.getenv("ALIGN_MIN_PAUSE_SEC", "0.18"))
+
+#: How long the reciter must stop for it to end a line with no waqf mark
+#: licensing it. Duration cannot make this call on its own, which is why the
+#: mark is consulted first: in one clip a 0.20s quiet after لَكُم and a 0.26s
+#: quiet after رِزْقًا ۚ are the same length, and only the second ends a phrase.
+#: What separates them is where the sentence ends, and the mushaf's stop marks
+#: are the tradition's own annotation of exactly that. So a mark needs only
+#: weak corroboration that the reciter did stop, while stopping *without* one
+#: has to carry the whole decision by itself and needs much more.
+MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.6"))
+
+
+def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
+    """Stretches where the reciter is not making sound.
+
+    An unmarked break is corroborated against *this*, not against holes in the
+    alignment: a hole means the path had no text for those frames, which is
+    what a repeated phrase or a smeared word looks like, and measured on real
+    recitation those holes contain speech at 68-132% of average level.
+
+    A rank rather than a level, because how quiet a recording gets between
+    phrases is mostly a property of the room. On two clips here the same
+    absolute drop found 28 pauses in one and 4 in the other, and the second was
+    not the one that paused less -- it was the reverberant one, whose real
+    stops never fall as far. `detect_boundaries` uses the same idea for the
+    same reason; this is a separate, tighter setting because it is deciding
+    rather than offering candidates.
+    """
+    hop = max(1, int(window_sec * SAMPLE_RATE))
+    frames = np.array(
+        [np.sqrt(np.mean(pcm[i : i + hop] ** 2) + 1e-12) for i in range(0, max(1, len(pcm) - hop), hop)]
+    )
+    if not len(frames):
+        return []
+    db = 20 * np.log10(frames + 1e-12)
+    threshold = float(np.percentile(db, QUIET_PERCENTILE))
+
+    spans: list[tuple[float, float]] = []
+    run: int | None = None
+    for i, hushed in enumerate(db < threshold):
+        if hushed and run is None:
+            run = i
+        elif not hushed and run is not None:
+            if (i - run) * window_sec >= MIN_PAUSE_SEC:
+                spans.append((run * window_sec, i * window_sec))
+            run = None
+    if run is not None and (len(db) - run) * window_sec >= MIN_PAUSE_SEC:
+        spans.append((run * window_sec, len(db) * window_sec))
+    return spans
+
+
 def _segment_the_timeline(
     aligned: list[AlignedWord],
     script: list[int],
     duration: float,
-    boundaries: list[float] | None = None,
+    pauses: list[tuple[float, float]] | None = None,
 ) -> tuple[list[Segment], list[list[AlignedWord]]]:
     """Cut the aligned word sequence into on-screen segments.
 
@@ -1609,15 +1652,27 @@ def _segment_the_timeline(
     spoken first, and a segment is only ever a *grouping* of consecutive words,
     so no segment can span audio its own words do not cover.
 
-    A line breaks where a reader would break it: at the end of an ayah, where
-    the reciter went back to repeat something, at a mushaf stop mark the
-    reciter actually paused on, or at a silence long enough to be a breath.
-    Note what is *not* a reason to break -- a dip in the energy envelope. The
-    dip detector is deliberately generous ("candidates for the search to choose
-    from"), and treating its output as decisions is what split a continuous
-    `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` into two captions across a breath the
-    reciter never took.
-    """
+    A line breaks at the end of an ayah, where the reciter went back to repeat
+    something, at a mushaf stop mark they paused on, or at a silence too long
+    for anything else to explain.
+
+    The stop mark carries most of that decision, and it has to, because the
+    two signals available without it do not order these cases. Pause *length*
+    does not: 0.20s of quiet after لَكُم and 0.26s after رِزْقًا ۚ are the same
+    pause, and only the second ends a phrase -- what separates them is where
+    the sentence ends, which the mushaf already annotates and the audio does
+    not. A gap in the *alignment* does not either, and is worse than useless:
+    a hole in the path means it had no text for those frames, which is what a
+    repeat or a smeared word looks like, and on one 250s clip every unmarked
+    break taken from a hole landed on no silence at all -- several on
+    stretches louder than the clip average. That is what split a continuous
+    `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` where the reciter never stopped.
+
+    So a mark needs only weak corroboration that the reciter did pause, and
+    that can come from the word gap. Breaking *without* a mark has to carry
+    the whole decision alone, so it needs real silence in the audio, and
+    enough of it that nothing articulatory accounts for it.
+        """
     if not aligned:
         return [], []
 
@@ -1626,51 +1681,61 @@ def _segment_the_timeline(
         for word, nxt in zip(aligned, aligned[1:])
         if word.verse_key == nxt.verse_key
     )
-    # The gap between two words of one breath, from the clip's own timing, so
-    # the thresholds travel across reciters and tempos. Taken from the lower
-    # half rather than the median of everything: the pauses are in this list
-    # too, and letting them set the scale of "no pause" pulls the bar up until
-    # nothing clears it -- which silently under-split every clip it was tried on.
+    # What "no pause" costs this reciter, from the clip's own timing. Taken
+    # from the lower half rather than the median of everything, because the
+    # real pauses are in this list too and letting them set the scale of "no
+    # pause" pulls the bar up until nothing clears it.
     typical = statistics.median(gaps[: max(1, len(gaps) // 2)]) if gaps else 0.0
     waqf_pause = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * typical)
-    breath_pause = max(MIN_BREATH_PAUSE_SEC, BREATH_PAUSE_FACTOR * typical)
-
-    dips = sorted(boundaries or ())
-
-    def dipped(after: float, before: float) -> bool:
-        """Did the energy envelope find a dip in this gap too?
-
-        The dip detector measures something the word gap does not -- sustained
-        low energy over a 20ms envelope -- so where the two agree the pause is
-        real. Neither is enough alone: a dip on its own is only a candidate,
-        and acting on every one of them is what split a continuous
-        `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` where the reciter never paused. A
-        gap on its own does not order these cases either -- 0.48s ends a line
-        here while 0.56s two words earlier does not. The conjunction carries.
-        """
-        i = bisect.bisect_left(dips, after - 0.05)
-        return i < len(dips) and dips[i] <= before + 0.05
 
     # Index of the last word of each piece.
-    cuts: list[int] = []
+    cuts: set[int] = set()
     for i, (word, nxt) in enumerate(zip(aligned, aligned[1:])):
-        gap = nxt.start - word.end
         if word.verse_key != nxt.verse_key:
-            cuts.append(i)
+            cuts.add(i)
         elif script[i + 1] <= script[i]:
             # The reciter went back rather than on: a restart starts its own line.
-            cuts.append(i)
-        elif gap >= waqf_pause and (_WAQF_MARKS.search(word.text) or dipped(word.end, nxt.start)):
-            cuts.append(i)
-        elif gap >= breath_pause:
-            cuts.append(i)
-    cuts.append(len(aligned) - 1)
+            cuts.add(i)
+        elif _WAQF_MARKS.search(word.text) and nxt.start - word.end >= waqf_pause:
+            cuts.add(i)
+
+    # Breaking with no mark to license it takes far stronger evidence, and it
+    # has to come from the audio. An alignment gap will not do: a hole in the
+    # path means it had no text for those frames, which is what a repeated or
+    # smeared word looks like, and on one 250s clip *every* unmarked break
+    # taken from a hole landed on no silence at all -- several on stretches
+    # louder than the clip average. That is what split a continuous
+    # `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` where the reciter never stopped: the
+    # 0.20s of quiet after لَكُم is the same length as the 0.26s after رِزْقًا ۚ,
+    # and only the second one ends a phrase.
+    for pause_start, pause_end in pauses or ():
+        if pause_end - pause_start < MIN_UNMARKED_PAUSE_SEC:
+            continue
+        if any(word.start < pause_start and pause_end < word.end for word in aligned):
+            # Quiet wholly inside one word is that word's own stop consonant.
+            continue
+        # Anchored on where the silence began rather than on the gap between
+        # two words, because the aligner routinely stretches a word across it.
+        before = [i for i, word in enumerate(aligned[:-1]) if word.end <= pause_start + 0.10]
+        if not before:
+            continue
+        i = max(before, key=lambda i: aligned[i].end)
+        if aligned[i + 1].start < pause_start - 0.10:
+            # The next word had already begun before this quiet started, so the
+            # silence does not lie between the two and cannot separate them.
+            # Without this the run-out at the end of a recording -- silence
+            # after the final word, not between anything -- cut the last word
+            # off into a caption of its own.
+            continue
+        cuts.add(i)
+
+    cuts.add(len(aligned) - 1)
 
     segments: list[Segment] = []
     spans: list[list[AlignedWord]] = []
     first = 0
     previous_end = -1
-    for cut in cuts:
+    for cut in sorted(cuts):
         span = aligned[first : cut + 1]
         if not span:
             continue
@@ -1819,12 +1884,7 @@ def align_recitation(
     # this placed all 177 words with a mean ayah-start error of 0.48s.
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
-    # Only the dips the assignment search *kept*. The candidate list is
-    # deliberately generous and includes dips that search declined because
-    # using one would have cut a word in half; those are the ones that must not
-    # come back as segment breaks here.
-    kept_dips = sorted({edge for _, _, _, start, end in assignments for edge in (start, end)})
-    segments, spans = _segment_the_timeline(aligned, script, duration, kept_dips)
+    segments, spans = _segment_the_timeline(aligned, script, duration, quiet_spans(pcm))
     segments = _extend_over_repeated_tail(segments, spans, ref_words, pcm)
 
     if decoded_phrases is None and align_backend() == "nemo":

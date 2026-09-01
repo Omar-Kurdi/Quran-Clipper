@@ -123,16 +123,35 @@ Measured against per-ayah ground truth on that same 220s passage, the single ali
 
 Segments are a grouping of consecutive aligned words, so a segment can never span audio its own
 words do not cover. A line ends at an ayah boundary, where the reciter went back on themselves,
-at a mushaf stop mark the reciter *actually paused on*, or at a silence long enough that
-something must have ended.
+at a mushaf stop mark they paused on, or at a silence too long for anything else to explain.
 
-Pause length alone cannot make this decision, and the measurements say so plainly: a **1.91s**
-pause fell inside a phrase that must not be split, while a break the reader plainly hears had
-only **0.56s** of quiet. Nor can the energy dips — they are candidates offered generously for
-the search to choose from, and treating every one as a decision is what split a continuous
-`وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` across a breath the reciter never took. What works is the
-conjunction: a dip **and** a measurable gap in the alignment, or a stop mark **and** a pause on
-it. Both signals are weak alone.
+**The stop mark carries most of that decision, and it has to.** Neither signal available without
+it can order the cases:
+
+- **Pause length cannot.** In one clip 0.20s of quiet after `لَكُم` and 0.26s after `رِزْقًا ۚ` are
+  the same pause, and only the second ends a phrase. An earlier measurement found the same thing
+  from the other direction: a 1.91s pause fell *inside* a phrase that must not be split, while a
+  break the reader plainly hears had only 0.56s of quiet. What separates them is where the
+  sentence ends — which the mushaf annotates and the audio does not.
+- **A gap in the alignment cannot, and is worse than useless.** A hole in the path means it had
+  no text for those frames, which is what a repeat or a smeared word looks like. Of the twelve
+  within-ayah breaks taken from alignment holes on one 250s clip, **every one landed on no
+  silence at all** — several on stretches *louder* than the clip average.
+
+So a mark needs only weak corroboration that the reciter did stop, and the word gap supplies
+that. Breaking *without* a mark carries the whole decision alone, so it demands real measured
+silence, and enough of it (`ALIGN_MIN_UNMARKED_PAUSE_SEC`, 0.6s) that nothing articulatory
+accounts for it.
+
+Silence is found by rank (`ALIGN_QUIET_PERCENTILE`) rather than by an absolute drop, because how
+quiet a recording gets between phrases is largely a property of the room: at the same absolute
+threshold two clips here yielded 28 pauses and 4, and the second was not the one that paused
+less — it was the reverberant one.
+
+Two further rules fall out of getting this wrong once each. Quiet lying wholly inside a word is
+that word's own stop consonant, not a break. And silence must actually *separate* two words —
+the run-out at the end of a recording is silence after the last word, not between anything, and
+without that check it cut the final word off into a caption of its own.
 
 ---
 

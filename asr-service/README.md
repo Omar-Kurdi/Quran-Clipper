@@ -137,6 +137,9 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |
 | `ASR_WARM_UP` | `1` | Load the decode model at startup instead of on first request. |
 | `ASR_NEMO_DECODER` | `rnnt` | `rnnt` or `ctc` for the hybrid NeMo model. |
+| `ALIGN_QUIET_PERCENTILE` | `16` | Rank of frame energy treated as "not making sound", for segment breaks. |
+| `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.6` | Silence needed to end a line with no waqf mark licensing it. Raise it if lines break mid-phrase. |
+| `ALIGN_MIN_WAQF_PAUSE_SEC` | `0.30` | Pause needed on a stop mark for it to end a line. |
 | `ALIGN_MIN_DECODE_AGREEMENT` | `0.40` | Below this agreement between decode and alignment, `/align` sets `warning`. This is the wrong-passage guard. |
 | `ALIGN_MIN_REFERENCE_COVERAGE` | `0.75` | Below this fraction of the supplied text being recited at all, `/align` sets `warning`. |
 | `ALIGN_DIP_PERCENTILE` | `15` | Energy percentile treated as a phrase boundary. |
@@ -276,7 +279,10 @@ with a log line naming them.
 
 Segments are groupings of consecutive aligned words, so a segment never spans audio its own
 words do not cover. A line ends at an ayah boundary, where the reciter went back on themselves,
-at a mushaf stop mark they actually paused on, or at a long enough silence.
+at a mushaf stop mark they actually paused on, or at a silence long enough that nothing else
+explains it. The mark does most of the work: pause length alone cannot tell a phrase ending from
+an ordinary breath, so breaking without one needs far stronger evidence
+(`ALIGN_MIN_UNMARKED_PAUSE_SEC`). See [../docs/ALIGNMENT.md](../docs/ALIGNMENT.md).
 **Consecutive segments may overlap in word range** — that is a reciter restarting an earlier
 phrase and carrying further (`is_restart`), not a bug.
 

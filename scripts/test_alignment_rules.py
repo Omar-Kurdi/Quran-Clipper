@@ -88,13 +88,13 @@ print("\n_segment_the_timeline -- where a line may break")
 run = [
     word("40:13", 0, "هُوَ", 0.0, 0.5),
     word("40:13", 1, "الَّذِي", 0.6, 1.1),       # 0.10s -- no pause
-    word("40:13", 2, "يُرِيكُمْ ۖ", 1.2, 1.8),    # waqf mark, followed by 0.9s
+    word("40:13", 2, "يُرِيكُمْ ۖ", 1.2, 1.8),    # the reciter stops here
     word("40:13", 3, "آيَاتِهِ", 2.7, 3.3),
     word("40:14", 0, "فَادْعُوا", 3.5, 4.1),
     word("40:14", 1, "اللَّهَ", 4.2, 4.8),
 ]
 script = [0, 1, 2, 3, 4, 5]
-segments, _ = align._segment_the_timeline(run, script, 5.0)
+segments, _ = align._segment_the_timeline(run, script, 5.0, pauses=[(1.85, 2.65)])
 starts = [(s.verse_key, s.start_word, s.end_word) for s in segments]
 check(
     "an ayah boundary always ends a line",
@@ -102,7 +102,7 @@ check(
     f"got {starts}",
 )
 check(
-    "a waqf mark the reciter stopped on ends a line",
+    "a silence the reciter took ends a line",
     ("40:13", 0, 2) in starts,
     f"got {starts}",
 )
@@ -120,9 +120,45 @@ smooth = [
     word("40:13", 8, "السَّمَاءِ", 2.0, 2.7),
     word("40:13", 9, "رِزْقًا", 2.8, 3.6),
 ]
-segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, boundaries=[1.45])
+segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, pauses=[])
 check(
-    "a dip the reciter did not pause on does not split a phrase",
+    "with no silence in it, a phrase is not split",
+    len(segments) == 1,
+    f"split into {[(s.start_word, s.end_word) for s in segments]}",
+)
+
+# The bug this was written for. لَكُم carries no stop mark, and the 0.20s of
+# quiet after it is the ordinary gap between two words -- the same length as
+# the quiet after رِزْقًا ۚ, which *does* end the phrase. Only the mark separates
+# them, so length alone must not be allowed to break here.
+segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, pauses=[(1.42, 1.62)])
+check(
+    "a brief pause with no stop mark does not split a phrase",
+    len(segments) == 1,
+    f"split into {[(s.start_word, s.end_word) for s in segments]}",
+)
+
+# Long enough that nothing articulatory explains it.
+segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, pauses=[(1.42, 2.12)])
+check(
+    "but a long one does, after the word that finished before the silence",
+    len(segments) == 2 and segments[0].end_word == 6,
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
+)
+
+# Silence after the last word is the recording running out, not a break before
+# anything -- this used to cut the final word off into a caption of its own.
+segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 5.5, pauses=[(3.7, 5.5)])
+check(
+    "run-out silence at the end does not orphan the last word",
+    len(segments) == 1 and segments[0].end_word == 9,
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
+)
+
+# Quiet inside a word is that word's own stop consonant, not a break.
+segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, pauses=[(2.1, 2.6)])
+check(
+    "quiet wholly inside a word is not a break",
     len(segments) == 1,
     f"split into {[(s.start_word, s.end_word) for s in segments]}",
 )
