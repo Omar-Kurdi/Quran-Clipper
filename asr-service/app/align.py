@@ -1629,6 +1629,11 @@ def _fill_gaps_with_repeats(
     is handed.
     """
     applied: list[dict] = []
+    # Parallel to `script`: True where this pass put a word back because the
+    # audio says it was recited again. A backward step at one of these is a
+    # repeat that has already been verified acoustically, which is a different
+    # thing from two windows of the assignment search claiming the same word.
+    inserted = [False] * len(script)
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
     limit = 2 * len(ref_words)
     spelling = {i: "".join(_skeleton(t) for t in ref_words[i][2].split()) for i in range(len(ref_words))}
@@ -1696,9 +1701,10 @@ def _fill_gaps_with_repeats(
             }
         )
         script = script[:insert_at] + sequence + script[insert_at:]
+        inserted = inserted[:insert_at] + [True] * len(sequence) + inserted[insert_at:]
         aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
-    return script, applied
+    return script, applied, inserted
 
 
 #: Tanween, and the vowels whose absence leaves a letter sākin.
@@ -1932,6 +1938,11 @@ QUIET_DROP_DB = float(os.getenv("ALIGN_QUIET_DROP_DB", "10"))
 #: anything a word could fit inside.
 QUIET_MERGE_SEC = float(os.getenv("ALIGN_QUIET_MERGE_SEC", "0.12"))
 
+#: How far short of a word's end a silence may stop and still be read as
+#: following that word. Beyond this the word is plainly still being said after
+#: the quiet, so the quiet is inside it rather than at the join.
+MAX_PAUSE_INSET = float(os.getenv("ALIGN_MAX_PAUSE_INSET", "0.25"))
+
 #: Quiet shorter than this is the ordinary articulation gap between two words,
 #: not a stop.
 MIN_PAUSE_SEC = float(os.getenv("ALIGN_MIN_PAUSE_SEC", "0.18"))
@@ -2032,6 +2043,7 @@ def _segment_the_timeline(
     script: list[int],
     duration: float,
     pauses: list[tuple[float, float]] | None = None,
+    repeated: list[bool] | None = None,
 ) -> tuple[list[Segment], list[list[AlignedWord]]]:
     """Cut the aligned word sequence into on-screen segments.
 
@@ -2103,7 +2115,15 @@ def _segment_the_timeline(
             # the utterances; that is a boundary cutting close to a word so
             # both windows read it. The stop counts whether it shows as a gap
             # between the two or as silence the aligner covered over.
-            if nxt.start - word.end >= MIN_RESTART_GAP_SEC or stopped_between(word, nxt):
+            # Either side: a phrase put back before the run it repeats leaves
+            # the backward step on the *original* word, not the inserted one.
+            verified = bool(repeated) and i + 1 < len(repeated) and (repeated[i] or repeated[i + 1])
+            if verified or nxt.start - word.end >= MIN_RESTART_GAP_SEC or stopped_between(word, nxt):
+                # `verified` is a repeat the audio was read for and found to
+                # contain those words again; it needs no separate proof that
+                # the reciter stopped. Asking for one anyway hid a repetition
+                # of وَلَقَدْ أَرْسَلْنَا مُوسَىٰ behind a smeared بِـَٔايَـٰتِنَا, which
+                # left the whole passage on screen as though said once.
                 cuts.add(i)
 
     # A stop mark plus the reciter's own hesitation ends a line. The gap is
@@ -2147,6 +2167,15 @@ def _segment_the_timeline(
         if not begun:
             continue
         i = max(begun)
+        if pause_end < aligned[i].end - MAX_PAUSE_INSET:
+            # The silence stops well before this word does, so the word is
+            # still going afterwards and the quiet is somewhere inside it, not
+            # at the join. A word the aligner has stretched still ends where it
+            # ends: لِّمَنِ smeared over 1.83s has 0.4s of quiet in its first
+            # half and 0.6s of word after it, and splitting there left ٱلْمُلْكُ
+            # alone in a caption. A silence the reciter really took runs *to*
+            # the end of the word before it, or past it.
+            continue
         follows = aligned[i + 1].start >= pause_start - 0.10
         covered = pause_end <= aligned[i].end + 0.10
         if not follows and not covered:
@@ -2307,7 +2336,7 @@ def align_recitation(
     # Give the reciter's own repeats text of their own, so the words around a
     # hole are not stretched across audio that said something else. See
     # `_fill_gaps_with_repeats`.
-    script, repeats = _fill_gaps_with_repeats(pcm, ref_words, script, emission, sec_per_frame)
+    script, repeats, repeated = _fill_gaps_with_repeats(pcm, ref_words, script, emission, sec_per_frame)
 
     # The one pass that decides all timing, over the whole clip at once.
     # Monotonic and gapless by construction: every scripted word is given
@@ -2316,7 +2345,7 @@ def align_recitation(
     # this placed all 177 words with a mean ayah-start error of 0.48s.
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
-    segments, spans = _segment_the_timeline(aligned, script, duration, quiet_spans(pcm))
+    segments, spans = _segment_the_timeline(aligned, script, duration, quiet_spans(pcm), repeated)
     segments = _close_gaps(_extend_over_repeated_tail(segments, spans, ref_words, pcm), duration)
 
     if decoded_phrases is None and align_backend() == "nemo":

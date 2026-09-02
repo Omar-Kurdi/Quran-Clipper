@@ -307,6 +307,26 @@ hesitation and the mark has nothing to stand on, so the decision falls to measur
 `نَارًا وَقُودُهَا` is a ghunnah join with 0.72s of real quiet, against 0.30s and 0.00s where they
 did not — it simply is not *proven* by the gap being there.
 
+### A silence has to belong to the join it is blamed for
+
+The aligner stretches words, so "which junction is this pause at?" is not the same question as
+"which word started before it". `لِّمَنِ` smeared over 1.83s has 0.4s of quiet in its first half
+and 0.6s of word still to come after it; blaming that quiet on the join after `لِّمَنِ` left
+`ٱلْمُلْكُ` alone in a caption. A silence the reciter really took runs *to* the end of the word
+before it or past it, so one that stops more than `ALIGN_MAX_PAUSE_INSET` short of that end is
+inside the word rather than at the join. The distinction matters both ways: test4's 1.42s pause
+also sits inside a stretched word, but runs past its end, and must still break.
+
+### A verified repeat needs no second proof
+
+A backward step in the script has two possible sources, and they deserve different treatment. Two
+windows of the assignment search claiming the same word 0.08s apart is a boundary artifact and
+needs evidence the reciter stopped. A phrase `_fill_gaps_with_repeats` put back is one whose audio
+was read and found to contain those words again — the stop is not in question, and demanding a gap
+on top of it hid a second recitation of `وَلَقَدْ أَرْسَلْنَا مُوسَىٰ` behind a smeared `بِـَٔايَـٰتِنَا`,
+leaving the passage on screen as though it were said once. The script now carries which words were
+put back, and those are trusted.
+
 ### Trimming must not change the answer
 
 The same passage has to segment the same way whether it is read out of a 96-second excerpt or the
