@@ -518,8 +518,11 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
   once the container runtime itself starts; on a desktop that usually needs
   `systemctl --user enable --now podman-restart.service`. Check with `podman ps` before
   assuming the app is at fault.
-- Stop and start the database with `podman stop quranclipper-db` / `podman start
-  quranclipper-db`. To wipe it completely, `podman rm -f quranclipper-db && podman volume rm
+- Stop and start the database with `npm run db:stop` / `npm run db:start`, and check it with
+  `npm run db:status`. These wrap `scripts/db.sh`, which uses podman if it is installed and
+  docker otherwise, and creates the container on first run — so `npm run db:start` is all you
+  need whether or not it exists yet. The equivalents by hand are `podman stop quranclipper-db`
+  / `podman start quranclipper-db`. To wipe it completely, `podman rm -f quranclipper-db && podman volume rm
   quranclipper-pgdata`.
 
 ---
@@ -529,7 +532,7 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
 **`POST /api/projects 500` and saving fails**
 Read the `error` in the response — it names the cause and, for the two common ones, the fix.
 Hovering **Save project** in the studio shows the same line. `connect ECONNREFUSED` means the
-database is not running (`podman start quranclipper-db`); `column … does not exist` means the
+database is not running (`npm run db:start`); `column … does not exist` means the
 schema is behind (`npm run db:push`). The other frequent cause is a `DATABASE_URL` that is set
 but unreachable — most often the placeholder `postgres://USER:PASSWORD@HOST:PORT/DATABASE`
 left uncommented in `.env.local`. The API only falls back to in-memory storage when the

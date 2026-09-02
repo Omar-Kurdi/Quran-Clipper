@@ -18,9 +18,11 @@ interface ColorFieldProps {
  * be a different screen from the studio. So the sliders and the hex field are
  * ordinary markup in the panel and always work where the swatch is.
  *
- * The native picker is still offered, as the last cell of the swatch grid:
+ * The native picker is still offered, as the *first* cell of the swatch grid:
  * eleven quick picks read as the only eleven colours on offer, and an eyedropper
  * and a colour wheel are worth a wandering dialog when you actually want them.
+ * First rather than last because the browser anchors that dialog to the input,
+ * and from the last cell of a right-hand panel it opened past the window edge.
  *
  * It expands in the flow rather than floating: the inspector column scrolls,
  * and an absolutely positioned popover either clips against that scroller or
@@ -141,22 +143,18 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
       {open && (
         <div className="p-2 pt-0 flex flex-col gap-2">
           <div className="grid grid-cols-6 gap-1.5">
-            {PRESETS.map(hex => (
-              <button
-                key={hex}
-                type="button"
-                title={hex}
-                onClick={() => applyPreset(hex)}
-                className={`h-6 rounded border transition-transform hover:scale-105 ${
-                  value.toLowerCase() === hex ? 'border-amber-400 ring-1 ring-amber-400/60' : 'border-slate-700'
-                }`}
-                style={{ background: hex }}
-              />
-            ))}
-            {/* Any colour at all. The input is transparent and stretched over
-                the cell so the cell itself is the swatch: a bare
-                `<input type="color">` renders as a chunky OS-styled button that
-                sits nothing like the eleven beside it. */}
+            {/* Any colour at all. First cell, not last: the browser draws this
+                dialog itself and anchors it to the input, so from the last cell
+                of a right-hand panel it opens past the edge of the window and
+                gets clipped. Anchoring it at the left of the panel gives it the
+                panel's whole width to open across. Its exact placement is still
+                the browser's to decide -- which is why the sliders below exist
+                and can reach every colour without it.
+
+                The input is transparent and stretched over the cell so the cell
+                itself is the swatch: a bare `<input type="color">` renders as a
+                chunky OS-styled button that sits nothing like the eleven beside
+                it. */}
             <label
               title="Pick any colour"
               className="relative h-6 rounded border border-slate-700 overflow-hidden cursor-pointer transition-transform hover:scale-105"
@@ -173,6 +171,18 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
             </label>
+            {PRESETS.map(hex => (
+              <button
+                key={hex}
+                type="button"
+                title={hex}
+                onClick={() => applyPreset(hex)}
+                className={`h-6 rounded border transition-transform hover:scale-105 ${
+                  value.toLowerCase() === hex ? 'border-amber-400 ring-1 ring-amber-400/60' : 'border-slate-700'
+                }`}
+                style={{ background: hex }}
+              />
+            ))}
           </div>
 
           <label className="block">

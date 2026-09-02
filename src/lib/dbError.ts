@@ -24,7 +24,7 @@ export function describeDbError(err: unknown): string {
   }
 
   if (/ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|Connection terminated/i.test(reason)) {
-    return `${reason} — the database named by DATABASE_URL is not reachable. Start Postgres (see "Database" in the README), or unset DATABASE_URL to keep saving in memory.`;
+    return `${reason} — the database named by DATABASE_URL is not reachable. Start it with \`npm run db:start\`, or unset DATABASE_URL to keep saving in memory.`;
   }
   if (/(column|relation|table).*does not exist/i.test(reason)) {
     return `${reason} — the database is missing part of the schema. Run \`npm run db:push\`.`;

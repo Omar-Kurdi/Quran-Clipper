@@ -87,7 +87,15 @@ export function getPrimaryTimelineSummary(segments: MatchSegment[], selectedSura
   return {
     surahNumber: firstSurah,
     surahNameArabic: uniqueSurahs.length === 1 ? firstSurahMeta.nameArabic : 'تلاوة متعددة السور',
-    surahNameEnglish: timelineTitle,
+    // The surah's name, and only its name. This used to be `timelineTitle`,
+    // which carries the matched range -- so everything downstream that wanted
+    // to say "which surah" said "At-Tahrim 1-12" instead, and then added its
+    // own range on top: a badge reading `At-Tahrim 1-12 (66:6-8)` and an export
+    // filename with the range in it twice. The range belongs to whatever is
+    // being described at the time, and after trimming that is no longer the
+    // range this match was detected over. `timelineTitle` is still returned
+    // alongside for the one place that wants the matched span as a label.
+    surahNameEnglish: uniqueSurahs.length === 1 ? firstSurahMeta.nameEnglish : 'Matched Quran Timeline',
     ayahStart: firstAyah,
     ayahEnd: uniqueSurahs.length === 1 ? lastAyah : firstAyah,
     timelineTitle

@@ -30,9 +30,13 @@ interface GpuExportModalProps {
  * a downloads folder. The name used to say `QuranClip`, which told you nothing
  * about which clip it was once several had been rendered.
  *
- * Characters that are illegal in filenames are stripped -- but not the colon
- * the format asks for, which is legal on Linux and macOS; on Windows the
- * browser substitutes it when saving.
+ * The ayah range is the one on the timeline, not the one that was matched or
+ * selected: trimming drops ayahs without rewriting those, so a clip cut down to
+ * 66:6-8 was being filed under the 1-12 it was cut from.
+ *
+ * Characters that are illegal in filenames are stripped. There is deliberately
+ * no timestamp -- re-exporting the same passage should produce the same name,
+ * and the browser disambiguates a collision by appending its own counter.
  */
 export function exportFileName(
   surahNameEnglish: string,
@@ -40,8 +44,8 @@ export function exportFileName(
   ayahStart: number,
   ayahEnd: number
 ): string {
-  const name = surahNameEnglish.trim().replace(/\s+/g, '_').replace(/[/\\?%*|"<>]/g, '') || 'QuranClip';
-  return `${name}_${surahNumber}:${ayahStart}-${ayahEnd}_${Date.now()}.webm`;
+  const name = surahNameEnglish.trim().replace(/\s+/g, '_').replace(/[/\\?%*|"<>:]/g, '') || 'QuranClip';
+  return `${name}_${surahNumber}_${ayahStart}-${ayahEnd}.webm`;
 }
 
 export const GpuExportModal: React.FC<GpuExportModalProps> = ({
