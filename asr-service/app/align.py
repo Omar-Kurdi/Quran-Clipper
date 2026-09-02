@@ -1452,13 +1452,35 @@ def assign_phrase_ranges_by_decode(
     return _absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries)
 
 
-#: The mushaf's own stop signs (U+06D6..U+06DC). Unlike the end-of-ayah mark
-#: and the hizb mark they carry no text of their own -- they are instructions
-#: to the reciter about where a pause is permitted, which is exactly the
-#: question segmentation has to answer. `split_verse_words` glues them onto the
-#: word they follow, so they arrive here attached to the word they license a
-#: stop after.
-_WAQF_MARKS = re.compile(r"[\u06D6-\u06DC]")
+#: The mushaf's own annotation of where a reciter may stop, which is the
+#: question segmentation has to answer. `split_verse_words` glues these onto
+#: the word they follow, so they arrive attached to the word they govern.
+#:
+#: They are *not* interchangeable, and treating them as one class was wrong in
+#: both directions. Two of them forbid stopping rather than permitting it:
+#:
+#: * ``U+06D9`` (ۙ, لا) is lā -- do not stop, the meaning breaks if you do.
+#: * ``U+06DC`` (ۜ, س) marks a saktah: a brief pause taken *without* breathing
+#:   and without ending the phrase, so it is the opposite of a line ending.
+#:
+#: The rest permit a stop with different force, and that force decides how much
+#: corroboration the audio has to supply (see `_stop_licence`).
+_NEVER_STOP_MARKS = re.compile(r"[\u06D9\u06DC]")
+
+#: ``U+06D8`` (ۘ, م) is waqf lāzim: stopping is compulsory because continuing
+#: changes the meaning. Only 22 of them in the whole Quran, and at one the
+#: reciter always stops -- so the least hesitation is enough to act on.
+_COMPULSORY_STOP_MARK = re.compile(r"\u06D8")
+
+#: ``U+06DB`` (ۛ, mu'ānaqa) comes in pairs and means "stop at one of these two,
+#: never both": having stopped at the first, stopping at the second leaves the
+#: sense incomplete. Twelve in the whole Quran.
+_EITHER_OR_STOP_MARK = re.compile(r"\u06DB")
+
+#: ``U+06D6`` (ۖ, صلى, continuing is better), ``U+06D7`` (ۗ, قلى, stopping is
+#: better) and ``U+06DA`` (ۚ, ج, either is allowed). All are permission rather
+#: than instruction, so each still needs the reciter's own pause to confirm it.
+_WAQF_MARKS = re.compile(r"[\u06D6\u06D7\u06DA\u06DB]")
 
 #: Unexplained audio at the end of a segment worth investigating for a repeat.
 #: Every segment carries some trailing decay before the next boundary -- 1.0 to
@@ -1474,6 +1496,155 @@ MIN_REPEAT_TAIL_CHARS = 3
 
 #: Agreement between what the tail reads and the words that follow it.
 MIN_REPEAT_TAIL_MATCH = 0.6
+
+
+#: A hole in the alignment narrower than this is ordinary word spacing.
+REPEAT_GAP_SEC = float(os.getenv("ALIGN_REPEAT_GAP_SEC", "0.6"))
+
+#: How many words a reciter may go back over when resuming. The practice is to
+#: repeat the last word or two so the resumed phrase still carries its meaning;
+#: allowing a long run instead lets this explain a hole with whatever fits.
+MAX_REPEAT_WORDS = int(os.getenv("ALIGN_MAX_REPEAT_WORDS", "4"))
+
+#: The aligner tends to stretch the word *before* a hole into it, swallowing
+#: the onset of what was repeated. Reading a little earlier than the hole
+#: recovers it: at the hole exactly, 33:22's repeated قَالُوا۟ reads back as
+#: `طامُوا` and matches nothing; 0.2s earlier it reads `قَالُوا`.
+REPEAT_LEAD_SEC = 0.2
+
+#: How much of the candidate's spelling has to turn up in what was heard.
+#: Measured as recall of the candidate rather than similarity between the two,
+#: because the read-out of a hole carries bleed from its neighbours: against
+#: `كذبقل` the correct قَالُوا۟ recalls 1.00 where plain similarity gives 0.57,
+#: which is below any threshold that also rejects the wrong candidate (0.25).
+MIN_REPEAT_MATCH = float(os.getenv("ALIGN_MIN_REPEAT_MATCH", "0.75"))
+
+#: Too little read back to identify anything.
+MIN_REPEAT_CHARS = 2
+
+#: Guard against a runaway: a recitation can be half repeats, but not twice its
+#: own reference text.
+MAX_REPEAT_INSERTIONS = 12
+
+
+def _fill_gaps_with_repeats(
+    pcm: np.ndarray,
+    ref_words: list[tuple[str, int, str]],
+    script: list[int],
+    emission,
+    sec_per_frame: float,
+) -> tuple[list[int], list[dict]]:
+    """Account for audio the script has no text for, using the words around it.
+
+    Reciters resume by going back. Having stopped for breath they repeat the
+    last word or two before carrying on, so the resumed phrase still reads
+    whole -- the practice of ibtidā', and the tradition is explicit that after
+    a pause you return far enough for the meaning to stand. A straight script
+    has each word once, so the *first* utterance of the repeated words has no
+    text to sit on, and the words around it get stretched over that audio.
+
+    The hole is the signal, not the silence. The breath before a resumed phrase
+    is often far too short to register as a pause: for the قَالُوا۟ of 33:22,
+    recited twice, no dip threshold offers a boundary between the two
+    utterances, yet the hole between them is 1.43s wide.
+
+    Candidates are read rather than scored acoustically, which is the part the
+    earlier attempt got wrong. Against the clip-wide emission these frames
+    carry ~0.99 blank probability despite plainly containing speech, so every
+    candidate scores *worse than silence* -- the correct قَالُوا۟ here scores
+    -22.6 against it. Decoding the hole on its own emission answers the same
+    question directly, because NeMo normalises features over whatever window it
+    is handed.
+    """
+    applied: list[dict] = []
+    aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
+    limit = 2 * len(ref_words)
+    spelling = {i: "".join(_skeleton(t) for t in ref_words[i][2].split()) for i in range(len(ref_words))}
+
+    for _ in range(MAX_REPEAT_INSERTIONS):
+        if len(script) >= limit:
+            log.warning("repeat detection stopped: script grew to %d words from %d", len(script), len(ref_words))
+            break
+
+        best = None  # (matched chars, recall, insert_at, sequence)
+        for k in range(len(aligned) - 1):
+            if aligned[k + 1].start - aligned[k].end <= REPEAT_GAP_SEC:
+                continue
+            start_at = max(0.0, aligned[k].end - REPEAT_LEAD_SEC)
+            chunk = pcm[int(start_at * SAMPLE_RATE) : int(aligned[k + 1].start * SAMPLE_RATE)]
+            if len(chunk) < SAMPLE_RATE // 4:
+                continue
+            hole_emission = compute_emission(chunk)
+            heard = "".join(
+                _skeleton(t) for t in decode_window(hole_emission, 0, hole_emission.shape[1]).split()
+            )
+            if len(heard) < MIN_REPEAT_CHARS:
+                continue
+
+            for length in range(1, MAX_REPEAT_WORDS + 1):
+                runs = []
+                if k + 1 - length >= 0:  # the words just recited, said again
+                    runs.append(script[k + 1 - length : k + 1])
+                if k + 1 + length <= len(script):  # a run-up to the words about to be recited
+                    runs.append(script[k + 1 : k + 1 + length])
+                for sequence in runs:
+                    spelled = "".join(spelling[i] for i in sequence)
+                    if len(spelled) < MIN_REPEAT_CHARS:
+                        continue
+                    matcher = difflib.SequenceMatcher(None, heard, spelled)
+                    matched = sum(block.size for block in matcher.get_matching_blocks())
+                    recall = matched / len(spelled)
+                    if recall < MIN_REPEAT_MATCH:
+                        continue
+                    # More of the candidate actually heard wins, so a longer
+                    # real repeat beats a short one that merely fits.
+                    if best is None or (matched, recall) > best[:2]:
+                        best = (matched, recall, k + 1, list(sequence))
+
+        if best is None:
+            break
+
+        matched, recall, insert_at, sequence = best
+        spoken = " ".join(ref_words[i][2] for i in sequence)
+        log.info(
+            "repeat at %.1fs: %d word(s) recited again (%.0f%% of their spelling heard) -- %r",
+            aligned[insert_at - 1].end,
+            len(sequence),
+            recall * 100,
+            spoken,
+        )
+        applied.append(
+            {
+                "atSeconds": round(aligned[insert_at - 1].end, 2),
+                "words": len(sequence),
+                "match": round(recall, 2),
+                "text": spoken,
+            }
+        )
+        script = script[:insert_at] + sequence + script[insert_at:]
+        aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
+
+    return script, applied
+
+
+def _stop_licence(text: str) -> str:
+    """What the mushaf says about stopping after this word.
+
+    ``"never"``   -- lā or a saktah: stopping breaks the sense, so no line ends here.
+    ``"always"``  -- waqf lāzim: the reciter stops, so the least hesitation confirms it.
+    ``"paired"``  -- mu'ānaqa: allowed, but only at one of the pair.
+    ``"allowed"`` -- an ordinary permitted stop, needing the reciter's own pause.
+    ``"none"``    -- no mark; only real silence can end a line here.
+    """
+    if _NEVER_STOP_MARKS.search(text):
+        return "never"
+    if _COMPULSORY_STOP_MARK.search(text):
+        return "always"
+    if _EITHER_OR_STOP_MARK.search(text):
+        return "paired"
+    if _WAQF_MARKS.search(text):
+        return "allowed"
+    return "none"
 
 
 def _extend_over_repeated_tail(
@@ -1718,13 +1889,26 @@ def _segment_the_timeline(
 
     # Index of the last word of each piece.
     cuts: set[int] = set()
+    paired_used: int | None = None
     for i, (word, nxt) in enumerate(zip(aligned, aligned[1:])):
+        licence = _stop_licence(word.text)
+        gap = nxt.start - word.end
         if word.verse_key != nxt.verse_key:
             cuts.add(i)
         elif script[i + 1] <= script[i]:
             # The reciter went back rather than on: a restart starts its own line.
             cuts.add(i)
-        elif _WAQF_MARKS.search(word.text) and nxt.start - word.end >= waqf_pause:
+        elif licence == "never":
+            # لا, or a saktah -- pausing here breaks the sense, so whatever the
+            # audio did, this is not the end of a line.
+            continue
+        elif licence == "always" and gap > 0:
+            cuts.add(i)
+        elif licence == "paired" and paired_used is None:
+            if gap >= waqf_pause:
+                cuts.add(i)
+                paired_used = i
+        elif licence == "allowed" and gap >= waqf_pause:
             cuts.add(i)
 
     # Breaking with no mark to license it takes far stronger evidence, and it
@@ -1748,6 +1932,10 @@ def _segment_the_timeline(
         if not before:
             continue
         i = max(before, key=lambda i: aligned[i].end)
+        if _stop_licence(aligned[i].text) == "never":
+            # The reciter did stop, but the mushaf says the sense does not
+            # break here -- so neither should the caption.
+            continue
         if aligned[i + 1].start < pause_start - 0.10:
             # The next word had already begun before this quiet started, so the
             # silence does not lie between the two and cannot separate them.
@@ -1894,6 +2082,11 @@ def align_recitation(
         script.extend(range(begin, finish + 1))
     if not script:
         script = list(range(len(ref_words)))
+
+    # Give the reciter's own repeats text of their own, so the words around a
+    # hole are not stretched across audio that said something else. See
+    # `_fill_gaps_with_repeats`.
+    script, repeats = _fill_gaps_with_repeats(pcm, ref_words, script, emission, sec_per_frame)
 
     # The one pass that decides all timing, over the whole clip at once.
     # Monotonic and gapless by construction: every scripted word is given

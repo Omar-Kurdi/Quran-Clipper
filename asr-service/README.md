@@ -137,6 +137,8 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |
 | `ASR_WARM_UP` | `1` | Load the decode model at startup instead of on first request. |
 | `ASR_NEMO_DECODER` | `rnnt` | `rnnt` or `ctc` for the hybrid NeMo model. |
+| `ALIGN_MIN_REPEAT_MATCH` | `0.75` | How much of a repeated phrase's spelling must be heard in the gap it explains. |
+| `ALIGN_MAX_REPEAT_WORDS` | `4` | How far back a reciter is assumed to go when resuming. |
 | `ALIGN_QUIET_PERCENTILE` | `16` | Rank of frame energy treated as "not making sound", for segment breaks. |
 | `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.6` | Silence needed to end a line with no waqf mark licensing it. Raise it if lines break mid-phrase. |
 | `ALIGN_MIN_WAQF_PAUSE_SEC` | `0.30` | Pause needed on a stop mark for it to end a line. |

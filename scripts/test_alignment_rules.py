@@ -180,6 +180,41 @@ check(
     f"got {[(s.start, s.end) for s in closed]}",
 )
 
+print("\nstop marks -- they do not all mean the same thing")
+check(
+    "لا (U+06D9) forbids stopping",
+    align._stop_licence("فَلَا\u06D9") == "never",
+    f'got {align._stop_licence("فَلَا\u06D9")}',
+)
+check(
+    "a saktah (U+06DC) is a pause without ending the phrase",
+    align._stop_licence("عِوَجَا\u06DC") == "never",
+)
+check(
+    "waqf lazim (U+06D8) is compulsory",
+    align._stop_licence("كَلَّا\u06D8") == "always",
+)
+check(
+    "mu'anaqa (U+06DB) is one of a pair",
+    align._stop_licence("فِيهِ\u06DB") == "paired",
+)
+for mark, name in (("\u06D6", "صلى"), ("\u06D7", "قلى"), ("\u06DA", "ج")):
+    check(f"{name} permits a stop", align._stop_licence("كَلِمَةٌ" + mark) == "allowed")
+check("a plain word carries no licence", align._stop_licence("كَلِمَةٌ") == "none")
+
+# A line must not break where the mushaf says the sense does not.
+forbidden = [
+    word("40:13", 0, "هُوَ", 0.0, 0.5),
+    word("40:13", 1, "ٱلَّذِى\u06D9", 0.6, 1.1),   # لا -- do not stop
+    word("40:13", 2, "يُرِيكُمْ", 2.4, 3.0),
+]
+segments, _ = align._segment_the_timeline(forbidden, [0, 1, 2], 3.0, pauses=[(1.15, 2.35)])
+check(
+    "a long silence does not break a line the mushaf marks لا",
+    len(segments) == 1,
+    f"split into {[(s.start_word, s.end_word) for s in segments]}",
+)
+
 print("\nrestarts")
 # The reciter says words 0-2, goes back, and carries on past where they stopped.
 back = [

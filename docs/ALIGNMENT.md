@@ -186,22 +186,36 @@ The curve has a clear interior maximum at k=5 — it climbs, peaks, then falls b
 no-repeat baseline. That *shape* is the result: a mechanical "more tokens always score better"
 bias would rise monotonically. The reciter says `لَّقَدْ كَانَ لَكُمْ فِى رَسُولِ` twice.
 
-`detect_repeats` implemented exactly this — for each unexplained gap, score candidate runs of
-nearby reference text against only that gap's frames, with "these frames are blank" as the null
-hypothesis — and **it has been removed.** The table above is a spike result, not a shipped one.
+`_fill_gaps_with_repeats` does this, and the rule it encodes comes from the recitation tradition
+rather than from the signal. Reciters resume by **going back**: having stopped for breath they
+repeat the last word or two before carrying on, so the resumed phrase still reads whole. That is
+*ibtidā'*, and the tradition is explicit — after a pause you return far enough for the meaning to
+stand.
 
-Wiring it into the pipeline was tried and measured worse: on the reference clip it missed all
-four restarts in the ground truth and inserted two spurious one-word repeats, dropping segment
-accuracy from 9/11 to 4/11. Two reasons were visible in its design. It only examined gaps
-*between* aligned words, so a recitation that opens by restarting — which this clip does —
-leaves its evidence in a leading gap the loop never looked at. And a tiny word could win a gap
-it did not remotely fill, because the per-frame gain ranking candidates never required the
-inserted text to account for the gap's *duration*. Both are fixable, and the reasoning above is
-worth keeping; the code is in the git history rather than sitting unused in the module.
+A straight script has each word once, so the *first* utterance of the repeated words has no text
+to sit on, and the words around it get stretched over that audio. **The hole is the signal, not
+the silence.** The breath before a resumed phrase is often far too short to register as a pause
+at all: 33:22's `قَالُوا۟` is recited twice and no dip threshold offers a boundary between the two
+utterances, yet the hole between them is 1.43s wide.
 
-What handles repeats today is the decode: a phrase recited twice simply matches near the same
-place in the reference twice, and the overlap falls out as a restart. That is what produces the
-deliberately overlapping segments in `scripts/expected_segments.txt`, and it recovers them.
+Candidates are **read**, not scored acoustically — and this is where the earlier attempt went
+wrong. Against the clip-wide emission these frames carry ~0.99 blank probability despite plainly
+containing speech, so every candidate scores *worse than silence*: the correct `قَالُوا۟` scores
+−22.6 against the null. Decoding the hole on its own emission answers the question directly,
+because NeMo normalises features over whatever window it is handed.
+
+Two details earn their keep:
+
+- **Read from slightly before the hole.** The aligner stretches the preceding word into it and
+  swallows the repeat's onset. At the hole exactly, that `قَالُوا۟` reads back `طامُوا` and matches
+  nothing; 0.2s earlier it reads `قَالُوا`.
+- **Score by recall of the candidate, not similarity.** A hole's read-out carries bleed from its
+  neighbours. Against `كذبقل` the correct `قَالُوا۟` recalls 1.00 where plain similarity gives 0.57
+  — below any threshold that also rejects the wrong candidate at 0.25.
+
+An earlier `detect_repeats` scored candidates acoustically and by likelihood gain *per frame*, so
+a one-syllable word could win a hole many times its own length; on the reference clip it filled
+two holes with `عَلَيْهِ` and found no real repeat at all. It has been removed; this replaced it.
 
 The narrower case of a reciter repeating only the *closing* words of a phrase before going on is
 handled by `_extend_over_repeated_tail`, which reads the audio between one segment's last aligned
@@ -210,6 +224,43 @@ each other (`_close_gaps`) only *after* it runs: closing first leaves it half th
 that half decodes to `وَامٌ وَاقب`, which matches nothing, where the whole gap reads `عِلَف طَهِّرًا`
 and matches at once. Getting that order wrong silently dropped `أَن طَهِّرَا` from the segment that
 recited it.
+
+---
+
+## Recitation rules the segmenter uses
+
+Two things the audio cannot tell you, which the text and the tradition can.
+
+### The stop marks are not interchangeable
+
+The mushaf's marks (U+06D6–U+06DC) were all being treated as "the reciter may stop here". They do
+not all mean that, and two of them mean the opposite:
+
+| mark | name | meaning | count in the Quran |
+|---|---|---|---|
+| `ۙ` | lā | **do not stop** — the meaning breaks if you do | 68 |
+| `ۜ` | saktah | brief pause taken **without breathing**, phrase continues | 7 |
+| `ۘ` | lāzim | **compulsory** stop | 22 |
+| `ۛ` | mu'ānaqa | stop at **one** of a pair, never both | 12 |
+| `ۗ` | qilā (al-waqf awlā) | stopping is better | 603 |
+| `ۚ` | jīm (jā'iz) | either is allowed | 1972 |
+| `ۖ` | ṣalā (al-waṣl awlā) | continuing is better | 1682 |
+
+`_stop_licence` sorts them into what the segmenter needs: `never` (lā, saktah — no line ends here
+however long the silence), `always` (lāzim — the reciter always stops, so the least hesitation
+confirms it), `paired` (mu'ānaqa — used at most once per pair), and `allowed` (the rest, still
+needing the reciter's own pause as corroboration).
+
+### Resuming means going back
+
+See [Repeated phrases](#repeated-phrases). Briefly: a reciter who stops for breath repeats the
+last word or two before continuing, so this pipeline must be able to represent the same words
+twice and does — as an overlapping pair of segments, flagged `is_restart`.
+
+Sources for the above: [Bayan Al Quran Academy on waqf and
+ibtidā'](https://bayanulquran-academy.com/waqf-and-ibtida/), [Riwaq Al Quran on stopping
+rules](https://riwaqalquran.com/blog/what-are-the-rules-of-stopping-when-reading-quran/),
+[Quranica on tajweed symbols](https://quranica.com/articles/tajweed-symbols-and-stop-signs/).
 
 ---
 
