@@ -292,18 +292,40 @@ repo for `/transcribe` — scores 5 of 9 against known truth and agrees with the
 **The answer was that two of those junctions are not silence at all.** A ghunnah is a nasal hum
 held about two counts: quiet, flat and sustained, which is the same shape as silence to anything
 measuring level. `لَكُم مِّنَ` merges two mīms into one held nasal (idghām mutamāthilain), and
-`بِكَلِمَـٰتٍ فَأَتَمَّهُنَّ` hides the tanween's nūn behind one (ikhfā'). The reciter never stopped —
-they were still saying the word.
+`بِكَلِمَـٰتٍ فَأَتَمَّهُنَّ` hides the tanween's nūn behind one (ikhfā'). A **madd** does the same with a
+vowel: `وَٱغْفِرْ لَنَآ ۖ إِنَّكَ` holds one across the join for several counts (madd munfasil) and shows
+0.88s of gap without a single quiet frame in it — enough, before this, for the stop mark on `لَنَآ ۖ`
+to put a caption boundary mid-phrase. In none of these did the reciter stop; they were still
+saying the word.
 
-It is inaudible as a break and entirely predictable from the text, so the text settles it.
-`_held_nasal_junction` covers the cases where tajweed holds a nasal across a join: a nūn sākinah
-or tanween before the idghām, iqlāb and ikhfā' letters, and a mīm sākinah before `م` or `ب`.
-Quiet found there is explained by the recitation, so it takes `ALIGN_NASAL_JUNCTION_FACTOR`
-times the usual evidence to call it a stop. A reciter may still stop at such a join — stopping is
-allowed at any word end — it simply is not *proven* by the quiet being there.
+Both are inaudible as breaks and entirely predictable from the text, so the text settles them.
+`_sustained_junction` covers the ghunnah cases — a nūn sākinah or tanween before the idghām,
+iqlāb and ikhfā' letters, and a mīm sākinah before `م` or `ب` — and the madd case, a madd letter
+before hamza. Where the recitation itself accounts for the gap, the gap is not evidence of
+hesitation and the mark has nothing to stand on, so the decision falls to measured silence with
+`ALIGN_NASAL_JUNCTION_FACTOR` times the usual required. A reciter may still stop at such a join —
+`نَارًا وَقُودُهَا` is a ghunnah join with 0.72s of real quiet, against 0.30s and 0.00s where they
+did not — it simply is not *proven* by the gap being there.
+
+### Trimming must not change the answer
+
+The same passage has to segment the same way whether it is read out of a 96-second excerpt or the
+308-second recording it came from. It did not, and the reason was a threshold defined as a *rank*:
+p16 of frame energy sat at −18.0 dB over the whole file and −17.0 dB over the excerpt, which is
+enough to move marginal decisions. The speech level barely moves between the two (−10.1 dB against
+−10.0 dB), being a property of the reciter and the room rather than of how much was kept, so
+silence is now measured relative to that.
+
+Two consequences worth knowing. Quiet broken by a drawn breath is rejoined
+(`ALIGN_QUIET_MERGE_SEC`) — a plain 0.88s pause came back as 24 quiet frames of 46 whose longest
+unbroken run was 0.16s, and was discarded for missing 0.18s by one frame. And
+`ALIGN_MIN_UNMARKED_PAUSE_SEC` is deliberately **not** tuned to its best score: 0.18 scores 11/11
+on the reference clip against 0.30's 9/11, and is still wrong, because it splits `ٱلْأَنْهَـٰرُ` into
+a caption of its own elsewhere and reintroduces the trim/full disagreement. Marginal decisions are
+exactly where the two readings differ, so the bar is kept above them.
 
 With that distinction the remaining rules are simple, and segment accuracy on the reference clip
-went from 9/11 to **11/11**:
+is 9/11:
 
 - a **marked** place needs only the reciter's own hesitation (`ALIGN_MIN_WAQF_PAUSE_SEC`, read
   from the alignment because a real stop in a reverberant room need not go quiet at all);

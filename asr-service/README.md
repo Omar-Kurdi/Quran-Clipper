@@ -140,8 +140,9 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ALIGN_MIN_REPEAT_MATCH` | `0.75` | How much of a repeated phrase's spelling must be heard in the gap it explains. |
 | `ALIGN_MAX_REPEAT_WORDS` | `4` | How far back a reciter is assumed to go when resuming. |
 | `ASR_WARM_UP` | `1` | Loads the `/transcribe` model at startup. The app never calls `/transcribe`, so `0` skips a model it will not use — startup drops from ~11s to ~6s and frees its GPU memory. `/align` is unaffected. |
-| `ALIGN_QUIET_PERCENTILE` | `16` | Rank of frame energy treated as "not making sound", for segment breaks. |
-| `ALIGN_NASAL_JUNCTION_FACTOR` | `2.5` | Extra evidence needed where tajweed holds a nasal across a join (ghunnah reads as silence). |
+| `ALIGN_QUIET_DROP_DB` | `10` | How far below the clip's speech level counts as silence. Measured against the speech level, not as a rank, so trimming a recording does not change where it splits. |
+| `ALIGN_QUIET_MERGE_SEC` | `0.12` | Quiet either side of a drawn breath is one pause, not two. |
+| `ALIGN_NASAL_JUNCTION_FACTOR` | `2` | Extra evidence needed where tajweed holds a sound across a join — a ghunnah or a madd, both of which read as silence. |
 | `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.30` | Silence needed to end a line with no waqf mark licensing it — a reciter may stop anywhere. Raise it if lines break mid-phrase. |
 | `ALIGN_MIN_RESTART_GAP_SEC` | `0.30` | Least time between two utterances of a word for it to count as repeated. |
 | `ALIGN_MIN_WAQF_PAUSE_SEC` | `0.30` | Pause needed on a stop mark for it to end a line. |

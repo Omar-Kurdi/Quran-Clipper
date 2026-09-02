@@ -648,7 +648,7 @@ npx next dev --webpack
   agreement flags this, but prefer one tight range when you know it.
 - Word-level *timing accuracy* has been measured on one 220-second recitation against per-ayah
   ground truth: all 177 words placed, mean ayah-start error 0.48s. Segment-level accuracy is
-  tracked by `scripts/eval_segments.py`, currently 11 of 11 on the reference clip.
+  tracked by `scripts/eval_segments.py`, currently 9 of 11 on the reference clip — see docs/ALIGNMENT.md for why it is not tuned to 11.
 - The aligner holds the whole clip's CTC emissions in memory. Overlapping windows are stitched
   so it degrades gracefully; verified at 220 seconds, so test before relying on it for
   substantially longer recordings.

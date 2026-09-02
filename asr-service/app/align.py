@@ -1713,6 +1713,39 @@ _GHUNNAH_AFTER_NOON = set("يومنب") | set("تثجدذزسشصضطظفقك")
 _GHUNNAH_AFTER_MEEM = set("مب")
 
 
+#: A word ending in a madd letter, before a word opening on hamza, is madd
+#: munfasil: the vowel is held across the join for several counts. Like a
+#: ghunnah it is sustained sound rather than silence, and the aligner leaves it
+#: as a gap -- وَٱغْفِرْ لَنَآ ۖ إِنَّكَ shows 0.88s of it without one quiet frame,
+#: which was enough for a stop mark to put a caption boundary mid-phrase.
+# Alef appears both bare (with a separate maddah sign) and precomposed.
+_MADD_TAIL = "\u0627\u0622\u0648\u064A\u0649"
+_MADDAH = "\u0653"
+_HAMZA_HEAD = "\u0621\u0622\u0623\u0625\u0627\u0649"
+
+
+def _madd_across_junction(first: str, second: str) -> bool:
+    """Is a long vowel held from one word into the next (madd munfasil)?"""
+    letters = [c for c in first if "\u0621" <= c <= "\u064A"]
+    opening = [c for c in second if "\u0621" <= c <= "\u064A"]
+    if not letters or not opening:
+        return False
+    if letters[-1] not in _MADD_TAIL:
+        return False
+    # The maddah sign is the unambiguous case; a bare madd letter before hamza
+    # is the same rule, so both count.
+    return opening[0] in _HAMZA_HEAD or _MADDAH in first
+
+
+def _sustained_junction(first: str, second: str) -> bool:
+    """Does the recitation itself hold a sound across this join?
+
+    Either a ghunnah or a madd. Both are sustained voice rather than silence,
+    both leave a gap in the alignment, and neither is the reciter stopping.
+    """
+    return _held_nasal_junction(first, second) or _madd_across_junction(first, second)
+
+
 def _held_nasal_junction(first: str, second: str) -> bool:
     """Does tajweed hold a nasal across the join between these two words?
 
@@ -1880,12 +1913,24 @@ MIN_ANCHOR_CHARS = 4
 WAQF_PAUSE_FACTOR = float(os.getenv("ALIGN_WAQF_PAUSE_FACTOR", "1.5"))
 MIN_WAQF_PAUSE_SEC = float(os.getenv("ALIGN_MIN_WAQF_PAUSE_SEC", "0.30"))
 
-#: Rank of the frame-energy distribution treated as "the reciter is not making
-#: sound right now". A rank rather than a level, because how quiet a recording
-#: gets between phrases is a property of the room: on two clips measured here
-#: the same absolute drop found 28 real pauses in one and 4 in the other, and
-#: the second was not the one with fewer pauses -- it was the reverberant one.
-QUIET_PERCENTILE = float(os.getenv("ALIGN_QUIET_PERCENTILE", "16"))
+#: How far below the clip's own speech level counts as "not making sound".
+#:
+#: Measured against the speech level rather than as a rank over the clip, so
+#: that trimming a recording does not change where it splits. A rank moves with
+#: whatever else is in the file -- on one recording p16 sat at -18.0 dB over the
+#: whole 308s and -17.0 dB over a 96s excerpt of it, enough to segment identical
+#: audio differently. The speech level barely moves between the two (-10.1 dB
+#: against -10.0 dB), being a property of the reciter and the room rather than
+#: of how much was kept.
+QUIET_DROP_DB = float(os.getenv("ALIGN_QUIET_DROP_DB", "10"))
+
+#: Quiet either side of a brief interruption is one pause. Drawing breath in
+#: the middle of a silence is audible, so the run of quiet frames breaks in two
+#: -- on one clip a plain 0.88s pause came back as 24 quiet frames out of 46
+#: whose longest unbroken run was 0.16s, and was discarded for missing 0.18s by
+#: a single frame. Joining across a gap this short recovers it without joining
+#: anything a word could fit inside.
+QUIET_MERGE_SEC = float(os.getenv("ALIGN_QUIET_MERGE_SEC", "0.12"))
 
 #: Quiet shorter than this is the ordinary articulation gap between two words,
 #: not a stop.
@@ -1902,16 +1947,19 @@ MIN_MARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_MARKED_PAUSE_SEC", "0.18"))
 #: threshold as `MIN_RESTART_GAP_SEC`, which is the point: a stop is a stop,
 #: whether the reciter then repeats a word or starts a new line.
 #:
-#: It cannot go much lower. A mark still needs only the weak corroboration of a
-#: word gap, because in one clip a 0.20s quiet after لَكُم and a 0.26s quiet
-#: after رِزْقًا ۚ are the same length and only the second ends a phrase -- what
-#: separates them is where the sentence ends, which the marks annotate and the
-#: audio does not.
+#: Lowering it to 0.18 scores better on the reference clip (11/11 against 9/11)
+#: and is still the wrong setting: it splits `ٱلْأَنْهَـٰرُ` into a caption of its
+#: own on another recording, and makes the same passage segment differently
+#: depending on how much audio surrounds it. Marginal decisions are where the
+#: two disagree, so the bar is kept above them.
 MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.30"))
 
 #: How much more silence it takes to call a stop where tajweed already holds a
-#: nasal across the join. See `_held_nasal_junction`.
-NASAL_JUNCTION_FACTOR = float(os.getenv("ALIGN_NASAL_JUNCTION_FACTOR", "2.5"))
+#: nasal across the join. Enough to cover the ghunnah itself and no more: on one
+#: clip the held nasals measure 0.00s and 0.30s of quiet where the reciter did
+#: not stop, against 0.72s at a join carrying the same rule where they did.
+#: See `_held_nasal_junction`.
+NASAL_JUNCTION_FACTOR = float(os.getenv("ALIGN_NASAL_JUNCTION_FACTOR", "2"))
 
 
 def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
@@ -1937,20 +1985,27 @@ def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, 
     if not len(frames):
         return []
     db = 20 * np.log10(frames + 1e-12)
-    threshold = float(np.percentile(db, QUIET_PERCENTILE))
+    threshold = float(np.percentile(db, 70)) - QUIET_DROP_DB
 
-    spans: list[tuple[float, float]] = []
+    runs: list[tuple[float, float]] = []
     run: int | None = None
     for i, hushed in enumerate(db < threshold):
         if hushed and run is None:
             run = i
         elif not hushed and run is not None:
-            if (i - run) * window_sec >= MIN_PAUSE_SEC:
-                spans.append((run * window_sec, i * window_sec))
+            runs.append((run * window_sec, i * window_sec))
             run = None
-    if run is not None and (len(db) - run) * window_sec >= MIN_PAUSE_SEC:
-        spans.append((run * window_sec, len(db) * window_sec))
-    return spans
+    if run is not None:
+        runs.append((run * window_sec, len(db) * window_sec))
+
+    # Join runs a breath broke apart, then keep what is long enough to be a stop.
+    merged: list[list[float]] = []
+    for begin, end in runs:
+        if merged and begin - merged[-1][1] <= QUIET_MERGE_SEC:
+            merged[-1][1] = end
+        else:
+            merged.append([begin, end])
+    return [(a, b) for a, b in merged if b - a >= MIN_PAUSE_SEC]
 
 
 def _close_gaps(segments: list[Segment], duration: float) -> list[Segment]:
@@ -2061,7 +2116,17 @@ def _segment_the_timeline(
         if word.verse_key != nxt.verse_key:
             continue
         if _stop_licence(word.text) in ("allowed", "always", "paired"):
-            if nxt.start - word.end >= waqf_pause:
+            # The mark plus the reciter's own hesitation. The gap is read from
+            # the alignment rather than from measured silence, because in a
+            # reverberant recording a real stop need not go quiet at all -- the
+            # break at وَرَسُولُهُۥ ۚ has no quiet frame in it whatever. What keeps
+            # elongation from passing as hesitation here is `_sustained_junction`.
+            if _sustained_junction(word.text, nxt.text):
+                # The recitation itself accounts for the gap, so the gap says
+                # nothing about hesitation and the mark has nothing to stand on.
+                # Leave it to the pause loop below, which asks the audio.
+                pass
+            elif nxt.start - word.end >= waqf_pause:
                 cuts.add(i)
 
     # Every stop the reciter took ends a line. The audio decides this and
@@ -2089,9 +2154,14 @@ def _segment_the_timeline(
             # nothing -- the run-out at the end of a recording is silence after
             # the last word, not between two of them.
             continue
-        bar = MIN_UNMARKED_PAUSE_SEC
-        if _held_nasal_junction(aligned[i].text, aligned[i + 1].text):
-            # A ghunnah is held here, so quiet is expected and proves nothing.
+        marked = _stop_licence(aligned[i].text) in ("allowed", "always", "paired")
+        bar = MIN_MARKED_PAUSE_SEC if marked else MIN_UNMARKED_PAUSE_SEC
+        if _sustained_junction(aligned[i].text, aligned[i + 1].text) and not marked:
+            # A ghunnah or a madd is held across this join, so quiet here is
+            # partly the recitation itself and proves less than usual. With a
+            # mark the bar is already the lower one and the mark carries the
+            # rest: رِزْقًا ۚ is a ghunnah join the reciter does stop at, on 0.26s,
+            # where the unmarked بِكَلِمَـٰتٍ does not on 0.30s.
             bar *= NASAL_JUNCTION_FACTOR
         if length >= bar:
             cuts.add(i)
