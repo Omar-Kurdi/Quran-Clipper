@@ -155,12 +155,13 @@ check(
     f"got {[(s.start_word, s.end_word) for s in segments]}",
 )
 
-# Quiet inside a word is that word's own stop consonant, not a break.
+# Silence the aligner covered over with a word is still silence. Refusing to
+# break there let a 1.42s pause disappear inside a stretched إِلَيْكَ.
 segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, pauses=[(2.1, 2.6)])
 check(
-    "quiet wholly inside a word is not a break",
-    len(segments) == 1,
-    f"split into {[(s.start_word, s.end_word) for s in segments]}",
+    "a stop a stretched word was laid over still ends a line",
+    len(segments) == 2,
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
 )
 
 # The tail pass reads the audio between one segment's last word and the next
@@ -182,7 +183,7 @@ check(
 
 print("\nstop marks -- they do not all mean the same thing")
 check(
-    "لا (U+06D9) forbids stopping",
+    "لا (U+06D9) is read as forbidding a stop",
     align._stop_licence("فَلَا\u06D9") == "never",
     f'got {align._stop_licence("فَلَا\u06D9")}',
 )
@@ -210,9 +211,21 @@ forbidden = [
 ]
 segments, _ = align._segment_the_timeline(forbidden, [0, 1, 2], 3.0, pauses=[(1.15, 2.35)])
 check(
-    "a long silence does not break a line the mushaf marks لا",
+    "the audio wins over the mark: a reciter who stopped at a لا still ends a line",
+    len(segments) == 2,
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
+)
+# What a mark still does is lower the bar, not raise or veto one.
+brief = [
+    word("40:13", 0, "هُوَ", 0.0, 0.5),
+    word("40:13", 1, "ٱلَّذِى ۖ", 0.6, 1.1),
+    word("40:13", 2, "يُرِيكُمْ", 1.25, 2.0),
+]
+segments, _ = align._segment_the_timeline(brief, [0, 1, 2], 2.0, pauses=[])
+check(
+    "a mark with no hesitation behind it does not end a line",
     len(segments) == 1,
-    f"split into {[(s.start_word, s.end_word) for s in segments]}",
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
 )
 
 print("\nrestarts")

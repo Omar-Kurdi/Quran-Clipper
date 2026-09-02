@@ -1840,6 +1840,11 @@ QUIET_PERCENTILE = float(os.getenv("ALIGN_QUIET_PERCENTILE", "16"))
 #: not a stop.
 MIN_PAUSE_SEC = float(os.getenv("ALIGN_MIN_PAUSE_SEC", "0.18"))
 
+#: How long the reciter must stop for at a place the mushaf marks. Lower than
+#: the unmarked bar because less hesitation is needed to mean it there -- but a
+#: mark alone never ends a line. The reciter's own voice decides.
+MIN_MARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_MARKED_PAUSE_SEC", "0.18"))
+
 #: How long the reciter must stop for it to end a line with no waqf mark
 #: licensing it. A reciter may stop anywhere, not only where the mushaf marks
 #: it, so this is not a high bar -- it is the same "they actually stopped"
@@ -1851,7 +1856,7 @@ MIN_PAUSE_SEC = float(os.getenv("ALIGN_MIN_PAUSE_SEC", "0.18"))
 #: after رِزْقًا ۚ are the same length and only the second ends a phrase -- what
 #: separates them is where the sentence ends, which the marks annotate and the
 #: audio does not.
-MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.30"))
+MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.45"))
 
 
 def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
@@ -1952,86 +1957,85 @@ def _segment_the_timeline(
     if not aligned:
         return [], []
 
+    pauses = sorted(pauses or ())
+
     gaps = sorted(
         max(0.0, nxt.start - word.end)
         for word, nxt in zip(aligned, aligned[1:])
         if word.verse_key == nxt.verse_key
     )
-    # What "no pause" costs this reciter, from the clip's own timing. Taken
-    # from the lower half rather than the median of everything, because the
-    # real pauses are in this list too and letting them set the scale of "no
-    # pause" pulls the bar up until nothing clears it.
+    # What "no pause" costs this reciter, from the clip's own timing.
     typical = statistics.median(gaps[: max(1, len(gaps) // 2)]) if gaps else 0.0
     waqf_pause = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * typical)
 
+    def stopped_between(word: AlignedWord, nxt: AlignedWord) -> bool:
+        """Did the reciter actually fall silent around this junction?
+
+        Searched over the whole of both words rather than the gap between them,
+        because the aligner routinely stretches a word across a silence: on one
+        clip إِلَيْكَ was held over a 1.42s pause, leaving the repeat that followed
+        it 0.08s away and looking like an artifact.
+        """
+        return any(
+            end - begin >= MIN_RESTART_GAP_SEC and begin < nxt.end and end > word.start
+            for begin, end in pauses
+        )
+
     # Index of the last word of each piece.
     cuts: set[int] = set()
-    paired_used: int | None = None
     for i, (word, nxt) in enumerate(zip(aligned, aligned[1:])):
-        licence = _stop_licence(word.text)
-        gap = nxt.start - word.end
         if word.verse_key != nxt.verse_key:
             cuts.add(i)
         elif script[i + 1] <= script[i]:
-            # The reciter went back rather than on: a restart starts its own line.
-            #
-            # But only if they had time to. Going back means having stopped,
-            # however briefly, and a word cannot be said twice with 0.08s
-            # between the two utterances -- that is a boundary having cut close
-            # to a word so that the windows either side both read it, not a
-            # repeat. Measured here, the genuine restarts sit at 0.56-1.76s and
-            # the artifact at 0.08s. The test is the gap and not silence,
-            # because the breath before a real repeat is often too short to
-            # register as a pause at all: the قَالُوا۟ of 33:22 is plainly recited
-            # twice with no detectable quiet between the utterances.
-            if gap >= MIN_RESTART_GAP_SEC:
+            # The reciter went back rather than on: a restart starts its own
+            # line -- but only if they stopped first, since going back means
+            # having stopped. A word cannot be said twice with 0.08s between
+            # the utterances; that is a boundary cutting close to a word so
+            # both windows read it. The stop counts whether it shows as a gap
+            # between the two or as silence the aligner covered over.
+            if nxt.start - word.end >= MIN_RESTART_GAP_SEC or stopped_between(word, nxt):
                 cuts.add(i)
-        elif licence == "never":
-            # لا, or a saktah -- pausing here breaks the sense, so whatever the
-            # audio did, this is not the end of a line.
-            continue
-        elif licence == "always" and gap > 0:
-            cuts.add(i)
-        elif licence == "paired" and paired_used is None:
-            if gap >= waqf_pause:
-                cuts.add(i)
-                paired_used = i
-        elif licence == "allowed" and gap >= waqf_pause:
-            cuts.add(i)
 
-    # Breaking with no mark to license it takes far stronger evidence, and it
-    # has to come from the audio. An alignment gap will not do: a hole in the
-    # path means it had no text for those frames, which is what a repeated or
-    # smeared word looks like, and on one 250s clip *every* unmarked break
-    # taken from a hole landed on no silence at all -- several on stretches
-    # louder than the clip average. That is what split a continuous
-    # `وَيُنَزِّلُ لَكُم مِّنَ السَّمَاءِ رِزْقًا` where the reciter never stopped: the
-    # 0.20s of quiet after لَكُم is the same length as the 0.26s after رِزْقًا ۚ,
-    # and only the second one ends a phrase.
-    for pause_start, pause_end in pauses or ():
-        if pause_end - pause_start < MIN_UNMARKED_PAUSE_SEC:
+    # A stop mark plus the reciter's own hesitation ends a line. The gap is
+    # read from the alignment here rather than from measured silence, because
+    # in a reverberant recording a real stop need not go quiet at all: the
+    # break at وَرَسُولُهُۥ ۚ bottoms out at only the 12th percentile of its clip,
+    # shallower than junctions elsewhere where the reciter plainly did not
+    # stop. The mark is what makes the hesitation meaningful.
+    for i, (word, nxt) in enumerate(zip(aligned, aligned[1:])):
+        if word.verse_key != nxt.verse_key:
             continue
-        if any(word.start < pause_start and pause_end < word.end for word in aligned):
-            # Quiet wholly inside one word is that word's own stop consonant.
+        if _stop_licence(word.text) in ("allowed", "always", "paired"):
+            if nxt.start - word.end >= waqf_pause:
+                cuts.add(i)
+
+    # Every stop the reciter took ends a line. The audio decides this and
+    # nothing else does: a stop mark is permission rather than instruction, and
+    # reciters continue past them all the time -- breaking at ٱلْخَيْرِ ۚ on the
+    # strength of the mark alone put a caption boundary where the recitation
+    # ran straight on. All a mark does here is lower the bar for how much
+    # silence counts, because at a place the mushaf marks less hesitation is
+    # needed to mean it. A reciter may stop anywhere, marked or not.
+    for pause_start, pause_end in pauses:
+        length = pause_end - pause_start
+        if length < MIN_MARKED_PAUSE_SEC:
             continue
-        # Anchored on where the silence began rather than on the gap between
-        # two words, because the aligner routinely stretches a word across it.
-        before = [i for i, word in enumerate(aligned[:-1]) if word.end <= pause_start + 0.10]
-        if not before:
+        # The word the reciter had reached when the silence began. Chosen by
+        # where each word *started*, so a word stretched over the silence is
+        # still the one the pause follows.
+        begun = [i for i, word in enumerate(aligned[:-1]) if word.start <= pause_start]
+        if not begun:
             continue
-        i = max(before, key=lambda i: aligned[i].end)
-        if _stop_licence(aligned[i].text) == "never":
-            # The reciter did stop, but the mushaf says the sense does not
-            # break here -- so neither should the caption.
+        i = max(begun)
+        follows = aligned[i + 1].start >= pause_start - 0.10
+        covered = pause_end <= aligned[i].end + 0.10
+        if not follows and not covered:
+            # The next word had already run past this silence, so it separates
+            # nothing -- the run-out at the end of a recording is silence after
+            # the last word, not between two of them.
             continue
-        if aligned[i + 1].start < pause_start - 0.10:
-            # The next word had already begun before this quiet started, so the
-            # silence does not lie between the two and cannot separate them.
-            # Without this the run-out at the end of a recording -- silence
-            # after the final word, not between anything -- cut the last word
-            # off into a caption of its own.
-            continue
-        cuts.add(i)
+        if length >= MIN_UNMARKED_PAUSE_SEC:
+            cuts.add(i)
 
     cuts.add(len(aligned) - 1)
 
