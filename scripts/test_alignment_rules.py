@@ -139,7 +139,7 @@ check(
 )
 
 # Long enough that nothing articulatory explains it.
-segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, pauses=[(1.42, 2.12)])
+segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 3.6, pauses=[(1.42, 2.42)])
 check(
     "but a long one does, after the word that finished before the silence",
     len(segments) == 2 and segments[0].end_word == 6,
@@ -225,6 +225,51 @@ segments, _ = align._segment_the_timeline(brief, [0, 1, 2], 2.0, pauses=[])
 check(
     "a mark with no hesitation behind it does not end a line",
     len(segments) == 1,
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
+)
+
+print("\ntajweed -- a held nasal is not a silence")
+check(
+    "لَكُم مِّنَ merges two mims into one held nasal",
+    align._held_nasal_junction("لَكُم", "مِّنَ"),
+)
+check(
+    "a tanween before ف is hidden behind a nasal (ikhfa)",
+    align._held_nasal_junction("بِكَلِمَـٰتٍ", "فَأَتَمَّهُنَّ"),
+)
+check(
+    "nun sakinah before ي holds one too",
+    align._held_nasal_junction("مِن", "يَشَآءُ"),
+)
+check(
+    "but و after a voweled ه does not",
+    not align._held_nasal_junction("وَرَسُولُهُۥ", "وَصَدَقَ"),
+)
+check(
+    "nor does a tanween before a throat letter, which is izhar -- said clearly",
+    not align._held_nasal_junction("عَلِيمًا", "حَكِيمًا"),
+)
+
+# The same quiet, at a join tajweed explains and at one it does not.
+nasal = [
+    word("40:13", 5, "وَيُنَزِّلُ", 0.0, 0.8),
+    word("40:13", 6, "لَكُم", 0.9, 1.4),
+    word("40:13", 7, "مِّنَ", 1.9, 2.4),
+]
+segments, _ = align._segment_the_timeline(nasal, [5, 6, 7], 2.4, pauses=[(1.42, 1.86)])
+check(
+    "quiet a ghunnah accounts for does not end a line",
+    len(segments) == 1,
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
+)
+plain = [
+    word("33:22", 9, "وَرَسُولُهُۥ", 0.0, 0.8),
+    word("33:22", 10, "وَصَدَقَ", 1.3, 1.8),
+]
+segments, _ = align._segment_the_timeline(plain, [9, 10], 1.8, pauses=[(0.82, 1.26)])
+check(
+    "the same quiet at a join with no ghunnah does",
+    len(segments) == 2,
     f"got {[(s.start_word, s.end_word) for s in segments]}",
 )
 

@@ -269,32 +269,47 @@ two for context. Three rules follow:
   since madd stretches words by design; what marks a smear is that the over-long word's own audio
   reads back as a *run* of the reference. See `_phrase_said_twice`.
 
-### What decides a break, and what the audio cannot settle
+### What decides a break: a ghunnah is not a silence
 
 Every break needs evidence from the recitation itself — a mark alone never ends a line, and
 breaking at `فَأَتَمَّهُنَّ ۖ` on the strength of its mark stranded that word in a caption of its own.
 
-But **the audio alone cannot decide it either, and this is measured rather than assumed.** Taking
-five junctions whose truth is known from listening:
+But the audio alone cannot settle it either, and for a while that looked like an impasse. Five
+junctions with known truth, measured every way available:
 
-| junction | quietest point | Silero VAD | truly a stop? |
-|---|---|---|---|
-| `وَرَسُولُهُۥ ۚ` (33:22) | p12.2 | no gap | **yes** |
-| `يَنتَظِرُ ۖ` (33:23) | p0.1 | gap | yes |
-| `وَرَسُولُهُ` w10 (33:22) | p1.6 | gap | yes |
-| `لَكُم` → `مِّنَ` (40:13) | p4.8 | gap | **no** |
-| `بِكَلِمَـٰتٍ` → `فَأَتَمَّهُنَّ` (2:124) | p4.4 | gap | **no** |
+| junction | quietest point | quiet frames | Silero VAD | a stop? |
+|---|---|---|---|---|
+| `يَنتَظِرُ ۖ` → `وَمَا` | p0.1 | 43% | gap | yes |
+| `وَرَسُولُهُۥ` → `وَصَدَقَ` | p1.6 | 20% | gap | yes |
+| `بِكَلِمَـٰتٍ` → `فَأَتَمَّهُنَّ` | p4.4 | 11% | gap | **no** |
+| `وَرَسُولُهُۥ ۚ` → `وَمَا` | p4.5 | **0%** | no gap | yes |
+| `لَكُم` → `مِّنَ` | p4.8 | 16% | gap | **no** |
 
-The ordering is inverted: a real stop is *shallower* than two junctions where the reciter did not
-stop, and a neural VAD — already in this repo for `/transcribe` — agrees with the energy on all
-five, scoring 5 of 9 against known truth overall. No threshold on either signal separates these
-cases, because what separates them is where the phrase ends, which is a property of the text.
+Nothing orders that. A real stop has *no quiet frames at all* (reverberant room), while a
+junction the reciter never stopped at is quieter than one they did. Silero VAD — already in this
+repo for `/transcribe` — scores 5 of 9 against known truth and agrees with the energy on all five.
 
-So the two are combined rather than ranked. A **marked** place needs only the reciter's own
-hesitation to confirm it (`ALIGN_MIN_WAQF_PAUSE_SEC`, read from the alignment because a real stop
-in a reverberant room need not go quiet at all). An **unmarked** place needs measured silence, and
-more of it (`ALIGN_MIN_UNMARKED_PAUSE_SEC`, 0.45s). A **repeat** after a stop ends a line wherever
-it happens, marked or not.
+**The answer was that two of those junctions are not silence at all.** A ghunnah is a nasal hum
+held about two counts: quiet, flat and sustained, which is the same shape as silence to anything
+measuring level. `لَكُم مِّنَ` merges two mīms into one held nasal (idghām mutamāthilain), and
+`بِكَلِمَـٰتٍ فَأَتَمَّهُنَّ` hides the tanween's nūn behind one (ikhfā'). The reciter never stopped —
+they were still saying the word.
+
+It is inaudible as a break and entirely predictable from the text, so the text settles it.
+`_held_nasal_junction` covers the cases where tajweed holds a nasal across a join: a nūn sākinah
+or tanween before the idghām, iqlāb and ikhfā' letters, and a mīm sākinah before `م` or `ب`.
+Quiet found there is explained by the recitation, so it takes `ALIGN_NASAL_JUNCTION_FACTOR`
+times the usual evidence to call it a stop. A reciter may still stop at such a join — stopping is
+allowed at any word end — it simply is not *proven* by the quiet being there.
+
+With that distinction the remaining rules are simple, and segment accuracy on the reference clip
+went from 9/11 to **11/11**:
+
+- a **marked** place needs only the reciter's own hesitation (`ALIGN_MIN_WAQF_PAUSE_SEC`, read
+  from the alignment because a real stop in a reverberant room need not go quiet at all);
+- an **unmarked** place needs measured silence (`ALIGN_MIN_UNMARKED_PAUSE_SEC`, 0.30s);
+- a **repeat** after a stop ends a line wherever it happens;
+- a **held nasal** raises the bar rather than lowering it.
 
 ### Detection can reach past the audio
 

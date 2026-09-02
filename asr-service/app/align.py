@@ -1701,6 +1701,57 @@ def _fill_gaps_with_repeats(
     return script, applied
 
 
+#: Tanween, and the vowels whose absence leaves a letter sākin.
+_TANWEEN = "\u064B\u064C\u064D"
+_VOWELS = "\u064E\u064F\u0650"
+
+#: What a nūn sākinah or tanween does to the letter that follows it. Every one
+#: of these is realised as a *held nasal* across the join -- idghām with
+#: ghunnah into ي ن م و, iqlāb into ب, and ikhfā' before the fifteen. A mīm
+#: sākinah does the same before م and ب.
+_GHUNNAH_AFTER_NOON = set("يومنب") | set("تثجدذزسشصضطظفقك")
+_GHUNNAH_AFTER_MEEM = set("مب")
+
+
+def _held_nasal_junction(first: str, second: str) -> bool:
+    """Does tajweed hold a nasal across the join between these two words?
+
+    This is the reason no acoustic test could tell a stop from a continuation.
+    A ghunnah is a nasal hum held for about two counts: quiet, flat, and
+    sustained -- the same shape as silence to anything measuring level, and
+    energy, a neural VAD and the alignment gap all read it as a pause. But the
+    reciter never stopped; they were still saying the word.
+
+    It is not audible as a break and it is entirely predictable from the text,
+    so the text is what settles it. `لَكُم مِّنَ` merges two mīms into one held
+    nasal, and `بِكَلِمَـٰتٍ فَأَتَمَّهُنَّ` hides the tanween's nūn behind one -- both
+    of which were being read as stops and splitting a phrase mid-word.
+
+    A reciter may still stop at such a join if they choose, since stopping is
+    allowed at any word end. This only says that the quiet found *there* is
+    explained by the recitation itself, so it takes more than the usual
+    evidence to call it a stop.
+    """
+    letters = [c for c in first if "\u0621" <= c <= "\u064A"]
+    if not letters:
+        return False
+    last = letters[-1]
+    tail = first[first.rfind(last) + 1 :]
+    voweled = any(c in _VOWELS for c in tail)
+    opening = [c for c in second if "\u0621" <= c <= "\u064A"]
+    if not opening:
+        return False
+    head = opening[0]
+
+    if any(c in _TANWEEN for c in first):
+        return head in _GHUNNAH_AFTER_NOON
+    if last == "\u0646" and not voweled:            # nūn sākinah
+        return head in _GHUNNAH_AFTER_NOON
+    if last == "\u0645" and not voweled:            # mīm sākinah
+        return head in _GHUNNAH_AFTER_MEEM
+    return False
+
+
 def _stop_licence(text: str) -> str:
     """What the mushaf says about stopping after this word.
 
@@ -1856,7 +1907,11 @@ MIN_MARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_MARKED_PAUSE_SEC", "0.18"))
 #: after رِزْقًا ۚ are the same length and only the second ends a phrase -- what
 #: separates them is where the sentence ends, which the marks annotate and the
 #: audio does not.
-MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.45"))
+MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.30"))
+
+#: How much more silence it takes to call a stop where tajweed already holds a
+#: nasal across the join. See `_held_nasal_junction`.
+NASAL_JUNCTION_FACTOR = float(os.getenv("ALIGN_NASAL_JUNCTION_FACTOR", "2.5"))
 
 
 def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
@@ -2034,7 +2089,11 @@ def _segment_the_timeline(
             # nothing -- the run-out at the end of a recording is silence after
             # the last word, not between two of them.
             continue
-        if length >= MIN_UNMARKED_PAUSE_SEC:
+        bar = MIN_UNMARKED_PAUSE_SEC
+        if _held_nasal_junction(aligned[i].text, aligned[i + 1].text):
+            # A ghunnah is held here, so quiet is expected and proves nothing.
+            bar *= NASAL_JUNCTION_FACTOR
+        if length >= bar:
             cuts.add(i)
 
     cuts.add(len(aligned) - 1)
