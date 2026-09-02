@@ -65,3 +65,6 @@ asr-service/=*
 *.wav
 *.m4a
 *.ogg
+
+# Pid files and logs from ./start.sh
+.run/

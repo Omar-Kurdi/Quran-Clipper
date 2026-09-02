@@ -139,6 +139,7 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ASR_NEMO_DECODER` | `rnnt` | `rnnt` or `ctc` for the hybrid NeMo model. |
 | `ALIGN_MIN_REPEAT_MATCH` | `0.75` | How much of a repeated phrase's spelling must be heard in the gap it explains. |
 | `ALIGN_MAX_REPEAT_WORDS` | `4` | How far back a reciter is assumed to go when resuming. |
+| `ASR_WARM_UP` | `1` | Loads the `/transcribe` model at startup. The app never calls `/transcribe`, so `0` skips a model it will not use — startup drops from ~11s to ~6s and frees its GPU memory. `/align` is unaffected. |
 | `ALIGN_QUIET_PERCENTILE` | `16` | Rank of frame energy treated as "not making sound", for segment breaks. |
 | `ALIGN_NASAL_JUNCTION_FACTOR` | `2.5` | Extra evidence needed where tajweed holds a nasal across a join (ghunnah reads as silence). |
 | `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.30` | Silence needed to end a line with no waqf mark licensing it — a reciter may stop anywhere. Raise it if lines break mid-phrase. |

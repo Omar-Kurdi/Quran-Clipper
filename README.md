@@ -143,6 +143,30 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 
 The app runs with Node alone. Everything else unlocks an optional capability.
 
+### Everything at once
+
+Once the pieces below are installed, this starts all three and says what came up:
+
+```bash
+./start.sh          # web app with hot reload, for editing
+./start.sh --prod   # build once and serve it, for actually making videos
+./stop.sh           # stop whatever ./start.sh started
+```
+
+```
+  database   up on 127.0.0.1:5432
+  sidecar    up on :8000
+  web app    up on http://localhost:3000 (dev)
+```
+
+Each piece is optional, so it starts what it can and reports the rest rather than failing
+everything because one thing is missing — a missing database means saves fall back to memory, a
+missing sidecar means matching falls back to Gemini or a range you pick by hand. Logs go to
+`.run/`. `./stop.sh` only stops processes it started, so a sidecar you are running in your own
+terminal is left alone; `./stop.sh --keep-db` leaves the database up too.
+
+The rest of this section is what each piece needs, and how to run them individually.
+
 ### 1. Install and run the web app
 
 ```bash
