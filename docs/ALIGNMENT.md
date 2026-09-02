@@ -251,11 +251,33 @@ however long the silence), `always` (lāzim — the reciter always stops, so the
 confirms it), `paired` (mu'ānaqa — used at most once per pair), and `allowed` (the rest, still
 needing the reciter's own pause as corroboration).
 
-### Resuming means going back
+### A reciter may stop anywhere, and repeat after any stop
 
-See [Repeated phrases](#repeated-phrases). Briefly: a reciter who stops for breath repeats the
-last word or two before continuing, so this pipeline must be able to represent the same words
-twice and does — as an overlapping pair of segments, flagged `is_restart`.
+Stopping is not confined to the marked places. A reciter stops where they need breath, and
+having stopped they go back a word or two for context — after *any* stop, not only a marked one.
+Three rules follow, and each fixed a real failure:
+
+- **An unmarked stop can end a line.** The bar is `ALIGN_MIN_UNMARKED_PAUSE_SEC` (0.30s), the same
+  threshold as `MIN_RESTART_GAP_SEC`, and deliberately so: a stop is a stop, whether the reciter
+  then repeats a word or begins a new line.
+- **A repeat needs a stop before it.** Going back means having stopped, and nobody says a word
+  twice with 0.08s between the two utterances. That figure is measured: a boundary landing beside
+  `ٱللَّهُ` in 33:22 made both windows read it, which looked like a repeat and split a phrase that
+  should not be split. The genuine restarts on that clip sit at 0.56–1.76s. The test is the *gap*
+  and not silence, because the breath before a real repeat is often too short to detect at all.
+- **A phrase can be repeated whole, with no hole to show for it.** Forced alignment must give
+  every frame to some word, so where a phrase is said twice with no silence between the passes it
+  covers the first by stretching a single word — `كَيْدُ` held for 8.3 seconds on one clip. Length
+  alone proves nothing, since madd stretches words by design; what marks a smear is that the
+  over-long word's own audio reads back as a *run* of the reference, which elongation never does.
+  See `_phrase_said_twice`.
+
+### Detection can reach past the audio
+
+Detection reads the passage from phrase matches, so it can include an ayah at the edge that was
+never recited — on one clip it reported 2:121–125 for a recording that opens at 2:122. Alignment
+settles it: an edge ayah that received no words at all was not there, and `/align` narrows its
+answer accordingly rather than making the caller check by ear.
 
 Sources for the above: [Bayan Al Quran Academy on waqf and
 ibtidā'](https://bayanulquran-academy.com/waqf-and-ibtida/), [Riwaq Al Quran on stopping

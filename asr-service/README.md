@@ -140,7 +140,8 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ALIGN_MIN_REPEAT_MATCH` | `0.75` | How much of a repeated phrase's spelling must be heard in the gap it explains. |
 | `ALIGN_MAX_REPEAT_WORDS` | `4` | How far back a reciter is assumed to go when resuming. |
 | `ALIGN_QUIET_PERCENTILE` | `16` | Rank of frame energy treated as "not making sound", for segment breaks. |
-| `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.6` | Silence needed to end a line with no waqf mark licensing it. Raise it if lines break mid-phrase. |
+| `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.30` | Silence needed to end a line with no waqf mark licensing it — a reciter may stop anywhere. Raise it if lines break mid-phrase. |
+| `ALIGN_MIN_RESTART_GAP_SEC` | `0.30` | Least time between two utterances of a word for it to count as repeated. |
 | `ALIGN_MIN_WAQF_PAUSE_SEC` | `0.30` | Pause needed on a stop mark for it to end a line. |
 | `ALIGN_MIN_DECODE_AGREEMENT` | `0.40` | Below this agreement between decode and alignment, `/align` sets `warning`. This is the wrong-passage guard. |
 | `ALIGN_MIN_REFERENCE_COVERAGE` | `0.75` | Below this fraction of the supplied text being recited at all, `/align` sets `warning`. |

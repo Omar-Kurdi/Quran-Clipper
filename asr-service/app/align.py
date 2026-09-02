@@ -1498,6 +1498,11 @@ MIN_REPEAT_TAIL_CHARS = 3
 MIN_REPEAT_TAIL_MATCH = 0.6
 
 
+#: The least time between two utterances of the same word for it to be a real
+#: repeat rather than a boundary artifact. See the restart rule in
+#: `_segment_the_timeline`.
+MIN_RESTART_GAP_SEC = float(os.getenv("ALIGN_MIN_RESTART_GAP_SEC", "0.30"))
+
 #: A hole in the alignment narrower than this is ordinary word spacing.
 REPEAT_GAP_SEC = float(os.getenv("ALIGN_REPEAT_GAP_SEC", "0.6"))
 
@@ -1522,9 +1527,76 @@ MIN_REPEAT_MATCH = float(os.getenv("ALIGN_MIN_REPEAT_MATCH", "0.75"))
 #: Too little read back to identify anything.
 MIN_REPEAT_CHARS = 2
 
+#: A whole phrase said twice is a different thing from going back a word or two
+#: for context, and it can leave no hole at all: forced alignment must give
+#: every frame to something, so instead of a gap it stretches one word over the
+#: first pass. On one clip كَيْدُ was held for 8.3 seconds this way.
+#:
+#: Length alone cannot flag it -- madd stretches words legitimately -- so a
+#: smear is only believed when the over-long word's own audio reads back as a
+#: *run* of the reference, which elongation never does.
+SMEAR_WORD_FACTOR = float(os.getenv("ALIGN_SMEAR_WORD_FACTOR", "4"))
+MIN_SMEAR_SEC = float(os.getenv("ALIGN_MIN_SMEAR_SEC", "2.0"))
+MIN_SMEAR_WORDS = 3
+MAX_PHRASE_REPEAT_WORDS = int(os.getenv("ALIGN_MAX_PHRASE_REPEAT_WORDS", "8"))
+
 #: Guard against a runaway: a recitation can be half repeats, but not twice its
 #: own reference text.
 MAX_REPEAT_INSERTIONS = 12
+
+
+def _phrase_said_twice(
+    pcm: np.ndarray,
+    ref_words: list[tuple[str, int, str]],
+    script: list[int],
+    aligned: list[AlignedWord],
+    spelling: dict[int, str],
+):
+    """A whole phrase recited twice, found where one word was stretched over it.
+
+    The hole search cannot see this one. Forced alignment has to give every
+    frame to some word, and where a phrase is repeated with no silence to
+    separate the passes it covers the first pass by holding a single word --
+    `كَيْدُ` for 8.3 seconds on one clip, rather than leaving a gap.
+
+    A long word on its own proves nothing, since madd stretches words by
+    design. What distinguishes a smear is that the word's own audio reads back
+    as a *run* of the reference rather than as one elongated word.
+    """
+    lengths = sorted(word.end - word.start for word in aligned)
+    if not lengths:
+        return None
+    typical = lengths[len(lengths) // 2]
+    floor = max(MIN_SMEAR_SEC, SMEAR_WORD_FACTOR * typical)
+
+    best = None
+    for k, word in enumerate(aligned):
+        if word.end - word.start < floor:
+            continue
+        chunk = pcm[int(word.start * SAMPLE_RATE) : int(word.end * SAMPLE_RATE)]
+        if len(chunk) < SAMPLE_RATE // 2:
+            continue
+        emission = compute_emission(chunk)
+        heard = "".join(_skeleton(t) for t in decode_window(emission, 0, emission.shape[1]).split())
+        if len(heard) < MIN_REPEAT_CHARS:
+            continue
+        # The run the smear covered starts at or just before the stretched word.
+        for start in range(max(0, k - 2), k + 1):
+            for length in range(MIN_SMEAR_WORDS, MAX_PHRASE_REPEAT_WORDS + 1):
+                if start + length > len(script):
+                    break
+                sequence = script[start : start + length]
+                spelled = "".join(spelling[i] for i in sequence)
+                if len(spelled) < MIN_REPEAT_CHARS:
+                    continue
+                matcher = difflib.SequenceMatcher(None, heard, spelled)
+                matched = sum(block.size for block in matcher.get_matching_blocks())
+                recall = matched / len(spelled)
+                if recall < MIN_REPEAT_MATCH:
+                    continue
+                if best is None or (matched, recall) > best[:2]:
+                    best = (matched, recall, start, list(sequence))
+    return best
 
 
 def _fill_gaps_with_repeats(
@@ -1601,6 +1673,8 @@ def _fill_gaps_with_repeats(
                     if best is None or (matched, recall) > best[:2]:
                         best = (matched, recall, k + 1, list(sequence))
 
+        if best is None:
+            best = _phrase_said_twice(pcm, ref_words, script, aligned, spelling)
         if best is None:
             break
 
@@ -1767,14 +1841,17 @@ QUIET_PERCENTILE = float(os.getenv("ALIGN_QUIET_PERCENTILE", "16"))
 MIN_PAUSE_SEC = float(os.getenv("ALIGN_MIN_PAUSE_SEC", "0.18"))
 
 #: How long the reciter must stop for it to end a line with no waqf mark
-#: licensing it. Duration cannot make this call on its own, which is why the
-#: mark is consulted first: in one clip a 0.20s quiet after لَكُم and a 0.26s
-#: quiet after رِزْقًا ۚ are the same length, and only the second ends a phrase.
-#: What separates them is where the sentence ends, and the mushaf's stop marks
-#: are the tradition's own annotation of exactly that. So a mark needs only
-#: weak corroboration that the reciter did stop, while stopping *without* one
-#: has to carry the whole decision by itself and needs much more.
-MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.6"))
+#: licensing it. A reciter may stop anywhere, not only where the mushaf marks
+#: it, so this is not a high bar -- it is the same "they actually stopped"
+#: threshold as `MIN_RESTART_GAP_SEC`, which is the point: a stop is a stop,
+#: whether the reciter then repeats a word or starts a new line.
+#:
+#: It cannot go much lower. A mark still needs only the weak corroboration of a
+#: word gap, because in one clip a 0.20s quiet after لَكُم and a 0.26s quiet
+#: after رِزْقًا ۚ are the same length and only the second ends a phrase -- what
+#: separates them is where the sentence ends, which the marks annotate and the
+#: audio does not.
+MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.30"))
 
 
 def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
@@ -1897,7 +1974,18 @@ def _segment_the_timeline(
             cuts.add(i)
         elif script[i + 1] <= script[i]:
             # The reciter went back rather than on: a restart starts its own line.
-            cuts.add(i)
+            #
+            # But only if they had time to. Going back means having stopped,
+            # however briefly, and a word cannot be said twice with 0.08s
+            # between the two utterances -- that is a boundary having cut close
+            # to a word so that the windows either side both read it, not a
+            # repeat. Measured here, the genuine restarts sit at 0.56-1.76s and
+            # the artifact at 0.08s. The test is the gap and not silence,
+            # because the breath before a real repeat is often too short to
+            # register as a pause at all: the قَالُوا۟ of 33:22 is plainly recited
+            # twice with no detectable quiet between the utterances.
+            if gap >= MIN_RESTART_GAP_SEC:
+                cuts.add(i)
         elif licence == "never":
             # لا, or a saktah -- pausing here breaks the sense, so whatever the
             # audio did, this is not the end of a line.

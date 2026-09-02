@@ -231,6 +231,21 @@ check(
     f"got {[(s.start_word, s.end_word, s.is_restart) for s in segments]}",
 )
 
+# The same word claimed twice 0.08s apart is a boundary artifact, not a repeat:
+# nobody says a word twice that fast. Going back means having stopped first.
+too_fast = [
+    word("40:13", 0, "هُوَ", 0.0, 0.4),
+    word("40:13", 1, "ٱلَّذِى", 0.5, 0.9),
+    word("40:13", 1, "ٱلَّذِى", 0.98, 1.4),
+    word("40:13", 2, "يُرِيكُمْ", 1.5, 1.9),
+]
+segments, _ = align._segment_the_timeline(too_fast, [0, 1, 1, 2], 1.9)
+check(
+    "a word claimed twice with no time between is not a restart",
+    len(segments) == 1,
+    f"split into {[(s.start_word, s.end_word) for s in segments]}",
+)
+
 print("\ndecode_agreement")
 check(
     "nothing to compare reads as unmeasurable, not as disagreement",

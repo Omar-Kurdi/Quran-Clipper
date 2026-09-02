@@ -394,6 +394,52 @@ async def align_endpoint(
     agreement = result.decode_agreement
     warning = None
 
+    # Detection reads the passage from phrase matches, so it can reach one ayah
+    # past what was actually recited -- on one clip it reported 2:121-125 for a
+    # recording that opens at 2:122. Alignment settles it: an ayah at the edge
+    # of the range that received no words at all was not in the audio. Narrow
+    # the answer to what was really there rather than reporting a range the
+    # caller would have to check by ear.
+    if detected is not None and aligned:
+        recited = {word.verse_key for word in aligned}
+        kept: list[detect.SurahRange] = []
+        for found in detected.ranges:
+            numbers = sorted(
+                ayah
+                for ayah in range(found.start_ayah, found.end_ayah + 1)
+                if f"{found.surah}:{ayah}" in recited
+            )
+            if not numbers:
+                continue
+            if numbers[0] != found.start_ayah or numbers[-1] != found.end_ayah:
+                log.info(
+                    "narrowing detected %d:%d-%d to %d:%d-%d -- the rest was never recited",
+                    found.surah, found.start_ayah, found.end_ayah,
+                    found.surah, numbers[0], numbers[-1],
+                )
+            kept.append(detect.SurahRange(found.surah, numbers[0], numbers[-1], found.phrases))
+        if kept:
+            detected = detect.DetectedRange(
+                ranges=kept,
+                confidence=detected.confidence,
+                matched_phrases=detected.matched_phrases,
+                total_phrases=detected.total_phrases,
+            )
+            # Coverage has to be re-read against the narrowed text, or it still
+            # reports the ayah that was dropped as missing.
+            narrowed = [
+                word
+                for word in ref_words
+                if any(
+                    word[0].startswith(f"{r.surah}:")
+                    and r.start_ayah <= int(word[0].split(":")[1]) <= r.end_ayah
+                    for r in kept
+                )
+            ]
+            if narrowed:
+                given = {(word.verse_key, word.word_index) for word in aligned}
+                coverage = round(len(given & {(w[0], w[1]) for w in narrowed}) / len(narrowed), 4)
+
     # Alignment cannot fail loudly -- it fits whatever text it is given -- so
     # this is the only place a wrong ayah range gets caught.
     #
