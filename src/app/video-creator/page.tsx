@@ -25,6 +25,8 @@ import {
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { useLocale } from '@/components/LocaleProvider';
 import { 
   SURAHS_LIST,
   RECITERS,
@@ -52,6 +54,8 @@ import {
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
+  const { locale, t } = useLocale();
+
   // Quran & Audio Selection State
   const [selectedSurah, setSelectedSurah] = useState<number>(1);
   const [ayahStart, setAyahStart] = useState<number>(1);
@@ -72,7 +76,14 @@ export default function VideoCreatorPage() {
   const [videoBgUrl, setVideoBgUrl] = useState<string | null>(null);
   /** Seconds trimmed off the front of the audio that `videoBgUrl` still contains. */
   const [videoBgOffset, setVideoBgOffset] = useState(0);
-  const [matchStatus, setMatchStatus] = useState<string | null>(null);
+  /**
+   * The banner under the upload box: what happened, and how it should read.
+   *
+   * The tone used to be guessed by searching the message for "fail" and "not
+   * configured". That cannot survive translation -- and it was already fragile
+   * in English -- so whoever sets the message now also says what kind it is.
+   */
+  const [matchStatus, setMatchStatus] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [matchProvider, setMatchProvider] = useState<'gemini' | 'align'>('align');
@@ -114,7 +125,6 @@ export default function VideoCreatorPage() {
   const [isLoadingVerses, setIsLoadingVerses] = useState<boolean>(false);
   const [loadResult, setLoadResult] = useState<{
     ok: boolean;
-    message: string;
     count?: number;
     /** 'measured' timings came from the recording; 'estimated' ones were guessed from text length. */
     timingSource?: 'measured' | 'estimated';
@@ -216,7 +226,7 @@ export default function VideoCreatorPage() {
       if (!res.ok) {
         // A failed load used to be swallowed: `if (res.ok)` with no else and an
         // empty catch, so a broken fetch looked exactly like a successful one.
-        setLoadResult({ ok: false, message: 'Could not load those ayahs. Check your connection and try again.' });
+        setLoadResult({ ok: false });
         return;
       }
       const data = await res.json();
@@ -244,14 +254,13 @@ export default function VideoCreatorPage() {
       // what arrived and point at where it went.
       setLoadResult({
         ok: true,
-        message: `Loaded ${loaded.length} ${loaded.length === 1 ? 'ayah' : 'ayahs'}.`,
         count: loaded.length,
         timingSource: data.timingSource === 'measured' ? 'measured' : 'estimated',
         seeked: willSeek,
         againstUpload: !!customAudioUrl
       });
     } catch {
-      setLoadResult({ ok: false, message: 'Could not load those ayahs. Check your connection and try again.' });
+      setLoadResult({ ok: false });
     } finally {
       setIsLoadingVerses(false);
     }
@@ -313,11 +322,10 @@ export default function VideoCreatorPage() {
       if (video && useVideoAsBackground) {
         setCanvasConfig(prev => ({ ...prev, bgType: 'video', bgUrl: url }));
       }
-      setMatchStatus(
-        video
-          ? 'Video uploaded — its audio will be used for matching, and its footage as the background. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.'
-          : 'Audio uploaded. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.'
-      );
+      setMatchStatus({
+        text: video ? t.match.videoUploaded : t.match.audioUploaded,
+        tone: 'info'
+      });
       setAudioUrl(url);
       if (audioElementRef.current) {
         audioElementRef.current.src = url;
@@ -366,9 +374,7 @@ export default function VideoCreatorPage() {
       audioElementRef.current.currentTime = 0;
       audioElementRef.current.load();
     }
-    setMatchStatus(
-      `Trimmed to ${formatDuration(result.duration)}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`
-    );
+    setMatchStatus({ text: t.match.trimmed(formatDuration(result.duration)), tone: 'info' });
     setShowTrimModal(false);
   };
 
@@ -382,28 +388,27 @@ export default function VideoCreatorPage() {
    */
   const handleTrimRange = async (start: number, end: number) => {
     if (!customAudioFile || !(end > start)) return;
-    setMatchStatus('Trimming the audio to the clip you marked…');
+    setMatchStatus({ text: t.match.trimmingRange, tone: 'info' });
     try {
       const buffer = await decodeAudioFile(customAudioFile);
       const result = buildTrimmedFile(buffer, start, end, customAudioFile.name);
       handleApplyTrim({ ...result, trimStart: start, trimEnd: end });
     } catch {
-      setMatchStatus('Could not trim this file. Try the Trim audio dialog, which reports what went wrong.');
+      setMatchStatus({ text: t.match.trimRangeFailed, tone: 'error' });
     }
   };
 
   const handleAutoMatchUploadedAudio = async () => {
     if (!customAudioFile) {
-      setMatchStatus('Upload an audio file before running AI auto-match.');
+      setMatchStatus({ text: t.match.needUpload, tone: 'error' });
       return;
     }
 
     setIsMatching(true);
-    setMatchStatus(
-      matchProvider === 'align'
-        ? 'Force-aligning the selected ayah range against your audio (first run loads the model — may take longer)...'
-        : 'Sending audio to Gemini for analysis...'
-    );
+    setMatchStatus({
+      text: matchProvider === 'align' ? t.match.aligning : t.match.sendingToGemini,
+      tone: 'info'
+    });
 
     const formData = new FormData();
     formData.append('audio', customAudioFile);
@@ -428,7 +433,10 @@ export default function VideoCreatorPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setMatchStatus(data?.error || 'AI matcher is not configured. Use manual matching for this audio.');
+        // An upstream reason is passed through as it came: it names a key, a
+        // status code or a service, and translating it would make it
+        // unsearchable.
+        setMatchStatus({ text: data?.error || t.match.notConfigured, tone: 'error' });
         setMobileSurface('preview');
         setIsMatching(false);
         return;
@@ -453,30 +461,31 @@ export default function VideoCreatorPage() {
       // provider name, model, phrase counts and acoustic scores are diagnostics
       // -- they go to the console, not to someone making a video.
       console.log(`[match] ${providerLabel} • confidence ${(data.confidence ?? 0).toFixed(3)} • ${data.notes || ''}`);
-      const detectedLabel = data.timelineTitle || data.surahNameEnglish || `Surah ${data.surahNumber}`;
+      const detectedLabel =
+        data.timelineTitle || data.surahNameEnglish || t.match.fallbackSurahLabel(data.surahNumber);
       // A forced-aligned timeline looks equally confident whether or not the
       // range is right -- the acoustic score can't tell those apart (see
       // README.md). So when the range wasn't the user's own choice, ask them to
       // check it explicitly rather than implying the match verified itself.
       const confirmRange = data.provider === 'align';
-      setMatchStatus(
-        (data.warning ? `⚠ ${data.warning} ` : '') +
-          `Detected ${detectedLabel} — ${(data.verses || []).length} segment(s). ` +
-          (confirmRange
-            ? 'Check that this is the right surah and ayah range for your audio, then review the timings below before publishing.'
-            : 'Review the timings and text below before publishing.')
-      );
+      setMatchStatus({
+        text:
+          (data.warning ? `⚠ ${data.warning} ` : '') +
+          t.match.detected(detectedLabel, (data.verses || []).length) +
+          (confirmRange ? t.match.confirmRange : t.match.reviewTimings),
+        tone: 'info'
+      });
       setMobileSurface('preview');
       setIsMatching(false);
     } catch {
-      setMatchStatus('AI matcher failed. Use manual matching, or configure the server-side AI matcher and try again.');
+      setMatchStatus({ text: t.match.failed, tone: 'error' });
       setMobileSurface('preview');
       setIsMatching(false);
     }
   };
 
   const handleManualMatchUploadedAudio = () => {
-    setMatchStatus('Manual matching mode: assign ayah numbers and adjust start/end times for each audio segment.');
+    setMatchStatus({ text: t.match.manualMode, tone: 'info' });
     setMobileSurface('preview');
   };
 
@@ -644,7 +653,7 @@ export default function VideoCreatorPage() {
 
   // Save Project to Database
   const handleSaveProject = async () => {
-    setSaveStatus({ text: 'Saving…', kind: 'pending' });
+    setSaveStatus({ text: t.header.saving, kind: 'pending' });
     try {
       const payload = {
         title: `${surahNameEnglish} (${selectedSurah}:${ayahStart}-${ayahEnd}) Clip`,
@@ -701,25 +710,25 @@ export default function VideoCreatorPage() {
         // The route falls back to in-memory storage when DATABASE_URL is unset;
         // say so rather than implying the project survived a restart.
         setSaveStatus({
-          text: data?.source === 'memory' ? 'Saved (this session)' : 'Project Saved!',
+          text: data?.source === 'memory' ? t.header.savedThisSession : t.header.saved,
           kind: 'ok'
         });
         setTimeout(() => setSaveStatus(null), 3000);
       } else {
         const data = await res.json().catch(() => null);
-        const reason = data?.error || `The server answered ${res.status}.`;
+        const reason = data?.error || t.header.saveFailedStatus(res.status);
         console.error('Save failed:', reason);
         // The reason rides along on the status rather than living only in the
         // console: "Save Failed" on its own is the one thing nobody can act on,
         // and the usual cause -- a database that is not running -- is fixable in
         // one command once it is named.
-        setSaveStatus({ text: 'Save Failed', kind: 'error', detail: reason });
+        setSaveStatus({ text: t.header.saveFailed, kind: 'error', detail: reason });
         setTimeout(() => setSaveStatus(null), 8000);
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.error('Save failed:', reason);
-      setSaveStatus({ text: 'Save Failed', kind: 'error', detail: reason });
+      setSaveStatus({ text: t.header.saveFailed, kind: 'error', detail: reason });
       setTimeout(() => setSaveStatus(null), 8000);
     }
   };
@@ -739,31 +748,33 @@ export default function VideoCreatorPage() {
   const matchOptions = [
     {
       id: 'align' as const,
-      label: 'Local',
-      technical: 'local forced alignment',
+      label: t.source.matcherLocal,
+      technical: t.source.matcherLocalTechnical,
       Icon: Server,
       ready: !!providerStatus?.align.configured && providerStatus.align.alignReady !== false,
       status: !providerStatus
-        ? 'Checking…'
+        ? t.source.matcherChecking
         : providerStatus.align.configured
           ? providerStatus.align.alignReady === false
-            ? 'Helper needs restarting'
-            : 'Ready'
-          : 'Helper not running',
-      blurb:
-        'Finds the passage in the audio, then times every word against the real Quran text, so no word can be dropped or misheard. Nothing leaves your machine.',
-      fix: 'This needs the local helper app running. Start it, then reload this page.'
+            ? t.source.matcherHelperNeedsRestart
+            : t.source.matcherReady
+          : t.source.matcherHelperNotRunning,
+      blurb: t.source.matcherLocalBlurb,
+      fix: t.source.matcherLocalFix
     },
     {
       id: 'gemini' as const,
-      label: 'Online',
-      technical: 'Gemini cloud matching',
+      label: t.source.matcherOnline,
+      technical: t.source.matcherOnlineTechnical,
       Icon: Sparkles,
       ready: !!providerStatus?.gemini.configured,
-      status: !providerStatus ? 'Checking…' : providerStatus.gemini.configured ? 'Ready' : 'Needs an API key',
-      blurb:
-        'Works with nothing installed, but the timing is estimated rather than measured, so expect to correct it by hand. Your audio is sent to Google.',
-      fix: 'Add a Gemini API key to use this option.'
+      status: !providerStatus
+        ? t.source.matcherChecking
+        : providerStatus.gemini.configured
+          ? t.source.matcherReady
+          : t.source.matcherNeedsApiKey,
+      blurb: t.source.matcherOnlineBlurb,
+      fix: t.source.matcherOnlineFix
     }
   ];
   const selectedMatchOption = matchOptions.find(o => o.id === matchProvider) ?? matchOptions[0];
@@ -779,14 +790,14 @@ export default function VideoCreatorPage() {
   const headerOverflowItems: OverflowItem[] = [
     {
       key: 'saved',
-      label: 'Saved clips',
+      label: t.header.savedClips,
       icon: <FolderOpen className="w-4 h-4" />,
       onSelect: () => setIsProjectsDrawerOpen(true)
     },
     ...(customAudioFile
       ? [{
           key: 'trim',
-          label: 'Trim audio',
+          label: t.header.trimAudio,
           hint: customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined,
           icon: <Scissors className="w-4 h-4" />,
           onSelect: () => setShowTrimModal(true)
@@ -794,7 +805,7 @@ export default function VideoCreatorPage() {
       : []),
     {
       key: 'save',
-      label: 'Save project',
+      label: t.header.saveProject,
       hint: saveStatus?.detail || saveStatus?.text,
       icon: <Save className="w-4 h-4" />,
       onSelect: handleSaveProject
@@ -1006,19 +1017,19 @@ export default function VideoCreatorPage() {
           const audio = e.currentTarget;
           const err = audio.error;
           const codes: Record<number, string> = {
-            1: 'Audio loading was aborted.',
-            2: 'Network error — could not reach the audio server. Check your internet connection.',
-            3: 'Audio decoding failed. The file may be corrupted or in an unsupported format.',
-            4: 'Audio source not supported or not found. The reciter URL may be incorrect for this surah.',
+            1: t.audioErrors.aborted,
+            2: t.audioErrors.network,
+            3: t.audioErrors.decode,
+            4: t.audioErrors.unsupported,
           };
-          setAudioError(codes[err?.code || 4] || `Audio failed to load (error ${err?.code || 'unknown'}).`);
+          setAudioError(codes[err?.code || 4] || t.audioErrors.unknown(err?.code || '?'));
           setIsPlaying(false);
         }}
         crossOrigin="anonymous"
       />
 
       <h1 className="sr-only">
-        Quran Clip Studio — {surahNameEnglish} {selectedSurah}:{ayahStart}&ndash;{ayahEnd}
+        {t.header.pageTitle(surahNameEnglish, selectedSurah, ayahStart, ayahEnd)}
       </h1>
 
       {/* Top Navbar */}
@@ -1029,15 +1040,17 @@ export default function VideoCreatorPage() {
               state, clicking it navigated away and silently discarded unsaved
               work. */}
           <span className="flex items-baseline gap-2">
-            <span className="font-display text-xl leading-none text-parchment">Quran Clip</span>
-            <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-gold">Studio</span>
+            <span className="font-display text-xl leading-none text-parchment">{t.header.wordmark}</span>
+            <span className="text-[11px] uppercase tracking-[0.22em] text-gold">{t.header.wordmarkSuffix}</span>
           </span>
 
           {/* The reference, set the way a mushaf cites itself: surah name, then
               the ayah span. Mono keeps the numerals aligned as they change. */}
-          <div className="hidden md:flex items-baseline gap-2.5 ml-3 pl-4 border-l border-slate-800">
-            <span className="font-display text-base text-parchment/90">{surahNameEnglish}</span>
-            <span className="font-mono text-[11px] text-gold tracking-wider">
+          <div className="hidden md:flex items-baseline gap-2.5 ms-3 ps-4 border-s border-slate-800">
+            <span className="font-display text-base text-parchment/90">
+              {locale === 'ar' ? currentSurahObj.nameArabic : surahNameEnglish}
+            </span>
+            <span className="font-mono text-[11px] text-gold tracking-wider" dir="ltr">
               {selectedSurah}:{ayahStart}&ndash;{ayahEnd}
             </span>
           </div>
@@ -1050,11 +1063,13 @@ export default function VideoCreatorPage() {
             Export to 42% visible at 375px and made the bar scroll sideways
             with nothing to indicate it. */}
         <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+
           <div className="hidden lg:flex items-center gap-2">
             <PaletteSwitcher />
 
             <Button onClick={() => setIsProjectsDrawerOpen(true)} icon={<FolderOpen className="w-3.5 h-3.5 text-amber-400" />}>
-              Saved clips
+              {t.header.savedClips}
             </Button>
 
             {/* Trimming is not a step you do once up front -- wanting to shave a
@@ -1064,16 +1079,18 @@ export default function VideoCreatorPage() {
             {customAudioFile && (
               <Button
                 onClick={() => setShowTrimModal(true)}
-                title="Trim the uploaded audio — your timeline edits are kept"
+                title={t.header.trimAudioTitle}
                 icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />}
               >
-                {`Trim audio${customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}`}
+                {customAudioDuration > 0
+                  ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
+                  : t.header.trimAudio}
               </Button>
             )}
 
             <Button
               onClick={handleSaveProject}
-              title={saveStatus?.detail || 'Save this clip to the saved-projects list'}
+              title={saveStatus?.detail || t.header.saveProjectTitle}
               icon={saveStatus?.kind === 'ok' ? (
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
               ) : saveStatus?.kind === 'error' ? (
@@ -1085,7 +1102,7 @@ export default function VideoCreatorPage() {
               )}
               className={saveStatus?.kind === 'error' ? 'text-red-300' : undefined}
             >
-              {saveStatus?.text || 'Save project'}
+              {saveStatus?.text || t.header.saveProject}
             </Button>
           </div>
 
@@ -1094,7 +1111,7 @@ export default function VideoCreatorPage() {
           </div>
 
           <Button variant="primary" size="md" onClick={() => setIsExportModalOpen(true)} icon={<Sparkles className="w-4 h-4 fill-current" />}>
-            Export
+            {t.header.export}
           </Button>
         </div>
       </header>
@@ -1111,22 +1128,20 @@ export default function VideoCreatorPage() {
 
           {/* Source */}
           <aside
-            aria-label="Source"
-            className={`w-full lg:w-[340px] shrink-0 border-r border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
+            aria-label={t.surfaces.source}
+            className={`w-full lg:w-[340px] shrink-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
               mobileSurface === 'source' ? 'flex' : 'hidden'
             } lg:flex`}
           >
             <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800">
-              Source
+              {t.surfaces.source}
             </h2>
             <div className="flex-1 overflow-y-auto p-3">
               {isSampleProject && (
                 <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5 text-[11px] text-amber-200 flex items-start gap-2">
                   <BookOpen className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                   <span>
-                    <span className="font-semibold">This is a sample.</span> The timeline is
-                    pre-filled with Al-Fatihah so the preview isn&apos;t blank. Load a surah or
-                    upload a recitation to replace it.
+                    <span className="font-semibold">{t.source.sampleTitle}</span> {t.source.sampleBody}
                   </span>
                 </div>
               )}
@@ -1142,18 +1157,28 @@ export default function VideoCreatorPage() {
                   className="group p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-600/5 to-emerald-500/10 border border-amber-500/20"
                 >
                   <summary className="font-semibold text-amber-400 text-xs uppercase tracking-wider cursor-pointer list-none flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded">
-                    <span>How it works</span>
+                    <span>{t.source.howItWorks}</span>
                     <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
                   </summary>
                   <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed mt-1.5">
-                    <li><strong>Pick a reciter</strong> and a surah, or upload your own recitation.</li>
-                    <li>Click <strong>&quot;Load ayahs &amp; audio&quot;</strong>. The ayahs appear on the timeline below.</li>
-                    <li>Press <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd> to play or pause, and tap <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">B</kbd> at the end of each ayah to set its boundary.</li>
-                    <li><strong>Drag the edge</strong> of any block on the timeline to fine-tune it.</li>
-                    <li>Click a block to edit its text and words in the panel on the right.</li>
-                    <li>Switch that panel to <strong>Style</strong>, then export.</li>
+                    <li><strong>{t.source.step1Strong}</strong> {t.source.step1}</li>
+                    <li>{t.source.step2Before} <strong>{t.source.step2Button}</strong>. {t.source.step2After}</li>
+                    <li>
+                      {t.source.step3Before}{' '}
+                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd>{' '}
+                      {t.source.step3Middle}{' '}
+                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">B</kbd>{' '}
+                      {t.source.step3After}
+                    </li>
+                    <li><strong>{t.source.step4Strong}</strong> {t.source.step4}</li>
+                    <li>{t.source.step5}</li>
+                    <li>{t.source.step6Before} <strong>{t.source.step6Strong}</strong>{t.source.step6After}</li>
                   </ol>
-                  <p className="text-[11px] text-slate-400 mt-2">Note: reciters marked <strong>timed</strong> come with ayah boundaries measured from the recording; the rest are estimates you set yourself on the timeline. Auto-matching only works on <strong>uploaded</strong> files.</p>
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    {t.source.howItWorksNoteBefore} <strong>{t.source.howItWorksNoteTimed}</strong>{' '}
+                    {t.source.howItWorksNoteMiddle} <strong>{t.source.howItWorksNoteUploaded}</strong>{' '}
+                    {t.source.howItWorksNoteEnd}
+                  </p>
                 </details>
 
                 {/* Upload first.
@@ -1166,15 +1191,13 @@ export default function VideoCreatorPage() {
                 <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800">
                   <label htmlFor="recitation-upload" className="font-semibold text-slate-200 block mb-1 flex items-center gap-1.5">
                     <Music className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Upload Recitation — Audio or Video:</span>
+                    <span>{t.source.uploadLabel}</span>
                   </label>
-                  <p className="text-[11px] text-slate-400 mb-2">
-                    Audio (MP3 / WAV / M4A / OGG) or video (MP4 / MOV / WebM / MKV). For a video, the audio track is used for matching and the footage becomes the background. AI auto-matching supports files up to ~18 MB (roughly 15–20 minutes of MP3); compress or split longer recordings.
-                  </p>
+                  <p className="text-[11px] text-slate-400 mb-2">{t.source.uploadHelp}</p>
 
                   {/* AI Matcher Provider */}
                   <div className="mb-3">
-                    <label id="matcher-label" className="text-[11px] font-semibold text-slate-400 block mb-1.5">AI Matcher:</label>
+                    <label id="matcher-label" className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.source.matcherLabel}</label>
                     <div role="radiogroup" aria-labelledby="matcher-label" className="grid grid-cols-2 gap-2">
                       {matchOptions.map(opt => {
                         const selected = matchProvider === opt.id;
@@ -1184,8 +1207,8 @@ export default function VideoCreatorPage() {
                             role="radio"
                             aria-checked={selected}
                             onClick={() => setMatchProvider(opt.id)}
-                            title={`Uses ${opt.technical}`}
-                            className={`py-2 px-2.5 rounded-lg border text-left flex items-center gap-1.5 transition-all ${
+                            title={t.source.matcherUses(opt.technical)}
+                            className={`py-2 px-2.5 rounded-lg border text-start flex items-center gap-1.5 transition-all ${
                               selected
                                 ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
                                 : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
@@ -1212,13 +1235,15 @@ export default function VideoCreatorPage() {
                         the blurb above already says what the option does. */}
                     {matchProvider === 'align' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
                       <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
-                        Passage detection is switched off on your helper, so it will time the surah and range selected above instead of finding them in the audio. Unset <code className="font-mono">ASR_ALIGN_BACKEND</code> and restart it to turn detection back on.
+                        {t.source.matcherDetectionOffBefore}{' '}
+                        <code className="font-mono">ASR_ALIGN_BACKEND</code>{' '}
+                        {t.source.matcherDetectionOffAfter}
                       </p>
                     )}
                     {matchProvider === 'align' && providerStatus?.align.alignReady === false && (
                       <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
-                        <p className="font-semibold">The helper is running but could not load its alignment engine, so matching will fail.</p>
-                        <p>This is almost always the service being started by the wrong Python. Restart it from its virtualenv:</p>
+                        <p className="font-semibold">{t.source.matcherEngineFailedTitle}</p>
+                        <p>{t.source.matcherEngineFailedBody}</p>
                         <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[11px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
                         {providerStatus.align.alignError && (
                           <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
@@ -1237,7 +1262,7 @@ export default function VideoCreatorPage() {
                     />
                     <div className="flex items-center gap-2 text-slate-300">
                       {uploadIsVideo ? <Video className="w-4 h-4 text-amber-400" /> : <Upload className="w-4 h-4 text-amber-400" />}
-                      <span className="text-xs font-semibold">{customAudioName || 'Choose Audio or Video File'}</span>
+                      <span className="text-xs font-semibold">{customAudioName || t.source.chooseFile}</span>
                     </div>
                   </div>
 
@@ -1261,9 +1286,13 @@ export default function VideoCreatorPage() {
                         className="mt-0.5 accent-amber-500"
                       />
                       <span>
-                        Use this video as the background
+                        {t.source.useVideoAsBackground}
                         <span className="block text-[11px] text-slate-300">
-                          Its frames follow the audio, so the recitation stays in sync{videoBgOffset > 0 ? ` (offset ${formatDuration(videoBgOffset)} after trimming)` : ''}.
+                          {t.source.useVideoAsBackgroundHelp}
+                          {videoBgOffset > 0
+                            ? t.source.useVideoAsBackgroundOffset(formatDuration(videoBgOffset))
+                            : ''}
+                          .
                         </span>
                       </span>
                     </label>
@@ -1277,7 +1306,11 @@ export default function VideoCreatorPage() {
                         className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
                       >
                         <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Trim audio{customAudioDuration > 0 ? ` (${formatDuration(customAudioDuration)})` : ''}</span>
+                        <span>
+                          {customAudioDuration > 0
+                            ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
+                            : t.header.trimAudio}
+                        </span>
                       </button>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -1285,19 +1318,17 @@ export default function VideoCreatorPage() {
                           className="py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
-                          <span>AI Auto-match</span>
+                          <span>{t.source.autoMatch}</span>
                         </button>
                         <button
                           onClick={handleManualMatchUploadedAudio}
                           className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Manual Match</span>
+                          <span>{t.source.manualMatch}</span>
                         </button>
                       </div>
-                      <p className="text-[11px] text-slate-400">
-                        Trim before matching to crop dead air first, or after to cut the AI-matched timeline down — either way the segment times adjust to the new clip automatically.
-                      </p>
+                      <p className="text-[11px] text-slate-400">{t.source.trimHelp}</p>
                     </div>
                   )}
 
@@ -1305,10 +1336,8 @@ export default function VideoCreatorPage() {
                     <div className={`mt-2 text-[11px] rounded-lg p-3 flex items-start gap-2.5 ${
                       isMatching
                         ? 'bg-blue-500/10 border border-blue-500/30'
-                        : matchStatus.includes('fail') || matchStatus.includes('not configured')
+                        : matchStatus.tone === 'error'
                         ? 'bg-red-500/10 border border-red-500/20 text-red-300'
-                        : matchStatus.includes('complete')
-                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
                         : 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
                     }`}>
                       {isMatching && (
@@ -1318,17 +1347,14 @@ export default function VideoCreatorPage() {
                           </span>
                         </span>
                       )}
-                      {!isMatching && matchStatus.includes('complete') && (
-                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                      )}
-                      <span className="flex-1">{matchStatus}</span>
+                      <span className="flex-1">{matchStatus.text}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Surah Selector */}
                 <div>
-                  <label htmlFor="surah-select" className="font-semibold text-slate-200 block mb-1.5">Select Surah:</label>
+                  <label htmlFor="surah-select" className="font-semibold text-slate-200 block mb-1.5">{t.source.selectSurah}</label>
                   <select
                     id="surah-select"
                     value={selectedSurah}
@@ -1348,7 +1374,7 @@ export default function VideoCreatorPage() {
                   >
                     {SURAHS_LIST.map((s) => (
                       <option key={s.number} value={s.number}>
-                        {s.number}. {s.nameEnglish} ({s.nameArabic}) - {s.numberOfAyahs} Ayahs
+                        {t.source.surahOption(s.number, s.nameEnglish, s.nameArabic, s.numberOfAyahs)}
                       </option>
                     ))}
                   </select>
@@ -1357,7 +1383,7 @@ export default function VideoCreatorPage() {
                 {/* Ayah Range */}
                 <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">
                   <div>
-                    <label htmlFor="ayah-start" className="text-slate-400 block mb-1">Start Ayah:</label>
+                    <label htmlFor="ayah-start" className="text-slate-400 block mb-1">{t.source.startAyah}</label>
                     <input
                       id="ayah-start"
                       type="text"
@@ -1368,12 +1394,13 @@ export default function VideoCreatorPage() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') commitAyahRangeInput('start');
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold"
+                      dir="ltr"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold text-start"
                     />
                   </div>
 
                   <div>
-                    <label htmlFor="ayah-end" className="text-slate-400 block mb-1">End Ayah:</label>
+                    <label htmlFor="ayah-end" className="text-slate-400 block mb-1">{t.source.endAyah}</label>
                     <input
                       id="ayah-end"
                       type="text"
@@ -1384,28 +1411,40 @@ export default function VideoCreatorPage() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') commitAyahRangeInput('end');
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold"
+                      dir="ltr"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold text-start"
                     />
                   </div>
                 </div>
 
                 {/* Reciter Selector */}
                 <div>
-                  <label id="reciter-label" className="font-semibold text-slate-200 block mb-1.5">Select Reciter / Voice:</label>
+                  <label id="reciter-label" className="font-semibold text-slate-200 block mb-1.5">{t.source.selectReciter}</label>
                   <div role="radiogroup" aria-labelledby="reciter-label" className="grid grid-cols-1 gap-2">
                     {RECITERS.map((r) => (
                       <button
                         key={r.id}
                         onClick={() => setSelectedReciter(r.id)}
-                        className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                        className={`p-3 rounded-xl border text-start flex items-center justify-between transition-all ${
                           selectedReciter === r.id
                             ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
                             : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
                         <div>
-                          <span className="font-bold block text-slate-200">{r.name}</span>
-                          <span className="text-[11px] text-amber-400 font-amiri block" dir="rtl">{r.arabicName}</span>
+                          {locale === 'ar' ? (
+                            <>
+                              <span className="font-bold block text-slate-200 font-amiri text-base" dir="rtl">
+                                {r.arabicName}
+                              </span>
+                              <span className="text-[11px] text-amber-400 block" dir="ltr">{r.name}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-bold block text-slate-200">{r.name}</span>
+                              <span className="text-[11px] text-amber-400 font-amiri block" dir="rtl">{r.arabicName}</span>
+                            </>
+                          )}
                         </div>
                         {/* Whether this voice has published ayah timings decides
                             whether "Load ayahs & audio" produces a real timeline
@@ -1414,14 +1453,14 @@ export default function VideoCreatorPage() {
                         <span className="flex items-center gap-1.5">
                           {r.quranApiId > 0 && (
                             <span
-                              title="Ayah boundaries for this reciter come from the recording"
+                              title={t.source.reciterTimedTitle}
                               className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
                             >
-                              timed
+                              {t.source.reciterTimed}
                             </span>
                           )}
-                          <span className="text-[11px] font-mono text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
-                            {r.style}
+                          <span className="text-[11px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
+                            {t.source.reciterStyles[r.style as keyof typeof t.source.reciterStyles] ?? r.style}
                           </span>
                         </span>
                       </button>
@@ -1436,7 +1475,7 @@ export default function VideoCreatorPage() {
                   className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
                 >
                   {isLoadingVerses ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
-                  <span>{isLoadingVerses ? 'Loading ayahs…' : 'Load ayahs & audio'}</span>
+                  <span>{isLoadingVerses ? t.source.loadingVerses : t.source.loadVerses}</span>
                 </button>
 
                 {loadResult && (
@@ -1450,22 +1489,24 @@ export default function VideoCreatorPage() {
                           : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
                     }`}
                   >
-                    <span className="font-semibold">{loadResult.message}</span>
+                    <span className="font-semibold">
+                      {loadResult.ok ? t.source.loadedCount(loadResult.count ?? 0) : t.source.loadFailed}
+                    </span>
                     {loadResult.ok && (
                       <button
                         onClick={() => { setSelectedIndex(0); setMobileSurface('preview'); }}
-                        className="ml-1.5 underline underline-offset-2 hover:text-emerald-100"
+                        className="ms-1.5 underline underline-offset-2 hover:text-emerald-100"
                       >
-                        Show on timeline
+                        {t.source.showOnTimeline}
                       </button>
                     )}
                     {loadResult.ok && (
                       <span className="block mt-1 font-normal">
                         {loadResult.againstUpload
-                          ? 'Your uploaded file is still the audio being played, and these times belong to the reciter\u2019s recording — not to it. Run AI Auto-match, or set the boundaries on the timeline.'
+                          ? t.source.loadedAgainstUpload
                           : loadResult.timingSource === 'measured'
-                            ? `Ayah boundaries came from the recording itself${loadResult.seeked ? ', and the playhead has moved to the first one' : ''}.`
-                            : 'This reciter has no published timings, so the boundaries are estimated — set them on the timeline before exporting.'}
+                            ? t.source.loadedMeasured(!!loadResult.seeked)
+                            : t.source.loadedEstimated}
                       </span>
                     )}
                   </div>
@@ -1476,7 +1517,7 @@ export default function VideoCreatorPage() {
 
           {/* Preview */}
           <main
-            aria-label="Preview"
+            aria-label={t.surfaces.preview}
             className={`flex-1 flex-col items-center justify-center p-4 bg-slate-950 relative overflow-hidden min-w-0 ${
               mobileSurface === 'preview' ? 'flex' : 'hidden'
             } lg:flex`}
@@ -1489,7 +1530,7 @@ export default function VideoCreatorPage() {
             {/* The preview sits inside a jadwal -- the ruled frame a mushaf
                 draws around its text block -- because that is exactly what the
                 preview is. Chrome only; it is not in the exported video. */}
-            <div className="jadwal relative cursor-pointer" onClick={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
+            <div className="jadwal relative cursor-pointer" onClick={togglePlayPause} title={isPlaying ? t.common.pause : t.common.play}>
               <div className="jadwal-inner overflow-hidden">
               <VideoCanvas
                 ref={canvasRef}
@@ -1515,14 +1556,12 @@ export default function VideoCreatorPage() {
           {audioError && (
             <div className="w-full max-w-2xl bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-2 text-center z-20">
               <p className="text-xs text-red-400 font-medium">{audioError}</p>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Try switching reciters, or upload a custom audio file.
-              </p>
+              <p className="text-[11px] text-slate-400 mt-1">{t.audioErrors.hint}</p>
               <button
                 onClick={() => setAudioError(null)}
                 className="mt-1.5 text-[11px] text-amber-400 hover:text-amber-300 underline"
               >
-                Dismiss
+                {t.common.dismiss}
               </button>
             </div>
           )}
@@ -1530,13 +1569,13 @@ export default function VideoCreatorPage() {
 
           {/* Inspector */}
           <aside
-            aria-label="Inspector"
-            className={`w-full lg:w-[340px] shrink-0 border-l border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
+            aria-label={t.surfaces.inspector}
+            className={`w-full lg:w-[340px] shrink-0 border-s border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
               mobileSurface === 'inspect' ? 'flex' : 'hidden'
             } lg:flex`}
           >
             <div className="flex border-b border-slate-800 shrink-0">
-              {([['ayah', 'Ayah'], ['style', 'Style']] as const).map(([id, label]) => (
+              {([['ayah', t.inspector.tabAyah], ['style', t.inspector.tabStyle]] as const).map(([id, label]) => (
                 <button
                   key={id}
                   onClick={() => setInspectorTab(id)}
@@ -1622,13 +1661,13 @@ export default function VideoCreatorPage() {
           exactly one of them usefully at a time. Hidden from `lg` up, where all
           three are visible at once and the switch would mean nothing. */}
       <nav
-        aria-label="Switch view"
+        aria-label={t.surfaces.switchView}
         className="lg:hidden shrink-0 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md p-1.5 flex gap-1.5 z-30"
       >
         {([
-          ['source', 'Source', BookOpen],
-          ['preview', 'Preview', Film],
-          ['inspect', 'Edit', Sliders]
+          ['source', t.surfaces.source, BookOpen],
+          ['preview', t.surfaces.preview, Film],
+          ['inspect', t.surfaces.edit, Sliders]
         ] as const).map(([id, label, Icon]) => {
           const active = mobileSurface === id;
           return (

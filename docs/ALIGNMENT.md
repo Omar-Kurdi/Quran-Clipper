@@ -1,5 +1,7 @@
 # How recitation timing works
 
+**English · [العربية](ALIGNMENT.ar.md)**
+
 This document explains why the audio-matching pipeline is built the way it is, and records the
 measurements behind the design. All figures come from a 68.5-second reference clip of
 Al-Ahzab 33:21–23 and can be reproduced with the scripts in `scripts/`.

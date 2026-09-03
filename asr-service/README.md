@@ -1,5 +1,7 @@
 # Quran alignment sidecar
 
+**English · [العربية](README.ar.md)**
+
 A small FastAPI service that answers *when* each word of a recitation was spoken. The main
 app talks to it over HTTP; it knows nothing about the app's data model.
 

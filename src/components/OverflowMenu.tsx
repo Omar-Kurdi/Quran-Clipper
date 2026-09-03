@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
+import { useT } from './LocaleProvider';
 
 export interface OverflowItem {
   key: string;
@@ -22,8 +23,10 @@ export interface OverflowItem {
  */
 export const OverflowMenu: React.FC<{ items: OverflowItem[]; label?: string }> = ({
   items,
-  label = 'More actions'
+  label
 }) => {
+  const t = useT();
+  const menuLabel = label ?? t.common.moreActions;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -51,8 +54,8 @@ export const OverflowMenu: React.FC<{ items: OverflowItem[]; label?: string }> =
         onClick={() => setOpen(o => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={label}
-        title={label}
+        aria-label={menuLabel}
+        title={menuLabel}
         className="flex items-center justify-center px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
       >
         <MoreHorizontal className="w-4 h-4" />
@@ -61,7 +64,7 @@ export const OverflowMenu: React.FC<{ items: OverflowItem[]; label?: string }> =
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1.5 w-56 p-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50"
+          className="absolute end-0 top-full mt-1.5 w-56 p-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50"
         >
           {items.map(item => (
             <button
@@ -71,7 +74,7 @@ export const OverflowMenu: React.FC<{ items: OverflowItem[]; label?: string }> =
                 setOpen(false);
                 item.onSelect();
               }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg hover:bg-slate-800 transition-colors text-left focus-visible:outline-none focus-visible:bg-slate-800"
+              className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg hover:bg-slate-800 transition-colors text-start focus-visible:outline-none focus-visible:bg-slate-800"
             >
               <span className="shrink-0 text-amber-400">{item.icon}</span>
               <span className="min-w-0">

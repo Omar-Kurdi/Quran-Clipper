@@ -3,6 +3,9 @@
 <p align="center">
   <img src="docs/screenshots/Banner.png" alt="Banner.">
 </p>
+
+**English · [العربية](README.ar.md)**
+
 A Next.js studio for creating short-form Quran recitation videos. Select ayahs, choose a
 reciter or upload your own recitation, sync verse timings, style the canvas, pick an animated
 background, and export the result — all in the browser.
@@ -108,6 +111,12 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Aspect ratios 9:16, 16:9, 1:1, 4:5.
 - 11 Pexels video backgrounds, plus any video or image you paste a link to or upload — stills
   render exactly like footage.
+- **The interface in English or Arabic**, switched from the header. The choice is a cookie, so
+  the server renders the page in the right language and direction from the first paint rather
+  than flashing English and correcting itself. Arabic gets a real RTL layout and its own
+  interface face; the timeline and the trim waveform stay left-to-right, because time does. The
+  *video* is untouched either way — the watermark, the surah badge and the translation are your
+  content, not interface copy.
 - Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
   Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card. Each colour
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
@@ -432,6 +441,7 @@ src/app/                     Next.js pages and API routes
 src/components/              VideoCanvas, Timeline, Inspector, StyleConfigPanel,
                              GpuExportModal, SavedProjectsDrawer, AudioTrimModal
                              Dialog, Button, Status, OverflowMenu, PaletteSwitcher
+                             LocaleProvider, LanguageSwitcher
 src/db/                      Drizzle ORM connection and schema
 src/lib/
   quranData.ts               Surahs, reciters, backgrounds, fonts, sample data
@@ -445,6 +455,9 @@ src/lib/
   audioTrim.ts               In-browser decode/slice/re-encode for the trim editor
   waveform.ts                Cached peak data for the timeline's waveform track
   verseEdits.ts              Pure timeline edits shared by the timeline and inspector
+  i18n.ts                    Locale registry, cookie name, direction
+  i18n.en.ts                 English interface copy -- the Dictionary type is derived from it
+  i18n.ar.ts                 Arabic interface copy, typed against the English one
 asr-service/                 Python sidecar
   app/align.py               CTC forced alignment, phrase segmentation, repeat detection
   app/asr.py                 Free-decode backends (wav2vec2 / nemo / whisper)
@@ -466,6 +479,10 @@ npm run build        # production build
 npm run db:push      # apply src/db/schema.ts to DATABASE_URL
 npm run db:studio    # browse the database in Drizzle Studio
 ```
+
+> Every string in the interface is written once in `src/lib/i18n.en.ts`, and the `Dictionary`
+> type is derived from it. A key added there makes `src/lib/i18n.ar.ts` fail `npm run typecheck`
+> until it is translated -- which is the only thing that keeps the two languages from drifting.
 
 ---
 

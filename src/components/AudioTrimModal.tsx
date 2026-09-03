@@ -4,6 +4,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallba
 import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, ChevronsLeft, ChevronsRight, Move, Maximize2 } from 'lucide-react';
 import { decodeAudioFile, computePeaks, buildTrimmedFile, TrimResult } from '@/lib/audioTrim';
 import { Dialog } from './Dialog';
+import { useT } from './LocaleProvider';
 
 interface AudioTrimModalProps {
   isOpen: boolean;
@@ -73,6 +74,7 @@ type DragTarget = 'start' | 'end' | 'playhead';
  * are one timeline.
  */
 export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, onCancel, onApply }) => {
+  const t = useT();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   /**
@@ -90,7 +92,16 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
 
   const [isDecoding, setIsDecoding] = useState(true);
   const [isApplying, setIsApplying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * Which failure happened, not its wording.
+   *
+   * The decode runs in an effect keyed on `file`; holding the finished sentence
+   * would make that effect depend on the dictionary, so it would either re-decode
+   * the whole file on every language switch or leave the previous language's
+   * message sitting on screen. A key is translated at render instead, and follows
+   * a switch for free.
+   */
+  const [error, setError] = useState<'decodeFailed' | 'trimFailed' | null>(null);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [duration, setDuration] = useState(0);
   const [trimStart, setTrimStart] = useState(0);
@@ -213,7 +224,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
       })
       .catch(() => {
         if (cancelled) return;
-        setError('Could not read this audio file for trimming. Try a different file, or continue without trimming.');
+        setError('decodeFailed');
         setIsDecoding(false);
       });
     return () => {
@@ -480,7 +491,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
       const result = buildTrimmedFile(buffer, trimStart, trimEnd, file.name);
       onApply({ ...result, trimStart, trimEnd });
     } catch {
-      setError('Could not trim this audio file.');
+      setError('trimFailed');
       setIsApplying(false);
     }
   };
@@ -497,7 +508,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     <Dialog
       isOpen={isOpen}
       onClose={onCancel}
-      label="Trim or crop audio"
+      label={t.trim.dialogLabel}
       dismissible={!isApplying}
       panelClassName="relative max-w-full max-h-[90vh] overflow-auto"
       panelStyle={{ transform: `translate(${panelOffset.x}px, ${panelOffset.y}px)` }}
@@ -511,59 +522,58 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
 
         <button
           onClick={onCancel}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
+          aria-label={t.common.close}
+          className="absolute top-4 end-4 p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div
           onPointerDown={startPanelMove}
-          className="flex items-center gap-3 mb-5 pr-10 cursor-move select-none"
+          className="flex items-center gap-3 mb-5 pe-10 cursor-move select-none"
         >
           <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
             <Scissors className="w-6 h-6" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-              Trim audio
+              {t.trim.title}
               <Move className="w-3.5 h-3.5 text-slate-400" aria-hidden />
             </h3>
-            <p className="text-xs text-slate-400">
-              Drag the ruler to move the playhead; drag the amber handles to set what to keep.
-              Drag this bar to move the window, or its bottom-right corner to resize everything in it.
-            </p>
+            <p className="text-xs text-slate-400">{t.trim.help}</p>
           </div>
           {(panelScale !== 1 || panelOffset.x !== 0 || panelOffset.y !== 0) && (
             <button
               onClick={resetPanelView}
               className="shrink-0 px-2 py-1 text-[11px] font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
             >
-              Reset window ({Math.round(panelScale * 100)}%)
+              {t.trim.resetWindow(Math.round(panelScale * 100))}
             </button>
           )}
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-300 text-xs rounded-lg">{error}</div>
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-300 text-xs rounded-lg">{t.trim[error]}</div>
         )}
 
         {isDecoding ? (
           <div className="h-24 flex items-center justify-center gap-2 text-slate-400 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Reading audio…</span>
+            <span>{t.trim.readingAudio}</span>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-[11px] font-mono text-slate-400">
-                Playhead <span className="text-lapis-bright">{formatDuration(playhead)}</span>
-                <span className="text-slate-400"> / {formatDuration(duration)}</span>
+              <div className="text-[11px] text-slate-400">
+                {t.trim.playhead}{' '}
+                <span className="font-mono text-lapis-bright" dir="ltr">{formatDuration(playhead)}</span>
+                <span className="font-mono text-slate-400" dir="ltr"> / {formatDuration(duration)}</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => changeZoom(ZOOM_LEVELS[zoomIndex - 1])}
                   disabled={zoomIndex <= 0}
-                  title="Zoom out"
+                  title={t.trim.zoomOut}
                   className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 rounded-lg border border-slate-700 transition-colors"
                 >
                   <ZoomOut className="w-3.5 h-3.5" />
@@ -572,7 +582,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                 <button
                   onClick={() => changeZoom(ZOOM_LEVELS[zoomIndex + 1])}
                   disabled={zoomIndex >= ZOOM_LEVELS.length - 1}
-                  title="Zoom in"
+                  title={t.trim.zoomIn}
                   className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 rounded-lg border border-slate-700 transition-colors"
                 >
                   <ZoomIn className="w-3.5 h-3.5" />
@@ -589,6 +599,13 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                   spill makes the viewport scrollable by 10px even at 1x zoom. */}
               <div
                 ref={trackRef}
+                // The waveform is a picture of time, and time runs left to
+                // right on it: every tick, handle and shade is placed with
+                // `left: %` against a canvas whose first sample is at its left
+                // edge. Mirroring this under RTL would put 0:00 on the right of
+                // a waveform that still starts on the left. The dialog's text
+                // and buttons flip; this strip does not.
+                dir="ltr"
                 className="relative select-none overflow-hidden touch-none cursor-text"
                 style={{ width: `${zoom * 100}%` }}
                 onPointerDown={e => {
@@ -638,7 +655,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                     e.stopPropagation();
                     beginScrub();
                   }}
-                  title="Drag to move the playhead"
+                  title={t.trim.dragPlayhead}
                   className="absolute top-0 h-5 -ml-2.5 w-5 cursor-ew-resize flex justify-center items-start pt-0.5 touch-none group"
                   style={{ left: `${playheadPct}%` }}
                 >
@@ -659,7 +676,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                     e.stopPropagation();
                     setDragging('start');
                   }}
-                  title="Drag to move the start of the selection"
+                  title={t.trim.dragSelectionStart}
                   className="absolute top-5 bottom-0 -ml-2.5 w-5 cursor-ew-resize flex items-stretch justify-center touch-none group"
                   style={{ left: `${startPct}%` }}
                 >
@@ -670,7 +687,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                     e.stopPropagation();
                     setDragging('end');
                   }}
-                  title="Drag to move the end of the selection"
+                  title={t.trim.dragSelectionEnd}
                   className="absolute top-5 bottom-0 -ml-2.5 w-5 cursor-ew-resize flex items-stretch justify-center touch-none group"
                   style={{ left: `${endPct}%` }}
                 >
@@ -681,7 +698,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
 
             <div className="grid grid-cols-3 gap-3 mt-4">
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Start (m:ss.s)</label>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">{t.trim.startLabel}</label>
                 <input
                   type="text"
                   inputMode="text"
@@ -698,7 +715,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">End (m:ss.s)</label>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">{t.trim.endLabel}</label>
                 <input
                   type="text"
                   inputMode="text"
@@ -715,7 +732,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Selected length</label>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">{t.trim.selectedLength}</label>
                 <div className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-emerald-400 font-mono">
                   {formatDuration(trimmedDuration)}
                 </div>
@@ -725,34 +742,34 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
             <div className="flex flex-wrap items-center gap-2 mt-4">
               <button
                 onClick={() => togglePlayback(false)}
-                title="Play from the playhead"
+                title={t.trim.playFromPlayhead}
                 className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
               >
                 {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                <span>{isPlaying ? t.common.pause : t.common.play}</span>
               </button>
               <button
                 onClick={() => togglePlayback(true)}
-                title="Play only the selected region"
+                title={t.trim.previewSelectionTitle}
                 className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors"
               >
-                Preview selection
+                {t.trim.previewSelection}
               </button>
               <div className="w-px h-6 bg-slate-800" />
               <button
                 onClick={() => setTrimStart(Math.min(playhead, trimEnd - MIN_TRIM_SECONDS))}
-                title="Move the start to the playhead"
+                title={t.trim.startHereTitle}
                 className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
               >
                 <ChevronsLeft className="w-3.5 h-3.5" />
-                <span>Start here</span>
+                <span>{t.trim.startHere}</span>
               </button>
               <button
                 onClick={() => setTrimEnd(Math.max(playhead, trimStart + MIN_TRIM_SECONDS))}
-                title="Move the end to the playhead"
+                title={t.trim.endHereTitle}
                 className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
               >
-                <span>End here</span>
+                <span>{t.trim.endHere}</span>
                 <ChevronsRight className="w-3.5 h-3.5" />
               </button>
               <button
@@ -760,7 +777,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                 className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
+                <span>{t.common.reset}</span>
               </button>
             </div>
 
@@ -773,7 +790,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
             disabled={isApplying}
             className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors disabled:opacity-50"
           >
-            Cancel
+            {t.common.cancel}
           </button>
           <button
             onClick={handleApply}
@@ -781,7 +798,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
             className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
           >
             {isApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scissors className="w-4 h-4" />}
-            <span>{isApplying ? 'Trimming…' : 'Apply Trim'}</span>
+            <span>{isApplying ? t.trim.trimming : t.trim.applyTrim}</span>
           </button>
         </div>
         {/* Resize grip. Scales the panel's contents rather than reflowing them
@@ -790,9 +807,9 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
         <span
           onPointerDown={startPanelScale}
           role="separator"
-          aria-label="Resize the trim window"
-          title="Drag to resize the whole window"
-          className="absolute bottom-1 right-1 w-5 h-5 flex items-end justify-end text-slate-400 hover:text-slate-200 cursor-nwse-resize touch-none"
+          aria-label={t.trim.resizeWindow}
+          title={t.trim.resizeWindowTitle}
+          className="absolute bottom-1 end-1 w-5 h-5 flex items-end justify-end text-slate-400 hover:text-slate-200 cursor-nwse-resize touch-none"
         >
           <Maximize2 className="w-3.5 h-3.5 rotate-90" />
         </span>

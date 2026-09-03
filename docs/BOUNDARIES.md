@@ -1,5 +1,7 @@
 # Boundary detection: what is measured (test.mp3 33:21-23, test2.mp3 23:93-96)
 
+**English · [العربية](BOUNDARIES.ar.md)**
+
 Ground truth = user's per-segment description. Score = exact word-range matches.
 
 | approach | test.mp3 | test2.mp3 | verdict |

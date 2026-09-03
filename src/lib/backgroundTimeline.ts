@@ -203,22 +203,49 @@ export function backgroundSegments(
   return out;
 }
 
+/**
+ * The names this function can invent when a background has none of its own.
+ *
+ * Passed in rather than imported so this stays a pure function of its
+ * arguments: the studio hands it `t.backgrounds`, and the English defaults keep
+ * every existing caller -- and any future non-UI one -- working unchanged.
+ */
+export interface BackgroundLabels {
+  titles: Record<string, string>;
+  uploadedImage: string;
+  uploadedClip: string;
+  pastedImage: string;
+  pastedClip: string;
+  generic: string;
+}
+
+const DEFAULT_LABELS: BackgroundLabels = {
+  titles: {},
+  uploadedImage: 'Uploaded image',
+  uploadedClip: 'Uploaded clip',
+  pastedImage: 'Pasted image',
+  pastedClip: 'Pasted clip',
+  generic: 'Background'
+};
+
 /** A short human name for a background, for timeline blocks and the sequence list. */
-export function backgroundLabel(url: string): string {
+export function backgroundLabel(url: string, labels: BackgroundLabels = DEFAULT_LABELS): string {
   const preset = BACKGROUND_VIDEOS.find(bg => bg.url === url);
-  if (preset) return preset.title;
+  // A preset's translated title if there is one; otherwise the shipped English
+  // title, which is better than no name at all.
+  if (preset) return labels.titles[preset.id] ?? preset.title;
   const kind = mediaKind(url);
-  if (url.startsWith('blob:')) return kind === 'image' ? 'Uploaded image' : 'Uploaded clip';
+  if (url.startsWith('blob:')) return kind === 'image' ? labels.uploadedImage : labels.uploadedClip;
   // A data: url's "path" is the file itself -- naming it after that would put a
   // kilobyte of base64 in the list.
-  if (url.startsWith('data:')) return kind === 'image' ? 'Pasted image' : 'Pasted clip';
+  if (url.startsWith('data:')) return kind === 'image' ? labels.pastedImage : labels.pastedClip;
   try {
     const file = new URL(url).pathname.split('/').filter(Boolean).pop();
     if (file) return decodeURIComponent(file).replace(/\.[a-z0-9]+$/i, '');
   } catch {
     // Not a parseable url -- fall through to the generic name.
   }
-  return 'Background';
+  return labels.generic;
 }
 
 // ---------------------------------------------------------------------------

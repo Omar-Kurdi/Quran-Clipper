@@ -171,6 +171,42 @@
   --font-display: 'Cormorant Garamond', Georgia, serif;
 }
 
+/* ---------------------------------------------------------------------------
+   The interface in Arabic.
+
+   IBM Plex Sans and Cormorant Garamond carry no Arabic at all, so under
+   `lang="ar"` every label would fall through to whatever the system happens to
+   have -- a different face per operating system, none of them matching the
+   design. Redefining the two font variables re-letters the whole studio without
+   touching a single `font-sans` or `font-display` call site.
+
+   Only the *interface* is affected. The canvas picks its Quran face from
+   `config.fontArabic` and is not touched here: the exported video must not
+   change because someone switched the studio's language.
+   --------------------------------------------------------------------------- */
+:root[lang="ar"] {
+  --font-sans: 'IBM Plex Sans Arabic', 'Noto Naskh Arabic', ui-sans-serif, system-ui, sans-serif;
+  /* Amiri rather than a sans: `font-display` marks the wordmark and the surah
+     reference, and a naskh serif is the closest Arabic answer to what Cormorant
+     was doing there. */
+  --font-display: 'Amiri', 'Scheherazade New', Georgia, serif;
+}
+
+/* Timecodes, hex colours, `2:255` references and URLs are Latin-script data
+   whose punctuation order is reversed by the bidi algorithm inside an RTL
+   paragraph -- `0:12.34` renders as `34.12:0`. Mono is already how the studio
+   marks "this is a literal value", so it is also where the direction is pinned.
+   Individual `dir="ltr"` attributes still win over this. */
+:root[lang="ar"] .font-mono {
+  direction: ltr;
+  /* `direction` alone does nothing on an inline element: without an isolation
+     level the bidi algorithm still resolves the run against the paragraph's
+     base direction. `isolate` opens that level, so a timecode sitting inside an
+     Arabic sentence keeps its own order and is treated as one neutral object by
+     the text around it. */
+  unicode-bidi: isolate;
+}
+
 @layer utilities {
   .font-display {
     font-family: var(--font-display);

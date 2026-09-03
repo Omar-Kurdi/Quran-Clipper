@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useT } from './LocaleProvider';
 
 interface ColorFieldProps {
   label: string;
@@ -86,6 +87,7 @@ export function hslToHex({ h, s, l }: Hsl): string {
 }
 
 export const ColorField: React.FC<ColorFieldProps> = ({ label, description, value, onChange }) => {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   // Hue and saturation survive a trip through pure black, white or grey, where
@@ -127,7 +129,7 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
-        className="w-full flex items-center gap-2.5 p-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded-lg"
+        className="w-full flex items-center gap-2.5 p-2 text-start focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded-lg"
       >
         <span
           className="w-7 h-7 rounded-md border border-slate-700 shrink-0"
@@ -156,14 +158,14 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
                 chunky OS-styled button that sits nothing like the eleven beside
                 it. */}
             <label
-              title="Pick any colour"
+              title={t.colorField.pickAny}
               className="relative h-6 rounded border border-slate-700 overflow-hidden cursor-pointer transition-transform hover:scale-105"
               style={{
                 background:
                   'conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)'
               }}
             >
-              <span className="sr-only">{`${label}: pick any colour`}</span>
+              <span className="sr-only">{t.colorField.pickAnyFor(label)}</span>
               <input
                 type="color"
                 value={normalizeHex(value) ?? '#ffffff'}
@@ -187,7 +189,7 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
 
           <label className="block">
             <span className="flex justify-between text-[11px] text-slate-400">
-              <span>Hue</span>
+              <span>{t.colorField.hue}</span>
               <span className="font-mono">{hsl.h}&deg;</span>
             </span>
             <input
@@ -202,7 +204,7 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
 
           <label className="block">
             <span className="flex justify-between text-[11px] text-slate-400">
-              <span>Saturation</span>
+              <span>{t.colorField.saturation}</span>
               <span className="font-mono">{hsl.s}%</span>
             </span>
             <input
@@ -217,7 +219,7 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
 
           <label className="block">
             <span className="flex justify-between text-[11px] text-slate-400">
-              <span>Lightness</span>
+              <span>{t.colorField.lightness}</span>
               <span className="font-mono">{hsl.l}%</span>
             </span>
             <input
@@ -233,7 +235,7 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
           <input
             type="text"
             spellCheck={false}
-            aria-label={`${label} hex value`}
+            aria-label={t.colorField.hexValue(label)}
             value={draft ?? value}
             onFocus={() => setDraft(value)}
             onChange={e => {

@@ -6,6 +6,7 @@ import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
 import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import { BackgroundSegment, backgroundLabel } from '@/lib/backgroundTimeline';
+import { useT } from './LocaleProvider';
 
 interface TimelineProps {
   verses: VerseData[];
@@ -72,6 +73,9 @@ export const Timeline: React.FC<TimelineProps> = ({
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground
 }) => {
+  const t = useT();
+  /** Named once here so every block, handle and tooltip agrees on what a clip is called. */
+  const nameOf = (url: string) => backgroundLabel(url, t.backgrounds);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   // The load result is stamped with the url it belongs to, so "still loading"
@@ -239,21 +243,21 @@ export const Timeline: React.FC<TimelineProps> = ({
   const clipIsWhole = clipRange.start <= 0.05 && clipRange.end >= duration - 0.05;
 
   return (
-    <section aria-label="Timeline" className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
+    <section aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
       {/* Transport. Everything that controls time is on this bar, so there is
           one clock rather than a scrubber here and nudge buttons elsewhere. */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800/70">
         <button
           onClick={onPlayPause}
-          aria-label={isPlaying ? 'Pause recitation' : 'Play recitation'}
+          aria-label={isPlaying ? t.timeline.pauseRecitation : t.timeline.playRecitation}
           className="p-2 bg-gold hover:bg-gold-bright text-ink rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-bright focus-visible:ring-offset-2 focus-visible:ring-offset-ink"
         >
           {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
         </button>
         <button
           onClick={() => onSeek(0)}
-          aria-label="Back to start"
-          title="Back to start"
+          aria-label={t.timeline.backToStart}
+          title={t.timeline.backToStart}
           className="p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
@@ -267,11 +271,11 @@ export const Timeline: React.FC<TimelineProps> = ({
             it used to sit in the far panel while the preview played opposite. */}
         <button
           onClick={onMarkHere}
-          title="Mark the end of this ayah at the playhead (B)"
-          className="ml-1 flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          title={t.timeline.markAyahEndTitle}
+          className="ms-1 flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
         >
           <Zap className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden sm:inline">Mark ayah end</span>
+          <span className="hidden sm:inline">{t.timeline.markAyahEnd}</span>
           <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">B</kbd>
         </button>
 
@@ -281,12 +285,12 @@ export const Timeline: React.FC<TimelineProps> = ({
         {onTrim && (
           <button
             onClick={onTrim}
-            title="Trim the uploaded audio — your timeline edits are kept"
+            title={t.timeline.trimAudioTitle}
             className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
           >
             <Scissors className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Trim audio</span>
-            {trimHint && <span className="hidden md:inline font-mono text-[10px] text-slate-400">{trimHint}</span>}
+            <span className="hidden sm:inline">{t.timeline.trimAudio}</span>
+            {trimHint && <span className="hidden md:inline font-mono text-[10px] text-slate-400" dir="ltr">{trimHint}</span>}
           </button>
         )}
 
@@ -296,18 +300,18 @@ export const Timeline: React.FC<TimelineProps> = ({
           <>
             <button
               onClick={() => onTrimRange(clipRange.start, clipRange.end)}
-              title={`Cut the audio down to ${formatTime(clipRange.start)} – ${formatTime(clipRange.end)}`}
+              title={t.timeline.cutDownTo(formatTime(clipRange.start), formatTime(clipRange.end))}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-[11px] font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
             >
               <Scissors className="w-3.5 h-3.5" />
-              <span>Keep {formatTime(clipRange.end - clipRange.start)}</span>
+              <span>{t.timeline.keep(formatTime(clipRange.end - clipRange.start))}</span>
             </button>
             <button
               onClick={() => setClip(null)}
-              title="Put the clip handles back to the whole recording"
+              title={t.timeline.resetClip}
               className="px-2 py-1.5 text-[11px] font-semibold text-slate-300 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
             >
-              Reset
+              {t.common.reset}
             </button>
           </>
         )}
@@ -316,8 +320,8 @@ export const Timeline: React.FC<TimelineProps> = ({
 
         <button
           onClick={onToggleMute}
-          aria-label={isMuted ? 'Unmute' : 'Mute'}
-          title={isMuted ? 'Unmute' : 'Mute'}
+          aria-label={isMuted ? t.timeline.unmute : t.timeline.mute}
+          title={isMuted ? t.timeline.unmute : t.timeline.mute}
           className="p-1.5 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
         >
           {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
@@ -329,34 +333,34 @@ export const Timeline: React.FC<TimelineProps> = ({
           step={0.01}
           value={isMuted ? 0 : volume}
           onChange={e => onVolume(parseFloat(e.target.value))}
-          aria-label="Volume"
+          aria-label={t.timeline.volume}
           className="hidden sm:block w-16 accent-amber-500"
         />
 
-        <span className="hidden md:inline font-mono text-[11px] text-slate-400">
-          {waveformState === 'loading' && 'reading audio…'}
-          {waveformState === 'unavailable' && 'waveform unavailable'}
+        <span className="hidden md:inline text-[11px] text-slate-400">
+          {waveformState === 'loading' && t.timeline.readingAudio}
+          {waveformState === 'unavailable' && t.timeline.waveformUnavailable}
         </span>
         <button
           onClick={() => setZoom(ZOOMS[zoomIndex - 1])}
           disabled={zoomIndex <= 0}
-          aria-label="Zoom out"
+          aria-label={t.timeline.zoomOut}
           className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg border border-slate-700 transition-colors"
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
-        <span className="font-mono text-[11px] text-slate-400 w-7 text-center">{zoom}x</span>
+        <span className="font-mono text-[11px] text-slate-400 w-7 text-center" dir="ltr">{zoom}x</span>
         <button
           onClick={() => setZoom(ZOOMS[zoomIndex + 1])}
           disabled={zoomIndex >= ZOOMS.length - 1}
-          aria-label="Zoom in"
+          aria-label={t.timeline.zoomIn}
           className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg border border-slate-700 transition-colors"
         >
           <ZoomIn className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div ref={viewportRef} className="overflow-x-auto overflow-y-hidden">
+      <div ref={viewportRef} dir="ltr" className="overflow-x-auto overflow-y-hidden">
         <div ref={trackRef} className="relative select-none" style={{ width: `${zoom * 100}%` }}>
           {/* Clip handles.
 
@@ -388,14 +392,14 @@ export const Timeline: React.FC<TimelineProps> = ({
                     onSeek(xToTime(e.clientX));
                   }}
                   role="separator"
-                  aria-label={edge === 'start' ? 'Move the start of the clip' : 'Move the end of the clip'}
-                  title={edge === 'start' ? 'Drag to move where the audio starts' : 'Drag to move where the audio ends'}
+                  aria-label={edge === 'start' ? t.timeline.moveClipStart : t.timeline.moveClipEnd}
+                  title={edge === 'start' ? t.timeline.dragClipStart : t.timeline.dragClipEnd}
                   className="absolute inset-y-0 -ml-2 w-4 cursor-ew-resize touch-none hover:bg-gold/40"
                   style={{ left: `${pct(edge === 'start' ? clipRange.start : clipRange.end)}%` }}
                 />
               ))}
               <span className="absolute left-1 top-0 text-[9px] font-mono leading-4 text-slate-400 pointer-events-none">
-                clip
+                {t.timeline.clip}
               </span>
             </div>
           )}
@@ -405,7 +409,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           <div
             className="relative h-5 border-b border-slate-800/70 cursor-ew-resize touch-none"
             role="slider"
-            aria-label="Playhead"
+            aria-label={t.timeline.playhead}
             aria-valuemin={0}
             aria-valuemax={Math.round(duration)}
             aria-valuenow={Math.round(currentTime)}
@@ -456,7 +460,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           {backgroundSegments.length > 0 && (
             <div
               className="relative h-7 border-b border-slate-800/70 bg-slate-950/40"
-              aria-label="Backgrounds"
+              aria-label={t.timeline.backgrounds}
               onPointerDown={e => { if (e.target === e.currentTarget) onSelectBackground?.(null); }}
             >
               {backgroundSegments.map((seg, i) => {
@@ -467,8 +471,8 @@ export const Timeline: React.FC<TimelineProps> = ({
                 return (
                   <div
                     key={`${seg.url}-${i}`}
-                    title={`${backgroundLabel(seg.url)} · ${formatTime(seg.start)} – ${formatTime(seg.end)}${
-                      editable ? ' · drag to move, drag an edge to resize' : ''
+                    title={`${nameOf(seg.url)} · ${formatTime(seg.start)} – ${formatTime(seg.end)}${
+                      editable ? t.timeline.dragToEdit : ''
                     }`}
                     onPointerDown={e => {
                       onSelectBackground?.(i);
@@ -486,7 +490,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     style={{ left: `${left}%`, width: `${width}%` }}
                   >
                     <span className="px-1 text-[9px] leading-none text-slate-300 truncate pointer-events-none">
-                      {backgroundLabel(seg.url)}
+                      {nameOf(seg.url)}
                     </span>
 
                     {/* Resize handles, inside the block and above the body drag
@@ -500,7 +504,11 @@ export const Timeline: React.FC<TimelineProps> = ({
                           setBgDrag({ index: i, edge, grabOffset: 0 });
                         }}
                         role="separator"
-                        aria-label={`Move ${edge === 'start' ? 'start' : 'end'} of ${backgroundLabel(seg.url)}`}
+                        aria-label={
+                          edge === 'start'
+                            ? t.timeline.moveStartOf(nameOf(seg.url))
+                            : t.timeline.moveEndOf(nameOf(seg.url))
+                        }
                         className={`absolute inset-y-0 w-2 cursor-ew-resize touch-none hover:bg-lapis-bright/60 ${
                           edge === 'start' ? 'left-0' : 'right-0'
                         }`}
@@ -551,13 +559,13 @@ export const Timeline: React.FC<TimelineProps> = ({
                   <span
                     onPointerDown={e => { e.stopPropagation(); onSelect(i); setDrag({ index: i, edge: 'startTime' }); }}
                     role="separator"
-                    aria-label={`Move start of ${verse.verseKey}`}
+                    aria-label={t.timeline.moveStartOf(verse.verseKey)}
                     className="absolute inset-y-0 left-0 w-2 cursor-ew-resize touch-none hover:bg-gold/50"
                   />
                   <span
                     onPointerDown={e => { e.stopPropagation(); onSelect(i); setDrag({ index: i, edge: 'endTime' }); }}
                     role="separator"
-                    aria-label={`Move end of ${verse.verseKey}`}
+                    aria-label={t.timeline.moveEndOf(verse.verseKey)}
                     className="absolute inset-y-0 right-0 w-2 cursor-ew-resize touch-none hover:bg-gold/50"
                   />
                 </div>
@@ -588,9 +596,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       </div>
 
       {verses.length === 0 && (
-        <p className="px-3 py-4 text-[11px] text-slate-400 text-center">
-          No ayahs loaded yet — pick a surah on the left, or upload a recitation.
-        </p>
+        <p className="px-3 py-4 text-[11px] text-slate-400 text-center">{t.timeline.empty}</p>
       )}
     </section>
   );

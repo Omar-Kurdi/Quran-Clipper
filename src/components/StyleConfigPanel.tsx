@@ -9,6 +9,7 @@ import {
 } from '@/lib/backgroundTimeline';
 import { ColorField } from './ColorField';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useT } from './LocaleProvider';
 import {
   LibraryItem, subscribeToLibrary, librarySnapshot, serverLibrarySnapshot, hydrateLibrary,
   addLibraryUpload, addLibraryLink, removeLibraryItem
@@ -54,6 +55,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   selectedBackground = null,
   onSelectBackground
 }) => {
+  const t = useT();
+  /** One name per clip, shared by the lane list, the sequence list and every tooltip. */
+  const nameOf = (url: string) => backgroundLabel(url, t.backgrounds);
   const [activeTab, setActiveTab] = useState<'design' | 'background' | 'card'>('design');
 
   const updateConfig = (key: keyof VideoCanvasConfig, value: unknown) => {
@@ -95,13 +99,8 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     if (item.url) addBackground(item.url, kind);
     setUploadStatus(
       stored
-        ? { kind: 'ok', message: `“${file.name}” added — it will still be here next time.` }
-        : {
-            kind: 'error',
-            message:
-              `“${file.name}” is in this video, but could not be stored for next time — ` +
-              'the browser refused it, usually because it is out of space for this site.'
-          }
+        ? { kind: 'ok', message: t.style.uploadAdded(file.name) }
+        : { kind: 'error', message: t.style.uploadNotStored(file.name) }
     );
   };
 
@@ -180,8 +179,8 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       id: bg.id,
       libraryId: null as string | null,
       url: bg.url as string | null,
-      title: bg.title,
-      category: bg.category,
+      title: t.backgrounds.titles[bg.id as keyof typeof t.backgrounds.titles] ?? bg.title,
+      category: t.backgrounds.categories[bg.category as keyof typeof t.backgrounds.categories] ?? bg.category,
       thumbnail: bg.thumbnail as string | null,
       kind: 'video' as MediaKind,
       removable: false,
@@ -194,7 +193,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         libraryId: item.id,
         url: item.url,
         title: item.label,
-        category: missing ? 'Missing' : 'Yours',
+        category: missing ? t.backgrounds.categories.Missing : t.backgrounds.categories.Yours,
         thumbnail: !missing && item.kind === 'image' ? item.url : null,
         kind: item.kind,
         removable: true,
@@ -282,35 +281,35 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     try {
       host = new URL(url).hostname;
     } catch {
-      setUrlStatus({ kind: 'error', message: 'That does not look like a link.' });
+      setUrlStatus({ kind: 'error', message: t.style.urlNotALink });
       return;
     }
 
     const isPexelsPage = /(^|\.)pexels\.com$/.test(host) && !/^videos?\.|^images\./.test(host);
     if (!isPexelsPage) {
-      setUrlStatus({ kind: 'busy', message: 'Checking that link…' });
+      setUrlStatus({ kind: 'busy', message: t.style.urlChecking });
       await applyDirectUrl(url);
-      setUrlStatus({ kind: 'ok', message: 'Added to your backgrounds.' });
+      setUrlStatus({ kind: 'ok', message: t.style.urlAdded });
       setUrlDraft('');
       return;
     }
 
-    setUrlStatus({ kind: 'busy', message: 'Looking that up on Pexels…' });
+    setUrlStatus({ kind: 'busy', message: t.style.urlLookingUp });
     try {
       const res = await fetch(`/api/background/resolve?url=${encodeURIComponent(url)}`);
       const data = await res.json();
       if (!res.ok || !data?.url) {
-        setUrlStatus({ kind: 'error', message: data?.error || 'Could not resolve that Pexels link.' });
+        setUrlStatus({ kind: 'error', message: data?.error || t.style.urlPexelsFailed });
         return;
       }
       await applyDirectUrl(data.url, data.credit ? `${data.credit} (Pexels)` : undefined);
       setUrlStatus({
         kind: 'ok',
-        message: data.credit ? `Added — ${data.credit} on Pexels.` : 'Added to your backgrounds.'
+        message: data.credit ? t.style.urlAddedWithCredit(data.credit) : t.style.urlAdded
       });
       setUrlDraft('');
     } catch {
-      setUrlStatus({ kind: 'error', message: 'Could not reach the resolver.' });
+      setUrlStatus({ kind: 'error', message: t.style.urlResolverUnreachable });
     }
   };
 
@@ -328,9 +327,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           and now share one tab with headings inside it. Three fit. */}
       <div className="grid grid-cols-3 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
         {([
-          ['design', 'Layout & Text', Type],
-          ['background', 'Background', ImageIcon],
-          ['card', 'Card & FX', Sliders]
+          ['design', t.style.tabDesign, Type],
+          ['background', t.style.tabBackground, ImageIcon],
+          ['card', t.style.tabCard, Sliders]
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
@@ -351,26 +350,28 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         <div className="flex flex-col gap-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
             <Layout className="w-3.5 h-3.5 text-amber-400" />
-            Format
+            {t.style.headingFormat}
           </h3>
-          <label className="font-semibold text-slate-200 text-sm">Select Video Aspect Ratio:</label>
+          <label className="font-semibold text-slate-200 text-sm">{t.style.aspectRatioLabel}</label>
           <div className="grid grid-cols-2 gap-2.5">
             {ASPECT_RATIOS.map((ar) => (
               <button
                 key={ar.id}
                 onClick={() => updateConfig('aspectRatio', ar.id)}
-                className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                className={`p-3 rounded-xl border text-start flex flex-col gap-1 transition-all ${
                   config.aspectRatio === ar.id
                     ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
                     : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-100">{ar.id}</span>
+                  <span className="font-bold text-slate-100" dir="ltr">{ar.id}</span>
                   {config.aspectRatio === ar.id && <Check className="w-4 h-4 text-amber-400" />}
                 </div>
-                <span className="text-[11px] text-slate-400">{ar.name}</span>
-                <span className="text-[11px] font-mono text-slate-400">{ar.width}x{ar.height}</span>
+                <span className="text-[11px] text-slate-400">
+                  {t.style.aspectRatios[ar.id as keyof typeof t.style.aspectRatios] ?? ar.name}
+                </span>
+                <span className="text-[11px] font-mono text-slate-400" dir="ltr">{ar.width}x{ar.height}</span>
               </button>
             ))}
           </div>
@@ -381,13 +382,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       {activeTab === 'background' && (
         <div className="flex flex-col gap-4">
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <label className="font-semibold text-slate-200 text-sm block mb-2">How backgrounds are used:</label>
+            <label className="font-semibold text-slate-200 text-sm block mb-2">{t.style.bgModeLabel}</label>
             <div className="grid grid-cols-2 gap-1.5">
               {([
-                ['single', 'One background', 'A single looping clip.'],
-                ['per-ayah', 'One per ayah', 'Steps to the next clip on each ayah.'],
-                ['cycle', 'Cycle on a timer', 'Changes every few seconds.'],
-                ['shuffle', 'Shuffle', 'Picks per ayah, repeatably.']
+                ['single', t.style.bgModes.single, t.style.bgModeHints.single],
+                ['per-ayah', t.style.bgModes['per-ayah'], t.style.bgModeHints['per-ayah']],
+                ['cycle', t.style.bgModes.cycle, t.style.bgModeHints.cycle],
+                ['shuffle', t.style.bgModes.shuffle, t.style.bgModeHints.shuffle]
               ] as const).map(([mode, label, hint]) => (
                 <button
                   key={mode}
@@ -410,7 +411,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             {!customBackground && (config.bgMode || 'single') === 'cycle' && (
               <div className="mt-3">
                 <div className="flex justify-between text-slate-300 mb-1 text-xs">
-                  <span>Seconds per background:</span>
+                  <span>{t.style.secondsPerBackground}</span>
                   <span className="font-mono text-amber-400">{config.bgCycleSeconds || 5}s</span>
                 </div>
                 <input
@@ -427,9 +428,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             {customBackground && (
               <div className="mt-3">
                 <p className="text-[11px] text-slate-300 bg-lapis-bright/10 border border-lapis-bright/30 rounded-lg p-2">
-                  Cut by hand on the timeline — {laneSegments.length} block{laneSegments.length === 1 ? '' : 's'}.
-                  Drag a block to move it, or an edge to change how long it runs; stretching one past the
-                  clip&apos;s own length just plays it again. Pick a mode above to go back to automatic.
+                  {t.style.laneSummary(laneSegments.length)} {t.style.laneHelp}
                 </p>
                 {laneSegments.length > 0 && (
                   <ol className="flex flex-col gap-1 mt-2">
@@ -444,16 +443,20 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         }`}
                       >
                         <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
-                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{backgroundLabel(seg.url)}</span>
-                        <span className="shrink-0 text-[10px] font-mono text-slate-400 tabular-nums">
+                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{nameOf(seg.url)}</span>
+                        <span className="shrink-0 text-[10px] font-mono text-slate-400 tabular-nums" dir="ltr">
                           {seg.start.toFixed(1)}–{seg.end.toFixed(1)}s
                         </span>
                         <button
                           onClick={() =>
                             setPendingDelete({
-                              title: 'Remove this block?',
-                              message: `“${backgroundLabel(seg.url)}” runs from ${seg.start.toFixed(1)}s to ${seg.end.toFixed(1)}s. Removing it leaves a gap there, which shows the plain gradient.`,
-                              confirmLabel: 'Remove block',
+                              title: t.style.removeBlockTitle,
+                              message: t.style.removeBlockMessage(
+                                nameOf(seg.url),
+                                seg.start.toFixed(1),
+                                seg.end.toFixed(1)
+                              ),
+                              confirmLabel: t.style.removeBlockConfirm,
                               run: () => {
                                 setLane(removeSegment(laneSegments, i));
                                 onSelectBackground?.(
@@ -466,7 +469,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                               }
                             })
                           }
-                          aria-label={`Remove ${backgroundLabel(seg.url)} at ${seg.start.toFixed(1)}s`}
+                          aria-label={t.style.removeBlockAria(nameOf(seg.url), seg.start.toFixed(1))}
                           className="p-0.5 text-slate-400 hover:text-red-400"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -480,14 +483,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
             {multiBackground && (
               bgSequence.length === 0 ? (
-                <p className="text-[11px] text-slate-400 mt-2">
-                  Tap thumbnails below to add backgrounds. With none selected this behaves as a single background.
-                </p>
+                <p className="text-[11px] text-slate-400 mt-2">{t.style.sequenceEmpty}</p>
               ) : (
                 <div className="mt-3">
-                  <p className="text-[11px] text-slate-400 mb-1.5">
-                    {bgSequence.length} in the sequence, in play order — the same clip may appear more than once.
-                  </p>
+                  <p className="text-[11px] text-slate-400 mb-1.5">{t.style.sequenceCount(bgSequence.length)}</p>
                   <ol className="flex flex-col gap-1">
                     {bgSequence.map((url, i) => (
                       <li
@@ -495,11 +494,11 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5"
                       >
                         <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
-                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{backgroundLabel(url)}</span>
+                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{nameOf(url)}</span>
                         <button
                           onClick={() => moveInSequence(i, i - 1)}
                           disabled={i === 0}
-                          aria-label={`Move ${backgroundLabel(url)} earlier`}
+                          aria-label={t.style.moveEarlier(nameOf(url))}
                           className="p-0.5 text-slate-400 hover:text-slate-100 disabled:opacity-30"
                         >
                           <ChevronLeft className="w-3.5 h-3.5" />
@@ -507,7 +506,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         <button
                           onClick={() => moveInSequence(i, i + 1)}
                           disabled={i === bgSequence.length - 1}
-                          aria-label={`Move ${backgroundLabel(url)} later`}
+                          aria-label={t.style.moveLater(nameOf(url))}
                           className="p-0.5 text-slate-400 hover:text-slate-100 disabled:opacity-30"
                         >
                           <ChevronRight className="w-3.5 h-3.5" />
@@ -515,13 +514,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         <button
                           onClick={() =>
                             setPendingDelete({
-                              title: 'Remove from the sequence?',
-                              message: `“${backgroundLabel(url)}” will stop playing at position ${i + 1}. It stays in your backgrounds below, ready to add again.`,
-                              confirmLabel: 'Remove',
+                              title: t.style.removeFromSequenceTitle,
+                              message: t.style.removeFromSequenceMessage(nameOf(url), i + 1),
+                              confirmLabel: t.common.remove,
                               run: () => setSequence(bgSequence.filter((_, j) => j !== i))
                             })
                           }
-                          aria-label={`Remove ${backgroundLabel(url)} from position ${i + 1}`}
+                          aria-label={t.style.removeFromSequenceAria(nameOf(url), i + 1)}
                           className="p-0.5 text-slate-400 hover:text-red-400"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -537,13 +536,12 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           <div>
             <label className="font-semibold text-slate-200 text-sm block mb-2">
               {customBackground
-                ? 'Add a background to the end of the lane:'
-                : (config.bgMode || 'single') === 'single' ? 'Backgrounds:' : 'Pick your backgrounds:'}
+                ? t.style.galleryLabelLane
+                : (config.bgMode || 'single') === 'single'
+                  ? t.style.galleryLabelSingle
+                  : t.style.galleryLabelMulti}
             </label>
-            <p className="text-[11px] text-slate-400 mb-2">
-              Presets first, then anything you have uploaded or pasted below. Hover one of your own to
-              delete it.
-            </p>
+            <p className="text-[11px] text-slate-400 mb-2">{t.style.galleryHelp}</p>
             {/* No inner scroller. Capping this at 224px put a second scrollbar
                 inside a panel that was already scrolling, and showed four
                 thumbnails above a screen of empty space. */}
@@ -558,9 +556,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                       disabled={bg.missing}
                       title={
                         bg.missing
-                          ? 'This file is no longer on this computer, or the link stopped working'
-                          : customBackground ? 'Add a block for this clip at the end of the lane'
-                          : multiBackground ? 'Add to the sequence — tap again to use it more than once'
+                          ? t.style.tileMissing
+                          : customBackground ? t.style.tileAddToLane
+                          : multiBackground ? t.style.tileAddToSequence
                           : bg.title
                       }
                       onClick={() => { if (bg.url) addBackground(bg.url, bg.kind); }}
@@ -574,7 +572,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     >
                       {/* Play order, so a multi-background sequence is readable at a glance. */}
                       {multiBackground && bg.url && bgSequence.includes(bg.url) && (
-                        <span className="absolute top-1 left-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
+                        <span className="absolute top-1 start-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
                           {(() => {
                             const uses = bgSequence.filter(u => u === bg.url).length;
                             return uses > 1 ? `x${uses}` : bgSequence.indexOf(bg.url) + 1;
@@ -587,9 +585,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         // the file again or let it go.
                         <span className="w-full h-full flex flex-col items-center justify-center gap-1 text-center px-2">
                           <FileQuestion className="w-5 h-5 text-slate-500" />
-                          <span className="text-[9px] text-slate-400 leading-tight">
-                            File not found — add it again, or remove it
-                          </span>
+                          <span className="text-[9px] text-slate-400 leading-tight">{t.style.tileNotFound}</span>
                         </span>
                       ) : bg.thumbnail ? (
                         <img
@@ -610,7 +606,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                           onError={() => { if (bg.libraryId && bg.url) markBroken(bg.url); }}
                         />
                       )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent flex flex-col justify-end p-2 text-left">
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent flex flex-col justify-end p-2 text-start">
                         <span className="text-[11px] font-semibold text-slate-100 leading-tight line-clamp-2">{bg.title}</span>
                         <span className={`text-[9px] uppercase tracking-wider flex items-center gap-1 ${
                           bg.missing ? 'text-slate-400' : 'text-amber-400'
@@ -622,7 +618,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         </span>
                       </div>
                       {!multiBackground && !customBackground && config.bgUrl === bg.url && (
-                        <div className="absolute top-2 right-2 bg-amber-500 text-slate-950 p-1 rounded-full shadow">
+                        <div className="absolute top-2 end-2 bg-amber-500 text-slate-950 p-1 rounded-full shadow">
                           <Check className="w-3 h-3" />
                         </div>
                       )}
@@ -635,18 +631,16 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                       <button
                         onClick={() =>
                           setPendingDelete({
-                            title: 'Remove this background?',
+                            title: t.style.removeBackgroundTitle,
                             message: bg.missing
-                              ? `“${bg.title}” cannot be found any more. Removing it just clears the entry.`
-                              : `“${bg.title}” will be taken out of your backgrounds${
-                                  inUse ? ', and out of this video where it is used' : ''
-                                }. Presets are not affected.`,
+                              ? t.style.removeBackgroundMissingMessage(bg.title)
+                              : t.style.removeBackgroundMessage(bg.title, inUse),
                             run: () => { if (bg.libraryId) removeFromEverywhere(bg.libraryId, bg.url); }
                           })
                         }
-                        title="Remove from your backgrounds"
-                        aria-label={`Remove ${bg.title} from your backgrounds`}
-                        className={`absolute top-1 right-1 z-10 p-1 rounded-full bg-slate-950/80 text-slate-300 hover:text-red-300 hover:bg-slate-950 border border-slate-700 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 ${
+                        title={t.style.removeBackgroundTooltip}
+                        aria-label={t.style.removeBackgroundAria(bg.title)}
+                        className={`absolute top-1 end-1 z-10 p-1 rounded-full bg-slate-950/80 text-slate-300 hover:text-red-300 hover:bg-slate-950 border border-slate-700 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 ${
                           bg.missing ? 'opacity-100' : 'opacity-0'
                         }`}
                       >
@@ -666,25 +660,24 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors font-medium"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Browse free stock videos on Pexels</span>
+                <span>{t.style.browsePexels}</span>
               </a>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Copy the page link from the address bar and paste it below.
-              </p>
+              <p className="text-[11px] text-slate-400 mt-1">{t.style.browsePexelsHelp}</p>
             </div>
           </div>
 
           {/* Paste a link -- file or Pexels page */}
           <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
-            <label htmlFor="bg-url" className="font-semibold text-slate-200 block mb-1.5">Paste a video or image link:</label>
+            <label htmlFor="bg-url" className="font-semibold text-slate-200 block mb-1.5">{t.style.pasteLinkLabel}</label>
             <div className="flex gap-2">
               <input
                 id="bg-url"
                 type="text"
                 value={urlDraft}
                 onChange={e => { setUrlDraft(e.target.value); setUrlStatus(null); }}
-                placeholder="A .mp4 link, or a Pexels page link"
-                className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                placeholder={t.style.pasteLinkPlaceholder}
+                dir="ltr"
+                className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 text-start"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleApplyUrl(urlDraft);
                 }}
@@ -694,13 +687,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 disabled={urlStatus?.kind === 'busy'}
                 className="px-3 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold rounded-lg text-xs transition-colors shrink-0"
               >
-                Apply
+                {t.common.apply}
               </button>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1.5">
-              A Pexels page link from the address bar works here — it is looked up and turned into the
-              video file for you.
-            </p>
+            <p className="text-[11px] text-slate-400 mt-1.5">{t.style.pasteLinkHelp}</p>
             {urlStatus && (
               <p
                 role="status"
@@ -719,7 +709,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
           {/* Custom Upload */}
           <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
-            <label className="font-semibold text-slate-200 block mb-1.5">Upload Custom Video or Image Loop:</label>
+            <label className="font-semibold text-slate-200 block mb-1.5">{t.style.uploadLabel}</label>
             <div className="relative flex items-center justify-center p-3 border-2 border-dashed border-slate-700 hover:border-amber-500/50 rounded-lg cursor-pointer bg-slate-950/50 transition-colors">
               <input
                 type="file"
@@ -729,13 +719,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               />
               <div className="flex items-center gap-2 text-slate-400 hover:text-amber-300">
                 <Upload className="w-4 h-4" />
-                <span className="text-xs font-medium">Browse Video or Image file</span>
+                <span className="text-xs font-medium">{t.style.uploadBrowse}</span>
               </div>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1.5">
-              Kept in this browser, so it is still in the list next time. Clearing site data
-              removes it, and the entry then shows as missing rather than disappearing.
-            </p>
+            <p className="text-[11px] text-slate-400 mt-1.5">{t.style.uploadHelp}</p>
             {uploadStatus && (
               <p
                 role="status"
@@ -754,7 +741,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
             <div>
               <div className="flex justify-between text-slate-300 mb-1">
-                <span>Dark Overlay Opacity:</span>
+                <span>{t.style.overlayOpacity}</span>
                 <span className="font-mono text-amber-400">{config.bgOverlayOpacity}%</span>
               </div>
               <input
@@ -769,7 +756,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
             <div>
               <div className="flex justify-between text-slate-300 mb-1">
-                <span>Background Blur:</span>
+                <span>{t.style.backgroundBlur}</span>
                 <span className="font-mono text-amber-400">{config.bgBlur}px</span>
               </div>
               <input
@@ -790,22 +777,24 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         <div className="flex flex-col gap-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
             <Type className="w-3.5 h-3.5 text-amber-400" />
-            Typography
+            {t.style.headingTypography}
           </h3>
           <div>
-            <label className="font-semibold text-slate-200 text-sm block mb-1.5">Arabic Calligraphy Font:</label>
+            <label className="font-semibold text-slate-200 text-sm block mb-1.5">{t.style.arabicFontLabel}</label>
             <div className="grid grid-cols-2 gap-2">
               {FONTS_ARABIC.map((f) => (
                 <button
                   key={f.id}
                   onClick={() => updateConfig('fontArabic', f.id)}
-                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                  className={`p-2.5 rounded-xl border text-start transition-all ${
                     config.fontArabic === f.id
                       ? 'bg-amber-500/15 border-amber-500 text-amber-300 ring-1 ring-amber-500/40'
                       : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
                 >
-                  <span className="block font-bold text-sm text-slate-100">{f.name}</span>
+                  <span className="block font-bold text-sm text-slate-100">
+                    {t.style.fonts[f.id as keyof typeof t.style.fonts] ?? f.name}
+                  </span>
                   {/* Each face previews itself. Hardcoding font-amiri here
                       showed five identical samples -- and kept every other
                       family out of the DOM, so the canvas never fetched the
@@ -822,7 +811,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
             <div>
               <div className="flex justify-between text-slate-300 mb-1">
-                <span>Arabic Font Size:</span>
+                <span>{t.style.arabicFontSize}</span>
                 <span className="font-mono text-amber-400">{config.arabicFontSize}px</span>
               </div>
               <input
@@ -837,7 +826,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
             <div>
               <div className="flex justify-between text-slate-300 mb-1">
-                <span>Translation Font Size:</span>
+                <span>{t.style.translationFontSize}</span>
                 <span className="font-mono text-amber-400">{config.translationFontSize}px</span>
               </div>
               <input
@@ -852,7 +841,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
             <div>
               <div className="flex justify-between text-slate-300 mb-1">
-                <span>Ayah Number Size:</span>
+                <span>{t.style.ayahNumberSize}</span>
                 <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
               </div>
               <input
@@ -880,24 +869,24 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
             <label className="font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5 text-amber-400" />
-              <span>Colours:</span>
+              <span>{t.style.coloursLabel}</span>
             </label>
             <div className="flex flex-col gap-2">
               <ColorField
-                label="Arabic text"
-                description="The ayah itself."
+                label={t.style.colourArabic}
+                description={t.style.colourArabicDescription}
                 value={config.textColor}
                 onChange={hex => updateConfig('textColor', hex)}
               />
               <ColorField
-                label="Accent"
-                description="Surah badge, ayah number, the divider, the visualiser bars and the card border."
+                label={t.style.colourAccent}
+                description={t.style.colourAccentDescription}
                 value={config.accentColor}
                 onChange={hex => updateConfig('accentColor', hex)}
               />
               <ColorField
-                label="Translation text"
-                description="The English line under the Arabic."
+                label={t.style.colourTranslation}
+                description={t.style.colourTranslationDescription}
                 value={config.translationColor}
                 onChange={hex => updateConfig('translationColor', hex)}
               />
@@ -924,7 +913,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
             <div>
               <div className="flex justify-between text-slate-300 mb-1">
-                <span>Card Glass Opacity:</span>
+                <span>{t.style.cardOpacity}</span>
                 <span className="font-mono text-amber-400">{config.cardBgOpacity}%</span>
               </div>
               <input
@@ -938,35 +927,27 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
 
             <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">
-                Surah Badge Text:
-              </label>
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeTextLabel}</label>
               <input
                 type="text"
                 value={config.surahBadgeText}
                 onChange={(e) => updateConfig('surahBadgeText', e.target.value)}
-                placeholder="Leave blank for automatic surah/range title"
+                placeholder={t.style.badgeTextPlaceholder}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Leave empty to auto-generate from detected surah and ayah range.
-              </p>
+              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
             </div>
 
             <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">
-                Surah Badge Subtitle:
-              </label>
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeSubtitleLabel}</label>
               <input
                 type="text"
                 value={config.surahBadgeSubtitleText}
                 onChange={(e) => updateConfig('surahBadgeSubtitleText', e.target.value)}
-                placeholder="Optional subtitle under the badge title"
+                placeholder={t.style.badgeSubtitlePlaceholder}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Leave empty to hide the second badge line.
-              </p>
+              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
@@ -977,7 +958,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   onChange={(e) => updateConfig('cardBorder', e.target.checked)}
                   className="rounded accent-amber-500"
                 />
-                <span>Card border</span>
+                <span>{t.style.cardBorder}</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer text-slate-300">
@@ -987,7 +968,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   onChange={(e) => updateConfig('textShadow', e.target.checked)}
                   className="rounded accent-amber-500"
                 />
-                <span>Text Shadow</span>
+                <span>{t.style.textShadow}</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer text-slate-300">
@@ -997,7 +978,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   onChange={(e) => updateConfig('showWaveform', e.target.checked)}
                   className="rounded accent-amber-500"
                 />
-                <span>Audio Visualizer</span>
+                <span>{t.style.audioVisualizer}</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer text-slate-300">
@@ -1007,7 +988,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   onChange={(e) => updateConfig('showSurahBadge', e.target.checked)}
                   className="rounded accent-amber-500"
                 />
-                <span>Surah Badge</span>
+                <span>{t.style.surahBadge}</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer text-slate-300">
@@ -1017,7 +998,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   onChange={(e) => updateConfig('showTranslation', e.target.checked)}
                   className="rounded accent-amber-500"
                 />
-                <span>English Translation</span>
+                <span>{t.style.englishTranslation}</span>
               </label>
             </div>
 
@@ -1031,31 +1012,32 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         <div className="flex flex-col gap-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-            Branding
+            {t.style.headingBranding}
           </h3>
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
             <div>
-              <label className="font-semibold text-slate-200 block mb-1">Watermark / Social Handle:</label>
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.watermarkLabel}</label>
               <input
                 type="text"
                 value={config.watermarkText}
                 onChange={(e) => updateConfig('watermarkText', e.target.value)}
-                placeholder="@MyDawahChannel"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono"
+                placeholder={t.style.watermarkPlaceholder}
+                dir="ltr"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono text-start"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-200 block mb-1">Watermark Position:</label>
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.watermarkPositionLabel}</label>
               <select
                 value={config.watermarkPosition}
                 onChange={(e) => updateConfig('watermarkPosition', e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               >
-                <option value="bottom-right">Bottom Right</option>
-                <option value="bottom-left">Bottom Left</option>
-                <option value="top-right">Top Right</option>
-                <option value="top-left">Top Left</option>
+                <option value="bottom-right">{t.style.watermarkPositions['bottom-right']}</option>
+                <option value="bottom-left">{t.style.watermarkPositions['bottom-left']}</option>
+                <option value="top-right">{t.style.watermarkPositions['top-right']}</option>
+                <option value="top-left">{t.style.watermarkPositions['top-left']}</option>
               </select>
             </div>
           </div>
