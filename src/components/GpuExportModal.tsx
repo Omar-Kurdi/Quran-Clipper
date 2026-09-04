@@ -1,10 +1,15 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import { exportFileName } from '@/lib/exportName';
 import { Cpu, Film, Download, CheckCircle, X, Sparkles, Loader2, Play } from 'lucide-react';
 import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
 import { Dialog } from './Dialog';
 import { useT } from './LocaleProvider';
+
+// Re-exported so existing importers of this module keep working; the function
+// itself lives in `lib` now so it can be tested without mounting React.
+export { exportFileName };
 
 interface GpuExportModalProps {
   isOpen: boolean;
@@ -23,31 +28,6 @@ interface GpuExportModalProps {
   exportSeconds: number;
 }
 
-/**
- * What the save dialog offers to call the file.
- *
- * `Al-Fatihah_1:1-7_1764503112000.webm`: the surah, the exact range, and a
- * stamp so two exports of the same passage do not land on top of each other in
- * a downloads folder. The name used to say `QuranClip`, which told you nothing
- * about which clip it was once several had been rendered.
- *
- * The ayah range is the one on the timeline, not the one that was matched or
- * selected: trimming drops ayahs without rewriting those, so a clip cut down to
- * 66:6-8 was being filed under the 1-12 it was cut from.
- *
- * Characters that are illegal in filenames are stripped. There is deliberately
- * no timestamp -- re-exporting the same passage should produce the same name,
- * and the browser disambiguates a collision by appending its own counter.
- */
-export function exportFileName(
-  surahNameEnglish: string,
-  surahNumber: number,
-  ayahStart: number,
-  ayahEnd: number
-): string {
-  const name = surahNameEnglish.trim().replace(/\s+/g, '_').replace(/[/\\?%*|"<>:]/g, '') || 'QuranClip';
-  return `${name}_${surahNumber}_${ayahStart}-${ayahEnd}.webm`;
-}
 
 export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   isOpen,
