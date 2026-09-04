@@ -535,6 +535,10 @@ export const en = {
     complete: 'Video Render Complete!',
     renderedIn: 'Rendered in',
     renderedOn: (gpu: string) => ` on ${gpu}.`,
+    frozenWarning: (seconds: number) =>
+      `About ${seconds}s of this recording has a frozen picture. The canvas stopped painting while it recorded — usually because the tab went to the background or the screen slept. Export again and leave this tab visible.`,
+    choppyWarning:
+      'The render could not keep up with the frame rate you asked for, so the picture will stutter. Try a lower frame rate, or close other windows using the GPU.',
     download: 'Download High-Quality WebM Video',
     renderAnother: 'Render Another Export'
   },

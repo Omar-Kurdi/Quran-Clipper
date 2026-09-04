@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData } from '@/lib/quranData';
+import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 
 /**
@@ -62,7 +63,12 @@ export interface VideoCanvasRef {
     /** Where in the recording the clip begins and ends, in seconds. */
     range: { start: number; end: number },
     onProgress: (progress: number, speed: string, frame: number) => void,
-    onComplete: (blob: Blob, renderTimeMs: number) => void,
+    /**
+     * `health` says whether the recording is actually watchable. Capture is
+     * real-time off the canvas, so a render that stalled produces a file that
+     * looks fine everywhere except in the picture. See `exportHealth.ts`.
+     */
+    onComplete: (blob: Blob, renderTimeMs: number, health: ExportHealth) => void,
     targetFps?: number
   ) => void;
   stopExport: () => void;
@@ -211,6 +217,13 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   const bgMediaRef = useRef<BackgroundMedia | null>(null);
   const isExportingRef = useRef<boolean>(false);
   const videoErrorRef = useRef<boolean>(false);
+  /**
+   * Total frames this canvas has ever painted. The export compares it against
+   * the audio clock to tell a slow render from a stopped one -- see
+   * `exportHealth.ts`. Monotonic and never reset, so a sample is always the
+   * difference between two readings.
+   */
+  const paintedFramesRef = useRef<number>(0);
 
   const [fpsDisplay, setFpsDisplay] = useState<number>(60);
   const [renderMs, setRenderMs] = useState<number>(1.2);
@@ -891,6 +904,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
 
       frameCount++;
+      paintedFramesRef.current++;
       const now = performance.now();
       if (now - lastFpsCalc >= 1000) {
         setFpsDisplay(Math.round((frameCount * 1000) / (now - lastFpsCalc)));
@@ -923,7 +937,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       audioElement: HTMLAudioElement,
       range: { start: number; end: number },
       onProgress: (p: number, s: string, f: number) => void,
-      onComplete: (blob: Blob, ms: number) => void,
+      onComplete: (blob: Blob, ms: number, health: ExportHealth) => void,
       targetFps = 60
     ) => {
       const canvas = canvasRef.current;
@@ -936,6 +950,53 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       const prevMuted = audioElement.muted;
       const prevVol = audioElement.volume;
       const canvasStream = canvas.captureStream(targetFps);
+
+      // Per export, not per component: two exports must not pool their
+      // stalls, and a stall in the first must not warn about the second.
+      const healthRef = { current: emptyHealth() };
+      /**
+       * Painted-frame count at the moment recording actually began -- after
+       * the seeks and the background parking, which take real time and paint
+       * no frames anyone records. Counting from the export request instead
+       * would blame that setup on the render's frame rate.
+       */
+      let paintedAtStart = 0;
+
+      /**
+       * Ask the system not to blank the screen while this runs.
+       *
+       * Real-time capture means a 10-minute recitation is 10 minutes of the
+       * machine being left alone, which is exactly long enough for the display
+       * to sleep -- and a slept display stops painting, which stops the
+       * recording's picture without stopping its audio. The lock is dropped
+       * whenever the tab is hidden (the API requires it), so it is re-taken on
+       * the way back rather than requested once and assumed held.
+       *
+       * Best-effort throughout: unsupported browsers, insecure contexts and a
+       * user gesture requirement all reject, and none of that is a reason to
+       * refuse to export.
+       */
+      let wakeLock: WakeLockSentinel | null = null;
+      const holdScreenAwake = async () => {
+        try {
+          wakeLock = (await navigator.wakeLock?.request('screen')) ?? null;
+        } catch {
+          wakeLock = null;
+        }
+      };
+      const onVisibility = () => {
+        if (document.hidden) {
+          healthRef.current.wasHidden = true;
+        } else if (isExportingRef.current && !wakeLock) {
+          void holdScreenAwake();
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+      const releaseScreen = () => {
+        document.removeEventListener('visibilitychange', onVisibility);
+        wakeLock?.release().catch(() => {});
+        wakeLock = null;
+      };
 
       const run = async () => {
         const expAudio = new Audio(audioElement.currentSrc || audioElement.src);
@@ -966,11 +1027,19 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
         rec.onstop = () => {
           const rt = performance.now() - exportStart;
-          onComplete(new Blob(chunks, { type: mt }), rt);
+          const health = healthRef.current;
+          onComplete(new Blob(chunks, { type: mt }), rt, {
+            ...health,
+            effectiveFps:
+              health.recordedSeconds > 0
+                ? (paintedFramesRef.current - paintedAtStart) / health.recordedSeconds
+                : 0,
+          });
           expAudio.pause();
           actx.close().catch(() => {});
           audioElement.muted = prevMuted;
           audioElement.volume = prevVol;
+          releaseScreen();
           isExportingRef.current = false;
         };
 
@@ -1016,13 +1085,26 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           activeBgVideo.play().catch(() => {});
         }
 
-        if (!isExportingRef.current) return;
+        if (!isExportingRef.current) {
+          releaseScreen();
+          return;
+        }
+
+        await holdScreenAwake();
+        paintedAtStart = paintedFramesRef.current;
 
         audioElement.play();
         expAudio.play();
         rec.start();
 
         let frames = 0;
+        // Sampled against the audio clock rather than wall-clock, because the
+        // condition being measured -- a backgrounded tab -- throttles this very
+        // timer to about one tick a second. Audio playback is not throttled, so
+        // its clock still measures real time and painted-frames-per-audio-second
+        // stays honest however rarely it is read.
+        let lastAudioTime = audioElement.currentTime;
+        let lastPainted = paintedFramesRef.current;
         const iv = setInterval(() => {
           if (!isExportingRef.current || audioElement.ended || audioElement.currentTime >= endSec) {
             clearInterval(iv);
@@ -1036,6 +1118,17 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           }
           frames++;
           const played = Math.max(0, audioElement.currentTime - startSec);
+
+          if (document.hidden) healthRef.current.wasHidden = true;
+          healthRef.current = accumulateStarvation(
+            healthRef.current,
+            paintedFramesRef.current - lastPainted,
+            audioElement.currentTime - lastAudioTime,
+            targetFps
+          );
+          lastPainted = paintedFramesRef.current;
+          lastAudioTime = audioElement.currentTime;
+
           const pct = Math.min(99, Math.round((played / span) * 100));
           const elapsed = (performance.now() - exportStart) / 1000;
           const speed = elapsed > 0 ? (played / elapsed).toFixed(1) : '1.0';
@@ -1046,6 +1139,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       run().catch(() => {
         audioElement.muted = prevMuted;
         audioElement.volume = prevVol;
+        releaseScreen();
         isExportingRef.current = false;
       });
     }

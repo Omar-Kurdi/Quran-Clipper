@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import type { VideoCanvasRef } from '@/components/VideoCanvas';
+import type { ExportHealth } from '@/lib/exportHealth';
 
 export interface ExportRange {
   start: number;
@@ -27,7 +28,7 @@ export function useVideoExport() {
       audio: HTMLAudioElement | null,
       range: ExportRange,
       targetFps: number,
-      onComplete: (blob: Blob, renderMs: number) => void
+      onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
     ) => {
       if (!canvasRef.current || !audio) return;
 
@@ -41,9 +42,9 @@ export function useVideoExport() {
           setProgress(value);
           setSpeed(rate);
         },
-        (blob, renderMs) => {
+        (blob, renderMs, health) => {
           setIsExporting(false);
-          onComplete(blob, renderMs);
+          onComplete(blob, renderMs, health);
         },
         targetFps
       );

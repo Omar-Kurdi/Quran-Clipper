@@ -9,6 +9,7 @@ import {
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
+import type { ExportHealth } from '@/lib/exportHealth';
 import { PaletteSwitcher } from '@/components/PaletteSwitcher';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
@@ -781,7 +782,10 @@ export default function VideoCreatorPage() {
   );
 
   // Start Video Export Pipeline
-  const handleStartExport = (targetFps: number, onComplete: (blob: Blob, renderMs: number) => void) => {
+  const handleStartExport = (
+    targetFps: number,
+    onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
+  ) => {
     startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, targetFps, onComplete);
   };
 

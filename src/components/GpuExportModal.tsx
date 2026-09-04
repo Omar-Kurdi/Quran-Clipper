@@ -2,7 +2,8 @@
 
 import React, { useMemo, useState } from 'react';
 import { exportFileName } from '@/lib/exportName';
-import { Cpu, Film, Download, CheckCircle, X, Sparkles, Loader2, Play } from 'lucide-react';
+import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
+import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Play } from 'lucide-react';
 import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
 import { Dialog } from './Dialog';
 import { useT } from './LocaleProvider';
@@ -14,7 +15,10 @@ export { exportFileName };
 interface GpuExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onStartExport: (targetFps: number, onComplete: (blob: Blob, renderMs: number) => void) => void;
+  onStartExport: (
+    targetFps: number,
+    onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
+  ) => void;
   isExporting: boolean;
   exportProgress: number;
   exportSpeed: string;
@@ -57,6 +61,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [selectedFps, setSelectedFps] = useState<number>(60);
   const [exportedBlobUrl, setExportedBlobUrl] = useState<string | null>(null);
   const [renderedMs, setRenderedMs] = useState<number>(0);
+  // Whether the finished file is actually watchable, which is not the same
+  // question as whether the export succeeded -- see `exportHealth.ts`.
+  const [verdict, setVerdict] = useState<ExportVerdict>('clean');
+  const [starvedSeconds, setStarvedSeconds] = useState<number>(0);
   const [downloadFileName, setDownloadFileName] = useState<string>('QuranClip.webm');
 
   // Clear the previous render whenever the modal is reopened. Without this the
@@ -74,10 +82,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const handleExport = () => {
     setExportedBlobUrl(null);
     setDownloadFileName(exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd));
-    onStartExport(selectedFps, (blob, renderMs) => {
+    onStartExport(selectedFps, (blob, renderMs, health) => {
       const url = URL.createObjectURL(blob);
       setExportedBlobUrl(url);
       setRenderedMs(renderMs);
+      setVerdict(exportVerdict(health, selectedFps));
+      setStarvedSeconds(health.starvedSeconds);
       // Was hardcoded to 45 seconds, so every saved record claimed the same
       // length regardless of what was rendered.
       onSaveExportRecord(url, exportSeconds, renderMs);
@@ -249,8 +259,14 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
         ) : (
           /* Completed Export View */
           <div className="flex flex-col items-center gap-4 text-center py-2 animate-fade-in">
-            <div className="p-4 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/40">
-              <CheckCircle className="w-10 h-10" />
+            <div
+              className={`p-4 rounded-full border ${
+                verdict === 'clean'
+                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                  : 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+              }`}
+            >
+              {verdict === 'clean' ? <CheckCircle className="w-10 h-10" /> : <AlertTriangle className="w-10 h-10" />}
             </div>
 
             <div>
@@ -261,6 +277,19 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 {t.exportModal.renderedOn(gpuName)}
               </p>
             </div>
+
+            {/* The export can succeed and still be unwatchable: capture is
+                real-time off the canvas, so anything that stopped the canvas
+                painting -- a backgrounded tab, a slept display -- leaves the
+                picture frozen while the audio plays on. The file gives no sign
+                of it, so this has to. */}
+            {verdict !== 'clean' && (
+              <p className="w-full text-start text-[11px] leading-relaxed text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                {verdict === 'frozen'
+                  ? t.exportModal.frozenWarning(Math.round(starvedSeconds))
+                  : t.exportModal.choppyWarning}
+              </p>
+            )}
 
             {/* Video Player Preview */}
             <div className="w-full max-h-52 overflow-hidden rounded-xl border border-slate-800 bg-black">
