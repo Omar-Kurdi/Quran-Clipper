@@ -279,11 +279,20 @@ an optional capability, and the app degrades cleanly without it.
 | `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |
 | `GEMINI_TIMEOUT_MS` | — | `180000` | Ceiling on a single Gemini request. |
 | `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
+| `PEXELS_API_KEY` | pasting Pexels *page* links | — | Without it, copy the file link from Pexels instead. |
+| `STUDIO_TOKEN` | serving this beyond localhost | — | Shared secret in front of the whole studio. Unset means no authentication at all. See below. |
 
 > **Do not leave `DATABASE_URL` set to a placeholder.** The app checks whether the variable is
 > set, not whether it works — so `postgres://USER:PASSWORD@HOST:PORT/DATABASE` skips the
 > in-memory fallback and every save fails with a 500. Either give it a real connection string
 > or comment the line out.
+
+> **Set `STUDIO_TOKEN` before letting anyone else reach this.** With it unset there is no
+> authentication: `/api/projects` will list and delete any saved project for whoever asks, and
+> `/api/audio/match` will spend your Gemini key. With it set, open the studio once as
+> `http://host:3000/?token=<the token>` — the token is exchanged for an HttpOnly cookie and
+> stripped from the URL — or send `Authorization: Bearer <the token>`. `/api/health` stays open
+> so an uptime check needs no secret. Generate one with `openssl rand -hex 32`.
 
 > **Gemini model IDs are retired regularly.** `gemini-2.0-flash` and `gemini-2.5-flash` no
 > longer exist and return HTTP 404. Check the
@@ -670,15 +679,20 @@ npx next dev --webpack
 - Range detection reports the ayah cluster carrying the most matched words, so a recitation
   that deliberately jumps between distant ayahs of the same surah is narrowed to its main
   span. That trade buys immunity to a single mislocated fragment widening a correct range.
-- A multi-block reference (e.g. Al-Fatihah followed by another surah) is fragile: if the first
-  block isn't actually in the audio, the phrase search can stall inside it. Low decode
-  agreement flags this, but prefer one tight range when you know it.
+- A multi-block reference (e.g. Al-Fatihah followed by another surah) used to be fragile when
+  the first block wasn't in the audio. Retested: aligning the 33:21–23 clip against a reference
+  with Al-Fatihah prepended, and again with Al-Fatihah *and* Ayat al-Kursi prepended, gives
+  byte-identical output to the tight range — 67 words, 10 segments, agreement 0.8837. Keying the
+  phrase search on the reference position rather than the boundary alone is what fixed it.
 - Word-level *timing accuracy* has been measured on one 220-second recitation against per-ayah
   ground truth: all 177 words placed, mean ayah-start error 0.48s. Segment-level accuracy is
   tracked by `scripts/eval_segments.py`, currently 9 of 11 on the reference clip — see docs/ALIGNMENT.md for why it is not tuned to 11.
-- The aligner holds the whole clip's CTC emissions in memory. Overlapping windows are stitched
-  so it degrades gracefully; verified at 220 seconds, so test before relying on it for
-  substantially longer recordings.
+- Alignment cost grows with the **square** of the recording: the Viterbi path is global, so a
+  longer clip has both more frames and more text to place in them. Measured end to end at 13.8
+  minutes (39s, 2.5 GB resident, of which 2.2 GB is the model); 20 minutes costs 373 MB and 40
+  minutes 1.35 GB above that baseline. Anything over `ALIGN_MAX_MEMORY_GB` (default 2.0, about
+  45 minutes) is refused with the figure rather than killing the service. Split a longer
+  recording — halving it quarters the cost per half.
 - Repeat-detection thresholds in `align.py` were tuned on a single clip. Multi-word repeats
   clear them comfortably; single-word matches on very common words sit near the threshold.
 - Gemini inline audio is limited to about 18 MB (roughly 15–20 minutes of MP3). Compress or
@@ -686,6 +700,15 @@ npx next dev --webpack
   original MP3 even after cutting — trim well past 18 MB and you can cross that limit rather
   than get under it.
 - Browser export depends on `MediaRecorder` codec support; Chrome/Chromium recommended.
+- Export records the canvas in real time, so it needs the tab to stay visible: a backgrounded
+  tab stops painting and the video comes out frozen over that stretch while the audio plays on.
+  A screen wake lock is held for the duration, and the export now measures itself and says so
+  when the picture froze — but it cannot prevent it. Server-side rendering is the real fix.
+- There is no authentication unless `STUDIO_TOKEN` is set. On localhost that is fine; anywhere
+  else, anyone who can reach the app can list and delete saved projects and spend the Gemini and
+  Pexels keys. Setting `STUDIO_TOKEN` puts a shared secret in front of everything except
+  `/api/health`. It is not a login and does not meter usage per person — for that you need real
+  accounts.
 - In-memory saved projects are not durable — see [Database](#database-optional) for persistence.
 
 ---
