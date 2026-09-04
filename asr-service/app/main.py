@@ -20,7 +20,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import align, asr, corpus, detect
-from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, duration_seconds
+from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, decode_url_window, duration_seconds
 from .vad import VoicedRegion, detect_voiced_regions
 
 logging.basicConfig(
@@ -293,8 +293,11 @@ async def transcribe(
 
 @app.post("/align")
 async def align_endpoint(
-    audio: UploadFile = File(...),
+    audio: UploadFile | None = File(None),
     reference: str = Form(""),
+    audio_url: str = Form(""),
+    window_start: float = Form(0.0),
+    window_end: float = Form(0.0),
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -302,15 +305,40 @@ async def align_endpoint(
     ``surah:ayah<TAB>word word word``. Every reference word comes back with a
     timestamp -- that is a structural property of forced alignment, not a
     quality claim about the acoustics.
+
+    Audio arrives either as an upload or, for the built-in reciters, as
+    ``audio_url`` plus the window to read from it. A reciter's file is the
+    whole chapter -- Al-Baqarah is 87 MB and about two hours -- so uploading it
+    to align three ayahs would move the entire recording twice across the
+    network to use thirty seconds of it. ffmpeg range-seeks instead. Times in
+    the response are still absolute against the whole recording, because the
+    seek is exact and the caller is playing the whole file.
     """
     started = time.perf_counter()
 
-    raw = await audio.read()
-    size_mb = len(raw) / 1024 / 1024
-    if size_mb > MAX_UPLOAD_MB:
-        raise HTTPException(status_code=413, detail=f"Audio is {size_mb:.1f} MB, above the {MAX_UPLOAD_MB:.0f} MB limit.")
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty audio upload.")
+    if audio_url:
+        if not (window_end > window_start >= 0):
+            raise HTTPException(
+                status_code=400,
+                detail=f"audio_url needs a window; got {window_start}-{window_end}s.",
+            )
+        try:
+            pcm_or_none = decode_url_window(audio_url, window_start, window_end)
+        except AudioDecodeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raw = b""
+        window_offset = window_start
+    else:
+        pcm_or_none = None
+        window_offset = 0.0
+        if audio is None:
+            raise HTTPException(status_code=400, detail="Send either an audio file or an audio_url with a window.")
+        raw = await audio.read()
+        size_mb = len(raw) / 1024 / 1024
+        if size_mb > MAX_UPLOAD_MB:
+            raise HTTPException(status_code=413, detail=f"Audio is {size_mb:.1f} MB, above the {MAX_UPLOAD_MB:.0f} MB limit.")
+        if not raw:
+            raise HTTPException(status_code=400, detail="Empty audio upload.")
 
     ref_words: list[tuple[str, int, str]] = []
     for line in reference.splitlines():
@@ -333,10 +361,13 @@ async def align_endpoint(
                 continue
             ref_words.append((verse_key, index, token))
             index += 1
-    try:
-        pcm = decode_to_pcm(raw)
-    except AudioDecodeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if pcm_or_none is not None:
+        pcm = pcm_or_none
+    else:
+        try:
+            pcm = decode_to_pcm(raw)
+        except AudioDecodeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     total_duration = duration_seconds(pcm)
 
@@ -488,15 +519,31 @@ async def align_endpoint(
         "n/a" if agreement is None else "%.2f" % agreement,
     )
 
+    # Times measured inside the window are reported against the whole
+    # recording, because that is the file the caller is playing. Safe to do by
+    # addition: the seek was measured as sample-exact, so there is no drift to
+    # accumulate. Zero for an upload, which is its own whole recording.
+    def shifted(entry: dict) -> dict:
+        if not window_offset:
+            return entry
+        moved = dict(entry)
+        for key in ("start", "end"):
+            if isinstance(moved.get(key), (int, float)):
+                moved[key] = round(moved[key] + window_offset, 3)
+        return moved
+
     return {
         "success": True,
         "backend": align.align_backend(),
         "model": align.align_model_name(),
         "detectedRange": detected.to_dict() if detected else None,
         "audioDuration": round(total_duration, 3),
+        # Where in the recording this alignment sits, so the caller can tell a
+        # window apart from a clip that happens to start at zero.
+        "windowStart": round(window_offset, 3) if window_offset else 0,
         "processingSeconds": round(elapsed, 2),
-        "words": [word.to_dict() for word in aligned],
-        "segments": [segment.to_dict() for segment in segments],
+        "words": [shifted(word.to_dict()) for word in aligned],
+        "segments": [shifted(segment.to_dict()) for segment in segments],
         "meanScore": round(mean_score, 4),
         "referenceCoverage": coverage,
         "decodeAgreement": agreement,
