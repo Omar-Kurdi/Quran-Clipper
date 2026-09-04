@@ -1,9 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle } from 'lucide-react';
+import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle, SplitSquareHorizontal, Combine } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
-import { ensureWords, formatTime } from '@/lib/verseEdits';
+import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import { Button } from './Button';
 import { Status } from './Status';
 import { useT } from './LocaleProvider';
@@ -20,6 +20,18 @@ interface InspectorProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onAdd: () => void;
+  /**
+   * Cut this caption in two at the playhead, and join it to the one after it.
+   *
+   * The escape hatch for segmentation the aligner got wrong. Some of those
+   * calls are undecidable from the audio alone -- a held ghunnah and a drawn
+   * breath measure the same -- so rather than chase the last few percent, a
+   * wrong one is meant to be a two-second fix.
+   */
+  onSplit: () => void;
+  onMerge: () => void;
+  /** Where the playhead is, so the split control can say whether it would work. */
+  currentTime: number;
 }
 
 /**
@@ -32,10 +44,19 @@ interface InspectorProps {
  */
 export const Inspector: React.FC<InspectorProps> = ({
   verses, index, isActive,
-  onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onAdd
+  onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onAdd,
+  onSplit, onMerge, currentTime
 }) => {
   const t = useT();
   const verse = verses[index];
+
+  // Mirrors what `splitSegment` and `mergeWithNext` will actually do, so a
+  // control that would be a no-op is disabled rather than silently ignored.
+  const next = verses[index + 1];
+  const canSplit = !!verse
+    && currentTime > verse.startTime + MIN_SEGMENT
+    && currentTime < verse.endTime - MIN_SEGMENT;
+  const canMerge = !!verse && !!next && verse.verseKey === next.verseKey;
 
   if (!verse) {
     return (
@@ -166,6 +187,25 @@ export const Inspector: React.FC<InspectorProps> = ({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800">
+        <Button
+          icon={<SplitSquareHorizontal className="w-3.5 h-3.5" />}
+          onClick={onSplit}
+          disabled={!canSplit}
+          title={canSplit ? t.inspector.splitHint : t.inspector.splitTooShort}
+        >
+          {t.inspector.split}
+        </Button>
+        <Button
+          icon={<Combine className="w-3.5 h-3.5" />}
+          onClick={onMerge}
+          disabled={!canMerge}
+          title={canMerge ? t.inspector.mergeHint : t.inspector.mergeNotSameAyah}
+        >
+          {t.inspector.merge}
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800">

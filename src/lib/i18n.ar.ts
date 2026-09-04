@@ -271,6 +271,12 @@ export const ar: Dictionary = {
     moveAyahEarlier: 'تقديم الآية',
     moveAyahLater: 'تأخير الآية',
     deleteAyah: 'حذف الآية',
+    split: 'تقسيم',
+    splitHint: 'إنهاء هذا المقطع عند المؤشر وبدء التالي منه',
+    splitTooShort: 'حرّك المؤشر إلى داخل المقطع لتتمكن من تقسيمه',
+    merge: 'دمج',
+    mergeHint: 'دمج هذا المقطع مع الذي يليه',
+    mergeNotSameAyah: 'لا يمكن الدمج إلا داخل الآية الواحدة',
     beforeYouPublish: 'قبل النشر:',
     beforeYouPublishBody:
       'راجع بنفسك كل آية وتوقيتها وترجمتها. أنت المسؤول عمّا تنشره.'

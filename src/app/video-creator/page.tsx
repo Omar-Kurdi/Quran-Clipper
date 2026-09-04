@@ -15,7 +15,8 @@ import { Timeline } from '@/components/Timeline';
 import { Inspector } from '@/components/Inspector';
 import {
   setBoundary, nudgeBoundary, markBoundaryAt, reorder, setText, setVerseNumber,
-  toggleWord, addVerseAfter, removeVerse, duplicateVerse, segmentAt
+  toggleWord, addVerseAfter, removeVerse, duplicateVerse, segmentAt,
+  splitSegment, mergeWithNext
 } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import { trimTimeline } from '@/lib/matchTimeline';
@@ -1603,6 +1604,20 @@ export default function VideoCreatorPage() {
                   onDuplicate={() => setVerses(duplicateVerse(verses, selectedIndex, audioDuration))}
                   onDelete={() => { setVerses(removeVerse(verses, selectedIndex)); setSelectedIndex(i => Math.max(0, i - 1)); }}
                   onAdd={() => { const r = addVerseAfter(verses, selectedIndex); setVerses(r.verses); setSelectedIndex(r.insertedAt); }}
+                  currentTime={currentTime}
+                  onSplit={() => {
+                    const next = splitSegment(verses, selectedIndex, currentTime);
+                    if (next === verses) return;
+                    setVerses(next);
+                    // Stay on the half the playhead is in, which is the second:
+                    // the user split *here*, so here is what they are looking at.
+                    setSelectedIndex(selectedIndex + 1);
+                  }}
+                  onMerge={() => {
+                    const next = mergeWithNext(verses, selectedIndex);
+                    if (next === verses) return;
+                    setVerses(next);
+                  }}
                 />
               ) : (
                 <StyleConfigPanel

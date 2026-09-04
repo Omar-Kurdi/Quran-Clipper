@@ -243,6 +243,87 @@ export function duplicateVerse(verses: VerseData[], index: number, audioDuration
   return updated;
 }
 
+/**
+ * Cuts one segment in two at `atTime`.
+ *
+ * The escape hatch for segmentation the aligner got wrong. Automatic
+ * segmentation has to decide whether a given silence ends a phrase, and some
+ * of those calls are genuinely undecidable from the audio -- a ghunnah and a
+ * held breath measure the same. Rather than chase the last few percent, this
+ * makes a wrong call a two-second fix.
+ *
+ * Both halves keep the ayah: a caption never spans one, so a split is always
+ * within a single verse and both sides carry the same key.
+ *
+ * Which words fall on which side is an estimate. `VerseWord.timestamp` is used
+ * when it is populated; otherwise the words are divided by where `atTime` falls
+ * in the segment, which assumes an even pace and often will not be exactly
+ * right. That is deliberate rather than lazy -- the user is splitting while
+ * listening, so they can see what they got and toggle a word either way. Once
+ * the aligner's per-word times are carried into the timeline this becomes exact
+ * with no change here.
+ */
+export function splitSegment(verses: VerseData[], index: number, atTime: number): VerseData[] {
+  const verse = verses[index];
+  if (!verse) return verses;
+
+  const cut = round1(atTime);
+  // Refusing rather than clamping: a split that would leave either side too
+  // short to be a caption is a mis-click, and silently making one 0.2s long is
+  // worse than doing nothing.
+  if (cut <= verse.startTime + MIN_SEGMENT || cut >= verse.endTime - MIN_SEGMENT) return verses;
+
+  const words = ensureWords(verse);
+  const span = verse.endTime - verse.startTime;
+  let at: number;
+  if (words.every(word => typeof word.timestamp === 'number')) {
+    const found = words.findIndex(word => (word.timestamp as number) >= cut);
+    at = found === -1 ? words.length - 1 : found;
+  } else {
+    at = Math.round(((cut - verse.startTime) / span) * words.length);
+  }
+  // Every caption needs at least one word, so neither side may be empty.
+  at = Math.max(1, Math.min(words.length - 1, at));
+
+  const shown = (list: VerseWord[]) => list.filter(word => !word.excluded).map(word => word.arabic).join(' ');
+  const head = words.slice(0, at).map(word => ({ ...word }));
+  const tail = words.slice(at).map(word => ({ ...word }));
+
+  return [
+    ...verses.slice(0, index),
+    { ...verse, endTime: cut, words: head, displayTextUthmani: shown(head) },
+    { ...verse, startTime: cut, words: tail, displayTextUthmani: shown(tail) },
+    ...verses.slice(index + 1),
+  ];
+}
+
+/**
+ * Joins a segment to the one after it.
+ *
+ * The other half of the escape hatch: where automatic segmentation split a
+ * phrase the reciter ran straight through, this puts it back. The merged
+ * caption spans both times and shows both sets of words in order.
+ *
+ * Only within one ayah. A caption that spanned two would have no single verse
+ * key to carry, and every consumer -- the badge, the export naming, the word
+ * highlighting -- assumes it has one.
+ */
+export function mergeWithNext(verses: VerseData[], index: number): VerseData[] {
+  const first = verses[index];
+  const second = verses[index + 1];
+  if (!first || !second || first.verseKey !== second.verseKey) return verses;
+
+  const words = [...ensureWords(first), ...ensureWords(second)].map(word => ({ ...word }));
+  const merged: VerseData = {
+    ...first,
+    endTime: Math.max(first.endTime, second.endTime),
+    words,
+    displayTextUthmani: words.filter(word => !word.excluded).map(word => word.arabic).join(' '),
+  };
+  return [...verses.slice(0, index), merged, ...verses.slice(index + 2)];
+}
+
+
 /** Index of the segment covering `time`, or the last one that started before it. */
 export function segmentAt(verses: VerseData[], time: number): number {
   let idx = 0;

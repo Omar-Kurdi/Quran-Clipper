@@ -276,6 +276,12 @@ export const en = {
     moveAyahEarlier: 'Move ayah earlier',
     moveAyahLater: 'Move ayah later',
     deleteAyah: 'Delete ayah',
+    split: 'Split',
+    splitHint: 'End this caption at the playhead and start the next one there',
+    splitTooShort: 'Move the playhead further into this caption to split it',
+    merge: 'Merge',
+    mergeHint: 'Join this caption to the one after it',
+    mergeNotSameAyah: 'Captions can only be merged within one ayah',
     beforeYouPublish: 'Before you publish:',
     beforeYouPublishBody:
       'review every ayah, its timing and its translation yourself. You are responsible for what you publish.'

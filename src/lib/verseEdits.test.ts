@@ -12,6 +12,8 @@ import {
   segmentAt,
   formatTime,
   ensureWords,
+  splitSegment,
+  mergeWithNext,
 } from './verseEdits';
 import type { VerseData } from './quranData';
 
@@ -163,5 +165,113 @@ describe('formatTime', () => {
 describe('ensureWords', () => {
   it('splits the text when a verse carries no word list', () => {
     expect(ensureWords(verse('33:21', 0, 5)).map(w => w.arabic)).toEqual(['أ', 'ب', 'ج']);
+  });
+});
+
+describe('splitSegment', () => {
+  const one = () => [verse('66:8', 0, 10, 'أ ب ج د')];
+
+  it('cuts the segment in two at the given time', () => {
+    const next = splitSegment(one(), 0, 5);
+    expect(next).toHaveLength(2);
+    expect([next[0].startTime, next[0].endTime]).toEqual([0, 5]);
+    expect([next[1].startTime, next[1].endTime]).toEqual([5, 10]);
+  });
+
+  it('keeps the ayah on both halves, since a caption never spans one', () => {
+    const next = splitSegment(one(), 0, 5);
+    expect(next[0].verseKey).toBe('66:8');
+    expect(next[1].verseKey).toBe('66:8');
+  });
+
+  it('divides the words either side of the cut', () => {
+    const next = splitSegment(one(), 0, 5);
+    expect(next[0].words?.map(w => w.arabic)).toEqual(['أ', 'ب']);
+    expect(next[1].words?.map(w => w.arabic)).toEqual(['ج', 'د']);
+  });
+
+  it('leaves neither half without a word, however lopsided the cut', () => {
+    const early = splitSegment(one(), 0, 0.4);
+    expect(early[0].words?.length).toBeGreaterThan(0);
+    expect(early[1].words?.length).toBeGreaterThan(0);
+  });
+
+  it('uses word timestamps when the timeline carries them', () => {
+    const timed: VerseData[] = [{
+      ...verse('66:8', 0, 10, 'أ ب ج د'),
+      words: [
+        { arabic: 'أ', translation: '', timestamp: 1 },
+        { arabic: 'ب', translation: '', timestamp: 2 },
+        { arabic: 'ج', translation: '', timestamp: 8 },
+        { arabic: 'د', translation: '', timestamp: 9 },
+      ],
+    }];
+    // Proportional division would put the cut at the halfway word; the
+    // timestamps say only two words had been said by 5s.
+    const next = splitSegment(timed, 0, 5);
+    expect(next[0].words?.map(w => w.arabic)).toEqual(['أ', 'ب']);
+  });
+
+  it('refuses a cut that would leave a sliver rather than making one', () => {
+    const before = one();
+    expect(splitSegment(before, 0, 0.05)).toBe(before);
+    expect(splitSegment(before, 0, 9.99)).toBe(before);
+  });
+
+  it('refuses an index that does not exist', () => {
+    const before = one();
+    expect(splitSegment(before, 7, 5)).toBe(before);
+  });
+
+  it('carries an excluded word through without showing it', () => {
+    const withExcluded: VerseData[] = [{
+      ...verse('66:8', 0, 10, 'أ ب ج د'),
+      words: [
+        { arabic: 'أ', translation: '' },
+        { arabic: 'ب', translation: '', excluded: true },
+        { arabic: 'ج', translation: '' },
+        { arabic: 'د', translation: '' },
+      ],
+    }];
+    const next = splitSegment(withExcluded, 0, 5);
+    expect(next[0].displayTextUthmani).toBe('أ');
+    expect(next[0].words).toHaveLength(2);
+  });
+});
+
+describe('mergeWithNext', () => {
+  const pair = () => [verse('66:8', 0, 5, 'أ ب'), verse('66:8', 5, 12, 'ج د')];
+
+  it('joins the two into one spanning both', () => {
+    const next = mergeWithNext(pair(), 0);
+    expect(next).toHaveLength(1);
+    expect([next[0].startTime, next[0].endTime]).toEqual([0, 12]);
+  });
+
+  it('keeps the words of both, in order', () => {
+    const next = mergeWithNext(pair(), 0);
+    expect(next[0].words?.map(w => w.arabic)).toEqual(['أ', 'ب', 'ج', 'د']);
+    expect(next[0].displayTextUthmani).toBe('أ ب ج د');
+  });
+
+  it('refuses to merge across an ayah boundary', () => {
+    // A merged caption would have no single verse key to carry, and the badge,
+    // the export naming and the word highlighting all assume it has one.
+    const across = [verse('66:8', 0, 5), verse('66:9', 5, 10)];
+    expect(mergeWithNext(across, 0)).toBe(across);
+  });
+
+  it('refuses when there is nothing after it', () => {
+    const before = pair();
+    expect(mergeWithNext(before, 1)).toBe(before);
+  });
+
+  it('round-trips with splitSegment', () => {
+    const start = [verse('66:8', 0, 10, 'أ ب ج د')];
+    const split = splitSegment(start, 0, 5);
+    const merged = mergeWithNext(split, 0);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].words?.map(w => w.arabic)).toEqual(['أ', 'ب', 'ج', 'د']);
+    expect([merged[0].startTime, merged[0].endTime]).toEqual([0, 10]);
   });
 });
