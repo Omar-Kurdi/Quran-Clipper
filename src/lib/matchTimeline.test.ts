@@ -5,7 +5,20 @@ import {
   enforceTimelineOrder,
   parseVerseKey,
   estimateDurationFromSegments,
+  fetchVersesByDetectedSegments,
 } from './matchTimeline';
+
+// One ayah, four words, so a segment can cover part of it and a restart can
+// cover an overlapping part later in the recording.
+vi.mock('./quranCorpus', () => ({
+  getVerseByKey: async (verseKey: string) => ({
+    verseNumber: Number(verseKey.split(':')[1]),
+    verseKey,
+    textUthmani: 'أ ب ج د',
+    translation: 'text',
+    words: ['أ', 'ب', 'ج', 'د'].map(arabic => ({ arabic, translation: '' })),
+  }),
+}));
 import type { VerseData } from './quranData';
 
 const verse = (verseKey: string, startTime: number, endTime: number): VerseData => ({
@@ -123,5 +136,96 @@ describe('estimateDurationFromSegments', () => {
 
   it('is zero for an empty timeline rather than -Infinity', () => {
     expect(estimateDurationFromSegments([])).toBe(0);
+  });
+});
+
+describe('trimTimeline word times', () => {
+  it('moves word times with the segment they belong to', () => {
+    // Word times are on the same clock as the segment. Left where they were,
+    // they would sit outside the rebased segment, and every consumer that
+    // checks whether a time still belongs to its segment would discard them --
+    // trimming a clip would silently cost it its per-word timing.
+    const timed: VerseData = {
+      ...verse('66:8', 30, 40),
+      words: [
+        { arabic: 'أ', translation: '', timestamp: 31 },
+        { arabic: 'ب', translation: '', timestamp: 36 },
+      ],
+    };
+    const [trimmed] = trimTimeline([timed], 30, 40);
+    expect(trimmed.startTime).toBe(0);
+    expect(trimmed.words?.map(w => w.timestamp)).toEqual([1, 6]);
+  });
+
+  it('leaves a word alone when it never had a time', () => {
+    const untimed: VerseData = {
+      ...verse('66:8', 30, 40),
+      words: [{ arabic: 'أ', translation: '' }],
+    };
+    const [trimmed] = trimTimeline([untimed], 30, 40);
+    expect(trimmed.words?.[0].timestamp).toBeUndefined();
+  });
+});
+
+describe('fetchVersesByDetectedSegments word times', () => {
+  it('gives each word the time the provider measured for it', () => {
+    return fetchVersesByDetectedSegments({
+      segments: [{
+        verseKey: '66:8',
+        startTime: 0,
+        endTime: 4,
+        startWordIndex: 0,
+        endWordIndex: 1,
+        wordTimings: [
+          { index: 0, start: 0.5, end: 1.5 },
+          { index: 1, start: 2.0, end: 3.5 },
+        ],
+      }],
+      selectedSurah: 66,
+      audioDuration: 10,
+    }).then(timeline => {
+      expect(timeline[0].words?.map(w => w.timestamp)).toEqual([0.5, 2.0, undefined, undefined]);
+    });
+  });
+
+  it('gives a restart its own times rather than the first reading of them', async () => {
+    // The same ayah, recited twice. Both segments name the same word indices,
+    // so anything keyed on index alone would let the later reading overwrite
+    // the earlier -- and the first caption would carry the second's times.
+    const timeline = await fetchVersesByDetectedSegments({
+      segments: [
+        {
+          verseKey: '66:8',
+          startTime: 0,
+          endTime: 4,
+          startWordIndex: 0,
+          endWordIndex: 1,
+          wordTimings: [{ index: 0, start: 0.5, end: 1.5 }, { index: 1, start: 2.0, end: 3.5 }],
+        },
+        {
+          verseKey: '66:8',
+          startTime: 5,
+          endTime: 9,
+          startWordIndex: 0,
+          endWordIndex: 1,
+          wordTimings: [{ index: 0, start: 5.5, end: 6.5 }, { index: 1, start: 7.0, end: 8.5 }],
+        },
+      ],
+      selectedSurah: 66,
+      audioDuration: 10,
+    });
+    expect(timeline[0].words?.[0].timestamp).toBe(0.5);
+    expect(timeline[1].words?.[0].timestamp).toBe(5.5);
+  });
+
+  it('leaves words untimed when the provider measured nothing', async () => {
+    // Gemini estimates a segment span and nothing finer. Inventing a time per
+    // word from it would look like a measurement and read like one downstream.
+    const timeline = await fetchVersesByDetectedSegments({
+      segments: [{ verseKey: '66:8', startTime: 0, endTime: 4, startWordIndex: 0, endWordIndex: 3 }],
+      selectedSurah: 66,
+      audioDuration: 10,
+    });
+    expect(timeline[0].words?.every(w => w.timestamp === undefined)).toBe(true);
   });
 });

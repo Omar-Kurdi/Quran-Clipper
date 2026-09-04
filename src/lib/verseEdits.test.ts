@@ -212,6 +212,44 @@ describe('splitSegment', () => {
     expect(next[0].words?.map(w => w.arabic)).toEqual(['أ', 'ب']);
   });
 
+  it('uses word times even though only the spoken words carry them', () => {
+    // The guard used to demand a timestamp on *every* word, which could never
+    // pass on a real timeline: a caption covering part of an ayah keeps the
+    // rest of the ayah as excluded words, and those were never spoken here, so
+    // they have no time. Requiring them threw the measurement away and fell
+    // back to guessing by pace on exactly the timelines that had real data.
+    const timed: VerseData[] = [{
+      ...verse('66:8', 0, 10, 'أ ب ج د'),
+      words: [
+        { arabic: 'أ', translation: '', timestamp: 1 },
+        { arabic: 'ب', translation: '', timestamp: 2 },
+        { arabic: 'ج', translation: '', timestamp: 8 },
+        { arabic: 'د', translation: '', excluded: true },
+      ],
+    }];
+    const next = splitSegment(timed, 0, 5);
+    expect(next[0].words?.map(w => w.arabic)).toEqual(['أ', 'ب']);
+  });
+
+  it('ignores word times that no longer belong to the segment', () => {
+    // Reordering re-seats every segment at a new time without moving the words
+    // with them, so the times left behind describe a moment the segment no
+    // longer occupies. Cutting on them would land nowhere near the playhead;
+    // dividing by pace is wrong by less.
+    const stale: VerseData[] = [{
+      ...verse('66:8', 40, 50, 'أ ب ج د'),
+      words: [
+        { arabic: 'أ', translation: '', timestamp: 1 },
+        { arabic: 'ب', translation: '', timestamp: 2 },
+        { arabic: 'ج', translation: '', timestamp: 8 },
+        { arabic: 'د', translation: '', timestamp: 9 },
+      ],
+    }];
+    const next = splitSegment(stale, 0, 45);
+    expect(next[0].words?.map(w => w.arabic)).toEqual(['أ', 'ب']);
+    expect(next[1].words?.map(w => w.arabic)).toEqual(['ج', 'د']);
+  });
+
   it('refuses a cut that would leave a sliver rather than making one', () => {
     const before = one();
     expect(splitSegment(before, 0, 0.05)).toBe(before);

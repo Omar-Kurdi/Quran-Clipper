@@ -280,6 +280,27 @@ export async function runForcedAlignMatch(params: {
     else wordsByVerse.set(word.verse_key, [word]);
   }
 
+  /**
+   * The aligned times of the words this segment actually covers.
+   *
+   * Filtered by *time* before being keyed by word index, which is the whole
+   * point: when a reciter restarts a phrase, the same (verse, word index)
+   * appears twice in the aligned stream with different times. Keying by index
+   * alone would let the later utterance overwrite the earlier one, and the
+   * first of the two segments would show the second one's timings.
+   *
+   * Containment is tested on each word's midpoint, so a word straddling a
+   * segment edge by a few milliseconds of rounding still lands in the segment
+   * that holds most of it, and never in both.
+   */
+  const timingsFor = (segment: AlignResponse['segments'][number]) =>
+    (wordsByVerse.get(segment.verse_key) || [])
+      .filter(word => {
+        const middle = (word.start + word.end) / 2;
+        return middle >= segment.start && middle <= segment.end;
+      })
+      .map(word => ({ index: word.word_index, start: word.start, end: word.end }));
+
   const segments: MatchSegment[] = (result.segments || []).map(segment => {
     const [surahStr, verseStr] = segment.verse_key.split(':');
     const verse = verses.find(v => v.verseKey === segment.verse_key);
@@ -302,6 +323,9 @@ export async function runForcedAlignMatch(params: {
       // a word repeats inside one ayah.
       startWordIndex: segment.start_word,
       endWordIndex: segment.end_word,
+      // Per-word times, so splitting a caption cuts between real words rather
+      // than assuming every word took an equal share of the segment.
+      wordTimings: timingsFor(segment),
       notes: segment.is_restart ? 'restarted phrase' : undefined
     };
   });

@@ -145,7 +145,7 @@ export async function fetchVersesByDetectedSegments(params: {
     // is only a fallback for providers that can't say which words they meant.
     const hasRange =
       typeof segment.startWordIndex === 'number' && typeof segment.endWordIndex === 'number';
-    const segmentWords = !baseVerse.words?.length
+    const rangedWords = !baseVerse.words?.length
       ? baseVerse.words
       : hasRange
         ? baseVerse.words.map((word, wordIdx) => ({
@@ -153,6 +153,20 @@ export async function fetchVersesByDetectedSegments(params: {
             excluded: wordIdx < segment.startWordIndex! || wordIdx > segment.endWordIndex!
           }))
         : buildSegmentWords(baseVerse.words, segmentDisplayText);
+
+    // Per-word times, when the provider measured them. Applied here rather than
+    // on the cached verse because one ayah can appear in several segments --
+    // a restart recites the same words again at different times, and writing
+    // through to `baseVerse.words` would give every one of them the last
+    // segment's timings.
+    const timings = new Map((segment.wordTimings || []).map(timing => [timing.index, timing]));
+    const segmentWords =
+      timings.size && rangedWords
+        ? rangedWords.map((word, wordIdx) => {
+            const timing = timings.get(wordIdx);
+            return timing ? { ...word, timestamp: timing.start } : word;
+          })
+        : rangedWords;
 
     timeline.push({
       ...baseVerse,
@@ -232,6 +246,14 @@ export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: nu
     .map(verse => {
       const startTime = Math.round((Math.max(verse.startTime, trimStart) - trimStart) * 10) / 10;
       const endTime = Math.round((Math.min(verse.endTime, trimEnd) - trimStart) * 10) / 10;
-      return { ...verse, startTime, endTime: Math.max(endTime, startTime + 0.1) };
+      // Word times are on the same clock as the segment, so they have to move
+      // with it. Left absolute they would sit outside the rebased segment and
+      // every consumer that checks (splitting, for one) would discard them.
+      const words = verse.words?.map(word =>
+        typeof word.timestamp === 'number'
+          ? { ...word, timestamp: Math.round((word.timestamp - trimStart) * 10) / 10 }
+          : word
+      );
+      return { ...verse, startTime, endTime: Math.max(endTime, startTime + 0.1), words };
     });
 }

@@ -26,6 +26,20 @@ export type MatchSegment = {
    */
   startWordIndex?: number;
   endWordIndex?: number;
+  /**
+   * When each word of this segment was spoken, in seconds on the original
+   * recording, keyed by the word's index within its ayah.
+   *
+   * Only providers that measure timing supply this -- forced alignment does,
+   * Gemini estimates a segment span and nothing finer. Consumers must treat it
+   * as absent rather than assuming a uniform reading speed.
+   *
+   * Keyed by word index rather than positional so a restarted phrase, which
+   * repeats the same indices later in the recording, can carry the times of
+   * *its* utterance: the entries are filtered to this segment's own span
+   * before being indexed.
+   */
+  wordTimings?: { index: number; start: number; end: number }[];
 };
 
 export type MatchResult = {

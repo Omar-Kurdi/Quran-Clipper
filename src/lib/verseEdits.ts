@@ -255,13 +255,13 @@ export function duplicateVerse(verses: VerseData[], index: number, audioDuration
  * Both halves keep the ayah: a caption never spans one, so a split is always
  * within a single verse and both sides carry the same key.
  *
- * Which words fall on which side is an estimate. `VerseWord.timestamp` is used
- * when it is populated; otherwise the words are divided by where `atTime` falls
- * in the segment, which assumes an even pace and often will not be exactly
- * right. That is deliberate rather than lazy -- the user is splitting while
- * listening, so they can see what they got and toggle a word either way. Once
- * the aligner's per-word times are carried into the timeline this becomes exact
- * with no change here.
+ * Which words fall on which side comes from `VerseWord.timestamp` when the
+ * provider measured it -- forced alignment does, so the cut lands between the
+ * words actually either side of `atTime`. Gemini never supplies word times, and
+ * neither does a caption typed by hand, so the fallback divides the words by
+ * where `atTime` falls in the segment. That assumes an even pace and often will
+ * not be exactly right, which is tolerable because the user is splitting while
+ * listening and can toggle a word either way.
  */
 export function splitSegment(verses: VerseData[], index: number, atTime: number): VerseData[] {
   const verse = verses[index];
@@ -275,9 +275,31 @@ export function splitSegment(verses: VerseData[], index: number, atTime: number)
 
   const words = ensureWords(verse);
   const span = verse.endTime - verse.startTime;
+
+  // Only the words on screen were spoken during this segment, so only they can
+  // carry times -- requiring every word to have one could never pass, because
+  // the excluded ones belong to a different part of the ayah.
+  //
+  // A time is trusted only while it still lies inside the segment. Reordering
+  // the timeline re-seats segments at new times without moving the words, so a
+  // stale timestamp would otherwise cut in a place that has nothing to do with
+  // the audio. Out-of-range times fall back to dividing by pace, which is what
+  // this did before word times existed.
+  const spoken = words.filter(word => !word.excluded);
+  const measured =
+    spoken.length > 0 &&
+    spoken.every(
+      word =>
+        typeof word.timestamp === 'number' &&
+        word.timestamp >= verse.startTime - MIN_SEGMENT &&
+        word.timestamp <= verse.endTime + MIN_SEGMENT
+    );
+
   let at: number;
-  if (words.every(word => typeof word.timestamp === 'number')) {
-    const found = words.findIndex(word => (word.timestamp as number) >= cut);
+  if (measured) {
+    const found = words.findIndex(
+      word => !word.excluded && (word.timestamp as number) >= cut
+    );
     at = found === -1 ? words.length - 1 : found;
   } else {
     at = Math.round(((cut - verse.startTime) / span) * words.length);
