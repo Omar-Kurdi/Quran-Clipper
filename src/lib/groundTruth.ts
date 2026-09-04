@@ -26,6 +26,20 @@ function recitedText(verse: VerseData): string {
 export interface GroundTruthMeta {
   /** The audio this timeline belongs to, e.g. `test5.mp3`. */
   clipName?: string;
+  /** Length of the audio the timeline describes, in seconds. */
+  duration?: number;
+  /**
+   * The window of the *original* file this timeline covers, when it was
+   * trimmed in the studio.
+   *
+   * This is the field that makes the file reproducible. Trimming here is
+   * destructive: the trimmed audio exists only in the browser, while the file
+   * on disk is still the whole recording. Without the window, an evaluator
+   * pointed at that file scores a timeline against audio it does not describe
+   * and reports failures that are not real. With it, the same cut can be made
+   * again with ffmpeg before scoring.
+   */
+  trim?: { start: number; end: number } | null;
 }
 
 /**
@@ -54,12 +68,33 @@ export function groundTruthFile(verses: VerseData[], meta: GroundTruthMeta = {})
     return !!next && next.verseKey === verse.verseKey && recitedText(next).startsWith(recitedText(verse).split(' ').slice(-1)[0]);
   });
 
+  const surahNumber = surahNumbers.length === 1 ? surahNumbers[0] : null;
+  // Machine-readable, so the evaluator can be run with no arguments and cannot
+  // be pointed at the wrong audio or the wrong passage by mistake. Every value
+  // here is one the person exporting this file would otherwise have to
+  // remember and retype correctly.
+  const facts = [
+    `# clip: ${meta.clipName || 'unknown'}`,
+    surahNumber && ayahs.length
+      ? `# passage: ${surahNumber}:${Math.min(...ayahs)}-${Math.max(...ayahs)}`
+      : '# passage: unknown',
+    typeof meta.duration === 'number' && meta.duration > 0
+      ? `# audio-seconds: ${meta.duration.toFixed(2)}`
+      : '# audio-seconds: unknown',
+    meta.trim
+      ? `# trim: ${meta.trim.start.toFixed(2)}-${meta.trim.end.toFixed(2)}`
+      : '# trim: none',
+  ];
+
   return [
     `# Ground truth for ${meta.clipName || 'this recitation'} (${passage}), captured from the studio timeline.`,
     '# One expected segment per line, in recitation order. Blank lines and #-comments ignored.',
     '#',
     '# Text is matched to corpus word ranges by skeleton, so the orthography does not have',
     '# to be exact.',
+    '#',
+    '# The lines below are read by scripts/eval_segments.py -- keep them.',
+    ...facts,
     ...(overlaps
       ? [
           '#',

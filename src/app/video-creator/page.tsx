@@ -10,6 +10,16 @@ import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
 import type { ExportHealth } from '@/lib/exportHealth';
+
+/**
+ * Whether to show tools that only mean something next to this repository.
+ *
+ * `npm run dev` yes, `npm run build` no. `NEXT_PUBLIC_DEV_TOOLS=1` forces them
+ * on in a build, which is what to set if you want the ground-truth loop from a
+ * production server you host yourself.
+ */
+const SHOW_DEV_TOOLS =
+  process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEV_TOOLS === '1';
 import { PaletteSwitcher } from '@/components/PaletteSwitcher';
 import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
@@ -74,6 +84,16 @@ export default function VideoCreatorPage() {
   const [customAudioFile, setCustomAudioFile] = useState<File | null>(null);
   /** Measured from the uploaded file itself — see `measureAudioDuration`. */
   const [customAudioDuration, setCustomAudioDuration] = useState<number>(0);
+  /**
+   * Which part of the *original* file the current audio came from, or null
+   * when nothing has been trimmed.
+   *
+   * Trimming is destructive here -- the clip is re-encoded and the original is
+   * dropped -- so after two trims the studio would otherwise have no idea that
+   * "0s" now means 34s into the file the user still has on disk. Accumulated
+   * in original-file time so ground truth stays reproducible from that file.
+   */
+  const [trimWindow, setTrimWindow] = useState<{ start: number; end: number } | null>(null);
   const [showTrimModal, setShowTrimModal] = useState(false);
   /** Set when the upload was a video file, so its footage can double as the background. */
   const [uploadIsVideo, setUploadIsVideo] = useState(false);
@@ -336,6 +356,7 @@ export default function VideoCreatorPage() {
       // A fresh upload starts un-trimmed, so the video and its audio share a
       // timeline until a trim introduces an offset.
       setVideoBgOffset(0);
+      setTrimWindow(null);
       setVideoBgUrl(video ? url : null);
       if (video && useVideoAsBackground) {
         setCanvasConfig(prev => ({ ...prev, bgType: 'video', bgUrl: url }));
@@ -387,6 +408,11 @@ export default function VideoCreatorPage() {
     // original. Accumulate how far into it the new clip now starts, and the
     // canvas keeps the two lined up rather than losing the footage.
     setVideoBgOffset(prev => prev + result.trimStart);
+    // Compounding, not replacing: a second trim's 0s is the first trim's start.
+    setTrimWindow(prev => {
+      const base = prev ? prev.start : 0;
+      return { start: base + result.trimStart, end: base + result.trimEnd };
+    });
     if (audioElementRef.current) {
       audioElementRef.current.src = result.url;
       audioElementRef.current.currentTime = 0;
@@ -551,7 +577,11 @@ export default function VideoCreatorPage() {
    * `eval_segments.py` at it.
    */
   const handleDownloadGroundTruth = () => {
-    const contents = groundTruthFile(verses, { clipName: customAudioName });
+    const contents = groundTruthFile(verses, {
+      clipName: customAudioName,
+      duration: customAudioDuration || audioDuration,
+      trim: trimWindow,
+    });
     if (!contents) return;
     const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
@@ -956,14 +986,25 @@ export default function VideoCreatorPage() {
               </Button>
             )}
 
-            <Button
-              onClick={handleDownloadGroundTruth}
-              disabled={verses.length === 0}
-              title={t.header.groundTruthTitle}
-              icon={<ClipboardCheck className="w-3.5 h-3.5 text-sky-400" />}
-            >
-              {t.header.groundTruth}
-            </Button>
+            {/* A development tool, not a feature.
+
+                The file it writes is only useful next to this repo's
+                `gauge.sh`, and an end user who clicks it gets a text file in
+                their Downloads folder that means nothing to them and never
+                reaches anyone who could act on it -- there is no upload path
+                and no telemetry, by design. So it is shown while developing
+                and hidden in a production build. Deleting this condition is
+                all it takes to put it back. */}
+            {SHOW_DEV_TOOLS && (
+              <Button
+                onClick={handleDownloadGroundTruth}
+                disabled={verses.length === 0}
+                title={t.header.groundTruthTitle}
+                icon={<ClipboardCheck className="w-3.5 h-3.5 text-sky-400" />}
+              >
+                {t.header.groundTruth}
+              </Button>
+            )}
 
             <Button
               onClick={handleSaveProject}

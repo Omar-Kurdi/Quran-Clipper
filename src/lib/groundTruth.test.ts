@@ -94,3 +94,36 @@ describe('groundTruthFileName', () => {
     expect(groundTruthFileName()).toBe('expected_timeline.txt');
   });
 });
+
+describe('metadata block', () => {
+  const verses: VerseData[] = [
+    { verseNumber: 122, verseKey: '2:122', textUthmani: 'أ ب', translation: '', startTime: 0, endTime: 4 },
+    { verseNumber: 123, verseKey: '2:123', textUthmani: 'ج د', translation: '', startTime: 4, endTime: 9 },
+  ];
+
+  it('records the clip, passage and length so nothing has to be retyped', () => {
+    const file = groundTruthFile(verses, { clipName: 'test3.mp3', duration: 110 });
+    expect(file).toContain('# clip: test3.mp3');
+    expect(file).toContain('# passage: 2:122-123');
+    expect(file).toContain('# audio-seconds: 110.00');
+  });
+
+  it('records the trim window, because trimming never touches the file on disk', () => {
+    // Without this the evaluator scores a trimmed timeline against the whole
+    // recording and reports failures that are not real.
+    const file = groundTruthFile(verses, { clipName: 'test3.mp3', trim: { start: 12.5, end: 98 } });
+    expect(file).toContain('# trim: 12.50-98.00');
+  });
+
+  it('says so explicitly when nothing was trimmed', () => {
+    // An absent line and an untrimmed clip must not look the same to a reader
+    // that defaults one of them.
+    expect(groundTruthFile(verses, { clipName: 'a.mp3' })).toContain('# trim: none');
+  });
+
+  it('marks a fact unknown rather than guessing it', () => {
+    const file = groundTruthFile(verses, {});
+    expect(file).toContain('# clip: unknown');
+    expect(file).toContain('# audio-seconds: unknown');
+  });
+});

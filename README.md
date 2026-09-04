@@ -363,9 +363,34 @@ Segmentation has to decide whether a given silence ends a phrase, and some of th
 be made from the audio alone. **Split** cuts the selected caption at the playhead and **Merge**
 joins it to the next one, so a wrong boundary is a two-second fix rather than a bug report.
 
-Once a timeline is right, **Ground truth** in the header downloads it as a scoring file. Put it in
-`scripts/` and the evaluator can measure every future change against the captions you corrected by
-ear — see [docs/ALIGNMENT.md](docs/ALIGNMENT.md#growing-the-ground-truth).
+Once a timeline is right, **Ground truth** in the header downloads it as a scoring file. Drop it
+in `scripts/` and run:
+
+```bash
+./gauge.sh
+```
+
+That is the whole loop. No arguments: the file records its own clip name, passage, length and
+trim window, so nothing has to be remembered or retyped. `gauge.sh` re-runs the aligner on every
+recording you have ground truth for, scores each one, and also runs the two rule suites — because
+a threshold can score better on every scoreable clip while breaking a case reported by ear on a
+clip nobody has written ground truth for yet. Both have to be green.
+
+To ask whether one threshold is set right:
+
+```bash
+asr-service/.venv/bin/python scripts/sweep.py MIN_UNMARKED_PAUSE_SEC
+```
+
+That re-runs the aligner across a grid of values and reports which scores best **across all
+clips**. It is a parameter sweep, not advice — a value that wins on one recording and loses on
+another is not an improvement, and this is what makes that visible. More ground-truth files make
+it more trustworthy; with only one clip it has repeatedly preferred the wrong value.
+
+**Ground truth** is a development tool and is hidden in production builds — the file it writes is
+only useful next to this repository. `NEXT_PUBLIC_DEV_TOOLS=1` shows it in a build.
+
+See [docs/ALIGNMENT.md](docs/ALIGNMENT.md#growing-the-ground-truth) for the format.
 
 **Do not read `confidence` as "this is the right passage."** For `gemini` it is a
 self-assessed score that runs high regardless. For `align` it is mean per-word
