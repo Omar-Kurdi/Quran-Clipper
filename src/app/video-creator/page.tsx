@@ -13,11 +13,7 @@ import { PaletteSwitcher } from '@/components/PaletteSwitcher';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
 import { Inspector } from '@/components/Inspector';
-import {
-  setBoundary, nudgeBoundary, markBoundaryAt, reorder, setText, setVerseNumber,
-  toggleWord, addVerseAfter, removeVerse, duplicateVerse, segmentAt,
-  splitSegment, mergeWithNext
-} from '@/lib/verseEdits';
+import { segmentAt } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import { trimTimeline } from '@/lib/matchTimeline';
 import {
@@ -27,6 +23,11 @@ import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioT
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
 import { groundTruthFile, groundTruthFileName } from '@/lib/groundTruth';
+import { useAudioPlayback } from '@/hooks/useAudioPlayback';
+import { useTransportKeys } from '@/hooks/useTransportKeys';
+import { useVideoExport } from '@/hooks/useVideoExport';
+import { buildProjectPayload } from '@/lib/projectPayload';
+import { useTimelineEditing } from '@/hooks/useTimelineEditing';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useLocale } from '@/components/LocaleProvider';
 import { 
@@ -88,7 +89,6 @@ export default function VideoCreatorPage() {
    */
   const [matchStatus, setMatchStatus] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
   const [matchProvider, setMatchProvider] = useState<'gemini' | 'align'>('align');
   const [providerStatus, setProviderStatus] = useState<{
     gemini: { configured: boolean };
@@ -105,7 +105,7 @@ export default function VideoCreatorPage() {
   const [surahNameArabic, setSurahNameArabic] = useState<string>('الفاتحة');
   const [surahNameEnglish, setSurahNameEnglish] = useState<string>('Al-Fatihah');
   const [audioUrl, setAudioUrl] = useState<string>('https://server11.mp3quran.net/download/sds/001.mp3');
-  const [verses, setVerses] = useState<VerseData[]>(SAMPLE_PROJECTS[0].verses);
+  const { verses, setVerses, selectedIndex, setSelectedIndex, edit } = useTimelineEditing(SAMPLE_PROJECTS[0].verses);
   /**
    * The studio opens with Al-Fatihah already in the timeline so the preview is
    * not blank on a first visit. That is useful, but it is indistinguishable
@@ -115,16 +115,27 @@ export default function VideoCreatorPage() {
   const [isSampleProject, setIsSampleProject] = useState<boolean>(true);
 
   // Audio Playback & Web Audio API
-  const audioElementRef = useRef<HTMLAudioElement | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const [audioAnalyserNode, setAudioAnalyserNode] = useState<AnalyserNode | null>(null);
+  // Transport, clock and Web Audio graph. Destructured to the names the rest of
+  // this component already used, so only the ownership moved.
+  const {
+    elementRef: audioElementRef,
+    analyserNode: audioAnalyserNode,
+    isPlaying, setIsPlaying,
+    currentTime, setCurrentTime,
+    duration: audioDuration,
+    setDuration: setAudioDuration,
+    isMuted, setIsMuted,
+    volume, setVolume,
+    error: audioError,
+    setError: setAudioError,
+    togglePlayPause,
+    seek: handleSeek,
+    queueSeek,
+    applyPendingSeek,
+    onTimeUpdate: handleTimeUpdate,
+    onLoadedMetadata: handleLoadedMetadata,
+  } = useAudioPlayback();
   
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [audioDuration, setAudioDuration] = useState<number>(43.0);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [volume, setVolume] = useState<number>(0.9);
   const [isLoadingVerses, setIsLoadingVerses] = useState<boolean>(false);
   const [loadResult, setLoadResult] = useState<{
     ok: boolean;
@@ -147,20 +158,22 @@ export default function VideoCreatorPage() {
    * duration. Stamped with the url it belongs to so a seek meant for one
    * recording is never applied to the next.
    */
-  const pendingSeekRef = useRef<{ url: string; time: number } | null>(null);
 
   // UI Tabs & Drawer
   /** Which ayah the timeline and inspector are focused on. */
-  const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [inspectorTab, setInspectorTab] = useState<'ayah' | 'style'>('ayah');
-  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isProjectsDrawerOpen, setIsProjectsDrawerOpen] = useState<boolean>(false);
 
   // Video Export & Progress State
-  const canvasRef = useRef<VideoCanvasRef | null>(null);
-  const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [exportProgress, setExportProgress] = useState<number>(0);
-  const [exportSpeed, setExportSpeed] = useState<string>('1.0x');
+  const {
+    canvasRef,
+    isExporting,
+    progress: exportProgress,
+    speed: exportSpeed,
+    isModalOpen: isExportModalOpen,
+    setIsModalOpen: setIsExportModalOpen,
+    start: startExport,
+  } = useVideoExport();
   /** `detail` carries why a save failed, so the reason is one hover away rather than console-only. */
   const [saveStatus, setSaveStatus] = useState<{ text: string; kind: 'pending' | 'ok' | 'error'; detail?: string } | null>(null);
   // Which background block the panel acts on, so picking one in the lane and
@@ -249,7 +262,7 @@ export default function VideoCreatorPage() {
       const firstStart = loaded[0]?.startTime ?? 0;
       const willSeek = !customAudioUrl && !!data.audioUrl && firstStart > 0;
       if (willSeek) {
-        pendingSeekRef.current = { url: data.audioUrl, time: firstStart };
+        queueSeek(data.audioUrl, firstStart);
       }
       // The response is usually cached, so it returns faster than a frame and
       // the spinner never paints -- leaving the click with no visible result at
@@ -493,44 +506,6 @@ export default function VideoCreatorPage() {
   };
 
   // Audio Play / Pause Sync with Web Audio API Analyser
-  const togglePlayPauseRef = useRef<() => void>(() => {});
-
-  const togglePlayPause = useCallback(() => {
-    const audio = audioElementRef.current;
-    if (!audio) return;
-
-    if (!audioContextRef.current) {
-      try {
-        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        const source = ctx.createMediaElementSource(audio);
-        source.connect(analyser);
-        analyser.connect(ctx.destination);
-
-        audioContextRef.current = ctx;
-        analyserRef.current = analyser;
-        setAudioAnalyserNode(analyser);
-      } catch {
-        // Audio node already connected or fallback
-      }
-    }
-
-    if (audioContextRef.current?.state === 'suspended') {
-      audioContextRef.current.resume();
-    }
-
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-    } else {
-      audio.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  }, [isPlaying]);
-
-  useEffect(() => {
-    togglePlayPauseRef.current = togglePlayPause;
-  }, [togglePlayPause]);
 
   // Check which audio-match providers are actually usable (API key set / ASR sidecar reachable).
   useEffect(() => {
@@ -551,102 +526,10 @@ export default function VideoCreatorPage() {
   /** Which ayah the playhead is currently inside. */
   const activeVerseIndex = useMemo(() => segmentAt(verses, currentTime), [verses, currentTime]);
 
-  /**
-   * Ends the selected ayah at the playhead and hands the rest to the next one.
-   * This is tap-to-sync, and it now happens on the timeline rather than from a
-   * button in a panel on the opposite side of the screen.
-   */
-  const handleMarkHere = useCallback(() => {
-    const target = selectedIndex;
-    const updated = markBoundaryAt(verses, target, currentTime);
-    if (!updated) return;
-    setVerses(updated);
-    if (target + 1 < updated.length) setSelectedIndex(target + 1);
-  }, [verses, selectedIndex, currentTime]);
+  const handleMarkHere = useCallback(() => edit.markHere(currentTime), [edit, currentTime]);
 
-  const markHereRef = useRef(handleMarkHere);
-  useEffect(() => {
-    markHereRef.current = handleMarkHere;
-  }, [handleMarkHere]);
+  useTransportKeys({ onTogglePlay: togglePlayPause, onMarkHere: handleMarkHere });
 
-  // Seek time
-  const handleSeek = (seconds: number) => {
-    if (audioElementRef.current) {
-      audioElementRef.current.currentTime = seconds;
-      setCurrentTime(seconds);
-    }
-  };
-
-  /**
-   * Transport keys: SPACE always plays/pauses, B marks the end of the current
-   * ayah. Space used to do both -- play when paused, mark when playing -- which
-   * meant there was no way to pause without cutting a boundary you didn't want.
-   *
-   * The two keys guard differently, on purpose. Space skips a focused BUTTON so
-   * it still activates that button rather than being hijacked; B must not, or
-   * the key stops working the moment someone clicks Play -- which is exactly
-   * when they need it. Both skip text entry, and B ignores modifier chords so
-   * Ctrl/Cmd+B can't silently drop a boundary.
-   *
-   * `e.code` rather than `e.key`: it names the physical key regardless of the
-   * active layout, which matters here because someone captioning Arabic
-   * recitation may well have an Arabic layout selected while they work.
-   */
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable;
-      if (typing) return;
-
-      if (e.code === 'Space') {
-        if (tag === 'BUTTON') return;
-        e.preventDefault();
-        togglePlayPauseRef.current();
-        return;
-      }
-
-      if (e.code === 'KeyB') {
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
-        e.preventDefault();
-        markHereRef.current();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // Audio time update loop
-  const handleTimeUpdate = () => {
-    if (audioElementRef.current) {
-      setCurrentTime(audioElementRef.current.currentTime);
-    }
-  };
-
-  const applyPendingSeek = useCallback(() => {
-    const audio = audioElementRef.current;
-    const pending = pendingSeekRef.current;
-    if (!audio || !pending) return;
-    // `currentSrc` rather than `src`: React commits the new `src` attribute
-    // before effects run, so there is a window where `src` already names the
-    // new recording while `duration` still describes the old one. `currentSrc`
-    // is only set once the browser has actually selected that resource, so
-    // waiting for it means the seek lands on the media it was meant for.
-    if (audio.currentSrc !== new URL(pending.url, window.location.href).href) return;
-    if (audio.readyState < 1 || !Number.isFinite(audio.duration)) return;
-    pendingSeekRef.current = null;
-    if (pending.time <= 0 || pending.time >= audio.duration) return;
-    audio.currentTime = pending.time;
-    setCurrentTime(pending.time);
-  }, []);
-
-  const handleLoadedMetadata = () => {
-    if (audioElementRef.current) {
-      setAudioDuration(audioElementRef.current.duration || 43.0);
-      setAudioError(null); // clear any previous error on successful load
-      applyPendingSeek();
-    }
-  };
 
   // Covers the case where the url did not change -- reloading the same surah
   // and reciter fires no `loadedmetadata`, so the seek would never be applied.
@@ -681,8 +564,7 @@ export default function VideoCreatorPage() {
   const handleSaveProject = async () => {
     setSaveStatus({ text: t.header.saving, kind: 'pending' });
     try {
-      const payload = {
-        title: `${surahNameEnglish} (${selectedSurah}:${ayahStart}-${ayahEnd}) Clip`,
+      const payload = buildProjectPayload({
         surahNumber: selectedSurah,
         surahNameArabic,
         surahNameEnglish,
@@ -691,39 +573,10 @@ export default function VideoCreatorPage() {
         reciterId: selectedReciter,
         reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || 'Abdul Rahman Al-Sudais',
         audioUrl,
-        audioDuration: `${Math.floor(audioDuration / 60)}:${Math.floor(audioDuration % 60).toString().padStart(2, '0')}`,
-        aspectRatio: canvasConfig.aspectRatio,
-        fontArabic: canvasConfig.fontArabic,
-        fontTranslation: canvasConfig.fontTranslation,
-        arabicFontSize: canvasConfig.arabicFontSize,
-        translationFontSize: canvasConfig.translationFontSize,
-        ayahNumberFontSize: canvasConfig.ayahNumberFontSize,
-        textAlignment: canvasConfig.textAlignment,
-        textColor: canvasConfig.textColor,
-        accentColor: canvasConfig.accentColor,
-        translationColor: canvasConfig.translationColor,
-        textShadow: canvasConfig.textShadow,
-        showTranslation: canvasConfig.showTranslation,
-        showWaveform: canvasConfig.showWaveform,
-        showSurahBadge: canvasConfig.showSurahBadge,
-        surahBadgeText: canvasConfig.surahBadgeText,
-        surahBadgeSubtitleText: canvasConfig.surahBadgeSubtitleText,
-        bgType: canvasConfig.bgType,
-        bgUrl: canvasConfig.bgUrl,
-        bgUrls: canvasConfig.bgUrls,
-        bgMode: canvasConfig.bgMode,
-        bgCycleSeconds: canvasConfig.bgCycleSeconds,
-        bgSegments: canvasConfig.bgSegments,
-        bgOverlayOpacity: canvasConfig.bgOverlayOpacity,
-        bgBlur: canvasConfig.bgBlur,
-        cardBgOpacity: canvasConfig.cardBgOpacity,
-        cardBorder: canvasConfig.cardBorder,
-        watermarkText: canvasConfig.watermarkText,
-        watermarkPosition: canvasConfig.watermarkPosition,
-        versesJson: verses,
-        fps: canvasConfig.fps,
-        gpuAccelerated: canvasConfig.gpuAccelerated
-      };
+        audioDurationSeconds: audioDuration,
+        verses,
+        config: canvasConfig as unknown as Record<string, unknown>,
+      });
 
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -929,27 +782,9 @@ export default function VideoCreatorPage() {
 
   // Start Video Export Pipeline
   const handleStartExport = (targetFps: number, onComplete: (blob: Blob, renderMs: number) => void) => {
-    if (!canvasRef.current || !audioElementRef.current) return;
-
-    setIsExporting(true);
-    setExportProgress(0);
-
-    canvasRef.current.exportVideo(
-      audioElementRef.current,
-      { start: exportRange.start, end: exportRange.end },
-      (progress, speed) => {
-        setExportProgress(progress);
-        setExportSpeed(speed);
-      },
-      (blob, renderMs) => {
-        setIsExporting(false);
-        onComplete(blob, renderMs);
-      },
-      targetFps
-    );
+    startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, targetFps, onComplete);
   };
 
-  // Save Export record to DB
   const handleSaveExportRecord = async (fileUrl: string, durationSec: number, renderMs: number) => {
     try {
       await fetch('/api/exports', {
@@ -1630,28 +1465,17 @@ export default function VideoCreatorPage() {
                   verses={verses}
                   index={selectedIndex}
                   isActive={selectedIndex === activeVerseIndex}
-                  onText={(field, value) => setVerses(setText(verses, selectedIndex, field, value))}
-                  onVerseNumber={value => setVerses(setVerseNumber(verses, selectedIndex, value))}
-                  onToggleWord={wi => setVerses(toggleWord(verses, selectedIndex, wi))}
-                  onNudge={(edge, delta) => setVerses(nudgeBoundary(verses, selectedIndex, edge, delta, audioDuration))}
-                  onReorder={to => { setVerses(reorder(verses, selectedIndex, to)); setSelectedIndex(Math.max(0, Math.min(verses.length - 1, to))); }}
-                  onDuplicate={() => setVerses(duplicateVerse(verses, selectedIndex, audioDuration))}
-                  onDelete={() => { setVerses(removeVerse(verses, selectedIndex)); setSelectedIndex(i => Math.max(0, i - 1)); }}
-                  onAdd={() => { const r = addVerseAfter(verses, selectedIndex); setVerses(r.verses); setSelectedIndex(r.insertedAt); }}
+                  onText={edit.text}
+                  onVerseNumber={edit.verseNumber}
+                  onToggleWord={edit.toggleWord}
+                  onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration)}
+                  onReorder={edit.reorder}
+                  onDuplicate={() => edit.duplicate(audioDuration)}
+                  onDelete={edit.remove}
+                  onAdd={edit.add}
                   currentTime={currentTime}
-                  onSplit={() => {
-                    const next = splitSegment(verses, selectedIndex, currentTime);
-                    if (next === verses) return;
-                    setVerses(next);
-                    // Stay on the half the playhead is in, which is the second:
-                    // the user split *here*, so here is what they are looking at.
-                    setSelectedIndex(selectedIndex + 1);
-                  }}
-                  onMerge={() => {
-                    const next = mergeWithNext(verses, selectedIndex);
-                    if (next === verses) return;
-                    setVerses(next);
-                  }}
+                  onSplit={() => edit.split(currentTime)}
+                  onMerge={edit.merge}
                 />
               ) : (
                 <StyleConfigPanel
@@ -1683,7 +1507,7 @@ export default function VideoCreatorPage() {
             editBackgroundLane(segs => moveSegmentTo(segs, i, start, audioDuration))}
           onResizeBackground={(i, edge, value) =>
             editBackgroundLane(segs => resizeSegment(segs, i, edge, value, audioDuration))}
-          onMoveBoundary={(i, edge, value) => setVerses(setBoundary(verses, i, edge, value, audioDuration))}
+          onMoveBoundary={(i, edge, value) => edit.boundary(i, edge, value, audioDuration)}
           onMarkHere={handleMarkHere}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
           onTrimRange={customAudioFile ? handleTrimRange : undefined}
