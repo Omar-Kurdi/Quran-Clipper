@@ -11,6 +11,7 @@ import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
 import type { ExportHealth } from '@/lib/exportHealth';
 import { PaletteSwitcher } from '@/components/PaletteSwitcher';
+import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
 import { Inspector } from '@/components/Inspector';
@@ -919,6 +920,8 @@ export default function VideoCreatorPage() {
               {selectedSurah}:{ayahStart}&ndash;{ayahEnd}
             </span>
           </div>
+
+          <HealthStrip />
         </div>
 
         {/* Action Controls Header.

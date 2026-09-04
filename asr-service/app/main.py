@@ -114,7 +114,12 @@ def _startup() -> None:
             backend,
         )
 
-    if os.getenv("ASR_WARM_UP", "1") == "1":
+    # Off by default: warm-up loads the `/transcribe` model, and nothing in the
+    # app calls `/transcribe`. Paying ~5s of startup and a model's worth of GPU
+    # memory for an endpoint that is never hit is the wrong default; anyone
+    # serving `/transcribe` directly can set ASR_WARM_UP=1 and get it back.
+    # `/align` has its own model and is unaffected either way.
+    if os.getenv("ASR_WARM_UP", "0") == "1":
         asr.warm_up()
 
 

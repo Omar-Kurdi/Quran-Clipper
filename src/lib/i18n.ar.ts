@@ -74,6 +74,8 @@ export const ar: Dictionary = {
     savedClips: 'المقاطع المحفوظة',
     saveProject: 'حفظ المشروع',
     saveProjectTitle: 'حفظ هذا المقطع في قائمة المشاريع',
+    healthDatabase: 'قاعدة البيانات',
+    healthAligner: 'المحاذي',
     groundTruth: 'مرجع التقييم',
     groundTruthTitle:
       'تنزيل هذا الجدول الزمني كملف مرجعي، ليُقاس عليه أي تغيير في المحاذاة مقابل المقاطع التي صحّحتها بالسمع',

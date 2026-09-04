@@ -105,11 +105,13 @@ out which surah is being recited, and that is the feature most of the app is bui
 NeMo is a heavy install but it is not GPU-only; `ASR_DEVICE` handles the rest.
 
 ```bash
-ASR_WARM_UP=0 uvicorn app.main:app --host 127.0.0.1 --port 8000
+ASR_WARM_UP=1 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-`ASR_WARM_UP=0` skips loading the `ASR_BACKEND` model at startup, which is what `/transcribe`
-uses. If you only serve `/align` that is a second large model held in memory for nothing.
+Startup does **not** load the `ASR_BACKEND` model any more — that model is what `/transcribe`
+uses, and the app never calls `/transcribe`, so it was a second large model held in memory for
+nothing. Pass `ASR_WARM_UP=1` if you serve `/transcribe` yourself and would rather pay the
+load once at startup than on the first request. `/align` has its own model and is unaffected.
 
 ### Giving up range detection
 
@@ -137,11 +139,11 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ASR_BACKEND` | `wav2vec2` | Decode backend for `/transcribe`: `wav2vec2`, `nemo`, or `whisper`. |
 | `ASR_MODEL` | per backend | Override the decode checkpoint. |
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |
-| `ASR_WARM_UP` | `1` | Load the decode model at startup instead of on first request. |
+| `ASR_WARM_UP` | `0` | Load the decode model at startup instead of on first request. |
 | `ASR_NEMO_DECODER` | `rnnt` | `rnnt` or `ctc` for the hybrid NeMo model. |
 | `ALIGN_MIN_REPEAT_MATCH` | `0.75` | How much of a repeated phrase's spelling must be heard in the gap it explains. |
 | `ALIGN_MAX_REPEAT_WORDS` | `4` | How far back a reciter is assumed to go when resuming. |
-| `ASR_WARM_UP` | `1` | Loads the `/transcribe` model at startup. The app never calls `/transcribe`, so `0` skips a model it will not use — startup drops from ~11s to ~6s and frees its GPU memory. `/align` is unaffected. |
+| `ASR_WARM_UP` | `0` | Loads the `/transcribe` model at startup. The app never calls `/transcribe`, so this is off — startup is ~6s rather than ~11s and a model's worth of GPU memory stays free. Set it to `1` if you serve `/transcribe` yourself. `/align` is unaffected either way. |
 | `ALIGN_QUIET_DROP_DB` | `10` | How far below the clip's speech level counts as silence. Measured against the speech level, not as a rank, so trimming a recording does not change where it splits. |
 | `ALIGN_QUIET_MERGE_SEC` | `0.12` | Quiet either side of a drawn breath is one pause, not two. |
 | `ALIGN_MAX_PAUSE_INSET` | `0.25` | How far short of a word's end a silence may stop and still count as following it. Beyond this it is inside the word, not at the join. |

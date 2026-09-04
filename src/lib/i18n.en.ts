@@ -75,6 +75,8 @@ export const en = {
     savedClips: 'Saved clips',
     saveProject: 'Save project',
     saveProjectTitle: 'Save this clip to the saved-projects list',
+    healthDatabase: 'Database',
+    healthAligner: 'Aligner',
     groundTruth: 'Ground truth',
     groundTruthTitle:
       'Download this timeline as a ground-truth file, so a change to the aligner can be scored against the captions you corrected by ear',
