@@ -249,9 +249,15 @@ export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: nu
       // Word times are on the same clock as the segment, so they have to move
       // with it. Left absolute they would sit outside the rebased segment and
       // every consumer that checks (splitting, for one) would discard them.
+      //
+      // To the millisecond, not to the segment's one decimal. Segment edges are
+      // stored at 1dp by convention, but that convention is theirs: the aligner
+      // reports word times to the millisecond, and rounding 5.582 to 5.6 would
+      // move a cut past a word. Rounding at all is only to keep the subtraction
+      // from leaving float dust (1.2390000000000008) in saved projects.
       const words = verse.words?.map(word =>
         typeof word.timestamp === 'number'
-          ? { ...word, timestamp: Math.round((word.timestamp - trimStart) * 10) / 10 }
+          ? { ...word, timestamp: Math.round((word.timestamp - trimStart) * 1000) / 1000 }
           : word
       );
       return { ...verse, startTime, endTime: Math.max(endTime, startTime + 0.1), words };

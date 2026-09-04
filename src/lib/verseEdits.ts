@@ -130,6 +130,10 @@ export function setText(
   if (!current) return verses;
 
   if (field === 'textUthmani') {
+    // Retyping the Arabic drops any measured word times with the old words,
+    // because they described words that are no longer there. Splitting this
+    // segment afterwards falls back to dividing by pace, which is what
+    // `splitSegment` does whenever the times are missing or stale.
     updated[index] = {
       ...current,
       textUthmani: value,

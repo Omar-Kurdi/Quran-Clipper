@@ -148,13 +148,16 @@ describe('trimTimeline word times', () => {
     const timed: VerseData = {
       ...verse('66:8', 30, 40),
       words: [
-        { arabic: 'أ', translation: '', timestamp: 31 },
-        { arabic: 'ب', translation: '', timestamp: 36 },
+        { arabic: 'أ', translation: '', timestamp: 31.239 },
+        { arabic: 'ب', translation: '', timestamp: 35.582 },
       ],
     };
     const [trimmed] = trimTimeline([timed], 30, 40);
     expect(trimmed.startTime).toBe(0);
-    expect(trimmed.words?.map(w => w.timestamp)).toEqual([1, 6]);
+    // To the millisecond, not to the segment's one decimal. The aligner reports
+    // word times at this precision and it is what makes a split exact; rounding
+    // 5.582 to 5.6 would move the cut past a word.
+    expect(trimmed.words?.map(w => w.timestamp)).toEqual([1.239, 5.582]);
   });
 
   it('leaves a word alone when it never had a time', () => {

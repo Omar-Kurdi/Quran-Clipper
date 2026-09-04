@@ -292,7 +292,10 @@ an optional capability, and the app degrades cleanly without it.
 > `/api/audio/match` will spend your Gemini key. With it set, open the studio once as
 > `http://host:3000/?token=<the token>` — the token is exchanged for an HttpOnly cookie and
 > stripped from the URL — or send `Authorization: Bearer <the token>`. `/api/health` stays open
-> so an uptime check needs no secret. Generate one with `openssl rand -hex 32`.
+> so an uptime check needs no secret. Generate one with `openssl rand -hex 32`. Audio keeps
+> working: `/api/audio/proxy` is gated too, and the browser sends the cookie with the `<audio>`
+> element's own request because it is same-origin (verified — the proxy answers 401 without the
+> token and 206 with it, and the player loads through it either way once the cookie is set).
 
 > **Gemini model IDs are retired regularly.** `gemini-2.0-flash` and `gemini-2.5-flash` no
 > longer exist and return HTTP 404. Check the

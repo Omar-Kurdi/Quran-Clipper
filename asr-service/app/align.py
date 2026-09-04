@@ -481,8 +481,11 @@ def alignment_bytes(frames: int, tokens: int, vocab: int) -> int:
 
     Measured against peak RSS on this machine (vocab 1025, 12.75 frames/sec):
 
-        20 min   15306 frames   10500 tokens   trellis+emission 366 MB   measured  373 MB
-        40 min   30612 frames   21000 tokens   trellis+emission 1346 MB  measured 1353 MB
+        20 min   15306 frames   10500 tokens   before headroom 366 MB   measured  373 MB
+        40 min   30612 frames   21000 tokens   before headroom 1346 MB  measured 1353 MB
+
+    What this function *returns* is those figures plus `HEADROOM`, so 403 MB
+    and 1481 MB respectively.
 
     Those two terms account for the cost to within 2%, but they land just under
     it -- there is a few MB of allocator slop and output tensors on top that
