@@ -60,6 +60,17 @@ DEFAULT_ALIGN_MODEL = "jonatasgrosman/wav2vec2-large-xlsr-53-arabic"
 EMISSION_WINDOW_SEC = 30.0
 EMISSION_OVERLAP_SEC = 4.0
 
+#: How much memory one forced-alignment pass may ask for before it is refused.
+#: See `alignment_bytes` for what is being counted and how it was measured. The
+#: default leaves room for the model (about 2.2 GB resident) on an 8 GB machine
+#: while allowing roughly a 45-minute recitation.
+MAX_ALIGN_MEMORY_GB = float(os.getenv("ALIGN_MAX_MEMORY_GB", "2.0"))
+
+#: Seconds of audio per CTC frame, per backend. Only ever used to turn a frame
+#: count back into "about N minutes" for an error message -- the alignment
+#: itself measures this from the emission it actually got.
+_SEC_PER_FRAME = {"nemo": 0.0784, "wav2vec2": 0.02}
+
 
 class AlignError(RuntimeError):
     pass
@@ -460,6 +471,31 @@ def required_frames(target_ids: list[int]) -> int:
     return len(target_ids) + doubles
 
 
+def alignment_bytes(frames: int, tokens: int, vocab: int) -> int:
+    """What one forced-alignment pass will allocate, in bytes.
+
+    The Viterbi trellis is the term that matters. It is `frames x (2*tokens+1)`
+    -- one cell per (time, CTC state) pair, a byte each -- so it grows with the
+    *square* of the recording: a longer clip has both more frames and more text
+    to place in them. The emission on top is only `frames x vocab x 4`.
+
+    Measured against peak RSS on this machine (vocab 1025, 12.75 frames/sec):
+
+        20 min   15306 frames   10500 tokens   trellis+emission 366 MB   measured  373 MB
+        40 min   30612 frames   21000 tokens   trellis+emission 1346 MB  measured 1353 MB
+
+    Those two terms account for the cost to within 2%, but they land just under
+    it -- there is a few MB of allocator slop and output tensors on top that
+    does not scale with the clip. `HEADROOM` covers that, because a budget
+    check is only useful if being wrong means refusing slightly too early
+    rather than being killed slightly too late.
+    """
+    HEADROOM = 1.1
+    trellis = frames * (2 * tokens + 1)
+    emission = frames * vocab * 4
+    return int((trellis + emission) * HEADROOM)
+
+
 def _align_path(emission, target_ids: list[int]):
     """Run Viterbi forced alignment. Returns (per-frame token ids, per-frame log-probs, total)."""
     import torch
@@ -473,6 +509,32 @@ def _align_path(emission, target_ids: list[int]):
         raise AlignError(
             f"Reference text needs at least {needed} CTC frames but the audio only has "
             f"{emission.shape[1]} ({emission.shape[1] * 0.02:.1f}s). Too much text for this audio."
+        )
+
+    # Refuse a pass that would not fit, rather than being killed part-way
+    # through it. A 14-minute recitation costs about 180 MB here and takes 32
+    # seconds; because the cost is quadratic, an hour costs roughly 3 GB, and
+    # what an over-long upload produced was the process dying with no message
+    # at all. Saying the number, and what to do about it, is worth far more
+    # than the few hundred microseconds this multiplication takes.
+    frames = emission.shape[1]
+    needed_bytes = alignment_bytes(frames, len(target_ids), emission.shape[2])
+    budget = MAX_ALIGN_MEMORY_GB * 1024**3
+    if needed_bytes > budget:
+        seconds = frames * _SEC_PER_FRAME.get(align_backend(), 0.02)
+        raise AlignError(
+            f"This recording is too long to align in one pass: {seconds / 60:.0f} minutes of audio "
+            f"against {len(target_ids)} text tokens needs about {needed_bytes / 1024**3:.1f} GB, and the "
+            f"budget is {MAX_ALIGN_MEMORY_GB:.1f} GB. Alignment cost grows with the square of the "
+            "recording, so splitting it in half costs about a quarter as much each. Split the audio, "
+            "or raise ALIGN_MAX_MEMORY_GB if this machine has the memory to spare."
+        )
+    if needed_bytes > budget / 4:
+        log.info(
+            "long alignment: %d frames x %d tokens, about %.2f GB",
+            frames,
+            len(target_ids),
+            needed_bytes / 1024**3,
         )
 
     targets = torch.tensor([target_ids], dtype=torch.int32, device=emission.device)

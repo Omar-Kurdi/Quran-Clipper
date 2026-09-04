@@ -490,6 +490,40 @@ Every clip added this way is a case the next change has to keep passing. The thr
 
 ---
 
+## How long a recording this can take
+
+Forced alignment is one Viterbi pass over the whole clip: the path is global, so unlike a
+decode it cannot be chunked. The trellis is `frames x (2 x tokens + 1)`, and a longer
+recording has **both** more frames and more text to place in them — so the cost grows with the
+*square* of the duration, not with it.
+
+Measured on this machine (NeMo backend, vocab 1025, 12.75 frames/sec):
+
+| Audio | Frames | Tokens | Peak RSS above baseline |
+| --- | --- | --- | --- |
+| 20 min | 15,306 | 10,500 | 373 MB |
+| 40 min | 30,612 | 21,000 | 1,353 MB |
+
+End to end on a 13.8-minute clip — six unrelated recitations concatenated, so detection had to
+find six separate passages — the whole pipeline took **39s and 2.5 GB resident**, of which
+about 2.2 GB is the model itself. The clip contributed roughly 180 MB. Detection found all six
+ranges (2:121-125, 3:98, 23:93-96, 33:18-23, 40:13-25, 66:5-12).
+
+Extrapolating the curve, an hour of audio costs about 3 GB for the alignment alone. That is
+where this stops working on an ordinary machine, and what used to happen there was the process
+being killed with no message. `alignment_bytes` now predicts the cost before the pass starts
+and `_align_path` refuses anything over `ALIGN_MAX_MEMORY_GB` (default 2.0, about 45 minutes),
+naming the figure and pointing out that splitting the recording in half costs a quarter as much
+per half. The prediction is accurate to within 2% at both measured points and carries 10%
+headroom on top, so it errs towards refusing slightly early rather than dying slightly late.
+
+There is a second, unrelated ceiling on *fast* recitation: a passage needs at least one CTC
+frame per token, and at 12.75 frames/sec against roughly 8.75 tokens/sec of ordinary murattal
+there is only about 1.45x of headroom. Hadr fast enough to exceed it already fails with
+"Too much text for this audio", which says what happened.
+
+---
+
 ## Reproducing the measurements
 
 The recitation clips these figures come from are **not in the repo** — they are large binaries

@@ -319,5 +319,34 @@ check(
     (align.decode_agreement(run, [0.0, 3.4], ["الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ"]) or 0) < 0.4,
 )
 
+print("\nalignment cost -- refusing a pass rather than being killed by it")
+# The two points the formula was fitted against, measured as peak RSS on this
+# machine with a synthetic emission (vocab 1025, 12.75 frames/sec).
+for minutes, frames, tokens, measured_mb in ((20, 15306, 10500, 373), (40, 30612, 21000, 1353)):
+    predicted_mb = align.alignment_bytes(frames, tokens, 1025) / 1024**2
+    check(
+        f"{minutes} min is predicted within 15% of the {measured_mb} MB measured",
+        abs(predicted_mb - measured_mb) / measured_mb < 0.15,
+        f"predicted {predicted_mb:.0f} MB",
+    )
+    check(
+        f"{minutes} min is predicted high rather than low",
+        # The two terms alone land just under what was measured, so a budget
+        # built on them would refuse too late. The headroom is what makes the
+        # check useful rather than merely accurate.
+        predicted_mb >= measured_mb,
+        f"predicted {predicted_mb:.0f} MB against {measured_mb} MB",
+    )
+check(
+    "cost grows with the square of the recording, not linearly",
+    # Doubling the audio doubles the frames *and* the text to place in them.
+    # A linear model would put this at 2; anything near 4 is the real shape.
+    align.alignment_bytes(30612, 21000, 1025) / align.alignment_bytes(15306, 10500, 1025) > 3.4,
+)
+check(
+    "the 14-minute clip that was measured end-to-end is nowhere near the budget",
+    align.alignment_bytes(10523, 7220, 1025) < align.MAX_ALIGN_MEMORY_GB * 1024**3 / 4,
+)
+
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)
