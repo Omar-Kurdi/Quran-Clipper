@@ -544,6 +544,14 @@ export const en = {
     complete: 'Video Render Complete!',
     renderedIn: 'Rendered in',
     renderedOn: (gpu: string) => ` on ${gpu}.`,
+    keepTabOpenTitle: 'Keep this tab open and visible.',
+    keepTabOpenBody:
+      'The picture is recorded from the canvas as it plays, and browsers stop drawing a tab that is in the background. If you switch away the render pauses and waits for you \u2014 nothing is lost, but the wait is added to the total.',
+    doNotSwitch: 'Recording \u2014 do not switch tabs',
+    pausedNotice: (times: number) =>
+      times === 1
+        ? 'Paused once while this tab was in the background, then carried on. Nothing was lost \u2014 the wait is why it took longer.'
+        : `Paused ${times} times while this tab was in the background, then carried on each time. Nothing was lost \u2014 the waiting is why it took longer.`,
     frozenWarning: (seconds: number) =>
       `About ${seconds}s of this recording has a frozen picture. The canvas stopped painting while it recorded — usually because the tab went to the background or the screen slept. Export again and leave this tab visible.`,
     choppyWarning:

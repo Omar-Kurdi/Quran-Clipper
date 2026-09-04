@@ -984,11 +984,50 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           wakeLock = null;
         }
       };
+
+      /**
+       * Filled in by `run` once the recorder and its audio element exist, so
+       * the visibility handler can act on them. Registered before them because
+       * the listener has to outlive every path out of `run`, including the
+       * ones that fail before a recorder is built.
+       */
+      let recorder: MediaRecorder | null = null;
+      let clipAudio: HTMLAudioElement | null = null;
+
+      /**
+       * Hold everything still while the tab is in the background, rather than
+       * recording a frozen picture over live audio.
+       *
+       * This is what makes a backgrounded export survivable. The canvas stops
+       * being painted the moment the tab is hidden -- that is deliberate
+       * browser behaviour and no timer trick gets around it -- but the audio
+       * would carry on, so the recording would come out complete, correct
+       * length, and frozen over the gap. Pausing the recorder *and* both audio
+       * elements stops the clocks together: the export simply waits, resumes
+       * where it left off, and the file has no gap in it at all. It takes
+       * longer in wall-clock time and loses nothing.
+       *
+       * `wasHidden` is still recorded, and the frame-starvation measurement
+       * still runs, because pausing cannot cover every way a render stalls --
+       * a sleeping display or a saturated GPU are not visibility changes.
+       */
       const onVisibility = () => {
+        if (!isExportingRef.current) return;
         if (document.hidden) {
           healthRef.current.wasHidden = true;
-        } else if (isExportingRef.current && !wakeLock) {
-          void holdScreenAwake();
+          if (recorder?.state === 'recording') {
+            recorder.pause();
+            healthRef.current.pauses += 1;
+            audioElement.pause();
+            clipAudio?.pause();
+          }
+          return;
+        }
+        if (!wakeLock) void holdScreenAwake();
+        if (recorder?.state === 'paused') {
+          recorder.resume();
+          void audioElement.play().catch(() => {});
+          void clipAudio?.play().catch(() => {});
         }
       };
       document.addEventListener('visibilitychange', onVisibility);
@@ -1023,6 +1062,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         if (!MediaRecorder.isTypeSupported(mt)) mt = 'video/webm';
 
         const rec = new MediaRecorder(combined, { mimeType: mt, videoBitsPerSecond: 18000000 });
+        recorder = rec;
+        clipAudio = expAudio;
         const chunks: Blob[] = [];
         rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
         rec.onstop = () => {
@@ -1106,6 +1147,18 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         let lastAudioTime = audioElement.currentTime;
         let lastPainted = paintedFramesRef.current;
         const iv = setInterval(() => {
+          // A paused export is waiting for the tab to come back, not finished.
+          // Without this the `ended`/position check below would stop it while
+          // it was deliberately held, which is the exact failure pausing exists
+          // to avoid.
+          if (rec.state === 'paused') {
+            onProgress(
+              Math.min(99, Math.round((Math.max(0, audioElement.currentTime - startSec) / span) * 100)),
+              'paused',
+              frames
+            );
+            return;
+          }
           if (!isExportingRef.current || audioElement.ended || audioElement.currentTime >= endSec) {
             clearInterval(iv);
             rec.stop();

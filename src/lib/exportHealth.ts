@@ -31,6 +31,13 @@ export interface ExportHealth {
   effectiveFps: number;
   /** Whether the tab was in the background at any point during the recording. */
   wasHidden: boolean;
+  /**
+   * How many times the export was held while the tab was hidden.
+   *
+   * Not a fault -- it is the mechanism working. Worth reporting only because
+   * it explains why a two-minute clip took five minutes to render.
+   */
+  pauses: number;
 }
 
 /**
@@ -84,5 +91,5 @@ export function exportVerdict(health: ExportHealth, targetFps: number): ExportVe
 }
 
 export function emptyHealth(): ExportHealth {
-  return { recordedSeconds: 0, starvedSeconds: 0, effectiveFps: 0, wasHidden: false };
+  return { recordedSeconds: 0, starvedSeconds: 0, effectiveFps: 0, wasHidden: false, pauses: 0 };
 }

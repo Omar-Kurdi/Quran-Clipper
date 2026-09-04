@@ -65,6 +65,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   // question as whether the export succeeded -- see `exportHealth.ts`.
   const [verdict, setVerdict] = useState<ExportVerdict>('clean');
   const [starvedSeconds, setStarvedSeconds] = useState<number>(0);
+  const [pauses, setPauses] = useState<number>(0);
   const [downloadFileName, setDownloadFileName] = useState<string>('QuranClip.webm');
 
   // Clear the previous render whenever the modal is reopened. Without this the
@@ -88,6 +89,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       setRenderedMs(renderMs);
       setVerdict(exportVerdict(health, selectedFps));
       setStarvedSeconds(health.starvedSeconds);
+      setPauses(health.pauses);
       // Was hardcoded to 45 seconds, so every saved record claimed the same
       // length regardless of what was rendered.
       onSaveExportRecord(url, exportSeconds, renderMs);
@@ -245,8 +247,29 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   <span>{t.exportModal.speed(exportSpeed)}</span>
                   <span title={t.exportModal.realtimeCaptureTitle}>{t.exportModal.realtimeCapture}</span>
                 </div>
+
+                {/* Kept in front of the person for the whole render, because
+                    the consequence of switching away is invisible until it is
+                    too late to undo. Switching away no longer damages the file
+                    -- the recording holds and resumes -- but it does stretch a
+                    two-minute clip into however long the detour took, which is
+                    reason enough to say so while it matters. */}
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                  </span>
+                  <span className="text-[11px] font-bold text-amber-300">{t.exportModal.doNotSwitch}</span>
+                </div>
               </div>
             ) : (
+              <>
+              {/* Said before it costs anything, so it is a known rule rather
+                  than a surprise afterwards. */}
+              <p className="mb-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[11px] leading-relaxed text-slate-300">
+                <strong className="text-amber-300">{t.exportModal.keepTabOpenTitle}</strong>{' '}
+                {t.exportModal.keepTabOpenBody}
+              </p>
               <button
                 onClick={handleExport}
                 className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-slate-950 font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-98"
@@ -254,6 +277,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 <Sparkles className="w-5 h-5 text-slate-950 fill-current" />
                 <span>{t.exportModal.startRender(selectedFps)}</span>
               </button>
+              </>
             )}
           </div>
         ) : (
@@ -283,6 +307,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 painting -- a backgrounded tab, a slept display -- leaves the
                 picture frozen while the audio plays on. The file gives no sign
                 of it, so this has to. */}
+            {pauses > 0 && (
+              <p className="w-full text-start text-[11px] leading-relaxed text-slate-300 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2">
+                {t.exportModal.pausedNotice(pauses)}
+              </p>
+            )}
+
             {verdict !== 'clean' && (
               <p className="w-full text-start text-[11px] leading-relaxed text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
                 {verdict === 'frozen'
