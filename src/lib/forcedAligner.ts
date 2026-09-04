@@ -90,13 +90,32 @@ type AlignResponse = {
  */
 const SEGMENT_GAP_SEC = 0.45;
 
+/**
+ * Where the audio to align comes from.
+ *
+ * A file for an upload; a URL and a window for one of the built-in reciters,
+ * whose recording is the whole chapter. Sending the chapter would mean moving
+ * up to 87 MB twice across the network to use thirty seconds of it, so the
+ * sidecar range-seeks the window instead and reports times against the whole
+ * recording, which is the file the player has loaded.
+ */
+export type AlignSource =
+  | { kind: 'file'; audio: File }
+  | { kind: 'url'; audioUrl: string; windowStart: number; windowEnd: number };
+
 async function requestAlignment(params: {
   serviceUrl: string;
-  audio: File;
+  source: AlignSource;
   reference: string;
 }): Promise<AlignResponse> {
   const formData = new FormData();
-  formData.append('audio', params.audio);
+  if (params.source.kind === 'file') {
+    formData.append('audio', params.source.audio);
+  } else {
+    formData.append('audio_url', params.source.audioUrl);
+    formData.append('window_start', String(params.source.windowStart));
+    formData.append('window_end', String(params.source.windowEnd));
+  }
   formData.append('reference', params.reference);
 
   const base = params.serviceUrl.replace(/\/$/, '');
@@ -185,7 +204,7 @@ export function buildSegments(words: AlignedWord[]): MatchSegment[] {
 
 export async function runForcedAlignMatch(params: {
   serviceUrl: string;
-  audio: File;
+  source: AlignSource;
   /** Omit (or pass autoDetect) to have the sidecar work the passage out from the audio. */
   surah?: number;
   start?: number;
@@ -219,7 +238,7 @@ export async function runForcedAlignMatch(params: {
   try {
     result = await requestAlignment({
       serviceUrl: params.serviceUrl,
-      audio: params.audio,
+      source: params.source,
       reference
     });
   } catch (err) {
@@ -247,7 +266,7 @@ export async function runForcedAlignMatch(params: {
     if (!selected.length) throw err;
     result = await requestAlignment({
       serviceUrl: params.serviceUrl,
-      audio: params.audio,
+      source: params.source,
       reference: selected
         .map(verse => `${verse.verseKey}\t${verse.words.map(word => word.arabic).join(' ')}`)
         .join('\n')

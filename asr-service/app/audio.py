@@ -94,20 +94,30 @@ ALLOWED_AUDIO_HOSTS = frozenset(
     host.strip()
     for host in os.getenv(
         "ALIGN_ALLOWED_AUDIO_HOSTS",
-        "download.quranicaudio.com,audio.qurancdn.com,verses.quran.com",
+        "download.quranicaudio.com,audio.qurancdn.com,verses.quran.com,.mp3quran.net",
     ).split(",")
     if host.strip()
 )
 
 
 def check_audio_url(url: str) -> str:
-    """Reject a URL this service will not fetch, with the reason."""
+    """Reject a URL this service will not fetch, with the reason.
+
+    An entry beginning with a dot matches any subdomain of it, which is there
+    for mp3quran.net: the built-in reciters are spread across server6, 7, 11
+    and 12, and which server hosts whom is their business to change, not a list
+    to keep chasing. Everything else is an exact hostname.
+    """
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
         raise AudioDecodeError(f"Audio URLs must be https, not {parsed.scheme or 'a relative path'!r}.")
-    if parsed.hostname not in ALLOWED_AUDIO_HOSTS:
+    host = parsed.hostname or ""
+    allowed = host in ALLOWED_AUDIO_HOSTS or any(
+        entry.startswith(".") and host.endswith(entry) for entry in ALLOWED_AUDIO_HOSTS
+    )
+    if not allowed:
         raise AudioDecodeError(
-            f"{parsed.hostname!r} is not a recitation host this service fetches from. "
+            f"{host!r} is not a recitation host this service fetches from. "
             f"Allowed: {', '.join(sorted(ALLOWED_AUDIO_HOSTS))}."
         )
     return url

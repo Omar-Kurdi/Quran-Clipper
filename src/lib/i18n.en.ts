@@ -203,6 +203,13 @@ export const en = {
       `Trimmed to ${length}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`,
     trimmingRange: 'Trimming the audio to the clip you marked…',
     trimRangeFailed: 'Could not trim this file. Try the Trim audio dialog, which reports what went wrong.',
+    reciterNoUrl: 'This reciter\u2019s audio has no address the aligner can fetch.',
+    needLoad: 'Load the ayahs first, then align them.',
+    passageTooLong: (minutes: number, limit: number) =>
+      `That passage is about ${minutes} minutes long and the aligner handles up to ${limit}. Choose fewer ayahs.`,
+    alignReciter: 'Align to audio',
+    alignReciterTitle:
+      'Read the reciter\u2019s own recording and place every word, instead of estimating where the ayahs fall.',
     needUpload: 'Upload an audio file before running AI auto-match.',
     aligning:
       'Force-aligning the selected ayah range against your audio (first run loads the model — may take longer)...',

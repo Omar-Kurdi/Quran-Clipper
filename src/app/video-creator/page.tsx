@@ -442,12 +442,30 @@ export default function VideoCreatorPage() {
     }
   };
 
-  const handleAutoMatchUploadedAudio = async () => {
-    if (!customAudioFile) {
-      setMatchStatus({ text: t.match.needUpload, tone: 'error' });
-      return;
-    }
+  /**
+   * The address the *sidecar* should fetch, given what the player is using.
+   *
+   * A measured reciter timeline plays through `/api/audio/proxy`, which is a
+   * path on this app and means nothing to another process. The upstream URL is
+   * sitting in its query string.
+   */
+  const upstreamAudioUrl = (url: string): string => {
+    if (!url) return '';
+    if (/^https:\/\//.test(url)) return url;
+    const match = url.match(/[?&]url=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  };
 
+  /**
+   * Longest passage worth sending for alignment, in seconds.
+   *
+   * Alignment cost grows with the square of the recording, and the sidecar
+   * refuses anything over its own memory budget. Catching it here means saying
+   * "pick fewer ayahs" before a minute of fetching rather than after.
+   */
+  const MAX_ALIGN_SPAN_SEC = 2400;
+
+  const runAutoMatch = async (source: { kind: 'file'; file: File } | { kind: 'url'; url: string; start: number; end: number }) => {
     setIsMatching(true);
     setMatchStatus({
       text: matchProvider === 'align' ? t.match.aligning : t.match.sendingToGemini,
@@ -455,7 +473,13 @@ export default function VideoCreatorPage() {
     });
 
     const formData = new FormData();
-    formData.append('audio', customAudioFile);
+    if (source.kind === 'file') {
+      formData.append('audio', source.file);
+    } else {
+      formData.append('audioUrl', source.url);
+      formData.append('windowStart', String(source.start));
+      formData.append('windowEnd', String(source.end));
+    }
     formData.append('surah', String(selectedSurah));
     formData.append('start', String(ayahStart));
     formData.append('end', String(ayahEnd));
@@ -465,7 +489,7 @@ export default function VideoCreatorPage() {
     // Gemini only estimates duration -- on the test clip it reported 108s for a
     // 68.5s file -- and the server has no decode of its own on that path, so
     // without this the timeline runs past the end of the audio.
-    if (customAudioDuration > 0) {
+    if (source.kind === 'file' && customAudioDuration > 0) {
       formData.append('audioDuration', String(customAudioDuration));
     }
 
@@ -526,6 +550,59 @@ export default function VideoCreatorPage() {
       setMobileSurface('preview');
       setIsMatching(false);
     }
+  };
+
+  const handleAutoMatchUploadedAudio = () => {
+    if (!customAudioFile) {
+      setMatchStatus({ text: t.match.needUpload, tone: 'error' });
+      return;
+    }
+    void runAutoMatch({ kind: 'file', file: customAudioFile });
+  };
+
+  /**
+   * Align a built-in reciter's recording, instead of estimating its boundaries.
+   *
+   * Loading a reciter gives a timeline either way, but for the three reciters
+   * quran.com publishes no timings for it is a guess from average pace, and
+   * even a measured one is per *ayah* -- one caption for a whole ayah, however
+   * long. Alignment gives both groups the same phrase-level boundaries an
+   * uploaded file gets.
+   *
+   * The window comes from the timeline already on screen, padded. It only has
+   * to be roughly right: a phrase the reference does not account for simply
+   * goes unclaimed, which is what already happens with an upload that has
+   * extra audio at either end.
+   */
+  const handleAutoMatchReciter = () => {
+    const url = upstreamAudioUrl(audioUrl);
+    if (!url) {
+      setMatchStatus({ text: t.match.reciterNoUrl, tone: 'error' });
+      return;
+    }
+    if (verses.length === 0) {
+      setMatchStatus({ text: t.match.needLoad, tone: 'error' });
+      return;
+    }
+
+    const first = Math.min(...verses.map(v => v.startTime));
+    const last = Math.max(...verses.map(v => v.endTime));
+    const span = Math.max(1, last - first);
+    // Generous, because for an untimed reciter the timeline it is padding is
+    // itself an estimate. Bounded, because every padded second is audio the
+    // aligner has to read.
+    const pad = Math.min(90, Math.max(10, span * 0.15));
+    const start = Math.max(0, first - pad);
+    const end = Math.min(audioDuration > 0 ? audioDuration : last + pad, last + pad);
+
+    if (end - start > MAX_ALIGN_SPAN_SEC) {
+      setMatchStatus({
+        text: t.match.passageTooLong(Math.round((end - start) / 60), Math.round(MAX_ALIGN_SPAN_SEC / 60)),
+        tone: 'error'
+      });
+      return;
+    }
+    void runAutoMatch({ kind: 'url', url, start, end });
   };
 
   const handleManualMatchUploadedAudio = () => {
@@ -1426,6 +1503,22 @@ export default function VideoCreatorPage() {
                             ? t.source.loadedMeasured(!!loadResult.seeked)
                             : t.source.loadedEstimated}
                       </span>
+                    )}
+                    {/* The way out of both cases. An estimated timeline is a
+                        guess from average pace, and even a measured one is per
+                        *ayah* -- one caption however long the ayah. Reading the
+                        reciter's own recording gives the phrase-level
+                        boundaries an uploaded file gets. */}
+                    {loadResult.ok && !loadResult.againstUpload && (
+                      <button
+                        onClick={handleAutoMatchReciter}
+                        disabled={isMatching}
+                        title={t.match.alignReciterTitle}
+                        className="mt-2 w-full py-2 px-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{isMatching ? t.match.aligning : t.match.alignReciter}</span>
+                      </button>
                     )}
                   </div>
                 )}

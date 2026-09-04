@@ -702,6 +702,13 @@ npx next dev --webpack
   range; the studio shows a warning when the sidecar is in that state. If NeMo fails to load,
   the service says so with the reason rather than quietly downgrading — most often it means the
   service was started outside its virtualenv.
+- A built-in reciter's timeline can now be aligned rather than estimated: **Align to audio**
+  after loading reads the reciter's own recording and places every word. Before this, three of
+  the six reciters had no published timings at all and got boundaries guessed from average pace,
+  and the other three got quran.com's per-*ayah* timings — one caption for a whole ayah, however
+  long. Alignment gives both groups the phrase-level boundaries an uploaded file gets, and the
+  export then covers exactly the ayahs selected. Only the local aligner can do this; Gemini needs
+  the audio uploaded.
 - Alignment assumes the recitation follows the reference text in order. Repeats are detected
   and inserted; out-of-order recitation is not handled.
 - Range detection reports the ayah cluster carrying the most matched words, so a recitation

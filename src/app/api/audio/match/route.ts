@@ -69,9 +69,31 @@ export async function POST(req: NextRequest) {
   let provider: Provider = 'gemini';
   try {
     const formData = await req.formData();
+    provider = resolveProvider(String(formData.get('provider') || req.nextUrl.searchParams.get('provider') || ''));
     const audio = formData.get('audio');
-    if (!(audio instanceof File)) {
-      return NextResponse.json({ success: false, error: 'No audio file was uploaded.' }, { status: 400 });
+    // Either an upload, or one of the built-in reciters: a URL plus the window
+    // of it to read. The reciter's file is the whole chapter, so sending it
+    // here would mean carrying up to 87 MB through this process to use half a
+    // minute of it.
+    const audioUrl = String(formData.get('audioUrl') || '').trim();
+    const windowStart = Number(formData.get('windowStart') ?? NaN);
+    const windowEnd = Number(formData.get('windowEnd') ?? NaN);
+    const hasWindow = !!audioUrl && Number.isFinite(windowStart) && Number.isFinite(windowEnd) && windowEnd > windowStart;
+
+    if (!(audio instanceof File) && !hasWindow) {
+      return NextResponse.json(
+        { success: false, error: 'Send an audio file, or an audioUrl with windowStart and windowEnd.' },
+        { status: 400 }
+      );
+    }
+    if (hasWindow && provider !== 'align' && !(audio instanceof File)) {
+      // Only the local aligner can be pointed at a URL. Gemini needs the bytes
+      // inline, and sending it two hours of chapter to match three ayahs is
+      // neither affordable nor within its upload limit.
+      return NextResponse.json(
+        { success: false, error: 'Matching a built-in reciter needs the local aligner. Choose "Local", or upload the audio.' },
+        { status: 400 }
+      );
     }
 
     const selectedSurah = parseInt(String(formData.get('surah') || '1'), 10);
@@ -82,7 +104,6 @@ export async function POST(req: NextRequest) {
       Math.max(selectedStart, parseInt(String(formData.get('end') || String(selectedSurahMeta.numberOfAyahs)), 10))
     );
     const reciter = String(formData.get('reciter') || '');
-    provider = resolveProvider(String(formData.get('provider') || req.nextUrl.searchParams.get('provider') || ''));
 
     let result: MatchResult;
 
@@ -95,7 +116,9 @@ export async function POST(req: NextRequest) {
         const autoDetect = String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
         result = await runForcedAlignMatch({
           serviceUrl,
-          audio,
+          source: audio instanceof File
+            ? { kind: 'file', audio }
+            : { kind: 'url', audioUrl, windowStart, windowEnd },
           autoDetect,
           surah: selectedSurah,
           start: selectedStart,
@@ -116,6 +139,15 @@ export async function POST(req: NextRequest) {
               'Gemini matcher is not configured. Set GEMINI_API_KEY or GOOGLE_API_KEY to enable it, or switch the provider to "align" (requires the asr-service sidecar). Manual matching is available now.'
           },
           { status: 503 }
+        );
+      }
+      // Narrowing for the compiler and a real guarantee for the reader: the
+      // guards above have already turned away every path that reaches here
+      // without a file, since Gemini needs the bytes inline.
+      if (!(audio instanceof File)) {
+        return NextResponse.json(
+          { success: false, provider, error: 'Gemini matching needs an uploaded audio file.' },
+          { status: 400 }
         );
       }
       try {
