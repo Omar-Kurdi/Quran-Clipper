@@ -4,8 +4,15 @@ Ground truth lives in `scripts/expected_segments.txt` as plain text; this
 resolves each line to a (verse_key, start_word, end_word) range by skeleton
 matching, so hand-typed simplified orthography scores the same as Uthmani.
 
+Ground truth is per clip. The studio can write one out for you: correct the
+captions by ear, then "Ground truth" in the header downloads a file in exactly
+this format for that recording. Drop it in `scripts/` and pass it as the fifth
+argument -- that is the whole loop, and it is what makes "did this change help?"
+a number rather than an argument.
+
 Run from the repo root:
     asr-service/.venv/bin/python scripts/eval_segments.py ~/Music/test.mp3 33 21 23
+    asr-service/.venv/bin/python scripts/eval_segments.py test5.mp3 40 13 25 scripts/expected_test5.txt
 """
 from __future__ import annotations
 
@@ -25,7 +32,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(), format="%(leve
 from app import align  # noqa: E402
 from app.audio import SAMPLE_RATE  # noqa: E402
 
-EXPECTED_PATH = os.path.join(os.path.dirname(__file__), "expected_segments.txt")
+DEFAULT_EXPECTED = os.path.join(os.path.dirname(__file__), "expected_segments.txt")
 
 
 def match_skeleton(word: str) -> str:
@@ -55,12 +62,12 @@ def fetch_words(surah: int, start: int, end: int) -> list[tuple[str, int, str]]:
     return out
 
 
-def resolve_expected(ref_words: list[tuple[str, int, str]]) -> list[tuple[str, int, int, str]]:
+def resolve_expected(ref_words: list[tuple[str, int, str]], expected_path: str) -> list[tuple[str, int, int, str]]:
     """Map each expected line onto the corpus as (verse_key, start_word, end_word)."""
     corpus = [match_skeleton(w[2]) for w in ref_words]
     resolved: list[tuple[str, int, int, str]] = []
 
-    with open(EXPECTED_PATH, encoding="utf-8") as handle:
+    with open(expected_path, encoding="utf-8") as handle:
         lines = [ln.strip() for ln in handle if ln.strip() and not ln.strip().startswith("#")]
 
     for line in lines:
@@ -109,9 +116,17 @@ def main() -> None:
     audio_path = sys.argv[1]
     surah, start, end = (int(x) for x in sys.argv[2:5])
 
+    expected_path = sys.argv[5] if len(sys.argv) > 5 else DEFAULT_EXPECTED
+    if not os.path.exists(expected_path):
+        raise SystemExit(
+            f"no ground truth at {expected_path}.\n"
+            "Correct the captions in the studio, then use \"Ground truth\" in the header to write one."
+        )
+
     ref_words = fetch_words(surah, start, end)
-    expected = resolve_expected(ref_words)
-    print(f"reference: {len(ref_words)} words; ground truth: {len(expected)} segments")
+    expected = resolve_expected(ref_words, expected_path)
+    print(f"reference: {len(ref_words)} words; ground truth: {len(expected)} segments "
+          f"from {os.path.basename(expected_path)}")
 
     raw = subprocess.run(
         ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", audio_path,

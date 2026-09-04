@@ -26,6 +26,7 @@ import {
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
+import { groundTruthFile, groundTruthFileName } from '@/lib/groundTruth';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useLocale } from '@/components/LocaleProvider';
 import { 
@@ -51,7 +52,8 @@ import {
   AlertTriangle,
   Loader2,
   Film,
-  ChevronDown
+  ChevronDown,
+  ClipboardCheck
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
@@ -653,6 +655,29 @@ export default function VideoCreatorPage() {
   }, [applyPendingSeek, verses, audioUrl]);
 
   // Save Project to Database
+  /**
+   * Writes the corrected timeline out as a ground-truth file.
+   *
+   * The point of the loop: segmentation quality has been measured against a
+   * single clip, which made "did this change help?" unanswerable more than
+   * once. Whoever is correcting captions by ear here already knows the right
+   * answer for their own recording; this is what turns that into a test the
+   * next change has to pass. Drop the file in `scripts/` and point
+   * `eval_segments.py` at it.
+   */
+  const handleDownloadGroundTruth = () => {
+    const contents = groundTruthFile(verses, { clipName: customAudioName });
+    if (!contents) return;
+    const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = groundTruthFileName(customAudioName);
+    link.click();
+    // Revoking immediately can cancel the download in some browsers; a tick is
+    // enough for it to have been handed over.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const handleSaveProject = async () => {
     setSaveStatus({ text: t.header.saving, kind: 'pending' });
     try {
@@ -1088,6 +1113,15 @@ export default function VideoCreatorPage() {
                   : t.header.trimAudio}
               </Button>
             )}
+
+            <Button
+              onClick={handleDownloadGroundTruth}
+              disabled={verses.length === 0}
+              title={t.header.groundTruthTitle}
+              icon={<ClipboardCheck className="w-3.5 h-3.5 text-sky-400" />}
+            >
+              {t.header.groundTruth}
+            </Button>
 
             <Button
               onClick={handleSaveProject}

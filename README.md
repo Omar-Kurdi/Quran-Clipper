@@ -345,6 +345,16 @@ The response also carries `needsReview`, which is set when:
 `align` with a range you chose yourself and no warning is the only combination that comes
 back without a review prompt.
 
+### Correcting a caption, and keeping the correction
+
+Segmentation has to decide whether a given silence ends a phrase, and some of those calls cannot
+be made from the audio alone. **Split** cuts the selected caption at the playhead and **Merge**
+joins it to the next one, so a wrong boundary is a two-second fix rather than a bug report.
+
+Once a timeline is right, **Ground truth** in the header downloads it as a scoring file. Put it in
+`scripts/` and the evaluator can measure every future change against the captions you corrected by
+ear — see [docs/ALIGNMENT.md](docs/ALIGNMENT.md#growing-the-ground-truth).
+
 **Do not read `confidence` as "this is the right passage."** For `gemini` it is a
 self-assessed score that runs high regardless. For `align` it is mean per-word
 acoustic sharpness, which is useful for spotting a muddy recording but does *not* separate a

@@ -74,6 +74,9 @@ export const ar: Dictionary = {
     savedClips: 'المقاطع المحفوظة',
     saveProject: 'حفظ المشروع',
     saveProjectTitle: 'حفظ هذا المقطع في قائمة المشاريع',
+    groundTruth: 'مرجع التقييم',
+    groundTruthTitle:
+      'تنزيل هذا الجدول الزمني كملف مرجعي، ليُقاس عليه أي تغيير في المحاذاة مقابل المقاطع التي صحّحتها بالسمع',
     trimAudio: 'قص الصوت',
     trimAudioWithLength: length => `قص الصوت (${length})`,
     trimAudioTitle: 'قص الملف الصوتي المرفوع — تعديلاتك على المسار الزمني محفوظة',

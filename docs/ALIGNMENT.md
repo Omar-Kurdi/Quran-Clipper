@@ -466,6 +466,30 @@ earned its share of the provider matrix. Their reasoning is preserved in the git
 
 ---
 
+## Growing the ground truth
+
+Segment accuracy is measured against `scripts/expected_segments.txt`, which covers **one** clip.
+That has repeatedly made "did this change help?" unanswerable: twice a change that scored higher
+on that clip was the wrong change, and the question had to be settled by ear instead.
+
+The studio closes that loop. Correct the captions there — splitting and merging where the aligner
+got a boundary wrong — then **Ground truth** in the header writes the timeline out in exactly this
+format for that recording. Drop it in `scripts/` and pass it as the fifth argument:
+
+```bash
+asr-service/.venv/bin/python scripts/eval_segments.py test5.mp3 40 13 25 scripts/expected_test5.txt
+```
+
+The file records what each caption *showed* — the recited words, not the whole ayah — because a
+correct partial caption would otherwise be scored wrong. Where consecutive captions overlap, the
+header says so explicitly: that is a reciter going back a word or two before carrying on, and it
+is the structure the pipeline has to reproduce, not something to tidy away.
+
+Every clip added this way is a case the next change has to keep passing. The thresholds in
+`align.py` were tuned against one recording; this is how that stops being true.
+
+---
+
 ## Reproducing the measurements
 
 The recitation clips these figures come from are **not in the repo** — they are large binaries
