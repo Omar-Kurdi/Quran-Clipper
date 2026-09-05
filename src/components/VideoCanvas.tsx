@@ -4,22 +4,40 @@ import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef, us
 import { VerseData } from '@/lib/quranData';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
+import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
  * everywhere except where a clip has to be told to play.
  */
-type BackgroundMedia = HTMLVideoElement | HTMLImageElement;
+/**
+ * `VideoFrame` is here for the offline encoder, which decodes a background
+ * clip itself rather than playing one: it needs the background as it looked at
+ * a particular moment, and a decoded frame *is* that, where an element only
+ * ever holds "now". `drawImage` takes either.
+ */
+type BackgroundMedia = HTMLVideoElement | HTMLImageElement | VideoFrame;
 
-const isClip = (el: BackgroundMedia): el is HTMLVideoElement => el.tagName === 'VIDEO';
+/** Duck-typed: `VideoFrame` does not exist during server rendering. */
+const isFrame = (el: BackgroundMedia): el is VideoFrame =>
+  typeof (el as VideoFrame).codedWidth === 'number' && !('tagName' in el);
+
+const isClip = (el: BackgroundMedia): el is HTMLVideoElement =>
+  !isFrame(el) && (el as HTMLElement).tagName === 'VIDEO';
 
 /** Drawable: decoded enough to have pixels. A broken source never gets here. */
 const mediaReady = (el: BackgroundMedia | null): boolean =>
-  !!el && (isClip(el) ? el.readyState >= 2 : el.complete && el.naturalWidth > 0);
+  !!el && (isFrame(el)
+    ? el.codedWidth > 0
+    : isClip(el) ? el.readyState >= 2 : (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
 
 const mediaSize = (el: BackgroundMedia) =>
-  isClip(el) ? { w: el.videoWidth, h: el.videoHeight } : { w: el.naturalWidth, h: el.naturalHeight };
+  isFrame(el)
+    ? { w: el.displayWidth || el.codedWidth, h: el.displayHeight || el.codedHeight }
+    : isClip(el)
+      ? { w: el.videoWidth, h: el.videoHeight }
+      : { w: (el as HTMLImageElement).naturalWidth, h: (el as HTMLImageElement).naturalHeight };
 
 export interface VideoCanvasConfig {
   aspectRatio: string;
@@ -1002,6 +1020,34 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       if (!canEncodeOffline(config)) return null;
       isExportingRef.current = true;
       cancelledRef.current = false;
+
+      // Background clips, decoded in order rather than played. Opened lazily
+      // and kept for the whole render: a playlist revisits the same clip, and
+      // demuxing it again each time would be the expensive part.
+      const clips = new Map<string, BackgroundClip | null>();
+      const clipFor = async (url: string) => {
+        if (!clips.has(url)) clips.set(url, await openBackgroundClip(url));
+        return clips.get(url) ?? null;
+      };
+
+      /** The background as it looked at `atSeconds`, whatever kind it is. */
+      const backgroundFor = async (atSeconds: number): Promise<BackgroundMedia | null> => {
+        const active = backgroundAt(bgConfig, verseStarts, atSeconds);
+        if (!active) return null;
+        if (mediaKind(active.url) !== 'video') {
+          // A still is the same at every moment, so the element already loaded
+          // for the preview serves.
+          return mediaPoolRef.current.get(active.url) ?? null;
+        }
+        const clip = await clipFor(active.url);
+        if (!clip) return null;
+        // Backgrounds loop, which is the whole reason this can be sequential:
+        // the clip's own time sweeps 0 to its length over and over while
+        // output time only moves forward.
+        const into = Math.max(0, atSeconds - active.start);
+        return clip.frameAt(clip.duration > 0 ? into % clip.duration : into);
+      };
+
       try {
         // The same `paintFrame` the preview uses, which is the point of having
         // split it out: one drawing, two ways of driving it. The background is
@@ -1016,7 +1062,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           videoBitrate: OFFLINE_BITRATE,
           onProgress,
           signal: { get aborted() { return !isExportingRef.current; } },
-          paint: (ctx, frame) => {
+          paint: async (ctx, frame) => {
             const verse = [...verses]
               .sort((a, b) => a.startTime - b.startTime)
               .reverse()
@@ -1024,13 +1070,14 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
             paintFrame(ctx, {
               activeVerse: verse,
               spectrum: frame.spectrum,
-              media: bgMediaRef.current,
+              media: await backgroundFor(frame.atSeconds),
               tick: frame.tick,
             });
           },
         });
       } finally {
         isExportingRef.current = false;
+        clips.forEach(clip => clip?.close());
       }
     },
     stopExport: () => {

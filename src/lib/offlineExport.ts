@@ -99,16 +99,20 @@ export async function pickCodecs(
   return null;
 }
 
-/** True when every background in play can be drawn at an arbitrary moment. */
-export function canEncodeOffline(background: { bgType?: string; bgSegments?: { url: string }[]; bgUrl?: string; bgUrls?: string[] }): boolean {
-  const looksLikeVideo = (url: string) => /\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i.test(url);
-  if (background.bgType === 'video') return false;
-  const urls = [
-    background.bgUrl,
-    ...(background.bgUrls || []),
-    ...(background.bgSegments || []).map(s => s.url),
-  ].filter((u): u is string => !!u);
-  return !urls.some(looksLikeVideo);
+/**
+ * True when this project can be encoded frame by frame.
+ *
+ * Video backgrounds used to disqualify a project outright, because producing a
+ * frame for an arbitrary moment meant seeking the background and that was
+ * slower than the recording it would replace. They no longer do: `videoFrames`
+ * decodes a clip in order instead, which needs no seeking at all. What is
+ * still required is a decoder and a demuxer, so the check is now about the
+ * browser rather than about the project.
+ */
+export function canEncodeOffline(_background?: unknown): boolean {
+  return typeof VideoEncoder !== 'undefined'
+    && typeof AudioEncoder !== 'undefined'
+    && typeof VideoDecoder !== 'undefined';
 }
 
 /**
@@ -124,7 +128,7 @@ export const OFFLINE_BITRATE = 12_000_000;
 
 export interface OfflineExportRequest {
   /** Draws one frame into `ctx`; everything time-varying is handed to it. */
-  paint: (ctx: CanvasRenderingContext2D, frame: { atSeconds: number; spectrum: Uint8Array; tick: number }) => void;
+  paint: (ctx: CanvasRenderingContext2D, frame: { atSeconds: number; spectrum: Uint8Array; tick: number }) => void | Promise<void>;
   width: number;
   height: number;
   fps: number;
@@ -253,7 +257,7 @@ export async function encodeOffline(request: OfflineExportRequest): Promise<Offl
 
     const atSeconds = range.start + i / fps;
     spectrumAt(mono, audio.sampleRate, atSeconds, spectrum);
-    paint(ctx, { atSeconds, spectrum, tick: i });
+    await paint(ctx, { atSeconds, spectrum, tick: i });
 
     const frame = new VideoFrame(canvas as unknown as CanvasImageSource, {
       timestamp: Math.round(i * frameDuration),

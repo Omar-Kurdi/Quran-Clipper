@@ -742,15 +742,15 @@ npx next dev --webpack
   original MP3 even after cutting — trim well past 18 MB and you can cross that limit rather
   than get under it.
 - Browser export depends on `MediaRecorder` codec support; Chrome/Chromium recommended.
-- Export takes one of two paths, chosen automatically. **Without a video background** it is
-  encoded frame by frame through WebCodecs: no real-time constraint, no dependence on the tab
-  being visible, and MP4 out — measured at 6–10× faster than the clip's own length. **With a
-  video background** it falls back to recording the canvas in real time, because producing a
-  frame for an arbitrary moment would mean seeking the background video per frame (21.9ms
-  median, i.e. slower than the recording it replaces). On that path the tab must stay visible;
-  switching away pauses the render and resumes it when you return, so nothing is lost but the
-  wait is added to the total. Covering video backgrounds needs them decoded through
-  `VideoDecoder` — see FutureIdeas #12.
+- Export is encoded **frame by frame** through WebCodecs wherever the browser can: no real-time
+  constraint, no dependence on the tab being visible, and MP4 out. Measured 6–10× faster than the
+  clip's own length on still backgrounds, and 2.8× with a 1080×1920 video background (a 34.9s
+  clip in 12.4s). Video backgrounds are demuxed and decoded **in order** rather than seeked —
+  3.64ms a frame against 21.9ms for seeking, which is what made this possible at all, since
+  seeking was slower than the recording it would replace.
+- A browser without `VideoEncoder`/`VideoDecoder` falls back to recording the canvas in real
+  time. On that path the tab must stay visible; switching away pauses the render and resumes it
+  when you return, so nothing is lost but the wait is added to the total.
 - MP4 exports use Opus audio when the browser has no AAC encoder, which plays in browsers and
   VLC but not in QuickTime.
 - There is no authentication unless `STUDIO_TOKEN` is set. On localhost that is fine; anywhere
