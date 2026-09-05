@@ -10,6 +10,7 @@ import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
 import type { ExportHealth } from '@/lib/exportHealth';
+import type { ExportPlan } from '@/lib/exportPresets';
 import { createBooleanPreference } from '@/lib/uiPreference';
 
 /** Module scope, so every render subscribes to the same store. */
@@ -1113,11 +1114,19 @@ export default function VideoCreatorPage() {
   );
 
   // Start Video Export Pipeline
+  /**
+   * What the last render was actually planned at, so the saved record can say
+   * the truth rather than the 1080-or-1920 guess it used to make from the
+   * aspect ratio alone.
+   */
+  const exportedResolution = useRef('1080x1920');
+
   const handleStartExport = (
-    targetFps: number,
+    plan: ExportPlan,
     onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
   ) => {
-    startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, targetFps, onComplete);
+    exportedResolution.current = `${plan.width}x${plan.height}`;
+    startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, plan, onComplete);
   };
 
   const handleSaveExportRecord = async (fileUrl: string, durationSec: number, renderMs: number) => {
@@ -1130,7 +1139,7 @@ export default function VideoCreatorPage() {
           fileUrl,
           aspectRatio: canvasConfig.aspectRatio,
           duration: Math.round(durationSec),
-          resolution: canvasConfig.aspectRatio === '16:9' ? '1920x1080' : '1080x1920',
+          resolution: exportedResolution.current,
           fps: canvasConfig.fps,
           renderTimeMs: Math.round(renderMs),
           gpuDevice: describeGpu()
@@ -1439,12 +1448,12 @@ export default function VideoCreatorPage() {
               <div className="flex flex-col gap-4 text-xs">
                 {/* Workflow instructions.
 
-                    Collapsible, and open only while the timeline is still the
-                    seeded sample -- i.e. on a genuine first run. It took about
-                    40% of the panel on every visit, pushing the controls it
-                    describes below the fold for someone who had already read it. */}
+                    Collapsible and closed. It took about 40% of the panel when
+                    it opened by itself, pushing the controls it describes below
+                    the fold -- including for the first-run visitor it was open
+                    for, who cannot see the thing being described while reading
+                    about it. */}
                 <details
-                  open={isSampleProject}
                   className="group p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-600/5 to-emerald-500/10 border border-amber-500/20"
                 >
                   <summary className="font-semibold text-amber-400 text-xs uppercase tracking-wider cursor-pointer list-none flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded">
@@ -2013,6 +2022,7 @@ export default function VideoCreatorPage() {
         ayahStart={clipPassage.start}
         ayahEnd={clipPassage.end}
         aspectRatio={canvasConfig.aspectRatio}
+        onAspectRatio={(ratio: string) => setCanvasConfig(prev => ({ ...prev, aspectRatio: ratio }))}
         exportSeconds={exportRange.span}
         onSaveExportRecord={handleSaveExportRecord}
       />

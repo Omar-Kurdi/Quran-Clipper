@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { VideoCanvasRef } from '@/components/VideoCanvas';
 import type { ExportHealth } from '@/lib/exportHealth';
 import { decodeAudioFile } from '@/lib/audioTrim';
+import type { ExportPlan } from '@/lib/exportPresets';
 
 export interface ExportRange {
   start: number;
@@ -54,19 +55,22 @@ export function useVideoExport() {
    * it and the real-time recorder otherwise.
    *
    * The choice is made here rather than shown to the user, because the thing
-   * that decides it -- whether any background is a video -- is not a choice
-   * they made about exporting. What differs is only speed and container, and
-   * the result reports both.
+   * that decides it -- whether the browser can encode at all -- is not a
+   * choice they made about exporting. What differs is speed, container, and
+   * resolution: the recorder captures the on-screen canvas, so it can only
+   * ever produce the preview's own 1080-class frame. The modal says so before
+   * a resolution above that is chosen.
    */
   const start = useCallback(
     (
       audio: HTMLAudioElement | null,
       range: ExportRange,
-      targetFps: number,
+      plan: ExportPlan,
       onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
     ) => {
       if (!canvasRef.current || !audio) return;
 
+      const targetFps = plan.fps;
       setIsExporting(true);
       setProgress(0);
 
@@ -82,7 +86,8 @@ export function useVideoExport() {
               fraction => {
                 setProgress(Math.min(99, Math.round(fraction * 100)));
                 setSpeed('…');
-              }
+              },
+              { width: plan.width, height: plan.height, bitrate: plan.bitrate }
             );
             if (result) {
               setIsExporting(false);

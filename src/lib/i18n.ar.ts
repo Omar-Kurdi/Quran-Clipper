@@ -556,17 +556,40 @@ export const ar: Dictionary = {
     fps60: '60 إطارًا — فائق',
     fps30: '30 إطارًا — قياسي',
     resolutionLabel: 'دقة المخرجات:',
-    resolutions: {
-      '16:9': '1920x1080 عريض',
-      '1:1': '1080x1080 مربّع',
-      '4:5': '1080x1350 طولي',
-      '9:16': '1080x1920 عمودي'
+
+    presetLabel: 'إلى أين سيُنشر؟',
+    presetHelp:
+      'يضبط شكل الإطار والدقة ومعدل البت لتلك المنصة. وكل هذه المنصات تعيد ترميز ما ترفعه، فالتصدير هنا يفوق ما تحتفظ به — ليجد ترميزها مصدرًا نظيفًا.',
+    presets: {
+      tiktok: 'TikTok',
+      reels: 'Instagram Reels',
+      shorts: 'YouTube Shorts',
+      'ig-portrait': 'Instagram طولي',
+      'ig-feed': 'Instagram مربّع',
+      youtube: 'YouTube',
+      facebook: 'Facebook Reels'
     },
+    presetLimit: seconds =>
+      seconds >= 60 ? `حتى ${Math.round(seconds / 60)} دقيقة` : `حتى ${seconds} ثانية`,
+    presetNoLimit: 'بلا حدّ للمدة',
+    qualityLabel: 'الجودة:',
+    qualityNames: { standard: '1080p', high: '1440p', max: '4K' },
+    qualityHelp:
+      'الأعلى يعني ملفًا أكبر وزمن إخراج أطول، ويستحق ذلك حين تُشاهَد التلاوة بملء الشاشة. و1080p هي ما تعرضه كل هذه المنصات.',
+    estimatedSize: 'حجم الملف المتوقع:',
+    steppedDown: (asked, used) =>
+      `${asked} لا تتّسع في ملف واحد لمقطع بهذا الطول، فيجري الإخراج بدقة ${used}.`,
+    bitrateReduced: 'مقطع طويل — خُفّض معدل البت ليتّسع الملف الناتج في الذاكرة.',
+    exceedsMemory:
+      'هذا المقطع طويل بما قد ينفد معه حيّز الذاكرة قبل اكتمال الإخراج. قصّه أو صدّره على أجزاء.',
+    overLong: (platform, seconds) =>
+      `أطول بـ ${seconds} ثانية مما تقبله ${platform} — سيُقتطع هناك أو يُرفض.`,
+    recorderOnly:
+      'يُسجَّل هذا المشروع في الزمن الحقيقي، وهو لا يلتقط سوى إطار المعاينة بدقة 1080p. والدقات الأعلى تحتاج مسار الترميز إطارًا بإطار.',
     clipTitle: 'عنوان المقطع:',
     clipLength: 'مدة المقطع:',
     aspectFormat: 'نسبة الأبعاد:',
     bitrateTarget: 'معدل البت المستهدف:',
-    bitrateValue: '18 ميجابت/ث — معدل عالٍ',
     encoding: 'جارٍ ترميز الإطارات...',
     speed: speed => `السرعة: ${speed}`,
     realtimeCapture: 'تسجيل بالزمن الحقيقي',
@@ -592,7 +615,7 @@ export const ar: Dictionary = {
       `نحو ${seconds} ثانية من هذا التسجيل صورتها جامدة. توقّفت اللوحة عن الرسم أثناء التسجيل، وغالبًا لأن اللسان انتقل إلى الخلفية أو نامت الشاشة. أعد التصدير وأبقِ هذا اللسان ظاهرًا.`,
     choppyWarning:
       'لم يلحق العرض بمعدّل الإطارات المطلوب، فستتقطّع الصورة. جرّب معدّلًا أقل، أو أغلق النوافذ الأخرى التي تستعمل بطاقة الرسوميات.',
-    download: 'تنزيل فيديو WebM عالي الجودة',
+    download: container => `تنزيل الفيديو بصيغة ${container}`,
     renderAnother: 'تصدير مقطع آخر'
   },
 

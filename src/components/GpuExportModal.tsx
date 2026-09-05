@@ -5,6 +5,10 @@ import { exportFileName } from '@/lib/exportName';
 import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
 import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Play } from 'lucide-react';
 import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
+import {
+  EXPORT_PRESETS, QUALITY_TIERS, QualityTier, ExportPlan,
+  planExport, presetForAspect, dimensionsFor, formatBytes, formatBitrate
+} from '@/lib/exportPresets';
 import { Dialog } from './Dialog';
 import { useT } from './LocaleProvider';
 
@@ -24,7 +28,7 @@ interface GpuExportModalProps {
   /** Stops a render in progress and discards it. */
   onCancelExport: () => void;
   onStartExport: (
-    targetFps: number,
+    plan: ExportPlan,
     onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
   ) => void;
   isExporting: boolean;
@@ -35,6 +39,13 @@ interface GpuExportModalProps {
   ayahStart: number;
   ayahEnd: number;
   aspectRatio: string;
+  /**
+   * Switches the studio to the shape the chosen platform wants.
+   *
+   * Picking "Reels" has to change the preview too, or the frame being rendered
+   * is not the frame that was being looked at. Undo covers it.
+   */
+  onAspectRatio: (aspectRatio: string) => void;
   onSaveExportRecord: (downloadUrl: string, durationSec: number, renderMs: number) => void;
   /** Length of the clip that will be rendered -- the ayah range, not the whole file. */
   exportSeconds: number;
@@ -55,6 +66,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   ayahStart,
   ayahEnd,
   aspectRatio,
+  onAspectRatio,
   onSaveExportRecord,
   exportSeconds
 }) => {
@@ -69,6 +81,14 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const encoderName = useMemo(() => describeEncoder(), []);
 
   const [selectedFps, setSelectedFps] = useState<number>(60);
+  /**
+   * Which platform this render is for, and how much of the frame to spend on
+   * it. Kept here rather than in the project: the same timeline is exported for
+   * Reels on Monday and for YouTube on Friday, and neither is a property of the
+   * recitation.
+   */
+  const [presetId, setPresetId] = useState<string>(() => presetForAspect(aspectRatio).id);
+  const [tier, setTier] = useState<QualityTier>('standard');
   const [exportedBlobUrl, setExportedBlobUrl] = useState<string | null>(null);
   const [renderedMs, setRenderedMs] = useState<number>(0);
   // Whether the finished file is actually watchable, which is not the same
@@ -86,8 +106,40 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [wasOpen, setWasOpen] = useState(isOpen);
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
-    if (isOpen) setExportedBlobUrl(null);
+    if (isOpen) {
+      setExportedBlobUrl(null);
+      // Open on the platform that matches the shape the studio is already set
+      // to, so the frame in the preview is the frame being offered.
+      setPresetId(presetForAspect(aspectRatio).id);
+    }
   }
+
+  /**
+   * The render, as numbers.
+   *
+   * Everything the user chose goes in and one set of dimensions, one bitrate
+   * and one honest file-size estimate come out -- including the adjustments
+   * made for them, which are shown rather than applied quietly.
+   */
+  const plan = useMemo(
+    () => planExport({ presetId, tier, fps: selectedFps, seconds: exportSeconds }),
+    [presetId, tier, selectedFps, exportSeconds]
+  );
+
+  /**
+   * The recorder captures the on-screen canvas, so it cannot produce a frame
+   * larger than the preview. Offering 4K on that path would promise something
+   * only the frame-by-frame encoder can deliver.
+   */
+  const canChooseResolution = fastPath;
+
+  const choosePreset = (id: string) => {
+    const preset = EXPORT_PRESETS.find(p => p.id === id);
+    if (!preset) return;
+    setPresetId(id);
+    setSelectedFps(preset.fps);
+    if (preset.aspectRatio !== aspectRatio) onAspectRatio(preset.aspectRatio);
+  };
 
 
   /** Closing mid-render means stopping it, not leaving it running unseen. */
@@ -98,7 +150,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
   const handleExport = () => {
     setExportedBlobUrl(null);
-    onStartExport(selectedFps, (blob, renderMs, health) => {
+    onStartExport(plan, (blob, renderMs, health) => {
       // Named here rather than up front: which container was produced is only
       // known once the export has chosen its path.
       setDownloadFileName(
@@ -176,6 +228,40 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               </span>
             </div>
 
+            {/* Where it is going.
+
+                First, because it decides the other three: shape, resolution
+                and bitrate all follow from the platform, and choosing them one
+                by one is how an export ends up 16:9 for Reels. */}
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">{t.exportModal.presetLabel}</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {EXPORT_PRESETS.map(preset => (
+                  <button
+                    key={preset.id}
+                    onClick={() => choosePreset(preset.id)}
+                    disabled={isExporting}
+                    title={
+                      preset.maxSeconds
+                        ? `${preset.aspectRatio} · ${t.exportModal.presetLimit(preset.maxSeconds)}`
+                        : `${preset.aspectRatio} · ${t.exportModal.presetNoLimit}`
+                    }
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors text-start leading-tight ${
+                      presetId === preset.id
+                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
+                    }`}
+                  >
+                    <span className="block truncate">{t.exportModal.presets[preset.id as keyof typeof t.exportModal.presets]}</span>
+                    <span className={`block font-mono text-[10px] ${presetId === preset.id ? 'text-slate-900' : 'text-slate-500'}`} dir="ltr">
+                      {preset.aspectRatio}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">{t.exportModal.presetHelp}</p>
+            </div>
+
             {/* Export Settings */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -209,16 +295,28 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  {t.exportModal.resolutionLabel}
+                  {t.exportModal.qualityLabel}
                 </label>
-                <div className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200">
-                  {aspectRatio === '16:9'
-                    ? t.exportModal.resolutions['16:9']
-                    : aspectRatio === '1:1'
-                    ? t.exportModal.resolutions['1:1']
-                    : aspectRatio === '4:5'
-                    ? t.exportModal.resolutions['4:5']
-                    : t.exportModal.resolutions['9:16']}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {QUALITY_TIERS.map(option => {
+                    const size = dimensionsFor(plan.aspectRatio, option);
+                    const allowed = canChooseResolution || option === 'standard';
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => setTier(option)}
+                        disabled={isExporting || !allowed}
+                        title={allowed ? `${size.width}×${size.height}` : t.exportModal.recorderOnly}
+                        className={`py-2 px-1 rounded-lg text-[11px] font-bold transition-all border ${
+                          tier === option && allowed
+                            ? 'bg-amber-500 text-slate-950 border-amber-400'
+                            : 'bg-slate-950 text-slate-400 border-slate-800'
+                        } ${allowed ? '' : 'opacity-40 cursor-not-allowed'}`}
+                      >
+                        {t.exportModal.qualityNames[option]}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -240,14 +338,59 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">{t.exportModal.aspectFormat}</span>
-                <span className="font-mono text-amber-400" dir="ltr">{aspectRatio}</span>
+                <span className="text-slate-400">{t.exportModal.resolutionLabel}</span>
+                <span className="font-mono text-amber-400" dir="ltr">
+                  {plan.width}×{plan.height}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">{t.exportModal.bitrateTarget}</span>
-                <span className="text-emerald-400">{t.exportModal.bitrateValue}</span>
+                <span className="font-mono text-emerald-400" dir="ltr">{formatBitrate(plan.bitrate)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">{t.exportModal.estimatedSize}</span>
+                <span className="font-mono text-slate-200" dir="ltr">{formatBytes(plan.estimatedBytes)}</span>
               </div>
             </div>
+
+            {/* Everything the plan had to change, and everything the platform
+                will not accept. Said before the render, which is the only time
+                it can still be acted on. */}
+            {(plan.steppedDownFrom || plan.bitrateReduced || plan.exceedsMemory || plan.overLongBy || !canChooseResolution) && (
+              <ul className="flex flex-col gap-1.5 text-[11px] leading-relaxed">
+                {plan.steppedDownFrom && (
+                  <li className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-200">
+                    {t.exportModal.steppedDown(
+                      t.exportModal.qualityNames[plan.steppedDownFrom],
+                      t.exportModal.qualityNames[plan.tier]
+                    )}
+                  </li>
+                )}
+                {plan.bitrateReduced && !plan.exceedsMemory && (
+                  <li className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-300">
+                    {t.exportModal.bitrateReduced}
+                  </li>
+                )}
+                {plan.exceedsMemory && (
+                  <li className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-200">
+                    {t.exportModal.exceedsMemory}
+                  </li>
+                )}
+                {plan.overLongBy && (
+                  <li className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-200">
+                    {t.exportModal.overLong(
+                      t.exportModal.presets[plan.presetId as keyof typeof t.exportModal.presets],
+                      plan.overLongBy
+                    )}
+                  </li>
+                )}
+                {!canChooseResolution && (
+                  <li className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-400">
+                    {t.exportModal.recorderOnly}
+                  </li>
+                )}
+              </ul>
+            )}
 
             {/* Render Progress Bar */}
             {isExporting ? (
@@ -362,7 +505,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all"
             >
               <Download className="w-5 h-5" />
-              <span>{t.exportModal.download}</span>
+              {/* The container is only known once the render has chosen its
+                   path, so the label follows the file rather than promising
+                   WebM for a render that produced MP4. */}
+              <span>{t.exportModal.download(downloadFileName.endsWith('.mp4') ? 'MP4' : 'WebM')}</span>
             </a>
 
             {/* Renders are repeatable -- the previous blob URL is left alive on

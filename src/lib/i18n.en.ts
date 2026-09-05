@@ -572,17 +572,41 @@ export const en = {
     fps60: '60 FPS Ultra',
     fps30: '30 FPS Standard',
     resolutionLabel: 'Output Resolution:',
-    resolutions: {
-      '16:9': '1920x1080 Widescreen',
-      '1:1': '1080x1080 Square',
-      '4:5': '1080x1350 Portrait',
-      '9:16': '1080x1920 Vertical'
+
+    presetLabel: 'Where is this going?',
+    presetHelp:
+      'Sets the frame shape, the resolution and the bitrate for that platform. Every one of them re-encodes what you upload, so these render well above what they keep — their pass then has something clean to work from.',
+    presets: {
+      tiktok: 'TikTok',
+      reels: 'Instagram Reels',
+      shorts: 'YouTube Shorts',
+      'ig-portrait': 'Instagram Portrait',
+      'ig-feed': 'Instagram Feed',
+      youtube: 'YouTube',
+      facebook: 'Facebook Reels'
     },
+    presetLimit: (seconds: number) =>
+      seconds >= 60 ? `up to ${Math.round(seconds / 60)} min` : `up to ${seconds}s`,
+    presetNoLimit: 'no length limit',
+    qualityLabel: 'Quality:',
+    qualityNames: { standard: '1080p', high: '1440p', max: '4K' },
+    qualityHelp:
+      'Higher is a bigger file and a longer render, and is worth it when the recitation will be watched full-screen. 1080p is what every one of these platforms shows.',
+    estimatedSize: 'Estimated file:',
+    steppedDown: (asked: string, used: string) =>
+      `${asked} would not fit in one file for a clip this long, so it renders at ${used}.`,
+    bitrateReduced:
+      'Long clip — the bitrate was lowered so the finished file still fits in memory.',
+    exceedsMemory:
+      'This clip is long enough that the render may run out of memory before it finishes. Trim it, or export it in parts.',
+    overLong: (platform: string, seconds: number) =>
+      `${seconds}s longer than ${platform} accepts — it will be cut short or refused there.`,
+    recorderOnly:
+      'This project records in real time, which can only capture the preview’s own 1080p frame. Higher resolutions need the frame-by-frame path.',
     clipTitle: 'Clip Title:',
     clipLength: 'Clip Length:',
     aspectFormat: 'Aspect Format:',
     bitrateTarget: 'Bitrate Target:',
-    bitrateValue: '18 Mbps High Bitrate',
     encoding: 'GPU Encoding Frames...',
     speed: (speed: string) => `Speed: ${speed}`,
     realtimeCapture: 'Real-time capture',
@@ -608,7 +632,7 @@ export const en = {
       `About ${seconds}s of this recording has a frozen picture. The canvas stopped painting while it recorded — usually because the tab went to the background or the screen slept. Export again and leave this tab visible.`,
     choppyWarning:
       'The render could not keep up with the frame rate you asked for, so the picture will stutter. Try a lower frame rate, or close other windows using the GPU.',
-    download: 'Download High-Quality WebM Video',
+    download: (container: string) => `Download ${container} video`,
     renderAnother: 'Render Another Export'
   },
 

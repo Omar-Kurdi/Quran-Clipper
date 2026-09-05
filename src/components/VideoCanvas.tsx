@@ -102,7 +102,18 @@ export interface VideoCanvasRef {
     range: { start: number; end: number },
     audio: AudioBuffer,
     targetFps: number,
-    onProgress: (fraction: number, framesDone: number, framesTotal: number) => void
+    onProgress: (fraction: number, framesDone: number, framesTotal: number) => void,
+    /**
+     * Frame size and bitrate for this render, when they are not the preview's.
+     *
+     * The preview is 1080-class whatever the export is: it is a thumbnail of
+     * the frame, and painting 4K sixty times a second to show it in a 340px
+     * column would cost the studio its responsiveness for no picture. Nothing
+     * in `paintFrame` is written in pixels -- every size is scaled by
+     * `height / 1920` -- so the same drawing produces the same frame at any
+     * resolution.
+     */
+    output?: { width: number; height: number; bitrate: number }
   ) => Promise<OfflineExportResult | null>;
   /** Whether `exportVideoOffline` can run for the project as configured. */
   canExportOffline: () => boolean;
@@ -1016,7 +1027,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
     canExportOffline: () => canEncodeOffline(config),
 
-    exportVideoOffline: async (range, audio, targetFps, onProgress) => {
+    exportVideoOffline: async (range, audio, targetFps, onProgress, output) => {
       if (!canEncodeOffline(config)) return null;
       isExportingRef.current = true;
       cancelledRef.current = false;
@@ -1054,12 +1065,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // whichever still is loaded -- `canEncodeOffline` has already refused
         // anything that would need decoding at a particular moment.
         return await encodeOffline({
-          width: dimensions.width,
-          height: dimensions.height,
+          width: output?.width ?? dimensions.width,
+          height: output?.height ?? dimensions.height,
           fps: targetFps,
           range,
           audio,
-          videoBitrate: OFFLINE_BITRATE,
+          videoBitrate: output?.bitrate ?? OFFLINE_BITRATE,
           onProgress,
           signal: { get aborted() { return !isExportingRef.current; } },
           paint: async (ctx, frame) => {
