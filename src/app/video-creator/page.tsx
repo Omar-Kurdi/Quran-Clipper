@@ -318,6 +318,16 @@ export default function VideoCreatorPage() {
         seeked: willSeek,
         againstUpload: !!customAudioUrl
       });
+
+      // Loading and aligning are one action, not two. Even the reciters with
+      // published timings only get one caption per ayah from them, however
+      // long the ayah, so this is what turns a loaded passage into a timeline
+      // worth editing. Against an upload it is the upload that should be
+      // aligned, not the reciter's recording.
+      if (!customAudioUrl && data.audioUrl && loaded.length) {
+        const totalSeconds = Math.max(...loaded.map((v: VerseData) => v.endTime));
+        await alignLoadedReciter(loaded, data.audioUrl, totalSeconds);
+      }
     } catch {
       setLoadResult({ ok: false });
     } finally {
@@ -486,7 +496,15 @@ export default function VideoCreatorPage() {
    */
   const MAX_ALIGN_SPAN_SEC = 2400;
 
-  const runAutoMatch = async (source: { kind: 'file'; file: File } | { kind: 'url'; url: string; start: number; end: number }) => {
+  const runAutoMatch = async (
+    source: { kind: 'file'; file: File } | { kind: 'url'; url: string; start: number; end: number },
+    /**
+     * Vetoes a result before it replaces the timeline. Used by the automatic
+     * pass after Load, which must never leave someone worse off than the
+     * estimate it was improving on.
+     */
+    accept?: (verses: VerseData[]) => string | null
+  ) => {
     setIsMatching(true);
     setMatchStatus({
       text: matchProvider === 'align' ? t.match.aligning : t.match.sendingToGemini,
@@ -526,6 +544,14 @@ export default function VideoCreatorPage() {
         // status code or a service, and translating it would make it
         // unsearchable.
         setMatchStatus({ text: data?.error || t.match.notConfigured, tone: 'error' });
+        setMobileSurface('preview');
+        setIsMatching(false);
+        return;
+      }
+
+      const rejection = accept?.(data.verses || []);
+      if (rejection) {
+        setMatchStatus({ text: rejection, tone: 'error' });
         setMobileSurface('preview');
         setIsMatching(false);
         return;
@@ -595,6 +621,76 @@ export default function VideoCreatorPage() {
    * goes unclaimed, which is what already happens with an upload that has
    * extra audio at either end.
    */
+  /**
+   * The stretch of the recording to hand the aligner for a loaded passage.
+   *
+   * Padded generously, because for a reciter with no published timings the
+   * timeline being padded is itself a guess from average pace. Padding is safe:
+   * a phrase the reference does not account for simply goes unclaimed, exactly
+   * as it does for an upload with extra audio at either end. Bounded, because
+   * every padded second is audio that has to be fetched and read.
+   */
+  const alignWindowFor = (loaded: VerseData[], totalSeconds: number) => {
+    const first = Math.min(...loaded.map(v => v.startTime));
+    const last = Math.max(...loaded.map(v => v.endTime));
+    const span = Math.max(1, last - first);
+    const pad = Math.min(90, Math.max(10, span * 0.15));
+    return {
+      start: Math.max(0, first - pad),
+      end: Math.min(totalSeconds > 0 ? totalSeconds : last + pad, last + pad),
+    };
+  };
+
+  /**
+   * Aligns a freshly loaded reciter passage, if the aligner is there.
+   *
+   * Loading and aligning are one action from the user's side -- "give me these
+   * ayahs against this recitation" -- and splitting them meant the first thing
+   * anyone saw was a timeline of estimates with a button asking them to fix it.
+   * Takes the verses as an argument rather than reading state, because this
+   * runs inside the same handler that set them and that state has not landed
+   * yet.
+   *
+   * Gemini is deliberately not a fallback here. It needs the audio inline and a
+   * reciter's file is the whole chapter -- up to 87 MB against its ~18 MB limit
+   * -- so offering it would fail after a long upload rather than up front.
+   */
+  const alignLoadedReciter = async (loaded: VerseData[], rawUrl: string, totalSeconds: number) => {
+    const url = upstreamAudioUrl(rawUrl);
+    if (!url || loaded.length === 0) return;
+
+    const { start, end } = alignWindowFor(loaded, totalSeconds);
+    if (end - start > MAX_ALIGN_SPAN_SEC) {
+      setMatchStatus({
+        text: t.match.passageTooLong(Math.round((end - start) / 60), Math.round(MAX_ALIGN_SPAN_SEC / 60)),
+        tone: 'error'
+      });
+      return;
+    }
+
+    // Asked before trying, so a missing sidecar is one clear sentence rather
+    // than a failed upload and a stack of retries.
+    const health = await fetch('/api/health', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+    const alignerUp = health?.aligner?.state === 'up' && health.aligner.ready !== false;
+    if (!alignerUp) {
+      setMatchStatus({ text: t.match.noAlignerOnLoad, tone: 'error' });
+      return;
+    }
+    await runAutoMatch({ kind: 'url', url, start, end }, aligned => {
+      // Alignment can swallow an ayah whose neighbours run into it -- short
+      // ones especially, which is most of Al-Fatihah. Replacing a timeline
+      // that had every ayah with one that has fewer is not an improvement,
+      // however much better the surviving boundaries are, so the estimate
+      // stands and the offer to align by hand remains.
+      const asked = new Set(loaded.map(v => v.verseKey));
+      const got = new Set(aligned.map(v => v.verseKey));
+      const missing = [...asked].filter(key => !got.has(key));
+      return missing.length
+        ? t.match.alignLostAyahs(missing.length, missing.slice(0, 4).join(', '))
+        : null;
+    });
+  };
+
   const handleAutoMatchReciter = () => {
     const url = upstreamAudioUrl(audioUrl);
     if (!url) {
@@ -605,25 +701,7 @@ export default function VideoCreatorPage() {
       setMatchStatus({ text: t.match.needLoad, tone: 'error' });
       return;
     }
-
-    const first = Math.min(...verses.map(v => v.startTime));
-    const last = Math.max(...verses.map(v => v.endTime));
-    const span = Math.max(1, last - first);
-    // Generous, because for an untimed reciter the timeline it is padding is
-    // itself an estimate. Bounded, because every padded second is audio the
-    // aligner has to read.
-    const pad = Math.min(90, Math.max(10, span * 0.15));
-    const start = Math.max(0, first - pad);
-    const end = Math.min(audioDuration > 0 ? audioDuration : last + pad, last + pad);
-
-    if (end - start > MAX_ALIGN_SPAN_SEC) {
-      setMatchStatus({
-        text: t.match.passageTooLong(Math.round((end - start) / 60), Math.round(MAX_ALIGN_SPAN_SEC / 60)),
-        tone: 'error'
-      });
-      return;
-    }
-    void runAutoMatch({ kind: 'url', url, start, end });
+    void alignLoadedReciter(verses, audioUrl, audioDuration);
   };
 
   const handleManualMatchUploadedAudio = () => {

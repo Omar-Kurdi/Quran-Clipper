@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { TRANSLATION_ID } from '@/lib/quranCorpus';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
@@ -122,7 +123,7 @@ export async function GET(req: NextRequest) {
     // Otherwise query Quran.com API v4
     try {
       const quranRes = await fetch(
-        `https://api.quran.com/api/v4/verses/by_chapter/${surahNumber}?language=en&words=true&translations=131&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
+        `https://api.quran.com/api/v4/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${TRANSLATION_ID}&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
         { headers: { 'Accept': 'application/json' }, next: { revalidate: 86400 } }
       );
 

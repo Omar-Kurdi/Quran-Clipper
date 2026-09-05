@@ -2028,7 +2028,7 @@ MIN_MARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_MARKED_PAUSE_SEC", "0.18"))
 #: own on another recording, and makes the same passage segment differently
 #: depending on how much audio surrounds it. Marginal decisions are where the
 #: two disagree, so the bar is kept above them.
-MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.30"))
+MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.34"))
 
 #: How much more silence it takes to call a stop where tajweed already holds a
 #: nasal across the join. Enough to cover the ghunnah itself and no more: on one

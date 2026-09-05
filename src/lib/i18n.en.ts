@@ -203,6 +203,10 @@ export const en = {
       `Trimmed to ${length}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`,
     trimmingRange: 'Trimming the audio to the clip you marked…',
     trimRangeFailed: 'Could not trim this file. Try the Trim audio dialog, which reports what went wrong.',
+    alignLostAyahs: (count: number, keys: string) =>
+      `Ayahs loaded with their published timings. Reading the recording was tried too, but it lost ${count} ayah(s) (${keys}), so the loaded timings were kept instead \u2014 use \u201cAlign to audio\u201d if you want the phrase-level split anyway.`,
+    noAlignerOnLoad:
+      'Ayahs loaded, but the boundaries are estimates \u2014 the local aligner is not running, so the recording could not be read. Start it with ./start.sh and press \u201cAlign to audio\u201d, or set the boundaries yourself on the timeline.',
     reciterNoUrl: 'This reciter\u2019s audio has no address the aligner can fetch.',
     needLoad: 'Load the ayahs first, then align them.',
     passageTooLong: (minutes: number, limit: number) =>

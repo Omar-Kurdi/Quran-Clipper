@@ -56,8 +56,14 @@ function cleanHtml(input = '') {
  * entirely, so every ayah came back with an empty translation. Verify any new
  * id against `/api/v4/resources/translations?language=en` before setting it --
  * an invalid id fails quietly rather than erroring.
+ *
+ * Exported because `/api/quran/verses` fetches the same resource for the Load
+ * path. It kept its own copy of the number, which is how it was still asking
+ * for 131 long after this one moved: loading a reciter gave every ayah an
+ * empty translation, and only running the aligner -- which comes through here
+ * -- filled them in.
  */
-const TRANSLATION_ID = process.env.QURAN_TRANSLATION_ID || '20'; // Saheeh International
+export const TRANSLATION_ID = process.env.QURAN_TRANSLATION_ID || '20'; // Saheeh International
 
 const CHAPTER_URL = (surah: number) =>
   `https://api.quran.com/api/v4/verses/by_chapter/${surah}` +
