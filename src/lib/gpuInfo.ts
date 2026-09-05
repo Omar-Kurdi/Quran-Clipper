@@ -37,7 +37,16 @@ export function describeGpu(): string {
  * a hardware encoder is not observable from JS -- Chromium usually encodes VP8
  * and VP9 in software via libvpx -- so this names the codec, not the silicon.
  */
-export function describeEncoder(): string {
+/**
+ * What the finished file will actually be encoded as.
+ *
+ * Two paths produce two different files, and naming the recorder's codecs on a
+ * render that WebCodecs will handle is simply wrong -- that render comes out
+ * H.264 in MP4. `fastPath` is the same answer `canExportOffline` gives, so the
+ * label follows the render rather than the browser's recorder support.
+ */
+export function describeEncoder(fastPath = false): string {
+  if (fastPath) return 'H.264 + AAC';
   if (typeof MediaRecorder === 'undefined') return 'unavailable';
   for (const [mime, label] of [
     ['video/webm;codecs=vp9,opus', 'WebM VP9 + Opus'],

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 interface DialogProps {
   isOpen: boolean;
@@ -39,6 +40,16 @@ const FOCUSABLE =
  * Focus is moved to the panel on open, trapped while it is open, and returned
  * to whatever opened it on close -- otherwise the tab position is lost to the
  * top of the document every time a dialog is dismissed.
+ *
+ * It renders through a portal into `<body>`, which is not a stylistic choice:
+ * `position: fixed` is only relative to the viewport while no ancestor
+ * establishes a containing block, and the studio's side columns carry
+ * `backdrop-blur-sm` -- a backdrop filter does establish one. A dialog opened
+ * from a control inside such a column was therefore laid out inside a 340px
+ * column with `overflow-hidden`, clipped on the right with its footer past the
+ * bottom edge, and on a phone-width layout the column is `display: none`
+ * outright, so the dialog did not appear at all. The portal takes it out of
+ * both.
  */
 export const Dialog: React.FC<DialogProps> = ({
   isOpen,
@@ -126,7 +137,7 @@ export const Dialog: React.FC<DialogProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  const overlay = (
     <div
       onPointerDown={onBackdropPointerDown}
       className={`fixed inset-0 z-50 flex p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in ${
@@ -146,4 +157,8 @@ export const Dialog: React.FC<DialogProps> = ({
       </div>
     </div>
   );
+
+  // Rendered in place while there is no document -- a dialog is never open on
+  // the server, so this branch is for safety rather than for hydration.
+  return typeof document === 'undefined' ? overlay : createPortal(overlay, document.body);
 };

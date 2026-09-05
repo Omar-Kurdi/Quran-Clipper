@@ -68,7 +68,32 @@ function resolveProvider(requested: string | null): Provider {
 export async function POST(req: NextRequest) {
   let provider: Provider = 'gemini';
   try {
-    const formData = await req.formData();
+    /**
+     * A body too large to have arrived whole reads as a parse failure.
+     *
+     * Middleware runs on every path here, so the framework buffers the request
+     * body up to `proxyClientMaxBodySize` (`next.config.ts`) and *truncates*
+     * past it rather than refusing -- the route then sees a half-written
+     * multipart stream and throws "Failed to parse body as FormData", which
+     * says nothing about the actual cause. Name it.
+     */
+    let formData: FormData;
+    try {
+      formData = await req.formData();
+    } catch (parseError) {
+      const size = Number(req.headers.get('content-length') || 0);
+      const megabytes = size > 0 ? Math.round(size / 1_048_576) : 0;
+      return NextResponse.json(
+        {
+          success: false,
+          provider,
+          error: megabytes
+            ? `The upload (${megabytes} MB) did not arrive whole. Raise \`experimental.proxyClientMaxBodySize\` in next.config.ts, or send a shorter recording.`
+            : `Could not read the upload: ${(parseError as Error)?.message || 'unknown error'}`
+        },
+        { status: 413 }
+      );
+    }
     provider = resolveProvider(String(formData.get('provider') || req.nextUrl.searchParams.get('provider') || ''));
     const audio = formData.get('audio');
     // Either an upload, or one of the built-in reciters: a URL plus the window

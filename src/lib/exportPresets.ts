@@ -35,9 +35,11 @@ export interface ExportPreset {
  * which are facts about the platforms rather than words about them.
  */
 export const EXPORT_PRESETS: ExportPreset[] = [
+  // Shorts leads, and is therefore what a 9:16 project opens on and what an
+  // unrecognised frame shape falls back to.
+  { id: 'shorts', aspectRatio: '9:16', fps: 30, maxSeconds: 180 },
   { id: 'tiktok', aspectRatio: '9:16', fps: 30, maxSeconds: 600 },
   { id: 'reels', aspectRatio: '9:16', fps: 30, maxSeconds: 90 },
-  { id: 'shorts', aspectRatio: '9:16', fps: 30, maxSeconds: 180 },
   { id: 'ig-portrait', aspectRatio: '4:5', fps: 30, maxSeconds: 90 },
   { id: 'ig-feed', aspectRatio: '1:1', fps: 30, maxSeconds: 90 },
   { id: 'youtube', aspectRatio: '16:9', fps: 60 },

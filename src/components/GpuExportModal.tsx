@@ -78,7 +78,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   // translated; what is stored stays searchable.
   const renderer = useMemo(() => detectGpuRenderer(), []);
   const gpuName = renderer ?? t.exportModal.gpuNotReported;
-  const encoderName = useMemo(() => describeEncoder(), []);
+  const encoderName = useMemo(() => describeEncoder(fastPath), [fastPath]);
 
   const [selectedFps, setSelectedFps] = useState<number>(60);
   /**
@@ -203,7 +203,11 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
             <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
               {t.exportModal.title}
             </h3>
-            <p className="text-xs text-slate-400">{t.exportModal.subtitle(encoderName)}</p>
+            <p className="text-xs text-slate-400">
+              {fastPath
+                ? t.exportModal.subtitle(encoderName)
+                : t.exportModal.subtitleRecorder(encoderName)}
+            </p>
           </div>
         </div>
 
