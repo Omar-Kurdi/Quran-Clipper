@@ -212,6 +212,7 @@ export default function VideoCreatorPage() {
     progress: exportProgress,
     speed: exportSpeed,
     willEncodeOffline,
+    cancel: cancelExport,
     isModalOpen: isExportModalOpen,
     setIsModalOpen: setIsExportModalOpen,
     start: startExport,
@@ -1731,6 +1732,7 @@ export default function VideoCreatorPage() {
         exportProgress={exportProgress}
         exportSpeed={exportSpeed}
         fastPath={willEncodeOffline()}
+        onCancelExport={cancelExport}
         surahNameEnglish={surahNameEnglish}
         surahNumber={clipPassage.surahNumber}
         ayahStart={clipPassage.start}

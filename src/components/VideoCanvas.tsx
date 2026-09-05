@@ -232,6 +232,14 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bgMediaRef = useRef<BackgroundMedia | null>(null);
   const isExportingRef = useRef<boolean>(false);
+  /**
+   * Set when an export was stopped on purpose, as opposed to finishing.
+   *
+   * `MediaRecorder.stop()` fires `onstop` either way, so without this a
+   * cancelled render still delivered whatever it had captured and the dialog
+   * showed a result screen for a video nobody asked to keep.
+   */
+  const cancelledRef = useRef<boolean>(false);
   const videoErrorRef = useRef<boolean>(false);
   /**
    * Total frames this canvas has ever painted. The export compares it against
@@ -993,6 +1001,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     exportVideoOffline: async (range, audio, targetFps, onProgress) => {
       if (!canEncodeOffline(config)) return null;
       isExportingRef.current = true;
+      cancelledRef.current = false;
       try {
         // The same `paintFrame` the preview uses, which is the point of having
         // split it out: one drawing, two ways of driving it. The background is
@@ -1024,7 +1033,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         isExportingRef.current = false;
       }
     },
-    stopExport: () => { isExportingRef.current = false; },
+    stopExport: () => {
+      cancelledRef.current = true;
+      isExportingRef.current = false;
+    },
     /**
      * Records the canvas and the audio between two points on the recording.
      *
@@ -1047,6 +1059,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       const endSec = Math.max(startSec + 0.1, range.end);
       const span = endSec - startSec;
       isExportingRef.current = true;
+      cancelledRef.current = false;
       const exportStart = performance.now();
       const prevMuted = audioElement.muted;
       const prevVol = audioElement.volume;
@@ -1170,6 +1183,16 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         rec.onstop = () => {
           const rt = performance.now() - exportStart;
           const health = healthRef.current;
+          if (cancelledRef.current) {
+            // Stopped on purpose. Tear down, hand back nothing.
+            expAudio.pause();
+            actx.close().catch(() => {});
+            audioElement.muted = prevMuted;
+            audioElement.volume = prevVol;
+            releaseScreen();
+            isExportingRef.current = false;
+            return;
+          }
           onComplete(new Blob(chunks, { type: mt }), rt, {
             ...health,
             effectiveFps:

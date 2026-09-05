@@ -100,7 +100,13 @@ export function useVideoExport() {
               return;
             }
           } catch (err) {
-            // Anything at all -- an unreadable source, a refused encoder --
+            if ((err as Error)?.name === 'AbortError') {
+              // Cancelled on purpose. Falling back here would start a second
+              // export the moment someone asked for none at all.
+              setIsExporting(false);
+              return;
+            }
+            // Anything else -- an unreadable source, a refused encoder --
             // falls back rather than failing the export. The recorder path
             // works for every project this one can handle.
             console.warn('[export] frame-by-frame encoding unavailable, recording in real time instead:', err);
@@ -118,6 +124,19 @@ export function useVideoExport() {
   );
 
   /**
+   * Stops a render in progress and throws away what it produced.
+   *
+   * Both paths watch the same flag: the recorder stops and drops its chunks,
+   * and the frame loop breaks and closes its encoders rather than spending
+   * time flushing an encode nobody is waiting for.
+   */
+  const cancel = useCallback(() => {
+    canvasRef.current?.stopExport();
+    setIsExporting(false);
+    setProgress(0);
+  }, []);
+
+  /**
    * Whether this project will take the frame-by-frame path, for the UI to say
    * so before anyone commits ten minutes to a render. Recomputed on each call
    * rather than cached: the answer changes the moment a background does.
@@ -126,6 +145,7 @@ export function useVideoExport() {
 
   return {
     canvasRef,
+    cancel,
     willEncodeOffline,
     isExporting,
     progress,

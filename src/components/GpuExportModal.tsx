@@ -21,6 +21,8 @@ interface GpuExportModalProps {
    * the difference between minutes and seconds, and between MP4 and WebM.
    */
   fastPath: boolean;
+  /** Stops a render in progress and discards it. */
+  onCancelExport: () => void;
   onStartExport: (
     targetFps: number,
     onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
@@ -47,6 +49,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   exportProgress,
   exportSpeed,
   fastPath,
+  onCancelExport,
   surahNameEnglish,
   surahNumber,
   ayahStart,
@@ -87,6 +90,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   }
 
 
+  /** Closing mid-render means stopping it, not leaving it running unseen. */
+  const handleClose = () => {
+    if (isExporting) onCancelExport();
+    onClose();
+  };
+
   const handleExport = () => {
     setExportedBlobUrl(null);
     onStartExport(selectedFps, (blob, renderMs, health) => {
@@ -110,11 +119,15 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   return (
     <Dialog
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       label={t.exportModal.dialogLabel}
       // Closing mid-render would orphan the recorder, so the dialog refuses to
       // dismiss while an export is in flight.
-      dismissible={!isExporting}
+      // Dismissible throughout. It used to refuse while rendering, on the
+      // grounds that closing would orphan the recorder -- but that left the
+      // only visible control inert at exactly the moment someone wants out,
+      // with no way to stop a ten-minute render. Closing now cancels it.
+      dismissible
       panelClassName="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl overflow-hidden"
     >
       <div>
@@ -122,9 +135,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-emerald-500 to-amber-500"></div>
 
         <button
-          onClick={onClose}
-          disabled={isExporting}
-          aria-label={t.common.close}
+          onClick={handleClose}
+          aria-label={isExporting ? t.exportModal.cancelRender : t.common.close}
+          title={isExporting ? t.exportModal.cancelRender : t.common.close}
           className="absolute top-4 end-4 p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
         >
           <X className="w-5 h-5" />

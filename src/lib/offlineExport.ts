@@ -276,6 +276,16 @@ export async function encodeOffline(request: OfflineExportRequest): Promise<Offl
     }
   }
 
+  if (signal?.aborted) {
+    // Close rather than flush: flushing would spend time finishing an encode
+    // nobody is waiting for. Throwing distinguishes this from a failure so the
+    // caller discards the partial file instead of falling back and starting a
+    // second export the user did not ask for.
+    videoEncoder.close();
+    audioEncoder.close();
+    throw Object.assign(new Error('Export cancelled.'), { name: 'AbortError' });
+  }
+
   await videoEncoder.flush();
   await audioEncoder.flush();
   videoEncoder.close();
