@@ -286,7 +286,13 @@ export function duplicateVerse(verses: VerseData[], index: number, audioDuration
  * makes a wrong call a two-second fix.
  *
  * Both halves keep the ayah: a caption never spans one, so a split is always
- * within a single verse and both sides carry the same key.
+ * within a single verse and both sides carry the same key. They keep it whole,
+ * too. A segment's `words` is the entire ayah with the words it does not show
+ * marked `excluded` -- that is what the matcher builds and what every consumer
+ * reads -- so a split moves the mask rather than cutting the list. Slicing it
+ * was the bug: the words on the far side of the cut left the word list
+ * altogether, so the manual edit panel stopped offering them and there was no
+ * way to nudge the boundary one word back.
  *
  * Which words fall on which side comes from `VerseWord.timestamp` when the
  * provider measured it -- forced alignment does, so the cut lands between the
@@ -309,6 +315,16 @@ export function splitSegment(verses: VerseData[], index: number, atTime: number)
   const words = ensureWords(verse);
   const span = verse.endTime - verse.startTime;
 
+  // Where this caption's own words sit in the ayah. Everything below counts and
+  // cuts in *these* positions, never in raw array indices: a caption covering
+  // the back half of an ayah carries the front half as excluded words, and
+  // dividing the array by pace over all of them put the cut inside that front
+  // half -- leaving a caption with nothing on screen at all.
+  const visible: number[] = [];
+  words.forEach((word, i) => { if (!word.excluded) visible.push(i); });
+  // One word cannot be shared between two captions, so there is nothing to do.
+  if (visible.length < 2) return verses;
+
   // Only the words on screen were spoken during this segment, so only they can
   // carry times -- requiring every word to have one could never pass, because
   // the excluded ones belong to a different part of the ayah.
@@ -318,31 +334,39 @@ export function splitSegment(verses: VerseData[], index: number, atTime: number)
   // stale timestamp would otherwise cut in a place that has nothing to do with
   // the audio. Out-of-range times fall back to dividing by pace, which is what
   // this did before word times existed.
-  const spoken = words.filter(word => !word.excluded);
-  const measured =
-    spoken.length > 0 &&
-    spoken.every(
-      word =>
-        typeof word.timestamp === 'number' &&
-        word.timestamp >= verse.startTime - MIN_SEGMENT &&
-        word.timestamp <= verse.endTime + MIN_SEGMENT
+  const measured = visible.every(i => {
+    const time = words[i].timestamp;
+    return (
+      typeof time === 'number' &&
+      time >= verse.startTime - MIN_SEGMENT &&
+      time <= verse.endTime + MIN_SEGMENT
     );
+  });
 
-  let at: number;
+  // How many of the visible words the first half keeps.
+  let kept: number;
   if (measured) {
-    const found = words.findIndex(
-      word => !word.excluded && (word.timestamp as number) >= cut
-    );
-    at = found === -1 ? words.length - 1 : found;
+    const found = visible.findIndex(i => (words[i].timestamp as number) >= cut);
+    kept = found === -1 ? visible.length - 1 : found;
   } else {
-    at = Math.round(((cut - verse.startTime) / span) * words.length);
+    kept = Math.round(((cut - verse.startTime) / span) * visible.length);
   }
-  // Every caption needs at least one word, so neither side may be empty.
-  at = Math.max(1, Math.min(words.length - 1, at));
+  // Every caption needs at least one word on screen, so neither side may be
+  // left showing none.
+  kept = Math.max(1, Math.min(visible.length - 1, kept));
+  const boundary = visible[kept];
 
+  // A word the user hid stays hidden on both halves: `excluded` already meant
+  // "not on this screen", and the split only adds the other half's words to
+  // that set.
+  const mask = (side: 'head' | 'tail') =>
+    words.map((word, i) => ({
+      ...word,
+      excluded: Boolean(word.excluded) || (side === 'head' ? i >= boundary : i < boundary)
+    }));
   const shown = (list: VerseWord[]) => list.filter(word => !word.excluded).map(word => word.arabic).join(' ');
-  const head = words.slice(0, at).map(word => ({ ...word }));
-  const tail = words.slice(at).map(word => ({ ...word }));
+  const head = mask('head');
+  const tail = mask('tail');
 
   return [
     ...verses.slice(0, index),
@@ -362,13 +386,45 @@ export function splitSegment(verses: VerseData[], index: number, atTime: number)
  * Only within one ayah. A caption that spanned two would have no single verse
  * key to carry, and every consumer -- the badge, the export naming, the word
  * highlighting -- assumes it has one.
+ *
+ * Two captions of one ayah normally carry the *same* list -- the whole ayah,
+ * masked differently -- so joining them unions the masks. Concatenating them,
+ * as this used to, gave the merged caption the ayah twice: the display text
+ * still read correctly because the mask filtered it, which is why it went
+ * unnoticed, but the edit panel listed every word twice and a later split
+ * divided a list twice as long as the ayah.
+ *
+ * Lists that are genuinely different -- a caption whose Arabic was retyped
+ * rebuilds `words` from what was typed -- have no positions in common to union,
+ * so those are still joined end to end.
  */
 export function mergeWithNext(verses: VerseData[], index: number): VerseData[] {
   const first = verses[index];
   const second = verses[index + 1];
   if (!first || !second || first.verseKey !== second.verseKey) return verses;
 
-  const words = [...ensureWords(first), ...ensureWords(second)].map(word => ({ ...word }));
+  const before = ensureWords(first);
+  const after = ensureWords(second);
+  const sameList =
+    before.length === after.length && before.every((word, i) => word.arabic === after[i].arabic);
+
+  const words = sameList
+    ? before.map((word, i) => {
+        const other = after[i];
+        // Shown by either half means shown by the merged caption; hidden means
+        // both halves had it hidden, which is the one case the user meant.
+        const joined: VerseWord = {
+          ...word,
+          excluded: Boolean(word.excluded) && Boolean(other.excluded)
+        };
+        // Only the half that showed a word measured it, so take whichever time
+        // there is rather than the first half's absent one.
+        if (typeof joined.timestamp !== 'number' && typeof other.timestamp === 'number') {
+          joined.timestamp = other.timestamp;
+        }
+        return joined;
+      })
+    : [...before, ...after].map(word => ({ ...word }));
   const merged: VerseData = {
     ...first,
     endTime: Math.max(first.endTime, second.endTime),

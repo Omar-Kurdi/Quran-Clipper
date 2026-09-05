@@ -1,0 +1,17 @@
+# Ground truth for test2.mp3 (Al-Mu'minun 23:93-96), captured from the studio timeline.
+# One expected segment per line, in recitation order. Blank lines and #-comments ignored.
+#
+# Text is matched to corpus word ranges by skeleton, so the orthography does not have
+# to be exact.
+#
+# The lines below are read by scripts/eval_segments.py -- keep them.
+# clip: test2.mp3
+# passage: 23:93-96
+# audio-seconds: 39.29
+# trim: none
+
+قُل رَّبِّ إِمَّا تُرِيَنِّى مَا يُوعَدُونَ
+رَبِّ فَلَا تَجْعَلْنِى فِى ٱلْقَوْمِ ٱلظَّـٰلِمِينَ
+وَإِنَّا عَلَىٰٓ أَن نُّرِيَكَ مَا نَعِدُهُمْ لَقَـٰدِرُونَ
+ٱدْفَعْ بِٱلَّتِى هِىَ أَحْسَنُ ٱلسَّيِّئَةَ ۚ
+نَحْنُ أَعْلَمُ بِمَا يَصِفُونَ

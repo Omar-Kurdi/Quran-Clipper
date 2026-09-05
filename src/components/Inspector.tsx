@@ -52,10 +52,14 @@ export const Inspector: React.FC<InspectorProps> = ({
 
   // Mirrors what `splitSegment` and `mergeWithNext` will actually do, so a
   // control that would be a no-op is disabled rather than silently ignored.
+  // That includes the word count: a caption showing one word has nothing to
+  // give the second half, and `splitSegment` refuses it.
   const next = verses[index + 1];
-  const canSplit = !!verse
+  const onScreen = verse ? ensureWords(verse).filter(word => !word.excluded).length : 0;
+  const longEnough = !!verse
     && currentTime > verse.startTime + MIN_SEGMENT
     && currentTime < verse.endTime - MIN_SEGMENT;
+  const canSplit = longEnough && onScreen >= 2;
   const canMerge = !!verse && !!next && verse.verseKey === next.verseKey;
 
   if (!verse) {
@@ -194,7 +198,13 @@ export const Inspector: React.FC<InspectorProps> = ({
           icon={<SplitSquareHorizontal className="w-3.5 h-3.5" />}
           onClick={onSplit}
           disabled={!canSplit}
-          title={canSplit ? t.inspector.splitHint : t.inspector.splitTooShort}
+          title={
+            canSplit
+              ? t.inspector.splitHint
+              : onScreen < 2
+                ? t.inspector.splitOneWord
+                : t.inspector.splitTooShort
+          }
         >
           {t.inspector.split}
         </Button>
