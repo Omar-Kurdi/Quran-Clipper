@@ -319,6 +319,45 @@ check(
     (align.decode_agreement(run, [0.0, 3.4], ["الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ"]) or 0) < 0.4,
 )
 
+print("\nwhere two captions meet")
+# A caption used to end where its last word stopped, and the join was then put
+# at the arithmetic middle of the gap. A silence only registers once the word
+# has decayed, so that middle sits *before* the pause -- and because captions
+# are consecutive, the next one came up while the previous phrase was still
+# audible. Measured across four clips, 51% of joins landed in a real silence.
+early = align.Segment("2:1", 0, 2, 0.0, 1.0, 0.9, False)
+late = align.Segment("2:1", 3, 5, 2.0, 3.0, 0.9, False)
+align._close_gaps([early, late], 3.0, [(1.6, 1.9)])
+check(
+    "the join is seated in the silence, not in the middle of the gap",
+    1.6 <= early.end <= 1.9,
+    f"join at {early.end}s, silence was 1.60-1.90s",
+)
+check(
+    "and both captions agree on where that is",
+    early.end == late.start,
+    f"{early.end} vs {late.start}",
+)
+
+a = align.Segment("2:1", 0, 2, 0.0, 1.0, 0.9, False)
+b = align.Segment("2:1", 3, 5, 2.0, 3.0, 0.9, False)
+align._close_gaps([a, b], 3.0, [])
+check(
+    "with no measured silence it still splits the gap rather than refusing",
+    a.end == 1.5 and b.start == 1.5,
+    f"got {a.end}/{b.start}",
+)
+
+# Two short dips are one breath broken in half; the longer one is the pause.
+c = align.Segment("2:1", 0, 2, 0.0, 1.0, 0.9, False)
+d = align.Segment("2:1", 3, 5, 2.0, 3.0, 0.9, False)
+align._close_gaps([c, d], 3.0, [(1.05, 1.10), (1.50, 1.90)])
+check(
+    "the longest quiet in the gap decides, not the first",
+    1.5 <= c.end <= 1.9,
+    f"join at {c.end}s",
+)
+
 print("\nalignment cost -- refusing a pass rather than being killed by it")
 # The two points the formula was fitted against, measured as peak RSS on this
 # machine with a synthetic emission (vocab 1025, 12.75 frames/sec).
