@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { quranApiFetch } from '@/lib/quranApi';
+import { cleanHtml } from '@/lib/quranCorpus';
 
 /**
  * The text of one or more translations, for one passage.
@@ -10,11 +12,6 @@ import { NextRequest, NextResponse } from 'next/server';
  * captions got here, and the caller merges what comes back by verse key.
  */
 export const revalidate = 86400;
-
-function cleanHtml(input = '') {
-  // Translations carry footnote markup: <sup foot_note=...>1</sup> and <i>.
-  return input.replace(/<[^>]*>?/gm, '').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
-}
 
 interface ApiVerse {
   verse_key?: string;
@@ -40,12 +37,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, verses: {} }, { status: 400 });
     }
 
-    const res = await fetch(
-      `https://api.quran.com/api/v4/verses/by_chapter/${surah}` +
-        `?translations=${ids.join(',')}&fields=verse_key&per_page=300`,
-      { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } }
+    const { res } = await quranApiFetch(
+      `/verses/by_chapter/${surah}?translations=${ids.join(',')}&fields=verse_key&per_page=300`,
+      { next: { revalidate: 86400 } }
     );
-    if (!res.ok) return NextResponse.json({ success: false, verses: {} }, { status: 502 });
+    if (!res?.ok) return NextResponse.json({ success: false, verses: {} }, { status: 502 });
 
     const data = await res.json();
     const list: ApiVerse[] = Array.isArray(data?.verses) ? data.verses : [];

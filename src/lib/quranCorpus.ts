@@ -7,6 +7,7 @@
  */
 
 import { VerseData, VerseWord } from '@/lib/quranData';
+import { defaultTranslationId, quranApiFetch } from './quranApi';
 import { normalizeArabic } from '@/lib/arabic';
 
 type QuranApiWord = {
@@ -34,7 +35,7 @@ export type CorpusVerse = {
   tokens: string[];
 };
 
-function cleanHtml(input = '') {
+export function cleanHtml(input = '') {
   return input
     // Footnote markers ship as <sup foot_note="...">1</sup>. Stripping only the
     // tags would leave the bare digit glued to the preceding word ("Allāh,1"),
@@ -49,34 +50,32 @@ function cleanHtml(input = '') {
 }
 
 /**
- * Ayah-level English translation resource id on api.quran.com.
+ * Ayah-level English translation resource id.
  *
- * This previously pointed at 131, which no longer exists in the API: requests
- * still returned HTTP 200 but silently omitted the `translations` field
- * entirely, so every ayah came back with an empty translation. Verify any new
- * id against `/api/v4/resources/translations?language=en` before setting it --
- * an invalid id fails quietly rather than erroring.
+ * Decided in `quranApi.ts`, because which id is even *available* depends on
+ * which upstream is configured: 131 (The Clear Quran) exists only on the
+ * Quran Foundation API, and asking the open API for it returns HTTP 200 with
+ * the `translations` field silently omitted -- which is how every ayah once
+ * came back with an empty translation. Verify any id you set by hand against
+ * the resource list of the upstream you are actually using; an invalid one
+ * fails quietly rather than erroring.
  *
  * Exported because `/api/quran/verses` fetches the same resource for the Load
  * path. It kept its own copy of the number, which is how it was still asking
- * for 131 long after this one moved: loading a reciter gave every ayah an
- * empty translation, and only running the aligner -- which comes through here
- * -- filled them in.
+ * for 131 long after this one moved.
  */
-export const TRANSLATION_ID = process.env.QURAN_TRANSLATION_ID || '20'; // Saheeh International
+export const TRANSLATION_ID = defaultTranslationId();
 
-const CHAPTER_URL = (surah: number) =>
-  `https://api.quran.com/api/v4/verses/by_chapter/${surah}` +
+const CHAPTER_PATH = (surah: number) =>
+  `/verses/by_chapter/${surah}` +
   `?language=en&words=true&translations=${TRANSLATION_ID}&fields=text_uthmani` +
   `&word_fields=text_uthmani,translation&per_page=300`;
 
 const chapterCache = new Map<number, Promise<CorpusVerse[]>>();
 
 async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
-  const res = await fetch(CHAPTER_URL(surahNumber), {
-    headers: { Accept: 'application/json' },
-    next: { revalidate: 86400 }
-  });
+  const { res } = await quranApiFetch(CHAPTER_PATH(surahNumber), { next: { revalidate: 86400 } });
+  if (!res) throw new Error(`Unable to reach the Quran API for chapter ${surahNumber}.`);
   if (!res.ok) throw new Error(`Unable to fetch Quran chapter ${surahNumber} (${res.status}).`);
 
   const data = (await res.json()) as { verses?: QuranApiVerse[] };

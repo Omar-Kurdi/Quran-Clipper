@@ -15,14 +15,18 @@
  */
 
 /**
- * Saheeh International, and the id the `translation` field already holds.
+ * The id that a caption's own `translation` field already holds.
  *
- * The server reads `QURAN_TRANSLATION_ID` for the same purpose
- * (`quranCorpus.ts`); this is the client's copy of the default, and the two
- * only differ if that variable is set -- in which case the extra fetch below
- * simply retrieves that translation by id like any other.
+ * Saheeh International (20) on the open API, because that is what the open API
+ * has; The Clear Quran (131) needs Quran Foundation credentials, and the
+ * server picks it automatically once they are set -- see `quranApi.ts`. The
+ * browser cannot read those, so the same value is published here as
+ * `NEXT_PUBLIC_QURAN_TRANSLATION_ID`, and the two are meant to be set
+ * together. Get it wrong and nothing breaks: the id simply becomes one more
+ * translation to fetch by id, like any other.
  */
-export const DEFAULT_TRANSLATION_ID = '20';
+export const DEFAULT_TRANSLATION_ID =
+  (process.env.NEXT_PUBLIC_QURAN_TRANSLATION_ID || '').trim() || '20';
 
 /**
  * How many can be on screen at once.

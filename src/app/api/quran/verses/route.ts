@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TRANSLATION_ID } from '@/lib/quranCorpus';
+import { TRANSLATION_ID, cleanHtml } from '@/lib/quranCorpus';
+import { quranApiFetch } from '@/lib/quranApi';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
-
-function cleanHtml(input = '') {
-  return input.replace(/<[^>]*>?/gm, '').replace(/&quot;/g, '"').trim();
-}
 
 function getReciterAudioUrl(reciterId: string, surahNumber: number) {
   const reciter = RECITERS.find(r => r.id === reciterId) || RECITERS[0];
@@ -122,12 +119,13 @@ export async function GET(req: NextRequest) {
 
     // Otherwise query Quran.com API v4
     try {
-      const quranRes = await fetch(
-        `https://api.quran.com/api/v4/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${TRANSLATION_ID}&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
-        { headers: { 'Accept': 'application/json' }, next: { revalidate: 86400 } }
+      const { res: quranRes } = await quranApiFetch(
+        `/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${TRANSLATION_ID}` +
+          `&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
+        { next: { revalidate: 86400 } }
       );
 
-      if (quranRes.ok) {
+      if (quranRes?.ok) {
         const quranData = await quranRes.json();
         const allVerses = quranData.verses || [];
         

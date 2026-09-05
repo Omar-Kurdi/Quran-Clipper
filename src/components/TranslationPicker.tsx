@@ -35,7 +35,7 @@ export const TranslationPicker: React.FC<TranslationPickerProps> = ({ isOpen, on
   const [query, setQuery] = useState('');
   // Fetched on first open and kept for the session -- not at startup, which
   // would be a request every visitor pays for and few of them use.
-  const { options, loading, failed } = useTranslationCatalogue(isOpen);
+  const { options, loading, failed, source } = useTranslationCatalogue(isOpen);
 
   const groups = useMemo(() => groupByLanguage(searchTranslations(options, query)), [options, query]);
   const chosen = selectedOptions(value, options);
@@ -151,6 +151,15 @@ export const TranslationPicker: React.FC<TranslationPickerProps> = ({ isOpen, on
             </div>
           ))}
         </div>
+
+        {/* The one absence worth explaining. The Clear Quran is on quran.com's
+            own site but not in the open API's list, which reads as a missing
+            translation rather than as a licensing boundary. */}
+        {source === 'public' && !loading && (
+          <p className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-800">
+            {t.translations.publicListNote}
+          </p>
+        )}
 
         <div className="p-3 border-t border-slate-800 flex justify-end">
           <Button size="md" variant="primary" onClick={onClose}>{t.common.done}</Button>

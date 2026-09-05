@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isRtlLanguage, displayLanguage, TranslationOption } from '@/lib/translations';
+import { quranApiFetch, defaultTranslationId, quranApiSource } from '@/lib/quranApi';
 
 /**
  * Every translation quran.com publishes, trimmed to what the picker needs.
@@ -8,6 +9,12 @@ import { isRtlLanguage, displayLanguage, TranslationOption } from '@/lib/transla
  * API is: one place decides what the studio trusts, and the response is cached
  * here for a day instead of in every visitor's tab. The list changes about as
  * often as new translations are published.
+ *
+ * Which list it is depends on the upstream: the open API publishes 126
+ * translations and The Clear Quran is not among them, while the Quran
+ * Foundation API -- credentials permitting -- does carry it. `source` says
+ * which one answered, so the studio can explain an absence rather than let it
+ * look like a bug.
  */
 export const revalidate = 86400;
 
@@ -20,11 +27,10 @@ interface ApiTranslation {
 
 export async function GET() {
   try {
-    const res = await fetch('https://api.quran.com/api/v4/resources/translations', {
-      headers: { Accept: 'application/json' },
+    const { res, source } = await quranApiFetch('/resources/translations', {
       next: { revalidate: 86400 }
     });
-    if (!res.ok) return NextResponse.json({ success: false, translations: [] }, { status: 502 });
+    if (!res?.ok) return NextResponse.json({ success: false, translations: [] }, { status: 502 });
 
     const data = await res.json();
     const list: ApiTranslation[] = Array.isArray(data?.translations) ? data.translations : [];
@@ -43,7 +49,13 @@ export async function GET() {
         };
       });
 
-    return NextResponse.json({ success: true, translations });
+    return NextResponse.json({
+      success: true,
+      translations,
+      /** Which translation a caption's own `translation` field already holds. */
+      defaultId: defaultTranslationId(),
+      source: quranApiSource() === 'foundation' ? source : 'public'
+    });
   } catch {
     // The picker falls back to the translation already loaded, which is the
     // one every existing project uses.
