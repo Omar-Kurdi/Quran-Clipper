@@ -72,6 +72,10 @@ export const en = {
     wordmarkSuffix: 'Studio',
     pageTitle: (surah: string, number: number, start: number, end: number) =>
       `Quran Clip Studio — ${surah} ${number}:${start}–${end}`,
+    undo: 'Undo',
+    undoTitle: 'Undo the last change (Ctrl+Z)',
+    redo: 'Redo',
+    redoTitle: 'Redo the last undone change (Ctrl+Shift+Z)',
     savedClips: 'Saved clips',
     saveProject: 'Save project',
     saveProjectTitle: 'Save this clip to the saved-projects list',
@@ -238,6 +242,38 @@ export const en = {
     hint: 'Try switching reciters, or upload a custom audio file.'
   },
 
+  draft: {
+    title: 'Work from your last visit',
+    describe: (project: string, when: string) => `${project} — last changed ${when}.`,
+    restore: 'Restore it',
+    dismiss: 'Discard',
+    audioMissing: (name: string) =>
+      `The recitation was your upload ${name}, which cannot be reopened for you — restore the timeline, then pick that file again.`,
+    backgroundsMissing: (count: number) =>
+      `${count} uploaded background${count === 1 ? '' : 's'} could not be written down. Add ${
+        count === 1 ? 'it' : 'them'
+      } again from your backgrounds.`,
+    restored: 'Restored from your last visit.',
+    savedAt: (when: string) => `Draft saved ${when}`,
+    savedTitle: 'Saved in this browser, so a refresh or a crash does not lose it. It is not a saved clip.'
+  },
+
+  shortcuts: {
+    open: 'Shortcuts',
+    openTitle: 'Every keyboard shortcut (?)',
+    dialogLabel: 'Keyboard shortcuts',
+    title: 'Keyboard shortcuts',
+    hint:
+      'These work anywhere in the studio except inside a text box — there the keys type, and Ctrl+Z undoes what you typed.',
+    macNote: 'On a Mac, ⌘ works wherever Ctrl is listed.',
+    playPause: 'Play or pause the recitation',
+    markEnd: 'End the selected ayah at the playhead',
+    undo: 'Undo the last timeline or styling change',
+    redo: 'Redo a change that was undone',
+    list: 'Open this list',
+    dismiss: 'Close this list, or any dialog'
+  },
+
   timeline: {
     label: 'Timeline',
     playRecitation: 'Play recitation',
@@ -271,6 +307,9 @@ export const en = {
     dragClipStart: 'Drag to move where the audio starts',
     dragClipEnd: 'Drag to move where the audio ends',
     dragToEdit: ' · drag to move, drag an edge to resize',
+    clipLength: (length: string) => `clip is ${length} long`,
+    clipRepeats: (times: string) => `plays ${times}× here`,
+    clipRepeatsAria: (name: string, times: string) => `${name} repeats ${times} times in this block`,
     moveStartOf: (name: string) => `Move start of ${name}`,
     moveEndOf: (name: string) => `Move end of ${name}`,
     empty: 'No ayahs loaded yet — pick a surah on the left, or upload a recitation.'
@@ -330,13 +369,13 @@ export const en = {
     bgModeLabel: 'How backgrounds are used:',
     bgModes: {
       single: 'One background',
-      'per-ayah': 'One per ayah',
+      'per-ayah': 'One per segment',
       cycle: 'Cycle on a timer',
       shuffle: 'Shuffle'
     },
     bgModeHints: {
       single: 'A single looping clip.',
-      'per-ayah': 'Steps to the next clip on each ayah.',
+      'per-ayah': 'Steps to the next clip at the start of each segment.',
       cycle: 'Changes every few seconds.',
       shuffle: 'Picks per ayah, repeatably.'
     },
@@ -358,9 +397,6 @@ export const en = {
       `${count} in the sequence, in play order — the same clip may appear more than once.`,
     moveEarlier: (name: string) => `Move ${name} earlier`,
     moveLater: (name: string) => `Move ${name} later`,
-    removeFromSequenceTitle: 'Remove from the sequence?',
-    removeFromSequenceMessage: (name: string, position: number) =>
-      `“${name}” will stop playing at position ${position}. It stays in your backgrounds below, ready to add again.`,
     removeFromSequenceAria: (name: string, position: number) =>
       `Remove ${name} from position ${position}`,
 
@@ -369,6 +405,7 @@ export const en = {
     galleryLabelMulti: 'Pick your backgrounds:',
     galleryHelp:
       'Presets first, then anything you have uploaded or pasted below. Hover one of your own to delete it.',
+    tileLength: (length: string) => `Runs for ${length}`,
     tileMissing: 'This file is no longer on this computer, or the link stopped working',
     tileAddToLane: 'Add a block for this clip at the end of the lane',
     tileAddToSequence: 'Add to the sequence — tap again to use it more than once',

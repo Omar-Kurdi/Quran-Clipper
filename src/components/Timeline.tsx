@@ -6,6 +6,8 @@ import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
 import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import { BackgroundSegment, backgroundLabel } from '@/lib/backgroundTimeline';
+import { formatClipLength, repeatCount } from '@/lib/mediaDuration';
+import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { useT } from './LocaleProvider';
 
 interface TimelineProps {
@@ -79,6 +81,18 @@ export const Timeline: React.FC<TimelineProps> = ({
   const t = useT();
   /** Named once here so every block, handle and tooltip agrees on what a clip is called. */
   const nameOf = (url: string) => backgroundLabel(url, t.backgrounds);
+  /**
+   * How long each background clip runs, so a block that outlasts its footage
+   * can say where the footage starts again.
+   *
+   * Stretching a block past the clip's own length loops it -- both in the
+   * preview and, frame for frame, in the export, which takes
+   * `(time - block start) % clip length`. Until now that repetition was
+   * invisible: a five-second clip under a thirty-second block looked exactly
+   * like thirty seconds of footage, so there was no way to see how far to drag
+   * an edge for a clean loop.
+   */
+  const clipLengths = useMediaDurations(backgroundSegments.map(seg => seg.url));
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   // The load result is stamped with the url it belongs to, so "still loading"
@@ -489,10 +503,24 @@ export const Timeline: React.FC<TimelineProps> = ({
                 const width = Math.max(0.3, pct(seg.end) - left);
                 const editable = Boolean(onMoveBackground && onResizeBackground);
                 const active = selectedBackground === i;
+                const span = seg.end - seg.start;
+                const clipLength = clipLengths[seg.url];
+                const times = repeatCount(span, clipLength);
+                // Where the footage starts over, in the block's own width. Only
+                // whole restarts are marked -- the tail of the last pass is
+                // where the block ends, which the edge already shows -- and a
+                // block chopped into more marks than it has pixels is noise, so
+                // past a point they are dropped and the count alone says it.
+                const restarts = times > 1 && clipLength
+                  ? Array.from({ length: Math.floor(span / clipLength) }, (_, k) => ((k + 1) * clipLength) / span)
+                      .filter(fraction => fraction < 0.995)
+                  : [];
                 return (
                   <div
                     key={`${seg.url}-${i}`}
                     title={`${nameOf(seg.url)} · ${formatTime(seg.start)} – ${formatTime(seg.end)}${
+                      clipLength ? ` · ${t.timeline.clipLength(formatClipLength(clipLength))}` : ''
+                    }${times > 1 ? ` · ${t.timeline.clipRepeats(String(times))}` : ''}${
                       editable ? t.timeline.dragToEdit : ''
                     }`}
                     onPointerDown={e => {
@@ -513,6 +541,31 @@ export const Timeline: React.FC<TimelineProps> = ({
                     <span className="px-1 text-[9px] leading-none text-slate-300 truncate pointer-events-none">
                       {nameOf(seg.url)}
                     </span>
+
+                    {/* Where the clip begins again. Dashed rather than solid so
+                        it never reads as a block boundary: the same footage
+                        continues across it. */}
+                    {restarts.length <= 40 && restarts.map((fraction, k) => (
+                      <span
+                        key={`loop-${k}`}
+                        aria-hidden="true"
+                        className="absolute inset-y-0 w-px pointer-events-none bg-[repeating-linear-gradient(to_bottom,rgb(148_163_184/0.85)_0_3px,transparent_3px_6px)]"
+                        style={{ left: `${fraction * 100}%` }}
+                      />
+                    ))}
+
+                    {/* How many times over, for a block too narrow to count the
+                        marks in -- and the only indication left once there are
+                        more of them than pixels. */}
+                    {times > 1 && width > 6 && (
+                      <span
+                        dir="ltr"
+                        aria-label={t.timeline.clipRepeatsAria(nameOf(seg.url), String(times))}
+                        className="absolute end-1 top-1/2 -translate-y-1/2 px-1 rounded-sm bg-slate-950/70 text-[9px] leading-none py-0.5 text-slate-300 pointer-events-none"
+                      >
+                        ×{times}
+                      </span>
+                    )}
 
                     {/* Resize handles, inside the block and above the body drag
                         so grabbing an edge never turns into a move. */}

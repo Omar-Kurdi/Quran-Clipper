@@ -33,17 +33,24 @@ import { segmentAt } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import { trimTimeline } from '@/lib/matchTimeline';
 import {
-  backgroundSegments, moveSegmentTo, resizeSegment, BackgroundSegment, BACKGROUND_MODES, BackgroundMode
+  backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName,
+  BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
+import { ShortcutsDialog } from '@/components/ShortcutsDialog';
 import { groundTruthFile, groundTruthFileName } from '@/lib/groundTruth';
 import { useAudioPlayback } from '@/hooks/useAudioPlayback';
 import { useTransportKeys } from '@/hooks/useTransportKeys';
 import { useVideoExport } from '@/hooks/useVideoExport';
-import { buildProjectPayload } from '@/lib/projectPayload';
+import { buildProjectPayload, projectTitle } from '@/lib/projectPayload';
+import {
+  buildDraft, clearDraft, forgetRecoverableDraft, recoverableDraft, serverRecoverableDraft, subscribeToDraft
+} from '@/lib/draftStore';
+import { useAutoSaveDraft } from '@/hooks/useAutoSaveDraft';
 import { useTimelineEditing } from '@/hooks/useTimelineEditing';
+import { useEditHistory, StudioSnapshot } from '@/hooks/useEditHistory';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useLocale } from '@/components/LocaleProvider';
 import { 
@@ -70,7 +77,10 @@ import {
   Loader2,
   Film,
   ChevronDown,
-  ClipboardCheck
+  ClipboardCheck,
+  Undo2,
+  Redo2,
+  Keyboard
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
@@ -204,6 +214,7 @@ export default function VideoCreatorPage() {
   /** Which ayah the timeline and inspector are focused on. */
   const [inspectorTab, setInspectorTab] = useState<'ayah' | 'style'>('ayah');
   const [isProjectsDrawerOpen, setIsProjectsDrawerOpen] = useState<boolean>(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
 
   // Video Export & Progress State
   const {
@@ -256,6 +267,104 @@ export default function VideoCreatorPage() {
     fps: 60,
     gpuAccelerated: true
   });
+
+  /**
+   * Undo and redo over the project.
+   *
+   * Split, merge and delete are all easy to regret, and until now the only way
+   * back from one was to notice immediately and rebuild it by hand. The history
+   * watches the timeline and the styling config; restoring hands the very same
+   * state objects back, so nothing here has to be told which edit happened.
+   */
+  const restoreSnapshot = useCallback((snapshot: StudioSnapshot<VideoCanvasConfig>) => {
+    setVerses(snapshot.verses);
+    setSelectedIndex(snapshot.selectedIndex);
+    setCanvasConfig(snapshot.config);
+    // A block index is meaningless against a lane that may have just changed
+    // under it, and the panel would act on whatever now sits at that position.
+    setSelectedBackground(null);
+  }, [setVerses, setSelectedIndex]);
+
+  const history = useEditHistory({
+    verses,
+    selectedIndex,
+    config: canvasConfig,
+    restore: restoreSnapshot
+  });
+
+  /**
+   * The draft, rebuilt only when something that belongs in it changes.
+   *
+   * Identity is the whole point: the page re-renders several times a second
+   * while the audio plays, and the auto-save waits for the draft to stop
+   * changing before writing. A new object every render would postpone that
+   * write forever.
+   *
+   * Nothing is written for the seeded sample -- it is not the user's work, and
+   * offering it back next visit would be inventing a draft they never made.
+   */
+  const draft = useMemo(
+    () =>
+      isSampleProject || verses.length === 0
+        ? null
+        : buildDraft({
+            surahNumber: selectedSurah,
+            surahNameArabic,
+            surahNameEnglish,
+            ayahStart,
+            ayahEnd,
+            reciterId: selectedReciter,
+            audioUrl,
+            audioUploadName: customAudioName,
+            verses,
+            config: canvasConfig as unknown as Record<string, unknown>
+          }),
+    [
+      isSampleProject, verses, canvasConfig, selectedSurah, surahNameArabic, surahNameEnglish,
+      ayahStart, ayahEnd, selectedReciter, audioUrl, customAudioName
+    ]
+  );
+  const draftSavedAt = useAutoSaveDraft(draft);
+
+  /**
+   * A draft found from a previous visit, until it is restored or discarded.
+   *
+   * Never applied on its own: waking up to someone else's timeline -- your own
+   * from two days ago -- in place of the studio you expected is worse than
+   * losing it. The banner says what it is and both answers are one click.
+   */
+  const pendingDraft = useSyncExternalStore(
+    subscribeToDraft,
+    recoverableDraft,
+    serverRecoverableDraft
+  );
+
+  const handleRestoreDraft = () => {
+    const found = pendingDraft;
+    if (!found) return;
+    setVerses(found.verses);
+    setSelectedIndex(0);
+    // Merged rather than replaced: a styling knob added since the draft was
+    // written keeps its default instead of arriving as `undefined`.
+    setCanvasConfig(prev => ({ ...prev, ...(found.config as Partial<VideoCanvasConfig>) }));
+    setSelectedSurah(found.surahNumber);
+    if (found.surahNameArabic) setSurahNameArabic(found.surahNameArabic);
+    if (found.surahNameEnglish) setSurahNameEnglish(found.surahNameEnglish);
+    setAyahStart(found.ayahStart);
+    setAyahEnd(found.ayahEnd);
+    setAyahStartInput(String(found.ayahStart));
+    setAyahEndInput(String(found.ayahEnd));
+    if (found.reciterId) setSelectedReciter(found.reciterId);
+    // An uploaded recitation cannot be reopened for them; the banner said so,
+    // and whatever is loaded now is left alone rather than pointed at nothing.
+    if (found.audioUrl) setAudioUrl(found.audioUrl);
+    setIsSampleProject(false);
+    // The work is in the studio now; auto-save writes over the stored copy.
+    forgetRecoverableDraft();
+    setMatchStatus({ text: t.draft.restored, tone: 'info' });
+  };
+
+  const handleDiscardDraft = () => clearDraft();
 
   const selectedReciterMeta = RECITERS.find(r => r.id === selectedReciter) || RECITERS[0];
 
@@ -389,6 +498,9 @@ export default function VideoCreatorPage() {
       setVideoBgOffset(0);
       setTrimWindow(null);
       setVideoBgUrl(video ? url : null);
+      // The object url says nothing about the file behind it, so the timeline
+      // would label this block "Uploaded clip" like every other upload.
+      if (video) rememberMediaName(url, file.name);
       if (video && useVideoAsBackground) {
         setCanvasConfig(prev => ({ ...prev, bgType: 'video', bgUrl: url }));
       }
@@ -732,7 +844,13 @@ export default function VideoCreatorPage() {
 
   const handleMarkHere = useCallback(() => edit.markHere(currentTime), [edit, currentTime]);
 
-  useTransportKeys({ onTogglePlay: togglePlayPause, onMarkHere: handleMarkHere });
+  useTransportKeys({
+    onTogglePlay: togglePlayPause,
+    onMarkHere: handleMarkHere,
+    onUndo: history.undo,
+    onRedo: history.redo,
+    onShowShortcuts: () => setIsShortcutsOpen(true)
+  });
 
 
   // Covers the case where the url did not change -- reloading the same surah
@@ -890,6 +1008,12 @@ export default function VideoCreatorPage() {
           onSelect: () => setShowTrimModal(true)
         }]
       : []),
+    {
+      key: 'shortcuts',
+      label: t.shortcuts.open,
+      icon: <Keyboard className="w-4 h-4" />,
+      onSelect: () => setIsShortcutsOpen(true)
+    },
     {
       key: 'save',
       label: t.header.saveProject,
@@ -1137,10 +1261,37 @@ export default function VideoCreatorPage() {
             Export to 42% visible at 375px and made the bar scroll sideways
             with nothing to indicate it. */}
         <div className="flex items-center gap-2">
+          {/* Outside the `lg` group on purpose: undoing a mis-drag is not a
+              secondary action, and it is the one control that has to be there
+              the moment something goes wrong. */}
+          <div className="flex items-center gap-1">
+            <Button
+              onClick={history.undo}
+              disabled={!history.canUndo}
+              title={t.header.undoTitle}
+              aria-label={t.header.undo}
+              icon={<Undo2 className="w-3.5 h-3.5" />}
+            />
+            <Button
+              onClick={history.redo}
+              disabled={!history.canRedo}
+              title={t.header.redoTitle}
+              aria-label={t.header.redo}
+              icon={<Redo2 className="w-3.5 h-3.5" />}
+            />
+          </div>
+
           <LanguageSwitcher />
 
           <div className="hidden lg:flex items-center gap-2">
             <PaletteSwitcher />
+
+            <Button
+              onClick={() => setIsShortcutsOpen(true)}
+              title={t.shortcuts.openTitle}
+              aria-label={t.shortcuts.dialogLabel}
+              icon={<Keyboard className="w-3.5 h-3.5 text-amber-400" />}
+            />
 
             <Button onClick={() => setIsProjectsDrawerOpen(true)} icon={<FolderOpen className="w-3.5 h-3.5 text-amber-400" />}>
               {t.header.savedClips}
@@ -1231,6 +1382,52 @@ export default function VideoCreatorPage() {
               {t.surfaces.source}
             </h2>
             <div className="flex-1 overflow-y-auto p-3">
+              {pendingDraft && (
+                <div className="mb-3 rounded-lg border border-lapis-bright/40 bg-lapis-bright/10 p-2.5 text-[11px] text-slate-200 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5 text-lapis-bright" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">{t.draft.title}</p>
+                      <p className="mt-0.5">
+                        {t.draft.describe(
+                          projectTitle(
+                            pendingDraft.surahNameEnglish || String(pendingDraft.surahNumber),
+                            pendingDraft.surahNumber,
+                            pendingDraft.ayahStart,
+                            pendingDraft.ayahEnd
+                          ),
+                          new Date(pendingDraft.savedAt).toLocaleString(locale)
+                        )}
+                      </p>
+                      {pendingDraft.audioUploadName && (
+                        <p className="mt-1 text-slate-300">
+                          {t.draft.audioMissing(pendingDraft.audioUploadName)}
+                        </p>
+                      )}
+                      {pendingDraft.droppedBackgrounds > 0 && (
+                        <p className="mt-1 text-slate-300">
+                          {t.draft.backgroundsMissing(pendingDraft.droppedBackgrounds)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="primary" onClick={handleRestoreDraft}>{t.draft.restore}</Button>
+                    <Button onClick={handleDiscardDraft}>{t.draft.dismiss}</Button>
+                  </div>
+                </div>
+              )}
+
+              {draftSavedAt !== null && !pendingDraft && (
+                <p
+                  className="mb-3 text-[11px] text-slate-400 flex items-center gap-1.5"
+                  title={t.draft.savedTitle}
+                >
+                  <Save className="w-3 h-3" />
+                  {t.draft.savedAt(new Date(draftSavedAt).toLocaleTimeString(locale))}
+                </p>
+              )}
+
               {isSampleProject && (
                 <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5 text-[11px] text-amber-200 flex items-start gap-2">
                   <BookOpen className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -1821,6 +2018,8 @@ export default function VideoCreatorPage() {
       />
 
       {/* Saved Projects Drawer */}
+      <ShortcutsDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+
       <SavedProjectsDrawer
         isOpen={isProjectsDrawerOpen}
         onClose={() => setIsProjectsDrawerOpen(false)}

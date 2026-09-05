@@ -1,4 +1,4 @@
-import { MediaKind, rememberMediaKind } from './backgroundTimeline';
+import { MediaKind, rememberMediaKind, rememberMediaName } from './backgroundTimeline';
 
 /**
  * The backgrounds a user has added themselves.
@@ -197,7 +197,13 @@ export function hydrateLibrary(): Promise<void> {
       const blob = await idbGet(item.id);
       restored.push({ ...item, source: 'upload', url: blob ? URL.createObjectURL(blob) : null });
     }
-    restored.forEach(item => { if (item.url) rememberMediaKind(item.url, item.kind); });
+    restored.forEach(item => {
+      if (!item.url) return;
+      rememberMediaKind(item.url, item.kind);
+      // A fresh object url each session, so the name has to be re-registered
+      // with it -- otherwise a restored upload goes back to "Uploaded clip".
+      rememberMediaName(item.url, item.label);
+    });
     items = restored;
     listeners.forEach(listener => listener());
   })();
@@ -226,6 +232,7 @@ export async function addLibraryUpload(
   const id = newId();
   const url = URL.createObjectURL(file);
   rememberMediaKind(url, kind);
+  rememberMediaName(url, file.name);
   const stored = await idbPut(id, file);
   const item: LibraryItem = { id, kind, label: file.name, source: 'upload', url };
   publish([...items, item]);
@@ -235,6 +242,7 @@ export async function addLibraryUpload(
 /** Adds a pasted link, or returns the existing entry if it is already listed. */
 export function addLibraryLink(url: string, kind: MediaKind, label: string): LibraryItem {
   rememberMediaKind(url, kind);
+  rememberMediaName(url, label);
   const existing = items.find(item => item.url === url);
   if (existing) return existing;
   const item: LibraryItem = { id: newId(), kind, label, source: 'link', url };

@@ -5,11 +5,13 @@ import {
   backgroundLabel,
   mediaKind,
   rememberMediaKind,
+  rememberMediaName,
   appendSegment,
   removeSegment,
   resizeSegment,
   moveSegmentTo,
 } from './backgroundTimeline';
+import { BACKGROUND_VIDEOS } from './quranData';
 
 describe('backgroundPlaylist', () => {
   it('includes stills, not only video', () => {
@@ -110,6 +112,19 @@ describe('backgroundLabel', () => {
 
   it('does not show a blob id as a name either', () => {
     expect(backgroundLabel('blob:http://localhost:3000/9f8e-1234')).not.toContain('9f8e');
+  });
+
+  it('calls an upload by its file name once it has been told one', () => {
+    // Three uploads on the timeline were three blocks labelled "Uploaded clip".
+    const url = 'blob:http://localhost:3000/named-1';
+    rememberMediaName(url, 'sudais-nightprayer.mp4');
+    expect(backgroundLabel(url)).toBe('sudais-nightprayer.mp4');
+  });
+
+  it('leaves a preset under its own title, whatever was registered for it', () => {
+    const preset = BACKGROUND_VIDEOS[0];
+    rememberMediaName(preset.url, 'whatever.mp4');
+    expect(backgroundLabel(preset.url)).toBe(preset.title);
   });
 });
 

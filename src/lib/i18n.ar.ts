@@ -71,6 +71,10 @@ export const ar: Dictionary = {
     wordmarkSuffix: 'استوديو',
     pageTitle: (surah, number, start, end) =>
       `استوديو مقاطع القرآن — ${surah} ${number}:${start}–${end}`,
+    undo: 'تراجع',
+    undoTitle: 'التراجع عن آخر تغيير (Ctrl+Z)',
+    redo: 'إعادة',
+    redoTitle: 'إعادة آخر تغيير تم التراجع عنه (Ctrl+Shift+Z)',
     savedClips: 'المقاطع المحفوظة',
     saveProject: 'حفظ المشروع',
     saveProjectTitle: 'حفظ هذا المقطع في قائمة المشاريع',
@@ -233,6 +237,36 @@ export const ar: Dictionary = {
     hint: 'جرّب قارئًا آخر، أو ارفع ملفًا صوتيًا خاصًا بك.'
   },
 
+  draft: {
+    title: 'عمل من زيارتك السابقة',
+    describe: (project, when) => `${project} — آخر تعديل ${when}.`,
+    restore: 'استعادته',
+    dismiss: 'تجاهل',
+    audioMissing: name =>
+      `كانت التلاوة ملفك المرفوع ${name}، ولا يمكن فتحه تلقائيًا — استعد المسار ثم اختر الملف نفسه مرة أخرى.`,
+    backgroundsMissing: count =>
+      `تعذّر حفظ ${count} من الخلفيات المرفوعة. أضفها من جديد من خلفياتك.`,
+    restored: 'تمت الاستعادة من زيارتك السابقة.',
+    savedAt: when => `حُفظت المسودة ${when}`,
+    savedTitle: 'محفوظة في هذا المتصفح حتى لا يضيع العمل عند التحديث أو التعطّل. وهي ليست مقطعًا محفوظًا.'
+  },
+
+  shortcuts: {
+    open: 'الاختصارات',
+    openTitle: 'كل اختصارات لوحة المفاتيح (?)',
+    dialogLabel: 'اختصارات لوحة المفاتيح',
+    title: 'اختصارات لوحة المفاتيح',
+    hint:
+      'تعمل هذه الاختصارات في كل أنحاء الاستوديو عدا داخل حقول النص — فهناك تكتب المفاتيح حروفها، ويتراجع Ctrl+Z عمّا كتبته.',
+    macNote: 'على أجهزة Mac استخدم ⌘ بدل Ctrl.',
+    playPause: 'تشغيل التلاوة أو إيقافها',
+    markEnd: 'إنهاء الآية المحدّدة عند المؤشر',
+    undo: 'التراجع عن آخر تغيير في المسار أو التنسيق',
+    redo: 'إعادة تنفيذ ما تم التراجع عنه',
+    list: 'فتح هذه القائمة',
+    dismiss: 'إغلاق هذه القائمة أو أي نافذة'
+  },
+
   timeline: {
     label: 'المسار الزمني',
     playRecitation: 'تشغيل التلاوة',
@@ -266,6 +300,9 @@ export const ar: Dictionary = {
     dragClipStart: 'اسحب لتحريك موضع بداية الصوت',
     dragClipEnd: 'اسحب لتحريك موضع نهاية الصوت',
     dragToEdit: ' · اسحب للتحريك، واسحب حافة لتغيير الطول',
+    clipLength: length => `طول المقطع ${length}`,
+    clipRepeats: times => `يُعاد ${times}× هنا`,
+    clipRepeatsAria: (name, times) => `${name} يتكرر ${times} مرات في هذه الكتلة`,
     moveStartOf: name => `تحريك بداية ${name}`,
     moveEndOf: name => `تحريك نهاية ${name}`,
     empty: 'لا آيات محمّلة بعد — اختر سورة من اللوحة الجانبية، أو ارفع تلاوة.'
@@ -325,13 +362,13 @@ export const ar: Dictionary = {
     bgModeLabel: 'طريقة استخدام الخلفيات:',
     bgModes: {
       single: 'خلفية واحدة',
-      'per-ayah': 'خلفية لكل آية',
+      'per-ayah': 'خلفية لكل مقطع',
       cycle: 'تبديل دوري',
       shuffle: 'عشوائي'
     },
     bgModeHints: {
       single: 'مقطع واحد يتكرر.',
-      'per-ayah': 'ينتقل إلى المقطع التالي عند كل آية.',
+      'per-ayah': 'ينتقل إلى الخلفية التالية عند بداية كل مقطع.',
       cycle: 'يتغيّر كل بضع ثوانٍ.',
       shuffle: 'يختار مقطعًا لكل آية، بالترتيب نفسه في كل مرة.'
     },
@@ -352,9 +389,6 @@ export const ar: Dictionary = {
     sequenceCount: count => `${count} في التسلسل، بترتيب التشغيل — وقد يتكرر المقطع الواحد أكثر من مرة.`,
     moveEarlier: name => `تقديم ${name}`,
     moveLater: name => `تأخير ${name}`,
-    removeFromSequenceTitle: 'إزالة من التسلسل؟',
-    removeFromSequenceMessage: (name, position) =>
-      `«${name}» لن تعود تُعرض في الموضع ${position}. وتبقى ضمن خلفياتك بالأسفل جاهزة للإضافة مجددًا.`,
     removeFromSequenceAria: (name, position) => `إزالة ${name} من الموضع ${position}`,
 
     galleryLabelLane: 'أضف خلفية إلى نهاية المسار:',
@@ -362,6 +396,7 @@ export const ar: Dictionary = {
     galleryLabelMulti: 'اختر خلفياتك:',
     galleryHelp:
       'الخلفيات الجاهزة أولًا، ثم ما رفعته أو ألصقت رابطه بالأسفل. مرّر المؤشر فوق خلفياتك الخاصة لحذفها.',
+    tileLength: length => `مدته ${length}`,
     tileMissing: 'لم يعد هذا الملف موجودًا على هذا الجهاز، أو توقّف الرابط عن العمل',
     tileAddToLane: 'أضف كتلة لهذا المقطع في نهاية المسار',
     tileAddToSequence: 'أضفها إلى التسلسل — اضغط مرة أخرى لاستخدامها أكثر من مرة',

@@ -7,6 +7,8 @@ import {
 import {
   backgroundLabel, appendSegment, removeSegment, mediaKind, rememberMediaKind, MediaKind
 } from '@/lib/backgroundTimeline';
+import { formatClipLength } from '@/lib/mediaDuration';
+import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { ColorField } from './ColorField';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useT } from './LocaleProvider';
@@ -201,6 +203,18 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       };
     })
   ];
+
+  /**
+   * How long each clip in the gallery runs.
+   *
+   * Measured only while this tab is open, and only for footage: a still has no
+   * length, and probing ten preset urls for a tab nobody opened is ten requests
+   * for nothing. A length that cannot be read is simply not shown.
+   */
+  const clipLengths = useMediaDurations(
+    gallery.filter(bg => bg.url && !bg.missing && bg.kind === 'video').map(bg => bg.url as string),
+    activeTab === 'background'
+  );
 
   /**
    * Deletes a background the user added, and every use of it.
@@ -511,15 +525,14 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         >
                           <ChevronRight className="w-3.5 h-3.5" />
                         </button>
+                        {/* No confirmation here, unlike deleting a background
+                            from the library below. Taking a clip out of the
+                            sequence loses nothing -- it is still in the gallery,
+                            one tap from being added back -- and Ctrl+Z puts the
+                            sequence back as it was. A dialog for that is a
+                            second click on every reorder. */}
                         <button
-                          onClick={() =>
-                            setPendingDelete({
-                              title: t.style.removeFromSequenceTitle,
-                              message: t.style.removeFromSequenceMessage(nameOf(url), i + 1),
-                              confirmLabel: t.common.remove,
-                              run: () => setSequence(bgSequence.filter((_, j) => j !== i))
-                            })
-                          }
+                          onClick={() => setSequence(bgSequence.filter((_, j) => j !== i))}
                           aria-label={t.style.removeFromSequenceAria(nameOf(url), i + 1)}
                           className="p-0.5 text-slate-400 hover:text-red-400"
                         >
@@ -550,6 +563,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 const inUse = !bg.url ? false : customBackground
                   ? laneSegments.some(seg => seg.url === bg.url)
                   : multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url;
+                const clipLength = bg.url ? clipLengths[bg.url] : undefined;
                 return (
                   <div key={bg.id} className="relative group rounded-xl overflow-hidden">
                     <button
@@ -615,6 +629,17 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                             ? <FileQuestion className="w-2.5 h-2.5" />
                             : bg.kind === 'image' ? <ImageIcon className="w-2.5 h-2.5" /> : <Film className="w-2.5 h-2.5" />}
                           {bg.category}
+                          {/* How long the footage is, which is what decides
+                              whether a block on the lane will repeat. */}
+                          {clipLength ? (
+                            <span
+                              dir="ltr"
+                              title={t.style.tileLength(formatClipLength(clipLength))}
+                              className="font-mono normal-case tracking-normal text-slate-300"
+                            >
+                              · {formatClipLength(clipLength)}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                       {!multiBackground && !customBackground && config.bgUrl === bg.url && (

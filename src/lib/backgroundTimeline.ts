@@ -57,6 +57,21 @@ export function rememberMediaKind(url: string, kind: MediaKind): void {
   if (url) knownKinds.set(url, kind);
 }
 
+/**
+ * Names we were told, for media that cannot name itself.
+ *
+ * An upload is a `blob:` url with no path, so every uploaded clip on the
+ * timeline was labelled "Uploaded clip" -- three of them side by side were
+ * indistinguishable, which is exactly when the label matters. The file name is
+ * known at the moment of the upload and nowhere afterwards, so it is recorded
+ * here in the same shape as `knownKinds` and read back by `backgroundLabel`.
+ */
+const knownNames = new Map<string, string>();
+
+export function rememberMediaName(url: string, name: string): void {
+  if (url && name) knownNames.set(url, name);
+}
+
 /** Footage unless we know or can see otherwise -- video is what the studio is mostly given. */
 export function mediaKind(url: string): MediaKind {
   return knownKinds.get(url) ?? (IMAGE_EXTENSIONS.test(url) ? 'image' : 'video');
@@ -234,6 +249,9 @@ export function backgroundLabel(url: string, labels: BackgroundLabels = DEFAULT_
   // A preset's translated title if there is one; otherwise the shipped English
   // title, which is better than no name at all.
   if (preset) return labels.titles[preset.id] ?? preset.title;
+  // What the file is actually called, when whoever added it told us.
+  const known = knownNames.get(url);
+  if (known) return known;
   const kind = mediaKind(url);
   if (url.startsWith('blob:')) return kind === 'image' ? labels.uploadedImage : labels.uploadedClip;
   // A data: url's "path" is the file itself -- naming it after that would put a
