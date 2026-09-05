@@ -121,12 +121,49 @@ export interface QuranFetchResult {
 }
 
 /**
+ * The translation to ask for alongside the configured one.
+ *
+ * Saheeh International exists on both upstreams, which the configured id may
+ * not: the Foundation's pre-live sandbox carries 14 translations and two
+ * chapters, and The Clear Quran is in neither. Asking for both in the same
+ * request costs nothing and means a caption always has *a* translation, so
+ * pointing the studio at a sandbox cannot leave it worse off than the open API
+ * it replaced.
+ */
+export const FALLBACK_TRANSLATION_ID = '20';
+
+/** The ids a text request should carry, most wanted first, without repeating one. */
+export function translationIdsToRequest(): string[] {
+  const primary = defaultTranslationId();
+  return primary === FALLBACK_TRANSLATION_ID ? [primary] : [primary, FALLBACK_TRANSLATION_ID];
+}
+
+/**
+ * Picks the best translation out of what a verse actually came back with.
+ *
+ * Order of preference is the order asked for, so the configured translation
+ * wins when it is there and the fallback answers when it is not.
+ */
+export function preferredTranslation(
+  translations: { resource_id?: number; text?: string }[] | undefined,
+  wanted: string[] = translationIdsToRequest()
+): string {
+  const list = translations || [];
+  for (const id of wanted) {
+    const found = list.find(entry => String(entry?.resource_id) === id && entry?.text);
+    if (found?.text) return found.text;
+  }
+  return list.find(entry => entry?.text)?.text || '';
+}
+
+/**
  * Fetches a v4 content path from whichever upstream is configured.
  *
  * `path` is everything after the version, starting with a slash --
- * `/verses/by_chapter/2?translations=131`. A Foundation request that cannot be
- * authorised falls back to the public API rather than failing: a missing
- * translation is recoverable, a studio that cannot load an ayah is not.
+ * `/verses/by_chapter/2?translations=131`. Any Foundation answer that is not a
+ * success is retried against the open API: bad credentials, a sandbox that
+ * holds two chapters, an endpoint that is down. A missing translation is
+ * recoverable; a studio that cannot load an ayah is not.
  */
 export async function quranApiFetch(
   path: string,
@@ -142,12 +179,11 @@ export async function quranApiFetch(
           ...init,
           headers: { ...headers, 'x-auth-token': auth, 'x-client-id': clientId() }
         });
-        // 401/403 means the credentials are wrong or the token was rejected;
-        // anything else is a real answer about the content itself.
-        if (res.ok || (res.status !== 401 && res.status !== 403)) {
-          return { res, source: 'foundation' };
-        }
-        token = null;
+        if (res.ok) return { res, source: 'foundation' };
+        // Rejected credentials are worth forgetting the token over; everything
+        // else -- a 404 from a sandbox that does not hold this chapter, a 5xx --
+        // simply means asking the other upstream instead.
+        if (res.status === 401 || res.status === 403) token = null;
       } catch {
         // Unreachable. Fall through to the open API.
       }
@@ -159,5 +195,44 @@ export async function quranApiFetch(
     return { res, source: 'public' };
   } catch {
     return { res: null, source: 'public' };
+  }
+}
+
+/**
+ * The same fetch, judged on what came back rather than on the status code.
+ *
+ * A sandbox answers 200 for a chapter it holds and simply omits the
+ * translation it does not have -- which is the exact failure that made the
+ * studio's captions empty in the first place, and a status check cannot see
+ * it. `usable` decides; anything the configured upstream returns that fails it
+ * is asked for again from the open API.
+ */
+export async function quranApiJson<T>(
+  path: string,
+  init: RequestInit & { next?: { revalidate?: number } } = {},
+  usable: (data: T) => boolean = () => true
+): Promise<{ data: T | null; source: QuranApiSource }> {
+  const first = await quranApiFetch(path, init);
+  let parsed: T | null = null;
+  if (first.res?.ok) {
+    try {
+      parsed = (await first.res.json()) as T;
+    } catch {
+      parsed = null;
+    }
+  }
+  if (parsed && usable(parsed)) return { data: parsed, source: first.source };
+  if (first.source === 'public') return { data: parsed, source: 'public' };
+
+  // The configured upstream answered with something unusable. Ask the open one.
+  try {
+    const res = await fetch(`${PUBLIC_BASE}${path}`, {
+      ...init,
+      headers: { Accept: 'application/json' }
+    });
+    if (!res.ok) return { data: parsed, source: first.source };
+    return { data: (await res.json()) as T, source: 'public' };
+  } catch {
+    return { data: parsed, source: first.source };
   }
 }

@@ -7,7 +7,7 @@
  */
 
 import { VerseData, VerseWord } from '@/lib/quranData';
-import { defaultTranslationId, quranApiFetch } from './quranApi';
+import { defaultTranslationId, quranApiJson, translationIdsToRequest, preferredTranslation } from './quranApi';
 import { normalizeArabic } from '@/lib/arabic';
 
 type QuranApiWord = {
@@ -20,7 +20,7 @@ type QuranApiVerse = {
   verse_number: number;
   verse_key: string;
   text_uthmani: string;
-  translations?: { text: string }[];
+  translations?: { resource_id?: number; text?: string }[];
   words?: QuranApiWord[];
 };
 
@@ -68,18 +68,22 @@ export const TRANSLATION_ID = defaultTranslationId();
 
 const CHAPTER_PATH = (surah: number) =>
   `/verses/by_chapter/${surah}` +
-  `?language=en&words=true&translations=${TRANSLATION_ID}&fields=text_uthmani` +
+  `?language=en&words=true&translations=${translationIdsToRequest().join(',')}&fields=text_uthmani` +
   `&word_fields=text_uthmani,translation&per_page=300`;
 
 const chapterCache = new Map<number, Promise<CorpusVerse[]>>();
 
 async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
-  const { res } = await quranApiFetch(CHAPTER_PATH(surahNumber), { next: { revalidate: 86400 } });
-  if (!res) throw new Error(`Unable to reach the Quran API for chapter ${surahNumber}.`);
-  if (!res.ok) throw new Error(`Unable to fetch Quran chapter ${surahNumber} (${res.status}).`);
+  const { data } = await quranApiJson<{ verses?: QuranApiVerse[] }>(
+    CHAPTER_PATH(surahNumber),
+    { next: { revalidate: 86400 } },
+    // Text with no translation is not an answer: the aligner writes that
+    // translation onto every caption it produces.
+    body => (body.verses || []).some(v => preferredTranslation(v.translations))
+  );
+  if (!data?.verses?.length) throw new Error(`Unable to fetch Quran chapter ${surahNumber}.`);
 
-  const data = (await res.json()) as { verses?: QuranApiVerse[] };
-  return (data.verses || []).map(verse => {
+  return data.verses.map(verse => {
     const words: VerseWord[] = (verse.words || [])
       .filter(word => word.char_type_name === 'word')
       .map(word => ({
@@ -94,7 +98,7 @@ async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
       verseNumber: verse.verse_number,
       verseKey: verse.verse_key,
       textUthmani: verse.text_uthmani,
-      translation: cleanHtml(verse.translations?.[0]?.text || ''),
+      translation: cleanHtml(preferredTranslation(verse.translations)),
       words,
       tokens: words.map(word => normalizeArabic(word.arabic))
     };

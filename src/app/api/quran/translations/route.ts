@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isRtlLanguage, displayLanguage, TranslationOption } from '@/lib/translations';
-import { quranApiFetch, defaultTranslationId, quranApiSource } from '@/lib/quranApi';
+import { quranApiJson, defaultTranslationId, quranApiSource } from '@/lib/quranApi';
 
 /**
  * Every translation quran.com publishes, trimmed to what the picker needs.
@@ -27,13 +27,19 @@ interface ApiTranslation {
 
 export async function GET() {
   try {
-    const { res, source } = await quranApiFetch('/resources/translations', {
-      next: { revalidate: 86400 }
-    });
-    if (!res?.ok) return NextResponse.json({ success: false, translations: [] }, { status: 502 });
+    const wanted = defaultTranslationId();
+    const { data, source } = await quranApiJson<{ translations?: ApiTranslation[] }>(
+      '/resources/translations',
+      { next: { revalidate: 86400 } },
+      // A list without the translation this studio is configured to show is
+      // not the list to offer: the Foundation's sandbox carries fourteen, and
+      // the open API's 126 are more useful than a subset that is missing the
+      // one the captions are supposed to be in.
+      body => (body.translations || []).some(item => String(item?.id) === wanted)
+    );
+    if (!data) return NextResponse.json({ success: false, translations: [] }, { status: 502 });
 
-    const data = await res.json();
-    const list: ApiTranslation[] = Array.isArray(data?.translations) ? data.translations : [];
+    const list: ApiTranslation[] = Array.isArray(data.translations) ? data.translations : [];
 
     const translations: TranslationOption[] = list
       .filter(item => typeof item?.id === 'number' && (item.name || item.author_name))

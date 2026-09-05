@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TRANSLATION_ID, cleanHtml } from '@/lib/quranCorpus';
-import { quranApiFetch } from '@/lib/quranApi';
+import { cleanHtml } from '@/lib/quranCorpus';
+import { quranApiJson, translationIdsToRequest, preferredTranslation } from '@/lib/quranApi';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
@@ -25,6 +25,15 @@ function getReciterAudioUrl(reciterId: string, surahNumber: number) {
  * falls back to estimates against mp3quran.
  */
 type VerseTiming = { start: number; end: number };
+
+/** What the Quran API returns per ayah, as far as this route reads it. */
+interface ApiVerse {
+  verse_number: number;
+  verse_key: string;
+  text_uthmani: string;
+  translations?: { resource_id?: number; text?: string }[];
+  words?: { char_type_name?: string; text_uthmani?: string; translation?: { text?: string } }[];
+}
 
 async function fetchReciterTimings(
   quranApiId: number,
@@ -119,29 +128,33 @@ export async function GET(req: NextRequest) {
 
     // Otherwise query Quran.com API v4
     try {
-      const { res: quranRes } = await quranApiFetch(
-        `/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${TRANSLATION_ID}` +
+      // Both the configured translation and the one that exists everywhere, so
+      // a chapter the configured upstream does not hold still arrives with a
+      // translation rather than with none.
+      const wantedTranslations = translationIdsToRequest();
+      const { data: quranData } = await quranApiJson<{ verses?: ApiVerse[] }>(
+        `/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${wantedTranslations.join(',')}` +
           `&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
-        { next: { revalidate: 86400 } }
+        { next: { revalidate: 86400 } },
+        // A chapter the configured upstream does not carry, or carries without
+        // the translation, is not usable however cleanly it answered.
+        body => (body.verses || []).some(v => preferredTranslation(v.translations, wantedTranslations))
       );
 
-      if (quranRes?.ok) {
-        const quranData = await quranRes.json();
-        const allVerses = quranData.verses || [];
+      if (quranData?.verses?.length) {
+        const allVerses = quranData.verses;
         
         // Filter requested range
-        const filtered = allVerses.filter((v: { verse_number: number }) => 
-          v.verse_number >= start && v.verse_number <= end
-        );
+        const filtered = allVerses.filter(v => v.verse_number >= start && v.verse_number <= end);
 
         const measured = await fetchReciterTimings(reciterMeta.quranApiId, surahNumber);
         // All measured or none of them. A half-timed range would mix absolute
         // timestamps with offsets counted from zero, which is worse than either.
         const useMeasured =
-          !!measured && filtered.every((v: { verse_key: string }) => measured.timings.has(v.verse_key));
+          !!measured && filtered.every(v => measured.timings.has(v.verse_key));
 
         let currentOffset = 0;
-        const mappedVerses = filtered.map((v: { verse_number: number; verse_key: string; text_uthmani: string; translations: { text: string }[]; words?: { char_type_name?: string; text_uthmani?: string; translation?: { text?: string } }[] }) => {
+        const mappedVerses = filtered.map(v => {
           const quranWords = (v.words || []).filter(w => w.char_type_name === 'word');
           const words = quranWords.map(w => ({
             arabic: w.text_uthmani || '',
@@ -167,7 +180,7 @@ export async function GET(req: NextRequest) {
             currentOffset += approxDuration + 0.8;
           }
 
-          const rawTranslation = v.translations?.[0]?.text || '';
+          const rawTranslation = preferredTranslation(v.translations, wantedTranslations);
           const cleanTranslation = cleanHtml(rawTranslation);
 
           return {
