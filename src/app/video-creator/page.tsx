@@ -51,6 +51,7 @@ import {
 } from '@/lib/draftStore';
 import { useAutoSaveDraft } from '@/hooks/useAutoSaveDraft';
 import { useTimelineEditing } from '@/hooks/useTimelineEditing';
+import { DEFAULT_TRANSLATION_ID, missingTranslationIds } from '@/lib/translations';
 import { useEditHistory, StudioSnapshot } from '@/hooks/useEditHistory';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useLocale } from '@/components/LocaleProvider';
@@ -249,6 +250,9 @@ export default function VideoCreatorPage() {
     translationColor: '#d5dfec',
     textShadow: true,
     showTranslation: true,
+    // The translation every project has always shown. Choosing others adds to
+    // this list; the first one is still the text `verse.translation` holds.
+    translationIds: [DEFAULT_TRANSLATION_ID],
     showWaveform: true,
     showSurahBadge: true,
     surahBadgeText: '',
@@ -839,6 +843,72 @@ export default function VideoCreatorPage() {
       cancelled = true;
     };
   }, []);
+
+  /**
+   * Fetches the text of any translation chosen but not yet loaded.
+   *
+   * Keyed on the passage rather than on how the timeline was built: a timeline
+   * from the aligner never went through the verses route, and a language picked
+   * an hour into an edit has no load step to ride along with. What is asked for
+   * is remembered, so a translation quran.com does not actually serve for this
+   * surah is requested once rather than on every render that notices it missing.
+   */
+  const requestedTranslations = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const wanted = canvasConfig.translationIds || [];
+    const missing = missingTranslationIds(verses, wanted);
+    if (!missing.length) return;
+
+    // A recording can cross a surah boundary, and the API is per chapter.
+    const passages = new Map<number, { start: number; end: number }>();
+    for (const verse of verses) {
+      const [surah, ayah] = verse.verseKey.split(':').map(Number);
+      if (!surah || !ayah) continue;
+      const found = passages.get(surah);
+      if (!found) passages.set(surah, { start: ayah, end: ayah });
+      else {
+        found.start = Math.min(found.start, ayah);
+        found.end = Math.max(found.end, ayah);
+      }
+    }
+
+    const jobs: { surah: number; start: number; end: number; ids: string[] }[] = [];
+    for (const [surah, range] of passages) {
+      const ids = missing.filter(id => !requestedTranslations.current.has(`${surah}:${id}`));
+      if (!ids.length) continue;
+      ids.forEach(id => requestedTranslations.current.add(`${surah}:${id}`));
+      jobs.push({ surah, ...range, ids });
+    }
+    if (!jobs.length) return;
+
+    let cancelled = false;
+    void (async () => {
+      const arrived: Record<string, Record<string, string>> = {};
+      for (const job of jobs) {
+        try {
+          const res = await fetch(
+            `/api/quran/translation?surah=${job.surah}&start=${job.start}&end=${job.end}&ids=${job.ids.join(',')}`
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+          for (const [key, texts] of Object.entries(data?.verses || {})) {
+            arrived[key] = { ...arrived[key], ...(texts as Record<string, string>) };
+          }
+        } catch {
+          // Offline, or the resource is gone. The card shows what it has.
+        }
+      }
+      if (cancelled || !Object.keys(arrived).length) return;
+      setVerses(prev =>
+        prev.map(verse => {
+          const extra = arrived[verse.verseKey];
+          return extra ? { ...verse, translations: { ...verse.translations, ...extra } } : verse;
+        })
+      );
+    })();
+
+    return () => { cancelled = true; };
+  }, [canvasConfig.translationIds, verses, setVerses]);
 
   /** Which ayah the playhead is currently inside. */
   const activeVerseIndex = useMemo(() => segmentAt(verses, currentTime), [verses, currentTime]);

@@ -34,6 +34,7 @@ export const en = {
   common: {
     cancel: 'Cancel',
     apply: 'Apply',
+    done: 'Done',
     reset: 'Reset',
     delete: 'Delete',
     remove: 'Remove',
@@ -258,6 +259,27 @@ export const en = {
     savedTitle: 'Saved in this browser, so a refresh or a crash does not lose it. It is not a saved clip.'
   },
 
+  translations: {
+    dialogLabel: 'Choose translations',
+    title: 'Translations',
+    help: (max: number) =>
+      `Pick up to ${max}. They appear under the Arabic in the order you choose them — one language, or two side by side.`,
+    selected: (count: number, max: number) => `On the card (${count}/${max}):`,
+    searchPlaceholder: 'Search a language or a translator…',
+    loading: 'Loading the list of translations…',
+    failed: 'Could not load the list. The translation already on the card still works.',
+    noMatches: (query: string) => `Nothing matches “${query}”.`,
+    rtlBadge: 'RTL',
+    remove: (name: string) => `Remove ${name}`,
+    keepOne: 'At least one translation stays on the card — hide them with the Translation switch instead.',
+    atLimit: (max: number) => `${max} is the most that fits and still reads. Remove one first.`,
+
+    panelLabel: 'Translations',
+    panelHelp: 'What appears under the Arabic. Choose a language, or show two at once.',
+    choose: 'Choose translations',
+    defaultName: 'Saheeh International'
+  },
+
   shortcuts: {
     open: 'Shortcuts',
     openTitle: 'Every keyboard shortcut (?)',
@@ -478,7 +500,7 @@ export const en = {
     textShadow: 'Text Shadow',
     audioVisualizer: 'Audio Visualizer',
     surahBadge: 'Surah Badge',
-    englishTranslation: 'English Translation',
+    englishTranslation: 'Translation',
 
     watermarkLabel: 'Watermark / Social Handle:',
     watermarkPlaceholder: '@MyDawahChannel',

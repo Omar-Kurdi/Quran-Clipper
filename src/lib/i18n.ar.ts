@@ -33,6 +33,7 @@ export const ar: Dictionary = {
   common: {
     cancel: 'إلغاء',
     apply: 'تطبيق',
+    done: 'تم',
     reset: 'إعادة ضبط',
     delete: 'حذف',
     remove: 'إزالة',
@@ -251,6 +252,27 @@ export const ar: Dictionary = {
     savedTitle: 'محفوظة في هذا المتصفح حتى لا يضيع العمل عند التحديث أو التعطّل. وهي ليست مقطعًا محفوظًا.'
   },
 
+  translations: {
+    dialogLabel: 'اختيار الترجمات',
+    title: 'الترجمات',
+    help: max =>
+      `اختر حتى ${max}. تظهر أسفل النص العربي بالترتيب الذي تختاره — لغة واحدة أو لغتان معًا.`,
+    selected: (count, max) => `على البطاقة (${count}/${max}):`,
+    searchPlaceholder: 'ابحث عن لغة أو مترجم…',
+    loading: 'جارٍ تحميل قائمة الترجمات…',
+    failed: 'تعذّر تحميل القائمة. والترجمة الموجودة على البطاقة تعمل كما هي.',
+    noMatches: query => `لا نتائج لـ «${query}».`,
+    rtlBadge: 'من اليمين',
+    remove: name => `إزالة ${name}`,
+    keepOne: 'تبقى ترجمة واحدة على الأقل — لإخفائها كلها استخدم مفتاح الترجمة.',
+    atLimit: max => `${max} هو أقصى ما يتّسع ويبقى مقروءًا. أزِل واحدة أولًا.`,
+
+    panelLabel: 'الترجمات',
+    panelHelp: 'ما يظهر أسفل النص العربي. اختر لغة، أو اعرض لغتين معًا.',
+    choose: 'اختيار الترجمات',
+    defaultName: 'Saheeh International'
+  },
+
   shortcuts: {
     open: 'الاختصارات',
     openTitle: 'كل اختصارات لوحة المفاتيح (?)',
@@ -465,7 +487,7 @@ export const ar: Dictionary = {
     textShadow: 'ظل النص',
     audioVisualizer: 'مؤشر الصوت',
     surahBadge: 'شارة السورة',
-    englishTranslation: 'الترجمة الإنجليزية',
+    englishTranslation: 'الترجمة',
 
     watermarkLabel: 'العلامة المائية / المعرّف:',
     watermarkPlaceholder: '@MyDawahChannel',

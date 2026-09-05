@@ -475,3 +475,32 @@ describe('mergeWithNext', () => {
     expect([merged[0].startTime, merged[0].endTime]).toEqual([0, 10]);
   });
 });
+
+describe('extra translations', () => {
+  /**
+   * Translations fetched for a chosen language are whole-ayah text hanging off
+   * the caption. Nothing in the edits touches them, which is the point -- an
+   * edit that dropped them would empty half a bilingual card and look like the
+   * fetch had failed.
+   */
+  const withUrdu = (): VerseData => ({
+    ...verse('66:8', 0, 10, 'أ ب ج د'),
+    translations: { '158': 'اللہ کے نام سے' }
+  });
+
+  it('survives a split, on both halves', () => {
+    const [head, tail] = splitSegment([withUrdu()], 0, 5);
+    expect(head.translations).toEqual({ '158': 'اللہ کے نام سے' });
+    expect(tail.translations).toEqual({ '158': 'اللہ کے نام سے' });
+  });
+
+  it('survives a merge', () => {
+    const merged = mergeWithNext(splitSegment([withUrdu()], 0, 5), 0);
+    expect(merged[0].translations).toEqual({ '158': 'اللہ کے نام سے' });
+  });
+
+  it('survives duplicating a caption', () => {
+    const copies = duplicateVerse([withUrdu()], 0, 30);
+    expect(copies[1].translations).toEqual({ '158': 'اللہ کے نام سے' });
+  });
+});

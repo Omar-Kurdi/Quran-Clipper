@@ -16,6 +16,11 @@
  *  - the sample project. The studio opens with Al-Fatihah already loaded;
  *    saving that would invent a draft the user never made and then offer it
  *    back to them. The caller gates on `isSampleProject`.
+ *
+ * Fetched translations are stripped for a third reason: size. Three of them
+ * across Al-Baqarah is megabytes of text that the API will hand back on
+ * request, and a draft that will not fit turns auto-save off for the session --
+ * so the *choice* is stored and the text is asked for again on restore.
  */
 
 import { VerseData } from './quranData';
@@ -93,6 +98,12 @@ function stripUploads(config: Record<string, unknown>): StrippedConfig {
 export function buildDraft(input: DraftInput): ProjectDraft {
   const { config, dropped } = stripUploads(input.config);
   const uploaded = isTransientUrl(input.audioUrl);
+  // Re-fetchable by verse key, and by far the largest thing a caption carries.
+  const verses = input.verses.map(verse => {
+    if (!verse.translations) return verse;
+    const { translations: _fetched, ...rest } = verse;
+    return rest as VerseData;
+  });
   return {
     version: DRAFT_VERSION,
     savedAt: input.savedAt ?? Date.now(),
@@ -104,7 +115,7 @@ export function buildDraft(input: DraftInput): ProjectDraft {
     reciterId: input.reciterId,
     audioUrl: uploaded ? '' : input.audioUrl,
     audioUploadName: uploaded ? input.audioUploadName : '',
-    verses: input.verses,
+    verses,
     config,
     droppedBackgrounds: dropped
   };

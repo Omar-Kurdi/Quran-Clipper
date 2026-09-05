@@ -48,6 +48,15 @@ export interface VerseData {
   // Useful when only part of an ayah is recited or repeated.
   displayTextUthmani?: string;
   displayTranslation?: string;
+  /**
+   * Further translations of this ayah, keyed by quran.com resource id.
+   *
+   * Whole-ayah text, unlike `displayTranslation`: a caption that covers half
+   * an ayah cannot divide a translation nobody has aligned word for word.
+   * Fetched on demand when a language is chosen, and dropped from the
+   * auto-saved draft, which can ask for them again.
+   */
+  translations?: Record<string, string>;
 }
 
 // Audio URLs verified against mp3quran.net download pages (Aug 2026).

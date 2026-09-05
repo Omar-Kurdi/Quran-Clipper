@@ -6,6 +6,7 @@ import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHea
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
 import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
+import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
@@ -52,6 +53,11 @@ export interface VideoCanvasConfig {
   translationColor: string;
   textShadow: boolean;
   showTranslation: boolean;
+  /**
+   * Which translations the card shows, by quran.com resource id, in the order
+   * they appear. Absent means the one every project started with.
+   */
+  translationIds?: string[];
   showWaveform: boolean;
   showSurahBadge: boolean;
   surahBadgeText: string;
@@ -204,11 +210,19 @@ function arabicRowPitch(ctx: CanvasRenderingContext2D, lines: string[], size: nu
   return Math.max(gap, size * 1.45) * 1.06;
 }
 
+/** One translation, wrapped to the card at the size the fitting loop settled on. */
+type TranslationBlockLayout = {
+  lines: string[];
+  /** Right-to-left blocks are drawn in the verse face, on a looser line. */
+  rtl: boolean;
+  lineHeight: number;
+};
+
 type CardTextLayout = {
   arabicLines: string[];
   arabicLineHeight: number;
-  translationLines: string[];
-  translationLineHeight: number;
+  /** One entry per translation on the card, in the order they are drawn. */
+  blocks: TranslationBlockLayout[];
   widest: number;
   arabicSize: number;
   translationSize: number;
@@ -821,8 +835,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
       const displayArabic = activeVerse ? getDisplayArabic(activeVerse) : '';
       if (activeVerse && displayArabic) {
-        const translationText = activeVerse.displayTranslation || activeVerse.translation || '';
-        const withTranslation = Boolean(config.showTranslation && translationText);
+        // One block per chosen translation, in the order they were chosen. A
+        // language whose text has not arrived yet is absent rather than blank,
+        // so the card never reserves space for nothing.
+        const translationBlocks = captionTranslations(activeVerse, config.translationIds || [DEFAULT_TRANSLATION_ID]);
+        const withTranslation = Boolean(config.showTranslation && translationBlocks.length);
         const maxTextWidth = cardWidth - 80;
         const ayahFontSize = (config.ayahNumberFontSize || 34) * (height / 1920);
         // Ayah numeral, the gap around the divider, and the room under it.
@@ -834,6 +851,18 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           `bold ${size}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
         const translationFont = (size: number) =>
           `${size}px '${config.fontTranslation}', sans-serif`;
+        /**
+         * Urdu, Persian and the rest are in the Arabic script, and the
+         * translation face is a Latin one -- naming it for them draws tofu or
+         * unjoined letters. They borrow the verse face, which is already
+         * loaded for the ayah above them, on a looser line so the harakat have
+         * room.
+         */
+        const rtlTranslationFont = (size: number) =>
+          `${size}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
+        const blockLineHeight = (size: number, rtl: boolean) => size * (rtl ? 1.85 : 1.55);
+        /** The breathing space between two translations, so they read as two. */
+        const blockGap = (size: number) => size * 0.7;
 
         // Wraps greedily and never drops a word. A word too wide for the card
         // still gets its own line; the fitting loop then shrinks the type until
@@ -856,19 +885,22 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           const arabicLineHeight = arabicRowPitch(ctx, arabicLines, arabic);
           let widest = 0;
           for (const line of arabicLines) widest = Math.max(widest, ctx.measureText(line).width);
-          let translationLines: string[] = [];
-          let translationLineHeight = 0;
+          const blocks: { lines: string[]; rtl: boolean; lineHeight: number }[] = [];
+          let translationHeight = 0;
           if (withTranslation) {
-            ctx.font = translationFont(translation);
-            translationLines = wrapAll(translationText, maxTextWidth);
-            translationLineHeight = translation * 1.55;
-            for (const line of translationLines) widest = Math.max(widest, ctx.measureText(line).width);
+            translationBlocks.forEach((block, index) => {
+              ctx.font = block.rtl ? rtlTranslationFont(translation) : translationFont(translation);
+              const lines = wrapAll(block.text, maxTextWidth);
+              const lineHeight = blockLineHeight(translation, block.rtl);
+              for (const line of lines) widest = Math.max(widest, ctx.measureText(line).width);
+              blocks.push({ lines, rtl: block.rtl, lineHeight });
+              translationHeight += lines.length * lineHeight + (index > 0 ? blockGap(translation) : 0);
+            });
           }
           return {
-            arabicLines, arabicLineHeight, translationLines, translationLineHeight, widest,
+            arabicLines, arabicLineHeight, blocks, widest,
             arabicSize: arabic, translationSize: translation,
-            stackHeight: arabicLines.length * arabicLineHeight
-              + translationLines.length * translationLineHeight,
+            stackHeight: arabicLines.length * arabicLineHeight + translationHeight,
           };
         };
 
@@ -883,7 +915,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // the configured sizes do. Font loading is in the key, so metrics
         // measured against a fallback are recomputed once the real face lands.
         const layoutKey = [
-          displayArabic, translationText, withTranslation, cardWidth, cardHeight,
+          displayArabic,
+          translationBlocks.map(block => `${block.id}:${block.text}`).join('\u0001'),
+          withTranslation, cardWidth, cardHeight,
           config.fontArabic, config.fontTranslation, config.arabicFontSize,
           config.translationFontSize, config.ayahNumberFontSize,
           typeof document !== 'undefined' ? document.fonts.status : '',
@@ -950,13 +984,21 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         y += 24;
 
         if (withTranslation) {
-          ctx.font = translationFont(layout.translationSize);
           ctx.fillStyle = config.translationColor || '#e2e8f0';
           if (config.textShadow) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 8; }
-          for (const line of layout.translationLines) {
-            ctx.fillText(line.trim(), textX, y);
-            y += layout.translationLineHeight;
-          }
+          layout.blocks.forEach((block, index) => {
+            if (index > 0) y += blockGap(layout.translationSize);
+            ctx.font = block.rtl ? rtlTranslationFont(layout.translationSize) : translationFont(layout.translationSize);
+            // Set per block, not once: two translations in one card can run in
+            // opposite directions, and the second would otherwise inherit
+            // whatever the first left behind.
+            ctx.direction = block.rtl ? 'rtl' : 'ltr';
+            for (const line of block.lines) {
+              ctx.fillText(line.trim(), textX, y);
+              y += block.lineHeight;
+            }
+          });
+          ctx.direction = 'ltr';
         }
         ctx.textBaseline = 'alphabetic';
       }

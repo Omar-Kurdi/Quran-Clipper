@@ -11,6 +11,10 @@ import { formatClipLength } from '@/lib/mediaDuration';
 import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { ColorField } from './ColorField';
 import { ConfirmDialog } from './ConfirmDialog';
+import { TranslationPicker } from './TranslationPicker';
+import { Button } from './Button';
+import { DEFAULT_TRANSLATION_ID, selectedOptions } from '@/lib/translations';
+import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { useT } from './LocaleProvider';
 import {
   LibraryItem, subscribeToLibrary, librarySnapshot, serverLibrarySnapshot, hydrateLibrary,
@@ -37,7 +41,8 @@ import {
   Film,
   FileQuestion,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Languages
 } from 'lucide-react';
 
 interface StyleConfigPanelProps {
@@ -61,6 +66,20 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   /** One name per clip, shared by the lane list, the sequence list and every tooltip. */
   const nameOf = (url: string) => backgroundLabel(url, t.backgrounds);
   const [activeTab, setActiveTab] = useState<'design' | 'background' | 'card'>('design');
+
+  /**
+   * Which translations the card shows.
+   *
+   * The list itself is a dialog -- 130 editions across 40 languages is not a
+   * panel section -- so what lives here is the answer: two or three chips and
+   * a way back into the list. The catalogue is only fetched once the picker
+   * has been opened, so the names shown before that are whatever it already
+   * knows; an id it cannot name is shown as itself rather than as nothing.
+   */
+  const [isTranslationPickerOpen, setIsTranslationPickerOpen] = useState(false);
+  const translationIds = config.translationIds?.length ? config.translationIds : [DEFAULT_TRANSLATION_ID];
+  const { options: catalogue } = useTranslationCatalogue(isTranslationPickerOpen);
+  const chosenTranslations = selectedOptions(translationIds, catalogue);
 
   const updateConfig = (key: keyof VideoCanvasConfig, value: unknown) => {
     onChangeConfig({
@@ -880,6 +899,38 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
           </div>
 
+          {/* Which translations the card carries. One row of chips and a
+              button: the list they came from is a dialog. */}
+          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <label className="font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
+              <Languages className="w-3.5 h-3.5 text-amber-400" />
+              <span>{t.translations.panelLabel}</span>
+            </label>
+            <p className="text-[11px] text-slate-400 mb-2">{t.translations.panelHelp}</p>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {chosenTranslations.map((option, index) => (
+                <span
+                  key={option.id}
+                  className="flex items-center gap-1.5 rounded-full bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] text-slate-200"
+                >
+                  <span className="font-mono text-[10px] text-amber-400">{index + 1}</span>
+                  <span className="truncate max-w-44">
+                    {option.id === DEFAULT_TRANSLATION_ID && !option.language
+                      ? t.translations.defaultName
+                      : option.name}
+                  </span>
+                  {option.language && <span className="text-slate-500">· {option.language}</span>}
+                </span>
+              ))}
+            </div>
+            <Button
+              icon={<Languages className="w-3.5 h-3.5" />}
+              onClick={() => setIsTranslationPickerOpen(true)}
+            >
+              {t.translations.choose}
+            </Button>
+          </div>
+
           {/* Colours.
 
               Three native `<input type="color">` used to sit here; on a
@@ -919,6 +970,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           </div>
         </div>
       )}
+
+      <TranslationPicker
+        isOpen={isTranslationPickerOpen}
+        onClose={() => setIsTranslationPickerOpen(false)}
+        value={translationIds}
+        onChange={ids => updateConfig('translationIds', ids)}
+      />
 
       <ConfirmDialog
         isOpen={pendingDelete !== null}
