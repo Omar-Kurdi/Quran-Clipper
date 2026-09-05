@@ -26,7 +26,7 @@ export const en = {
   switchLanguage: 'Change the studio language',
 
   meta: {
-    title: 'Quran Clip Helper — Quran Recitation Video Studio',
+    title: 'Quran Clipper Studio — Quran Recitation Video Editor',
     description:
       'Create Quran recitation videos locally in the browser: forced-aligned word timing, canvas rendering, and 60 FPS 1080p/4K WebM export.'
   },
@@ -69,10 +69,10 @@ export const en = {
   },
 
   header: {
-    wordmark: 'Quran Clip',
+    wordmark: 'Quran Clipper',
     wordmarkSuffix: 'Studio',
     pageTitle: (surah: string, number: number, start: number, end: number) =>
-      `Quran Clip Studio — ${surah} ${number}:${start}–${end}`,
+      `Quran Clipper Studio — ${surah} ${number}:${start}–${end}`,
     undo: 'Undo',
     undoTitle: 'Undo the last change (Ctrl+Z)',
     redo: 'Redo',

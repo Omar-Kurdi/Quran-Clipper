@@ -21,7 +21,7 @@ describe('exportFileName', () => {
   });
 
   it('falls back rather than producing a nameless file', () => {
-    expect(exportFileName('   ', 2, 1, 5)).toBe('QuranClip_2_1-5.webm');
+    expect(exportFileName('   ', 2, 1, 5)).toBe('QuranClipper_2_1-5.webm');
   });
 
   it('says webm, which is what the recorder actually produces', () => {

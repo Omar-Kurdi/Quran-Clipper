@@ -25,7 +25,7 @@ export const ar: Dictionary = {
   switchLanguage: 'تغيير لغة الاستوديو',
 
   meta: {
-    title: 'مساعد مقاطع القرآن — استوديو فيديوهات التلاوة',
+    title: 'Quran Clipper — استوديو فيديوهات التلاوة',
     description:
       'أنشئ فيديوهات تلاوة قرآنية محليًا في المتصفح: مطابقة زمنية للكلمات، ورسم على اللوحة، وتصدير WebM بدقة 1080p/4K وبمعدل 60 إطارًا في الثانية.'
   },
@@ -68,10 +68,10 @@ export const ar: Dictionary = {
   },
 
   header: {
-    wordmark: 'مقاطع القرآن',
+    wordmark: 'Quran Clipper',
     wordmarkSuffix: 'استوديو',
     pageTitle: (surah, number, start, end) =>
-      `استوديو مقاطع القرآن — ${surah} ${number}:${start}–${end}`,
+      `Quran Clipper — ${surah} ${number}:${start}–${end}`,
     undo: 'تراجع',
     undoTitle: 'التراجع عن آخر تغيير (Ctrl+Z)',
     redo: 'إعادة',

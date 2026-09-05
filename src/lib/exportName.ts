@@ -28,6 +28,6 @@ export function exportFileName(
   ayahEnd: number,
   extension: 'webm' | 'mp4' = 'webm'
 ): string {
-  const name = surahNameEnglish.trim().replace(/\s+/g, '_').replace(/[/\\?%*|"<>:]/g, '') || 'QuranClip';
+  const name = surahNameEnglish.trim().replace(/\s+/g, '_').replace(/[/\\?%*|"<>:]/g, '') || 'QuranClipper';
   return `${name}_${surahNumber}_${ayahStart}-${ayahEnd}.${extension}`;
 }

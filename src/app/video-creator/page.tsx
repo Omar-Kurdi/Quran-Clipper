@@ -1263,7 +1263,7 @@ export default function VideoCreatorPage() {
       bgBlur: proj.bgBlur ?? 0,
       cardBgOpacity: proj.cardBgOpacity ?? 30,
       cardBorder: proj.cardBorder ?? true,
-      watermarkText: proj.watermarkText || '@QuranClips',
+      watermarkText: proj.watermarkText || '@QuranClipper',
       watermarkPosition: proj.watermarkPosition || 'bottom-right',
       fps: proj.fps || 60,
       gpuAccelerated: proj.gpuAccelerated ?? true

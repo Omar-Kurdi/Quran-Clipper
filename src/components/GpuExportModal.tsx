@@ -96,7 +96,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [verdict, setVerdict] = useState<ExportVerdict>('clean');
   const [starvedSeconds, setStarvedSeconds] = useState<number>(0);
   const [pauses, setPauses] = useState<number>(0);
-  const [downloadFileName, setDownloadFileName] = useState<string>('QuranClip.webm');
+  const [downloadFileName, setDownloadFileName] = useState<string>('QuranClipper.webm');
 
   // Clear the previous render whenever the modal is reopened. Without this the
   // result screen from the last export is still mounted, so a second export --
