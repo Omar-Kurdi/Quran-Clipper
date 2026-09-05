@@ -277,9 +277,7 @@ export const en = {
     panelLabel: 'Translations',
     panelHelp: 'What appears under the Arabic. Choose a language, or show two at once.',
     choose: 'Choose translations',
-    defaultName: 'Saheeh International',
-    publicListNote:
-      'This is quran.com’s open list. The Clear Quran (Dr. Mustafa Khattab) is not in it — it comes from the Quran Foundation API, which needs a free client id and secret. See .env.example.'
+    defaultName: 'Saheeh International'
   },
 
   shortcuts: {

@@ -270,9 +270,7 @@ export const ar: Dictionary = {
     panelLabel: 'الترجمات',
     panelHelp: 'ما يظهر أسفل النص العربي. اختر لغة، أو اعرض لغتين معًا.',
     choose: 'اختيار الترجمات',
-    defaultName: 'Saheeh International',
-    publicListNote:
-      'هذه القائمة المفتوحة من quran.com، ولا تتضمّن ترجمة The Clear Quran (د. مصطفى خطّاب) — فهي تأتي من واجهة Quran Foundation التي تحتاج معرّف عميل ومفتاحًا مجانيين. راجع .env.example.'
+    defaultName: 'Saheeh International'
   },
 
   shortcuts: {
