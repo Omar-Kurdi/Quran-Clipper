@@ -546,7 +546,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             className="relative h-20 touch-none cursor-text"
             onPointerDown={e => { if (e.target === e.currentTarget) onSeek(xToTime(e.clientX)); }}
           >
-            <Waveform peaks={peaks} />
+            <Waveform peaks={peaks} zoom={zoom} />
 
             {verses.map((verse, i) => {
               const left = pct(verse.startTime);
@@ -624,23 +624,44 @@ export const Timeline: React.FC<TimelineProps> = ({
 };
 
 /** Static peak bars. Redrawn only when the peaks change. */
-const Waveform = React.memo(function Waveform({ peaks }: { peaks: Float32Array | null }) {
+/** Widest canvas to allocate. 8x zoom on a wide screen lands well inside this. */
+const MAX_WAVEFORM_CANVAS = 16_384;
+
+const Waveform = React.memo(function Waveform({ peaks, zoom }: { peaks: Float32Array | null; zoom: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Follows the zoom, because the track is `zoom * 100%` wide: a fixed canvas
+  // is stretched by the browser, so zooming in used to magnify the same coarse
+  // drawing rather than reveal anything.
+  const width = Math.min(MAX_WAVEFORM_CANVAS, Math.round(1800 * zoom));
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const { width, height } = canvas;
+    const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-    if (!peaks) return;
+    if (!peaks || peaks.length === 0) return;
     ctx.fillStyle = 'rgba(148, 138, 168, 0.45)';
-    const barWidth = width / peaks.length;
     const mid = height / 2;
-    for (let i = 0; i < peaks.length; i++) {
-      const h = Math.max(1, peaks[i] * mid * 0.92);
-      ctx.fillRect(i * barWidth, mid - h, Math.max(1, barWidth - 0.5), h * 2);
+
+    // One filled column per canvas pixel, each the loudest of the buckets that
+    // land in it. Drawing one bar per bucket instead meant that once buckets
+    // outnumbered pixels -- which is now the normal case -- every bar was
+    // clamped to a minimum width and painted over its neighbours, so a quiet
+    // bucket was simply overwritten by the loud one beside it. That is the
+    // mechanism that filled pauses in and moved the dips.
+    for (let x = 0; x < width; x++) {
+      const from = Math.floor((x * peaks.length) / width);
+      const to = Math.max(from + 1, Math.floor(((x + 1) * peaks.length) / width));
+      let peak = 0;
+      for (let i = from; i < to && i < peaks.length; i++) {
+        if (peaks[i] > peak) peak = peaks[i];
+      }
+      const h = Math.max(0.5, peak * mid * 0.92);
+      ctx.fillRect(x, mid - h, 1, h * 2);
     }
-  }, [peaks]);
-  return <canvas ref={canvasRef} width={1800} height={80} className="absolute inset-0 w-full h-full" />;
+  }, [peaks, width]);
+
+  return <canvas ref={canvasRef} width={width} height={80} className="absolute inset-0 w-full h-full" />;
 });

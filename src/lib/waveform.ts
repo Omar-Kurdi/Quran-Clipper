@@ -15,8 +15,37 @@ import { computePeaks } from '@/lib/audioTrim';
 const cache = new Map<string, Float32Array>();
 const inflight = new Map<string, Promise<Float32Array | null>>();
 
-/** Enough detail for a full-width track without making the fetch pointless. */
-export const WAVEFORM_BUCKETS = 900;
+/**
+ * How finely the waveform is sampled, in buckets per second of audio.
+ *
+ * This used to be a fixed 900 buckets for any clip, which quietly made the
+ * track useless on exactly the recordings people work on. 900 buckets is 76ms
+ * apiece over a 68-second clip and 277ms apiece over a four-minute one -- and
+ * the pauses this track exists to show are 0.2-0.5s long. Measured on a
+ * four-minute recitation, 23 of its 31 silences were narrower than two buckets,
+ * so each one either vanished into a neighbouring peak or drew a dip a bucket
+ * away from where it happened. That is the "the gap is just before or just
+ * after the dip" complaint, and it was a resolution bug rather than a sync one.
+ *
+ * 50/s puts a bucket every 20ms, so the aligner's shortest meaningful pause
+ * (0.30s) is fifteen of them and cannot land in the wrong place.
+ */
+const BUCKETS_PER_SECOND = 50;
+
+/** Floor for very short clips, so a two-second file still draws a real shape. */
+const MIN_BUCKETS = 900;
+
+/**
+ * Ceiling, for memory and draw time on a long lecture. At 50/s this is reached
+ * at forty minutes, beyond which resolution degrades again -- gracefully, and
+ * far past where anyone is reading individual pauses off the track.
+ */
+const MAX_BUCKETS = 120_000;
+
+export function bucketsFor(durationSeconds: number): number {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return MIN_BUCKETS;
+  return Math.min(MAX_BUCKETS, Math.max(MIN_BUCKETS, Math.round(durationSeconds * BUCKETS_PER_SECOND)));
+}
 
 type AudioContextCtor = typeof AudioContext;
 
@@ -55,7 +84,7 @@ export async function loadWaveform(url: string): Promise<Float32Array | null> {
       if (!res.ok) return null;
       const bytes = await res.arrayBuffer();
       const buffer = await ctx.decodeAudioData(bytes);
-      const peaks = computePeaks(buffer, WAVEFORM_BUCKETS);
+      const peaks = computePeaks(buffer, bucketsFor(buffer.duration));
       cache.set(url, peaks);
       return peaks;
     } catch {

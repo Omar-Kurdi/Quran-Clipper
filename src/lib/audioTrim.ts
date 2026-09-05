@@ -29,12 +29,15 @@ export async function decodeAudioFile(file: File | Blob): Promise<AudioBuffer> {
 /** Per-bucket peak amplitude (0-1), the max across all channels in that time slice. For drawing a waveform. */
 export function computePeaks(buffer: AudioBuffer, buckets: number): Float32Array {
   const peaks = new Float32Array(buckets);
-  const samplesPerBucket = Math.max(1, Math.floor(buffer.length / buckets));
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     const data = buffer.getChannelData(channel);
     for (let b = 0; b < buckets; b++) {
-      const start = b * samplesPerBucket;
-      const end = Math.min(data.length, start + samplesPerBucket);
+      // Fractional boundaries, so bucket b really does cover b/buckets to
+      // (b+1)/buckets of the audio and the last one reaches the end. Rounding
+      // the bucket size down instead left the tail uncovered and stretched
+      // every bucket slightly to fill the width it was drawn across.
+      const start = Math.floor((b * data.length) / buckets);
+      const end = Math.max(start + 1, Math.min(data.length, Math.floor(((b + 1) * data.length) / buckets)));
       let peak = 0;
       for (let i = start; i < end; i++) {
         const abs = Math.abs(data[i]);
