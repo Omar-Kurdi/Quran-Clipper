@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData } from '@/lib/quranData';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
+import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 
 /**
@@ -72,6 +73,21 @@ export interface VideoCanvasRef {
     targetFps?: number
   ) => void;
   stopExport: () => void;
+  /**
+   * Encodes the clip frame by frame instead of recording it in real time.
+   *
+   * Returns null when this project cannot take that path -- a video background,
+   * or a browser without an H.264 encoder -- so the caller can fall back to
+   * `exportVideo` rather than having to know the rules itself.
+   */
+  exportVideoOffline: (
+    range: { start: number; end: number },
+    audio: AudioBuffer,
+    targetFps: number,
+    onProgress: (fraction: number, framesDone: number, framesTotal: number) => void
+  ) => Promise<OfflineExportResult | null>;
+  /** Whether `exportVideoOffline` can run for the project as configured. */
+  canExportOffline: () => boolean;
 }
 
 interface VideoCanvasProps {
@@ -529,24 +545,42 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     return lines;
   }, []);
 
-  // ---- RENDER LOOP ----
-  useEffect(() => {
-    let animationFrameId: number;
-    let frameCount = 0;
-    let lastFpsCalc = performance.now();
-
-    const drawFrame = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const renderStart = performance.now();
+  /**
+   * Draws one complete frame.
+   *
+   * Split out of the animation loop so a frame can be produced for *any*
+   * moment rather than only for "now". The live preview calls it once per
+   * animation frame with whatever the player and the analyser currently hold;
+   * the offline encoder calls it thousands of times with values it computes
+   * itself. Everything time-dependent arrives as an argument for that reason --
+   * reaching for `activeVerse` or the analyser in here would silently tie the
+   * drawing back to the present moment and make offline rendering impossible.
+   */
+  const paintFrame = useCallback((
+    ctx: CanvasRenderingContext2D,
+    frame: {
+      /** The caption to show, already resolved for this frame's time. */
+      activeVerse: VerseData | null;
+      /** Frequency magnitudes for the bars, or null to leave them out. */
+      spectrum: Uint8Array | null;
+      /** Background to paint under it, already positioned for this frame. */
+      media: BackgroundMedia | null;
+      /**
+       * Drives the drifting particles. A counter, not a timestamp: offline it
+       * is the frame's index so a re-render of the same clip is identical,
+       * where the preview simply passes its own frame count.
+       */
+      tick: number;
+    }
+  ) => {
+    const { activeVerse, media, tick } = frame;
       const { width, height } = dimensions;
 
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
+      // The offline encoder hands in a detached canvas of its own, so sizing
+      // belongs here rather than to whoever owns the element.
+      if (ctx.canvas.width !== width || ctx.canvas.height !== height) {
+        ctx.canvas.width = width;
+        ctx.canvas.height = height;
       }
 
       ctx.clearRect(0, 0, width, height);
@@ -556,7 +590,6 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // Readiness alone decides. It used to also require `!videoErrorRef`, a
       // single flag shared by every background in the pool -- so one clip that
       // failed to load blanked the ones that had not.
-      const media = bgMediaRef.current;
       if (mediaReady(media)) {
         const source = media as BackgroundMedia;
         ctx.save();
@@ -589,8 +622,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       ctx.save();
       const goldAccent = config.accentColor || '#b8c7dc';
       for (let i = 0; i < 12; i++) {
-        const px = (Math.sin(frameCount * 0.02 + i * 2.1) * 0.5 + 0.5) * width;
-        const py = ((frameCount * 0.15 + i * 73) % height);
+        const px = (Math.sin(tick * 0.02 + i * 2.1) * 0.5 + 0.5) * width;
+        const py = ((tick * 0.15 + i * 73) % height);
         ctx.beginPath();
         ctx.arc(px, py, 1.5, 0, Math.PI * 2);
         ctx.fillStyle = goldAccent;
@@ -602,11 +635,16 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       ctx.restore();
 
       // 4. Audio waveform
-      if (config.showWaveform && audioAnalyser) {
+      //
+      // From the argument, never from the analyser: an AnalyserNode only ever
+      // reports what is audible *now*, so reading it here would have made the
+      // bars the one part of the frame that could not be drawn for a past or
+      // future moment -- and offline they would have frozen at whatever the
+      // last live reading happened to be.
+      const dataArray = frame.spectrum;
+      if (config.showWaveform && dataArray && dataArray.length > 0) {
         ctx.save();
-        const bufferLength = audioAnalyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        audioAnalyser.getByteFrequencyData(dataArray);
+        const bufferLength = dataArray.length;
         const barCount = 48;
         const barWidth = (width * 0.7) / barCount;
         const startX = (width - barCount * barWidth) / 2;
@@ -903,6 +941,31 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.restore();
       }
 
+  }, [config, verses, surahNameArabic, surahNameEnglish, dimensions,
+      getDisplayArabic, surahNumber, ayahStart, ayahEnd]);
+
+  // ---- LIVE PREVIEW LOOP ----
+  useEffect(() => {
+    let animationFrameId: number;
+    let frameCount = 0;
+    let lastFpsCalc = performance.now();
+    const spectrum = new Uint8Array(audioAnalyser ? audioAnalyser.frequencyBinCount : 0);
+
+    const drawFrame = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const renderStart = performance.now();
+      if (audioAnalyser) audioAnalyser.getByteFrequencyData(spectrum);
+      paintFrame(ctx, {
+        activeVerse: activeVerse ?? null,
+        spectrum: audioAnalyser ? spectrum : null,
+        media: bgMediaRef.current,
+        tick: frameCount,
+      });
+
       frameCount++;
       paintedFramesRef.current++;
       const now = performance.now();
@@ -917,12 +980,50 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
     animationFrameId = requestAnimationFrame(drawFrame);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [config, verses, currentTime, audioAnalyser, surahNameArabic, surahNameEnglish,
-      dimensions, getDisplayArabic, wrapCanvasText, surahNumber, ayahStart, ayahEnd, activeVerse]);
+    // Everything the drawing itself depends on now lives inside `paintFrame`,
+    // so this loop only needs the things it feeds in.
+  }, [paintFrame, audioAnalyser, activeVerse]);
 
   // ---- EXPORT ----
   useImperativeHandle(ref, () => ({
     getCanvas: () => canvasRef.current,
+
+    canExportOffline: () => canEncodeOffline(config),
+
+    exportVideoOffline: async (range, audio, targetFps, onProgress) => {
+      if (!canEncodeOffline(config)) return null;
+      isExportingRef.current = true;
+      try {
+        // The same `paintFrame` the preview uses, which is the point of having
+        // split it out: one drawing, two ways of driving it. The background is
+        // whichever still is loaded -- `canEncodeOffline` has already refused
+        // anything that would need decoding at a particular moment.
+        return await encodeOffline({
+          width: dimensions.width,
+          height: dimensions.height,
+          fps: targetFps,
+          range,
+          audio,
+          videoBitrate: OFFLINE_BITRATE,
+          onProgress,
+          signal: { get aborted() { return !isExportingRef.current; } },
+          paint: (ctx, frame) => {
+            const verse = [...verses]
+              .sort((a, b) => a.startTime - b.startTime)
+              .reverse()
+              .find(v => frame.atSeconds >= v.startTime) ?? null;
+            paintFrame(ctx, {
+              activeVerse: verse,
+              spectrum: frame.spectrum,
+              media: bgMediaRef.current,
+              tick: frame.tick,
+            });
+          },
+        });
+      } finally {
+        isExportingRef.current = false;
+      }
+    },
     stopExport: () => { isExportingRef.current = false; },
     /**
      * Records the canvas and the audio between two points on the recording.

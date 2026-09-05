@@ -550,6 +550,9 @@ export const en = {
     complete: 'Video Render Complete!',
     renderedIn: 'Rendered in',
     renderedOn: (gpu: string) => ` on ${gpu}.`,
+    fastPathTitle: 'Encoded frame by frame.',
+    fastPathBody:
+      'This project has no video background, so it can be rendered as fast as the machine manages rather than in real time \u2014 measured at 6\u201310\u00d7 \u2014 and written as MP4. You can switch tabs while it runs.',
     keepTabOpenTitle: 'Keep this tab open and visible.',
     keepTabOpenBody:
       'The picture is recorded from the canvas as it plays, and browsers stop drawing a tab that is in the background. If you switch away the render pauses and waits for you \u2014 nothing is lost, but the wait is added to the total.',

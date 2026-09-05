@@ -15,6 +15,12 @@ export { exportFileName };
 interface GpuExportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * True when the render will be encoded frame by frame rather than recorded
+   * in real time. Worth saying before someone commits to a long render: it is
+   * the difference between minutes and seconds, and between MP4 and WebM.
+   */
+  fastPath: boolean;
   onStartExport: (
     targetFps: number,
     onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
@@ -40,6 +46,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   isExporting,
   exportProgress,
   exportSpeed,
+  fastPath,
   surahNameEnglish,
   surahNumber,
   ayahStart,
@@ -82,8 +89,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
   const handleExport = () => {
     setExportedBlobUrl(null);
-    setDownloadFileName(exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd));
     onStartExport(selectedFps, (blob, renderMs, health) => {
+      // Named here rather than up front: which container was produced is only
+      // known once the export has chosen its path.
+      setDownloadFileName(
+        exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd, blob.type.includes('mp4') ? 'mp4' : 'webm')
+      );
       const url = URL.createObjectURL(blob);
       setExportedBlobUrl(url);
       setRenderedMs(renderMs);
@@ -254,7 +265,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                     -- the recording holds and resumes -- but it does stretch a
                     two-minute clip into however long the detour took, which is
                     reason enough to say so while it matters. */}
-                <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                <div className={`mt-2 items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 ${fastPath ? 'hidden' : 'flex'}`}>
                   <span className="relative flex h-2 w-2 shrink-0">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
@@ -266,10 +277,16 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               <>
               {/* Said before it costs anything, so it is a known rule rather
                   than a surprise afterwards. */}
-              <p className="mb-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[11px] leading-relaxed text-slate-300">
-                <strong className="text-amber-300">{t.exportModal.keepTabOpenTitle}</strong>{' '}
-                {t.exportModal.keepTabOpenBody}
-              </p>
+              {fastPath ? (
+                <p className="mb-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-200">
+                  <strong>{t.exportModal.fastPathTitle}</strong> {t.exportModal.fastPathBody}
+                </p>
+              ) : (
+                <p className="mb-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[11px] leading-relaxed text-slate-300">
+                  <strong className="text-amber-300">{t.exportModal.keepTabOpenTitle}</strong>{' '}
+                  {t.exportModal.keepTabOpenBody}
+                </p>
+              )}
               <button
                 onClick={handleExport}
                 className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-slate-950 font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-98"

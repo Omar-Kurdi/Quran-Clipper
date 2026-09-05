@@ -28,3 +28,15 @@ describe('exportFileName', () => {
     expect(exportFileName('Al-Mulk', 67, 1, 5).endsWith('.webm')).toBe(true);
   });
 });
+
+describe('container extension', () => {
+  it('defaults to webm, which the real-time recorder produces', () => {
+    expect(exportFileName('At-Tahrim', 66, 6, 8)).toMatch(/\.webm$/);
+  });
+
+  it('names an mp4 when that is what was encoded', () => {
+    // The frame-by-frame path writes MP4. A file called .webm that is really
+    // MP4 is worse than either name on its own.
+    expect(exportFileName('At-Tahrim', 66, 6, 8, 'mp4')).toBe('At-Tahrim_66_6-8.mp4');
+  });
+});

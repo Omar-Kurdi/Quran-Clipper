@@ -742,10 +742,17 @@ npx next dev --webpack
   original MP3 even after cutting — trim well past 18 MB and you can cross that limit rather
   than get under it.
 - Browser export depends on `MediaRecorder` codec support; Chrome/Chromium recommended.
-- Export records the canvas in real time, so it needs the tab to stay visible: a backgrounded
-  tab stops painting and the video comes out frozen over that stretch while the audio plays on.
-  A screen wake lock is held for the duration, and the export now measures itself and says so
-  when the picture froze — but it cannot prevent it. Server-side rendering is the real fix.
+- Export takes one of two paths, chosen automatically. **Without a video background** it is
+  encoded frame by frame through WebCodecs: no real-time constraint, no dependence on the tab
+  being visible, and MP4 out — measured at 6–10× faster than the clip's own length. **With a
+  video background** it falls back to recording the canvas in real time, because producing a
+  frame for an arbitrary moment would mean seeking the background video per frame (21.9ms
+  median, i.e. slower than the recording it replaces). On that path the tab must stay visible;
+  switching away pauses the render and resumes it when you return, so nothing is lost but the
+  wait is added to the total. Covering video backgrounds needs them decoded through
+  `VideoDecoder` — see FutureIdeas #12.
+- MP4 exports use Opus audio when the browser has no AAC encoder, which plays in browsers and
+  VLC but not in QuickTime.
 - There is no authentication unless `STUDIO_TOKEN` is set. On localhost that is fine; anywhere
   else, anyone who can reach the app can list and delete saved projects and spend the Gemini and
   Pexels keys. Setting `STUDIO_TOKEN` puts a shared secret in front of everything except
