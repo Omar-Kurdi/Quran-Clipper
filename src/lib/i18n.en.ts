@@ -239,6 +239,12 @@ export const en = {
     playRecitation: 'Play recitation',
     pauseRecitation: 'Pause recitation',
     backToStart: 'Back to start',
+    rippleOn: 'Linked',
+    rippleOnTitle:
+      'Linked: moving a segment\u2019s end shifts every segment after it, keeping the timeline packed. Click to unlink and move one edge at a time.',
+    rippleOff: 'Unlinked',
+    rippleOffTitle:
+      'Unlinked: each edge moves on its own, and an end stops where the next segment begins. Click to link them again.',
     markAyahEnd: 'Mark ayah end',
     markAyahEndTitle: 'Mark the end of this ayah at the playhead (B)',
     trimAudio: 'Trim audio',

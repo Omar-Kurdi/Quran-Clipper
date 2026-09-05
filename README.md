@@ -363,6 +363,13 @@ Segmentation has to decide whether a given silence ends a phrase, and some of th
 be made from the audio alone. **Split** cuts the selected caption at the playhead and **Merge**
 joins it to the next one, so a wrong boundary is a two-second fix rather than a bug report.
 
+**Linked / Unlinked** on the timeline toolbar decides what a drag affects. Linked (the default,
+and how this always behaved) is a *ripple* edit: moving a segment's end shifts every segment after
+it, each keeping its length, so one drag re-seats the whole timeline. That is the wrong tool for
+fixing a single boundary — shortening a segment drags everything after it earlier, and opening a
+gap then extending the previous segment closes the gap again. Unlinked moves one edge at a time,
+and an end stops where the next segment begins. The choice is remembered per browser.
+
 Once a timeline is right, **Ground truth** in the header downloads it as a scoring file. Drop it
 in `scripts/` and run:
 

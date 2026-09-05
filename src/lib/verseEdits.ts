@@ -28,17 +28,33 @@ export function ensureWords(verse: VerseData): VerseWord[] {
 /**
  * Sets one edge of a segment.
  *
- * Moving the end cascades through the following segments so the timeline stays
- * contiguous; moving the start only trims this segment, since pushing
- * everything earlier would fight whatever the previous segment's end was
- * deliberately set to.
+ * `ripple` decides what happens to everything after it, and the two modes are
+ * for different jobs.
+ *
+ * Rippling (the default, and how this behaved before the flag existed) keeps
+ * the timeline packed: moving an end re-seats every following segment
+ * back-to-back, each keeping its own length. That is what you want after
+ * changing something early on -- one drag carries the whole timeline with it
+ * instead of re-dragging twenty blocks.
+ *
+ * It is the wrong tool for fixing one boundary, which is what made it worth a
+ * flag. Shortening a segment dragged everything after it earlier, and worse:
+ * pushing a start to the right to open a deliberate gap, then extending the
+ * previous segment's end into that gap, re-seated the segment you had just
+ * moved and closed the gap again. With `ripple` off an edge moves alone, and
+ * an end can be dragged up to -- never past -- wherever the next segment now
+ * begins.
+ *
+ * Moving a start never ripples in either mode: pushing everything earlier
+ * would fight whatever the previous segment's end was deliberately set to.
  */
 export function setBoundary(
   verses: VerseData[],
   index: number,
   edge: 'startTime' | 'endTime',
   value: number,
-  audioDuration: number
+  audioDuration: number,
+  ripple: boolean = true
 ): VerseData[] {
   const updated = [...verses];
   const verse = updated[index];
@@ -53,11 +69,21 @@ export function setBoundary(
     return updated;
   }
 
-  const newEnd = Math.max(
-    verse.startTime + MIN_SEGMENT,
-    Math.min(audioDuration || 9999, round1(value))
+  // Without rippling, the next segment is a wall rather than something to
+  // push: an end may reach it exactly and stop. The floor is applied last so
+  // it wins outright -- a next segment already closer than MIN_SEGMENT (which
+  // a split or a reorder can produce) would otherwise have the two clamps
+  // fighting and invert the segment.
+  const next = ripple ? undefined : updated[index + 1];
+  const ceiling = Math.min(
+    audioDuration || 9999,
+    next ? next.startTime : Number.POSITIVE_INFINITY
   );
+  const newEnd = Math.max(verse.startTime + MIN_SEGMENT, Math.min(ceiling, round1(value)));
+
   updated[index] = { ...verse, endTime: newEnd };
+  if (!ripple) return updated;
+
   for (let i = index + 1; i < updated.length; i++) {
     const prevEnd = updated[i - 1].endTime;
     const duration = Math.max(MIN_SEGMENT, updated[i].endTime - updated[i].startTime);
@@ -75,11 +101,14 @@ export function nudgeBoundary(
   index: number,
   edge: 'startTime' | 'endTime',
   delta: number,
-  audioDuration: number
+  audioDuration: number,
+  ripple: boolean = true
 ): VerseData[] {
   const verse = verses[index];
   if (!verse) return verses;
-  return setBoundary(verses, index, edge, verse[edge] + delta, audioDuration);
+  // The inspector's arrows and a drag on the timeline are the same edit, so
+  // the flag has to reach both or the two disagree about what a nudge means.
+  return setBoundary(verses, index, edge, verse[edge] + delta, audioDuration, ripple);
 }
 
 /**

@@ -41,11 +41,11 @@ export function useTimelineEditing(initial: VerseData[]) {
 
     toggleWord: (wordIndex: number) => apply(toggleWord(verses, selectedIndex, wordIndex)),
 
-    nudge: (edge: 'startTime' | 'endTime', delta: number, audioDuration: number) =>
-      apply(nudgeBoundary(verses, selectedIndex, edge, delta, audioDuration)),
+    nudge: (edge: 'startTime' | 'endTime', delta: number, audioDuration: number, ripple = true) =>
+      apply(nudgeBoundary(verses, selectedIndex, edge, delta, audioDuration, ripple)),
 
-    boundary: (index: number, edge: 'startTime' | 'endTime', value: number, audioDuration: number) =>
-      apply(setBoundary(verses, index, edge, value, audioDuration)),
+    boundary: (index: number, edge: 'startTime' | 'endTime', value: number, audioDuration: number, ripple = true) =>
+      apply(setBoundary(verses, index, edge, value, audioDuration, ripple)),
 
     reorder: (to: number) =>
       apply(reorder(verses, selectedIndex, to), Math.max(0, Math.min(verses.length - 1, to))),

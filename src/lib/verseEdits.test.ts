@@ -56,6 +56,56 @@ describe('setBoundary', () => {
   });
 });
 
+describe('setBoundary without rippling', () => {
+  it('shortening a segment leaves the ones after it where they were', () => {
+    // Reported: dragging a right edge left moved every following segment.
+    const before = timeline();
+    const after = setBoundary(before, 1, 'endTime', 8, 15, false);
+    expect(after[1].endTime).toBe(8);
+    expect(after[2].startTime).toBe(before[2].startTime);
+    expect(after[2].endTime).toBe(before[2].endTime);
+  });
+
+  it('keeps a gap the user deliberately opened', () => {
+    // Reported, and the worse half: push a start right to open a gap, then
+    // extend the previous segment's end into it, and the segment you had just
+    // moved was dragged back and the gap closed.
+    const opened = setBoundary(timeline(), 1, 'startTime', 7, 15, false);
+    expect(opened[1].startTime).toBe(7);
+    expect(opened[0].endTime).toBe(5);
+
+    const extended = setBoundary(opened, 0, 'endTime', 6, 15, false);
+    expect(extended[0].endTime).toBe(6);
+    expect(extended[1].startTime).toBe(7); // still where it was put
+  });
+
+  it('lets an end reach the next segment exactly, and no further', () => {
+    const after = setBoundary(timeline(), 0, 'endTime', 9, 15, false);
+    expect(after[0].endTime).toBe(5); // segment 1 starts at 5
+    expect(after[1].startTime).toBe(5);
+  });
+
+  it('keeps a minimum length even when the next segment is closer than that', () => {
+    // A split or a reorder can leave the next segment nearer than MIN_SEGMENT.
+    // The floor and the ceiling then disagree, and if the ceiling wins the
+    // segment inverts.
+    const tight: VerseData[] = [verse('33:21', 0, 5), verse('33:22', 5.05, 9)];
+    const after = setBoundary(tight, 0, 'endTime', 1, 15, false);
+    expect(after[0].endTime).toBeGreaterThanOrEqual(after[0].startTime + MIN_SEGMENT);
+    expect(after[0].endTime).toBeGreaterThan(after[0].startTime);
+  });
+
+  it('still lets the last segment run to the end of the audio', () => {
+    const after = setBoundary(timeline(), 2, 'endTime', 14, 15, false);
+    expect(after[2].endTime).toBe(14);
+  });
+
+  it('ripples by default, so nothing that did not ask changes behaviour', () => {
+    const after = setBoundary(timeline(), 1, 'endTime', 8, 15);
+    expect(after[2].startTime).toBe(8);
+  });
+});
+
 describe('nudgeBoundary', () => {
   it('moves by a delta rather than to an absolute time', () => {
     expect(nudgeBoundary(timeline(), 0, 'endTime', 0.5, 15)[0].endTime).toBe(5.5);

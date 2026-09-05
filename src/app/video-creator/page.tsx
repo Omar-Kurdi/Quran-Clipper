@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { 
   VideoCanvas, 
   VideoCanvasConfig, 
@@ -10,6 +10,10 @@ import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
 import type { ExportHealth } from '@/lib/exportHealth';
+import { createBooleanPreference } from '@/lib/uiPreference';
+
+/** Module scope, so every render subscribes to the same store. */
+const ripplePreference = createBooleanPreference('qc-ripple-edits', true);
 
 /**
  * Whether to show tools that only mean something next to this repository.
@@ -94,6 +98,21 @@ export default function VideoCreatorPage() {
    * in original-file time so ground truth stays reproducible from that file.
    */
   const [trimWindow, setTrimWindow] = useState<{ start: number; end: number } | null>(null);
+  /**
+   * Whether moving a segment's end carries everything after it along.
+   *
+   * On by default, which is how the timeline has always behaved -- one drag
+   * re-seats the rest instead of twenty. Off is for fixing a single boundary,
+   * where carrying the rest along is exactly the problem: it undoes gaps as
+   * fast as you make them. Remembered per browser like the palette, because it
+   * is a way of working rather than a property of a project.
+   */
+  const rippleEdits = useSyncExternalStore(
+    ripplePreference.subscribe,
+    ripplePreference.get,
+    ripplePreference.getServerSnapshot
+  );
+  const toggleRippleEdits = () => ripplePreference.set(!rippleEdits);
   const [showTrimModal, setShowTrimModal] = useState(false);
   /** Set when the upload was a video file, so its footage can double as the background. */
   const [uploadIsVideo, setUploadIsVideo] = useState(false);
@@ -1609,7 +1628,7 @@ export default function VideoCreatorPage() {
                   onText={edit.text}
                   onVerseNumber={edit.verseNumber}
                   onToggleWord={edit.toggleWord}
-                  onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration)}
+                  onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration, rippleEdits)}
                   onReorder={edit.reorder}
                   onDuplicate={() => edit.duplicate(audioDuration)}
                   onDelete={edit.remove}
@@ -1648,7 +1667,9 @@ export default function VideoCreatorPage() {
             editBackgroundLane(segs => moveSegmentTo(segs, i, start, audioDuration))}
           onResizeBackground={(i, edge, value) =>
             editBackgroundLane(segs => resizeSegment(segs, i, edge, value, audioDuration))}
-          onMoveBoundary={(i, edge, value) => edit.boundary(i, edge, value, audioDuration)}
+          onMoveBoundary={(i, edge, value) => edit.boundary(i, edge, value, audioDuration, rippleEdits)}
+          rippleEdits={rippleEdits}
+          onToggleRippleEdits={toggleRippleEdits}
           onMarkHere={handleMarkHere}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
           onTrimRange={customAudioFile ? handleTrimRange : undefined}

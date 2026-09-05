@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
 import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
@@ -22,6 +22,9 @@ interface TimelineProps {
   onMoveBoundary: (index: number, edge: 'startTime' | 'endTime', value: number) => void;
   /** B key / button: end the current segment here and start the next. */
   onMarkHere: () => void;
+  /** Whether moving a segment's end carries the segments after it along. */
+  rippleEdits: boolean;
+  onToggleRippleEdits: () => void;
   /** Opens the trim modal. Omitted when there is no uploaded file to trim. */
   onTrim?: () => void;
   /**
@@ -68,7 +71,7 @@ const ZOOMS = [1, 2, 4, 8];
  */
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
-  selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere,
+  selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
   onTrim, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground
@@ -277,6 +280,24 @@ export const Timeline: React.FC<TimelineProps> = ({
           <Zap className="w-3.5 h-3.5 text-amber-400" />
           <span className="hidden sm:inline">{t.timeline.markAyahEnd}</span>
           <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">B</kbd>
+        </button>
+
+        {/* Next to marking because it changes what marking and dragging *do*.
+            Its state has to be visible without hovering -- the same drag moves
+            one block or twenty depending on it, and finding out afterwards is
+            the whole complaint this answers. */}
+        <button
+          onClick={onToggleRippleEdits}
+          aria-pressed={rippleEdits}
+          title={rippleEdits ? t.timeline.rippleOnTitle : t.timeline.rippleOffTitle}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+            rippleEdits
+              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          {rippleEdits ? <Link2 className="w-3.5 h-3.5" /> : <Link2Off className="w-3.5 h-3.5" />}
+          <span className="hidden sm:inline">{rippleEdits ? t.timeline.rippleOn : t.timeline.rippleOff}</span>
         </button>
 
         {/* Trimming belongs beside marking: both are edits to where the audio
