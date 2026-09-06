@@ -216,7 +216,15 @@ export const Timeline: React.FC<TimelineProps> = ({
     const move = (e: PointerEvent) => {
       const t = xToTime(e.clientX);
       setClip(prev => {
-        const current = prev ?? { url: audioUrl, start: 0, end: duration };
+        // The same test `clipRange` makes below, and for the same reason: a
+        // selection made against another file is no selection at all. Falling
+        // back only on null kept the *previous* file's start alive here while
+        // the lane drew this file's 0 -- so the first drag of the end handle
+        // after a trim or a re-upload snapped the start to wherever the last
+        // clip's had been, which reads as the start moving on its own.
+        const current = prev && prev.url === audioUrl
+          ? prev
+          : { url: audioUrl, start: 0, end: duration };
         const next = clipDrag === 'start'
           ? { ...current, url: audioUrl, start: Math.min(t, current.end - MIN_SEGMENT) }
           : { ...current, url: audioUrl, end: Math.max(t, current.start + MIN_SEGMENT) };
