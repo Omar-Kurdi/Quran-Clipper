@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, FolderOpen, Film, Clock, Download, Play, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { X, FolderOpen, Film, Clock, Play, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import { Dialog } from './Dialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useT } from './LocaleProvider';
 import { forgetProjectAudio } from '@/lib/projectAudio';
+import { formatBytes } from '@/lib/exportPresets';
+import { formatTime } from '@/lib/verseEdits';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
@@ -24,7 +26,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   const [exportsList, setExportsList] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   /** The project the confirm dialog is asking about, and what went wrong last time. */
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string; kind: 'project' | 'export' } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -81,6 +83,28 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
           survivors.map(proj => proj.audioKey).filter(Boolean)
         );
       }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : t.projects.serverUnreachable);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  /**
+   * Removes a render record. Nothing else goes with it -- the video was never
+   * held here, so this deletes the note of having made it and no more.
+   */
+  const deleteExport = async (id: string) => {
+    setDeletingId(id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/exports?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setDeleteError(data?.error || t.projects.deleteFailed(res.status));
+        return;
+      }
+      setExportsList(prev => prev.filter(exp => exp.id !== id));
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : t.projects.serverUnreachable);
     } finally {
@@ -200,7 +224,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                         project is the only copy of an edit, and this is the one
                         control here that cannot be undone. */}
                     <button
-                      onClick={() => setPendingDelete({ id: proj.id, title: proj.title })}
+                      onClick={() => setPendingDelete({ id: proj.id, title: proj.title, kind: 'project' })}
                       disabled={deletingId === proj.id}
                       title={t.projects.deleteTitle(proj.title)}
                       aria-label={t.projects.deleteAria(proj.title)}
@@ -230,23 +254,53 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                 </div>
 
                 <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>{t.projects.gpu(exp.gpuDevice || t.projects.unknownGpu)}</span>
-                  <span className="font-mono text-slate-400" dir="ltr">{t.projects.fps(exp.fps)}</span>
+                  <span className="truncate" title={exp.gpuDevice || t.projects.unknownGpu}>
+                    {t.projects.gpu(exp.gpuDevice || t.projects.unknownGpu)}
+                  </span>
+                  <span className="shrink-0 font-mono text-slate-400" dir="ltr">{t.projects.fps(exp.fps)}</span>
                 </div>
 
-                {exp.fileUrl && (
-                  <a
-                    href={exp.fileUrl}
-                    // The recorder writes WebM; this used to promise an .mp4
-                    // that was never produced, so the saved file opened in
-                    // whatever a mislabelled container opens in.
-                    download={`${exp.title.replace(/\s+/g, '_').replace(/[/\\?%*|"<>]/g, '')}.webm`}
-                    className="mt-1 w-full py-2 bg-emerald-500/20 hover:bg-emerald-500 hover:text-slate-950 text-emerald-300 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 border border-emerald-500/30"
+                {/* What a render log is actually for: how long the clip is, and
+                    how long the machine took over it. */}
+                <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                  <span dir="ltr">{t.projects.clipLength(formatTime(exp.duration || 0))}</span>
+                  {exp.renderTimeMs > 0 && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span dir="ltr">{t.projects.renderTook((exp.renderTimeMs / 1000).toFixed(1))}</span>
+                    </>
+                  )}
+                </div>
+
+                {/* The name it was saved under, not a link to it: the browser
+                    is never told where the file went, and the blob url this
+                    used to offer died with the page that made it. */}
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="flex-1 min-w-0 px-2.5 py-2 bg-slate-900/70 rounded-lg border border-slate-800">
+                    {exp.fileName ? (
+                      <span className="block font-mono text-[11px] text-slate-300 truncate" dir="ltr" title={exp.fileName}>
+                        {exp.fileName}
+                      </span>
+                    ) : (
+                      <span className="block text-[11px] text-slate-500">{t.projects.noFileName}</span>
+                    )}
+                    <span className="block text-[10px] text-slate-500 mt-0.5">
+                      {t.projects.savedToDownloads}
+                      {exp.fileSizeBytes > 0 && <span className="font-mono" dir="ltr"> · {formatBytes(exp.fileSizeBytes)}</span>}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setPendingDelete({ id: exp.id, title: exp.title, kind: 'export' })}
+                    disabled={deletingId === exp.id}
+                    title={t.projects.deleteRenderTitle(exp.title)}
+                    aria-label={t.projects.deleteRenderAria(exp.title)}
+                    className="shrink-0 p-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-300 rounded-lg border border-slate-700 hover:border-red-500/40 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>{t.projects.downloadWebm}</span>
-                  </a>
-                )}
+                    {deletingId === exp.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Trash2 className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -266,7 +320,9 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
         onConfirm={() => {
           const target = pendingDelete;
           setPendingDelete(null);
-          if (target) deleteProject(target.id);
+          if (!target) return;
+          if (target.kind === 'project') deleteProject(target.id);
+          else deleteExport(target.id);
         }}
       />
     </>

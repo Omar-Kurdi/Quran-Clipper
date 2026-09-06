@@ -1295,14 +1295,15 @@ export default function VideoCreatorPage() {
     startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, plan, onComplete);
   };
 
-  const handleSaveExportRecord = async (fileUrl: string, durationSec: number, renderMs: number) => {
+  const handleSaveExportRecord = async ({ fileName, fileSizeBytes, durationSec, renderMs }: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => {
     try {
       await fetch('/api/exports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: `${surahNameEnglish} GPU Clip`,
-          fileUrl,
+          fileName,
+          fileSizeBytes,
           aspectRatio: canvasConfig.aspectRatio,
           duration: Math.round(durationSec),
           resolution: exportedResolution.current,

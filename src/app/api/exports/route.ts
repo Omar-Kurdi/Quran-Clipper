@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { describeDbError } from '@/lib/dbError';
 
 const memoryExports: any[] = [];
@@ -26,6 +26,44 @@ export async function GET() {
   }
 }
 
+/**
+ * Deletes one export record.
+ *
+ * The same shape as the projects delete -- id on the query string, 404 rather
+ * than a silent 200 when the row has already gone -- because the drawer treats
+ * the two lists the same way. Nothing but the record is removed: the video was
+ * never held here, only the note of having made it.
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const id = req.nextUrl.searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'No export id given.' }, { status: 400 });
+    }
+
+    const bindings = await getDbBindings();
+    if (!bindings) {
+      const idx = memoryExports.findIndex(e => e.id === id);
+      if (idx < 0) {
+        return NextResponse.json({ success: false, error: 'That render is no longer listed.' }, { status: 404 });
+      }
+      memoryExports.splice(idx, 1);
+      return NextResponse.json({ success: true, source: 'memory', id });
+    }
+
+    const removed = await bindings.db
+      .delete(bindings.exportsTable)
+      .where(eq(bindings.exportsTable.id, id))
+      .returning({ id: bindings.exportsTable.id });
+    if (removed.length === 0) {
+      return NextResponse.json({ success: false, error: 'That render is no longer listed.' }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, source: 'database', id });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: describeDbError(err) }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -35,11 +73,11 @@ export async function POST(req: NextRequest) {
       id,
       projectId: body.projectId || null,
       title: body.title || 'Quran Video Export',
-      fileUrl: body.fileUrl || '',
+      fileName: typeof body.fileName === 'string' ? body.fileName : '',
       aspectRatio: body.aspectRatio || '9:16',
       duration: body.duration || 0,
       resolution: body.resolution || '1080x1920',
-      fileSizeBytes: body.fileSizeBytes || 0,
+      fileSizeBytes: Number.isFinite(body.fileSizeBytes) ? Math.round(body.fileSizeBytes) : 0,
       fps: body.fps || 60,
       renderTimeMs: body.renderTimeMs || 0,
       gpuDevice: body.gpuDevice || 'Unknown GPU',

@@ -46,7 +46,12 @@ interface GpuExportModalProps {
    * is not the frame that was being looked at. Undo covers it.
    */
   onAspectRatio: (aspectRatio: string) => void;
-  onSaveExportRecord: (downloadUrl: string, durationSec: number, renderMs: number) => void;
+  /**
+    * The note that this render happened. A name and a size rather than a link:
+    * the blob url this used to pass is scoped to the document, so the record
+    * pointed at nothing the moment the page reloaded.
+    */
+  onSaveExportRecord: (record: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => void;
   /** Length of the clip that will be rendered -- the ayah range, not the whole file. */
   exportSeconds: number;
 }
@@ -153,9 +158,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
     onStartExport(plan, (blob, renderMs, health) => {
       // Named here rather than up front: which container was produced is only
       // known once the export has chosen its path.
-      setDownloadFileName(
-        exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd, blob.type.includes('mp4') ? 'mp4' : 'webm')
+      // Named into a local first: the record needs the same string this
+      // renders, and the state set below is not readable until the next render.
+      const fileName = exportFileName(
+        surahNameEnglish, surahNumber, ayahStart, ayahEnd, blob.type.includes('mp4') ? 'mp4' : 'webm'
       );
+      setDownloadFileName(fileName);
       const url = URL.createObjectURL(blob);
       setExportedBlobUrl(url);
       setRenderedMs(renderMs);
@@ -164,7 +172,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       setPauses(health.pauses);
       // Was hardcoded to 45 seconds, so every saved record claimed the same
       // length regardless of what was rendered.
-      onSaveExportRecord(url, exportSeconds, renderMs);
+      onSaveExportRecord({ fileName, fileSizeBytes: blob.size, durationSec: exportSeconds, renderMs });
     });
   };
 

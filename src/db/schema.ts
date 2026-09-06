@@ -84,7 +84,17 @@ export const exports = pgTable('exports', {
   id: text('id').primaryKey(),
   projectId: text('project_id'),
   title: text('title').notNull(),
-  fileUrl: text('file_url').notNull(),
+  /**
+   * The name the export was offered under, not a link to it.
+   *
+   * This used to hold `URL.createObjectURL(blob)`, which is scoped to the
+   * document that made it -- so the row's download button was dead as soon as
+   * the page reloaded, and there was never a moment when it was more useful
+   * than the export dialog's own button still on screen. The browser is never
+   * told where the file was saved, so the name is the most a record can
+   * honestly carry: enough to find it on disk.
+   */
+  fileName: text('file_name').notNull().default(''),
   aspectRatio: text('aspect_ratio').notNull().default('9:16'),
   duration: integer('duration').notNull().default(0), // seconds
   resolution: text('resolution').notNull().default('1080x1920'),

@@ -150,13 +150,14 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 </p>
 - **Export aimed at a platform, not at a fixed frame** — seven presets, three resolution
   tiers and two frame rates, described under [Export](#export).
-  The save dialog offers `[Surah]_[surah]:[first]-[last]_[timestamp].webm` — for example
-  `Al-Fatihah_1:1-7_1764503112000.mp4` — so several renders of the same passage can sit in one
-  folder without colliding. The range is read off the timeline rather than the ayahs you asked
-  for, so a clip trimmed down to ayahs 2–3 is named `1:2-3` and not `1:1-7`. The extension
-  follows the file that was actually written — `.mp4` frame by frame, `.webm` on the real-time
-  fallback. Windows has no colon in filenames and the browser substitutes one character when
-  saving there.
+  The save dialog offers `[Surah]_[surah]_[first]-[last].mp4` — for example
+  `Al-Fatihah_1_1-7.mp4`. There is deliberately no timestamp: re-exporting the same passage
+  gives the same name, and the browser appends its own counter rather than overwriting. The
+  range is read off the timeline rather than the ayahs you asked for, so a clip trimmed down to
+  ayahs 2–3 is named `1_2-3` and not `1_1-7`. The extension follows the file that was actually
+  written — `.mp4` frame by frame, `.webm` on the real-time fallback. The colon is stripped
+  rather than kept: it is legal on Linux and macOS but not on Windows, and a name that survives
+  everywhere is worth more than one that reads like a verse reference.
 - Save, reopen and delete projects with PostgreSQL, or in-memory when no database is
   configured — see [Database](#database-optional) for a five-minute container setup. Deleting
   asks for confirmation and only drops the row from the drawer once the server confirms it is
