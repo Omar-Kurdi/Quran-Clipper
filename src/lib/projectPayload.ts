@@ -8,6 +8,7 @@
  */
 
 import { VerseData, VideoCanvasConfigLike } from '@/lib/projectPayloadTypes';
+import { TrimWindow } from '@/lib/projectAudio';
 
 export interface ProjectPayloadInput {
   surahNumber: number;
@@ -19,6 +20,16 @@ export interface ProjectPayloadInput {
   reciterName: string;
   audioUrl: string;
   audioDurationSeconds: number;
+  /**
+   * The name of the file an uploaded recitation came from -- the *original*,
+   * not the `-trimmed.wav` a trim produces, because it is the one the user
+   * still has and would be asked to pick again. Empty for a built-in reciter.
+   */
+  audioFileName?: string;
+  /** Where the stored copy of that audio lives in this browser. */
+  audioKey?: string;
+  /** Where this project's audio sits inside that file, or null if it was never trimmed. */
+  trimWindow?: TrimWindow | null;
   verses: VerseData[];
   config: VideoCanvasConfigLike;
 }
@@ -51,6 +62,12 @@ export function buildProjectPayload(input: ProjectPayloadInput): Record<string, 
     reciterName: input.reciterName,
     audioUrl: input.audioUrl,
     audioDuration: formatStoredDuration(input.audioDurationSeconds),
+    // Both only mean anything together with an upload. A project playing a
+    // built-in reciter stores neither, rather than carrying a stale name from
+    // whatever was uploaded earlier in the session.
+    audioFileName: input.audioFileName || '',
+    audioKey: input.audioFileName ? input.audioKey || '' : '',
+    trimWindow: input.audioFileName ? input.trimWindow ?? null : null,
     versesJson: input.verses,
   };
 }

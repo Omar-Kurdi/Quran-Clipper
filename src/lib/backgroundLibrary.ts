@@ -1,4 +1,5 @@
 import { MediaKind, rememberMediaKind, rememberMediaName } from './backgroundTimeline';
+import { idbPut, idbGet, idbDelete } from './idb';
 
 /**
  * The backgrounds a user has added themselves.
@@ -30,81 +31,12 @@ export interface LibraryItem {
 type StoredItem = { id: string; kind: MediaKind; label: string; source: 'link' | 'upload'; url?: string };
 
 const LIST_KEY = 'qc-background-library';
-const DB_NAME = 'quranclipper';
-const DB_VERSION = 1;
-const STORE = 'backgrounds';
 
 const EMPTY: LibraryItem[] = [];
 
-// ---------------------------------------------------------------------------
-// IndexedDB, wrapped in promises and never allowed to throw.
-//
-// Private windows, disabled storage and quota limits are all ordinary, and none
-// of them should cost more than the uploads themselves: every failure degrades
-// to "links only" rather than breaking the panel.
-// ---------------------------------------------------------------------------
-
-function openDb(): Promise<IDBDatabase | null> {
-  return new Promise(resolve => {
-    if (typeof indexedDB === 'undefined') return resolve(null);
-    let request: IDBOpenDBRequest;
-    try {
-      request = indexedDB.open(DB_NAME, DB_VERSION);
-    } catch {
-      return resolve(null);
-    }
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
-    request.onblocked = () => resolve(null);
-  });
-}
-
-function idbPut(id: string, blob: Blob): Promise<boolean> {
-  return openDb().then(db => {
-    if (!db) return false;
-    return new Promise<boolean>(resolve => {
-      try {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(blob, id);
-        tx.oncomplete = () => resolve(true);
-        // Most often quota: a few hundred megabytes of video is a real limit.
-        tx.onerror = () => resolve(false);
-        tx.onabort = () => resolve(false);
-      } catch {
-        resolve(false);
-      }
-    });
-  });
-}
-
-function idbGet(id: string): Promise<Blob | null> {
-  return openDb().then(db => {
-    if (!db) return null;
-    return new Promise<Blob | null>(resolve => {
-      try {
-        const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(id);
-        request.onsuccess = () => resolve(request.result instanceof Blob ? request.result : null);
-        request.onerror = () => resolve(null);
-      } catch {
-        resolve(null);
-      }
-    });
-  });
-}
-
-function idbDelete(id: string): Promise<void> {
-  return openDb().then(db => {
-    if (!db) return;
-    try {
-      db.transaction(STORE, 'readwrite').objectStore(STORE).delete(id);
-    } catch {
-      // Nothing to do: the record is unreachable either way.
-    }
-  });
-}
+const put = (id: string, blob: Blob) => idbPut('backgrounds', id, blob);
+const get = (id: string) => idbGet('backgrounds', id);
+const drop = (id: string) => idbDelete('backgrounds', id);
 
 // ---------------------------------------------------------------------------
 // The list itself
@@ -194,7 +126,7 @@ export function hydrateLibrary(): Promise<void> {
         restored.push({ ...item, url: item.url ?? null, source: 'link' });
         continue;
       }
-      const blob = await idbGet(item.id);
+      const blob = await get(item.id);
       restored.push({ ...item, source: 'upload', url: blob ? URL.createObjectURL(blob) : null });
     }
     restored.forEach(item => {
@@ -233,7 +165,7 @@ export async function addLibraryUpload(
   const url = URL.createObjectURL(file);
   rememberMediaKind(url, kind);
   rememberMediaName(url, file.name);
-  const stored = await idbPut(id, file);
+  const stored = await put(id, file);
   const item: LibraryItem = { id, kind, label: file.name, source: 'upload', url };
   publish([...items, item]);
   return { item, stored };
@@ -257,6 +189,6 @@ export async function removeLibraryItem(id: string): Promise<void> {
   if (!item) return;
   if (item.source === 'upload') {
     if (item.url) URL.revokeObjectURL(item.url);
-    await idbDelete(id);
+    await drop(id);
   }
 }

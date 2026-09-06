@@ -57,6 +57,42 @@ describe('buildProjectPayload', () => {
     expect(buildProjectPayload(base).versesJson).toEqual(verses);
   });
 
+  it('carries the uploaded file name and the trim window', () => {
+    // What makes a project built from an upload openable again: the audio
+    // itself lives in the browser, but if that is gone these two can rebuild
+    // the same clip from the file the user still has.
+    const payload = buildProjectPayload({
+      ...base,
+      audioFileName: 'test4.mp3',
+      audioKey: 'aud_abc',
+      trimWindow: { start: 4.2, end: 41.6 },
+    });
+    expect(payload.audioFileName).toBe('test4.mp3');
+    expect(payload.audioKey).toBe('aud_abc');
+    expect(payload.trimWindow).toEqual({ start: 4.2, end: 41.6 });
+  });
+
+  it('keeps the file name for an untrimmed upload, with no window', () => {
+    const payload = buildProjectPayload({ ...base, audioFileName: 'test4.mp3' });
+    expect(payload.audioFileName).toBe('test4.mp3');
+    expect(payload.trimWindow).toBeNull();
+  });
+
+  it('stores neither for a built-in reciter, however the studio got there', () => {
+    // A session that uploaded a file, trimmed it, then went back to a reciter
+    // must not save that file's name against reciter audio -- reopening would
+    // ask for a file that has nothing to do with what plays.
+    const payload = buildProjectPayload({
+      ...base,
+      audioFileName: '',
+      audioKey: 'aud_abc',
+      trimWindow: { start: 4.2, end: 41.6 },
+    });
+    expect(payload.audioFileName).toBe('');
+    expect(payload.audioKey).toBe('');
+    expect(payload.trimWindow).toBeNull();
+  });
+
   it('never lets a styling field shadow the project identity', () => {
     // Config is spread first for exactly this reason: a knob named `title` or
     // `surahNumber` must not be able to rename the project it belongs to.

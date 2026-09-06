@@ -5,6 +5,7 @@ import { X, FolderOpen, Film, Clock, Download, Play, Trash2, Sparkles, Loader2 }
 import { Dialog } from './Dialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useT } from './LocaleProvider';
+import { forgetProjectAudio } from '@/lib/projectAudio';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
@@ -67,7 +68,19 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
         setDeleteError(data?.error || t.projects.deleteFailed(res.status));
         return;
       }
-      setProjectsList(prev => prev.filter(proj => proj.id !== id));
+      // The recitation goes with the row, but only if nothing else is using
+      // it: several projects can be saved from one upload, and they share the
+      // stored copy. `projectsList` is the full list this drawer just fetched,
+      // so the surviving references are already to hand.
+      const removed = projectsList.find(proj => proj.id === id);
+      const survivors = projectsList.filter(proj => proj.id !== id);
+      setProjectsList(survivors);
+      if (removed?.audioKey) {
+        await forgetProjectAudio(
+          removed.audioKey,
+          survivors.map(proj => proj.audioKey).filter(Boolean)
+        );
+      }
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : t.projects.serverUnreachable);
     } finally {

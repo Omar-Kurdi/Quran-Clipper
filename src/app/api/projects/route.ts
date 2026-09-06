@@ -82,6 +82,18 @@ export async function POST(req: NextRequest) {
       reciterName: body.reciterName || 'Abdul Rahman Al-Sudais',
       audioUrl: body.audioUrl || 'https://server11.mp3quran.net/download/sds/001.mp3',
       audioDuration: body.audioDuration || '00:43',
+      // How a project built from an upload finds its recitation again: the key
+      // to the copy held in that browser, plus the file name and window that
+      // rebuild the same clip from the original if the copy is gone.
+      audioFileName: typeof body.audioFileName === 'string' ? body.audioFileName : '',
+      audioKey: typeof body.audioKey === 'string' ? body.audioKey : '',
+      trimWindow:
+        body.trimWindow &&
+        Number.isFinite(body.trimWindow.start) &&
+        Number.isFinite(body.trimWindow.end) &&
+        body.trimWindow.end > body.trimWindow.start
+          ? { start: body.trimWindow.start, end: body.trimWindow.end }
+          : null,
       aspectRatio: body.aspectRatio || '9:16',
       fontArabic: body.fontArabic || 'Scheherazade New',
       fontTranslation: body.fontTranslation || 'Inter',

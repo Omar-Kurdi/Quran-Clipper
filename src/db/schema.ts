@@ -12,7 +12,24 @@ export const projects = pgTable('projects', {
   reciterName: text('reciter_name').notNull(),
   audioUrl: text('audio_url').notNull(),
   audioDuration: text('audio_duration'),
-  
+
+  /**
+   * What makes a project built from an uploaded recitation openable again.
+   * All three are empty or null for a built-in reciter.
+   *
+   * `audioUrl` is a `blob:` url for an upload and dies with the tab, so it
+   * cannot be the answer on its own. `audioKey` addresses the audio itself in
+   * the browser's IndexedDB -- keyed by the recording rather than by the
+   * project, since several projects can be cut from one upload. If that has
+   * been evicted, `audioFileName` says which file to ask for and `trimWindow`
+   * says where in it this project's audio sits, which together rebuild exactly
+   * the clip the saved timeline was written against.
+   */
+  audioFileName: text('audio_file_name').default(''),
+  audioKey: text('audio_key').default(''),
+  trimWindow: jsonb('trim_window').$type<{ start: number; end: number } | null>(),
+
+
   // Customization & Style Settings
   aspectRatio: text('aspect_ratio').notNull().default('9:16'), // '9:16', '16:9', '1:1', '4:5'
   fontArabic: text('font_arabic').notNull().default('Scheherazade New'),

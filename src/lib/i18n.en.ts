@@ -93,7 +93,9 @@ export const en = {
     saved: 'Project Saved!',
     savedThisSession: 'Saved (this session)',
     saveFailed: 'Save Failed',
-    saveFailedStatus: (status: number) => `The server answered ${status}.`
+    saveFailedStatus: (status: number) => `The server answered ${status}.`,
+    audioNotStored:
+      'Saved, but this browser had no room to keep the recitation. Hold on to the original file — reopening the project will ask for it.'
   },
 
   surfaces: {
@@ -204,6 +206,10 @@ export const en = {
       'Video uploaded — its audio will be used for matching, and its footage as the background. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.',
     audioUploaded:
       'Audio uploaded. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.',
+    audioRestored:
+      'Recitation restored, cut to the same stretch this project was saved with — the timeline below already matches it.',
+    awaitingAudio: (name: string) =>
+      `This project was made from ${name}, and this browser no longer has its copy. Choose that file again and it will be cut to match the timeline.`,
     trimmed: (length: string) =>
       `Trimmed to ${length}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`,
     trimmingRange: 'Trimming the audio to the clip you marked…',

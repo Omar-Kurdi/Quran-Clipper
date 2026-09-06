@@ -38,6 +38,7 @@ import {
   BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
+import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
 import { ShortcutsDialog } from '@/components/ShortcutsDialog';
@@ -110,6 +111,29 @@ export default function VideoCreatorPage() {
    * in original-file time so ground truth stays reproducible from that file.
    */
   const [trimWindow, setTrimWindow] = useState<{ start: number; end: number } | null>(null);
+  /**
+   * The name of the file the user actually has, which `customAudioName` stops
+   * being the moment anything is trimmed -- it becomes `x-trimmed.wav`, and
+   * then `x-trimmed-trimmed.wav`. Asking someone to find that file on disk
+   * would be asking for something that never existed.
+   */
+  const [uploadOriginalName, setUploadOriginalName] = useState<string>('');
+  /**
+   * Where this session's audio is stored in the browser, so a saved project can
+   * find it again. Minted on upload and re-minted on every trim, because a trim
+   * produces a different file and any project already saved against the old one
+   * still needs it.
+   */
+  const [audioKey, setAudioKey] = useState<string>('');
+  /**
+   * A loaded project whose stored audio could not be found, waiting for the
+   * original file to be offered again.
+   *
+   * Holding the window here rather than in `trimWindow` keeps the two questions
+   * apart: `trimWindow` is where the *current* audio came from, this is what the
+   * next upload has to be cut to before it matches the timeline on screen.
+   */
+  const [awaitingAudio, setAwaitingAudio] = useState<{ fileName: string; trim: { start: number; end: number } | null } | null>(null);
   /**
    * Whether moving a segment's end carries everything after it along.
    *
@@ -488,16 +512,70 @@ export default function VideoCreatorPage() {
   const isVideoFile = (file: File) =>
     file.type.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi|m4v)$/i.test(file.name);
 
+  /**
+   * The original file, offered again for a project whose stored audio was gone.
+   *
+   * Cuts it back to the window that project was saved with and adopts the
+   * result *without touching the timeline*. Those verse times were rebased to
+   * this clip when it was first trimmed and saved that way, so running
+   * `trimTimeline` over them again would rebase them a second time and pull
+   * every caption `start` seconds early. This shares the decode and the slice
+   * with `handleApplyTrim` and nothing else: that one is making a new edit,
+   * this one is reproducing an edit already made.
+   */
+  const adoptAwaitedAudio = async (file: File, expecting: { fileName: string; trim: { start: number; end: number } | null }) => {
+    let adopted: TrimResult;
+    if (expecting.trim) {
+      const buffer = await decodeAudioFile(file);
+      adopted = buildTrimmedFile(buffer, expecting.trim.start, expecting.trim.end, expecting.fileName);
+    } else {
+      const url = URL.createObjectURL(file);
+      adopted = { file, url, duration: await measureAudioDuration(url) };
+    }
+    setCustomAudioFile(adopted.file);
+    setCustomAudioUrl(adopted.url);
+    setCustomAudioName(adopted.file.name);
+    setCustomAudioDuration(adopted.duration);
+    setUploadOriginalName(expecting.fileName);
+    setAudioKey(newAudioKey());
+    setAudioUrl(adopted.url);
+    if (adopted.duration > 0) setAudioDuration(adopted.duration);
+    setTrimWindow(expecting.trim);
+    setVideoBgOffset(expecting.trim ? expecting.trim.start : 0);
+    setUploadIsVideo(false);
+    setAwaitingAudio(null);
+    setCurrentTime(0);
+    if (audioElementRef.current) {
+      audioElementRef.current.src = adopted.url;
+      audioElementRef.current.currentTime = 0;
+      audioElementRef.current.load();
+    }
+    setMatchStatus({ text: t.match.audioRestored, tone: 'info' });
+  };
+
   // Handle Custom Audio / Video File Upload
   const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // A project is waiting for its recitation back. Reproduce the clip it was
+      // saved against rather than starting a fresh upload, which would leave the
+      // restored timeline describing a file it no longer matches.
+      if (awaitingAudio && !isVideoFile(file)) {
+        await adoptAwaitedAudio(file, awaitingAudio);
+        return;
+      }
       const url = URL.createObjectURL(file);
       const video = isVideoFile(file);
       setCustomAudioUrl(url);
       setCustomAudioName(file.name);
       setCustomAudioFile(file);
       setUploadIsVideo(video);
+      // The name the user would recognise, kept apart from `customAudioName`
+      // because a trim renames that to `-trimmed.wav`. A fresh key too: this is
+      // a different recording from whatever was here before.
+      setUploadOriginalName(file.name);
+      setAudioKey(newAudioKey());
+      setAwaitingAudio(null);
       // A fresh upload starts un-trimmed, so the video and its audio share a
       // timeline until a trim introduces an offset.
       setVideoBgOffset(0);
@@ -548,6 +626,10 @@ export default function VideoCreatorPage() {
     setCustomAudioUrl(result.url);
     setCustomAudioName(result.file.name);
     setCustomAudioDuration(result.duration);
+    // A different file from the one stored a moment ago, and a project already
+    // saved against that one still needs it -- so this gets its own key rather
+    // than overwriting.
+    setAudioKey(newAudioKey());
     setAudioUrl(result.url);
     setAudioDuration(result.duration);
     setVerses(prev => trimTimeline(prev, result.trimStart, result.trimEnd));
@@ -961,6 +1043,14 @@ export default function VideoCreatorPage() {
   const handleSaveProject = async () => {
     setSaveStatus({ text: t.header.saving, kind: 'pending' });
     try {
+      // The audio goes to the browser before the row goes to the server, so a
+      // project never claims a recording that was not stored. A refusal here is
+      // almost always quota; the row still saves, and the file name and trim
+      // window in it are what let the recitation be offered back by hand.
+      let storedAudio = true;
+      if (customAudioFile && audioKey) {
+        storedAudio = await storeProjectAudio(audioKey, customAudioFile);
+      }
       const payload = buildProjectPayload({
         surahNumber: selectedSurah,
         surahNameArabic,
@@ -971,6 +1061,9 @@ export default function VideoCreatorPage() {
         reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || 'Abdul Rahman Al-Sudais',
         audioUrl,
         audioDurationSeconds: audioDuration,
+        audioFileName: customAudioFile ? uploadOriginalName : '',
+        audioKey: storedAudio ? audioKey : '',
+        trimWindow,
         verses,
         config: canvasConfig as unknown as Record<string, unknown>,
       });
@@ -987,9 +1080,12 @@ export default function VideoCreatorPage() {
         // say so rather than implying the project survived a restart.
         setSaveStatus({
           text: data?.source === 'memory' ? t.header.savedThisSession : t.header.saved,
-          kind: 'ok'
+          kind: 'ok',
+          // Saved, but the recitation did not fit alongside it. Better said now
+          // than discovered on reopening, when the only clue would be silence.
+          detail: storedAudio ? undefined : t.header.audioNotStored
         });
-        setTimeout(() => setSaveStatus(null), 3000);
+        setTimeout(() => setSaveStatus(null), storedAudio ? 3000 : 8000);
       } else {
         const data = await res.json().catch(() => null);
         const reason = data?.error || t.header.saveFailedStatus(res.status);
@@ -1220,6 +1316,73 @@ export default function VideoCreatorPage() {
     }
   };
 
+  /**
+   * Puts back the recitation a saved project was built from.
+   *
+   * The stored copy first, which needs nothing from the user. Failing that the
+   * project still knows which file it came from and where in it its audio sat,
+   * so it asks for that file rather than leaving a dead `blob:` url and silence.
+   *
+   * Every field here is set on both paths, including to nothing: loading a
+   * reciter project after working on an upload has to clear the upload, or the
+   * next save writes that file's name against audio it has no relation to.
+   */
+  const restoreProjectAudio = async (proj: any) => {
+    const fileName: string = proj.audioFileName || '';
+    const trim = proj.trimWindow && proj.trimWindow.end > proj.trimWindow.start ? proj.trimWindow : null;
+
+    if (!fileName) {
+      setCustomAudioFile(null);
+      setCustomAudioUrl(null);
+      setCustomAudioName('');
+      setCustomAudioDuration(0);
+      setUploadOriginalName('');
+      setAudioKey('');
+      setAwaitingAudio(null);
+      setTrimWindow(null);
+      setVideoBgOffset(0);
+      setUploadIsVideo(false);
+      return;
+    }
+
+    const blob = proj.audioKey ? await loadProjectAudio(proj.audioKey) : null;
+    setUploadOriginalName(fileName);
+    setTrimWindow(trim);
+    setVideoBgOffset(trim ? trim.start : 0);
+    setUploadIsVideo(false);
+
+    if (!blob) {
+      // Nothing to play yet, so the timeline on screen is waiting for a file.
+      setCustomAudioFile(null);
+      setCustomAudioUrl(null);
+      setCustomAudioName('');
+      setCustomAudioDuration(0);
+      setAudioKey('');
+      setAwaitingAudio({ fileName, trim });
+      setMatchStatus({ text: t.match.awaitingAudio(fileName), tone: 'info' });
+      return;
+    }
+
+    // Stored as the file the timeline belongs to, so it is adopted as it is --
+    // no re-cut, and nothing to recompute.
+    const file = new File([blob], fileName, { type: blob.type || 'audio/wav' });
+    const url = URL.createObjectURL(file);
+    setCustomAudioFile(file);
+    setCustomAudioUrl(url);
+    setCustomAudioName(fileName);
+    setAudioKey(proj.audioKey);
+    setAwaitingAudio(null);
+    setAudioUrl(url);
+    const measured = await measureAudioDuration(url);
+    setCustomAudioDuration(measured);
+    if (measured > 0) setAudioDuration(measured);
+    if (audioElementRef.current) {
+      audioElementRef.current.src = url;
+      audioElementRef.current.currentTime = 0;
+      audioElementRef.current.load();
+    }
+  };
+
   // Load project from saved projects
   const handleLoadSavedProject = (proj: any) => {
     if (!proj) return;
@@ -1234,6 +1397,10 @@ export default function VideoCreatorPage() {
     setAudioUrl(proj.audioUrl || 'https://server11.mp3quran.net/download/sds/001.mp3');
     setVerses(proj.versesJson || []);
     setIsSampleProject(false);
+    // Overrides the url just set whenever this project came from an upload --
+    // `proj.audioUrl` is that upload's `blob:` url, which died with the tab
+    // that made it.
+    void restoreProjectAudio(proj);
 
     setCanvasConfig({
       ...canvasConfig,
