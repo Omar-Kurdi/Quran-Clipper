@@ -1,4 +1,4 @@
-# Quran Clipper - Studio
+# Quran Clipper Studio
 
 <p align="center">
   <img src="docs/screenshots/Banner.png" alt="Banner.">
@@ -16,9 +16,9 @@ only for timing. A word cannot go missing, come back garbled, or land in the wro
 those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The same studio in the Slate & Amber theme, showing the runtime theme switcher.">
+  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio: the source column on the left, the video preview in the middle, the inspector on the right, and the timeline across the bottom.">
 </p>
-<p align="center"><sub>Five themes ship, switchable at runtime from the header.</sub></p>
+<p align="center"><sub>One screen: source, preview, inspector, timeline. Five themes ship, switchable at runtime from the header.</sub></p>
 
 ---
 
@@ -28,6 +28,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - [Quick start](#quick-start)
 - [Environment variables](#environment-variables)
 - [Audio matching](#audio-matching)
+- [Translations](#translations)
 - [Using the studio](#using-the-studio)
 - [Export](#export)
 - [API reference](#api-reference)
@@ -41,8 +42,10 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 ## Features
 
 **Quran content**
-- All 114 surahs with Arabic/English metadata, Uthmani text, word-level data and English
-  translation (Quran.com API, translation `131` — The Clear Quran).
+- All 114 surahs with Arabic/English metadata, Uthmani text, word-level data, and a
+  translation under the Arabic — chosen from 126 editions in any language quran.com
+  publishes, up to three on the card at once. Which one is the default depends on which
+  upstream is configured; see [Translations](#translations).
 - Six reciters. The three marked **timed** carry per-ayah boundaries measured from the
   recording, published by Quran.com; loading them gives a real timeline, and the recording is
   streamed through `/api/audio/proxy`. The rest stream from mp3quran.net with boundaries
@@ -64,8 +67,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Phrase-level display: each segment carries only the words actually spoken, so a repeated
   half-ayah shows exactly those words rather than the whole verse.
 - Full-ayah English translation under the Arabic.
-- **Multiple backgrounds, four ways** — one clip, one per ayah, cycling on a timer, or shuffled
-  (repeatably, so a re-export matches the preview). Video and stills mix freely in one sequence.
+- **Multiple backgrounds, four ways** — one clip, one per segment, cycling on a timer, or
+  shuffled (repeatably, so a re-export matches the preview). Video and stills mix freely in one sequence.
   Every selected background is preloaded in its own element, so switching never stalls the
   render — which does mean each one decodes concurrently, so a handful is kinder to the export
   than all of them.
@@ -75,18 +78,28 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   they are still there after a restart; links are stored as links. An entry whose file can no
   longer be found — cleared browser storage, a link that stopped working — is kept as a
   placeholder rather than silently dropped, so you can add it again or remove it deliberately.
-  Deleting asks for confirmation and takes the background out of the sequence and the lane
-  with it.
+  Deleting a background from the list asks for confirmation and takes it out of the sequence
+  and the lane with it. Taking one *out of the sequence* does not ask — nothing is lost, the
+  clip is still in the list, and <kbd>Ctrl</kbd>+<kbd>Z</kbd> puts it back.
+- **Each background says what it is and how long it runs.** The gallery prints the clip's
+  length under its label, an uploaded file keeps its own file name rather than reading
+  "Uploaded clip", and a lane block stretched past the end of its footage marks where the clip
+  starts over and how many times it plays — so extending or shortening one is a decision you
+  can see rather than guess at.
 
   Saved *projects* still reference backgrounds by URL, so a project that used an uploaded file
   will not find it again in a later session — the background list will have it, but the project
   will not re-select it.
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The studio view showing the background picker section.">
+  <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The background panel: the four ways backgrounds are used, the sequence in play order, and the gallery with each clip's length under its label.">
 </p>
 - **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
   waveform of the recitation. Drag an edge to retime it, or tap **B** at each boundary while
   the audio plays (SPACE plays and pauses). Changes cascade so the timeline stays contiguous.
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_Timeline.png" alt="The timeline: transport controls, a time ruler, the background lane naming its clip and marking where it repeats, and one block per ayah drawn over the waveform.">
+</p>
+<p align="center"><sub>The lane above the ayah blocks names the background and marks each repeat — <code>×2.4</code> here means the clip plays through twice and a bit.</sub></p>
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
   ruler show exactly where you are, zoom (up to 16×) resolves the waveform for fine cuts, and
   start/end are entered as timecodes (`3:31.7`). Drag the handles, or park the playhead and
@@ -100,7 +113,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   the sound at the cut while you place it. **Keep 0:09.0** applies it — the same edit the
   dialog makes, without covering the thing being trimmed.
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The studio view showing the trimmer section.">
+  <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The trim editor: a waveform with drag handles, a time ruler, and start, end and selected length as timecodes.">
 </p>
 - **Upload video as well as audio** (MP4 / MOV / WebM / MKV). The audio track drives the
   timing, and the footage can double as the clip background — kept frame-synced to playback
@@ -111,6 +124,14 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Aspect ratios 9:16, 16:9, 1:1, 4:5.
 - 11 Pexels video backgrounds, plus any video or image you paste a link to or upload — stills
   render exactly like footage.
+- **Undo and redo** across the timeline, the selection and the styling, with
+  <kbd>Ctrl</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>. Edits within
+  600 ms fold into one step, so dragging a slider is a single undo rather than fifty.
+- **The work in progress is saved to this browser** a couple of seconds after it stops
+  changing, and offered back on the next visit — offered, never applied on its own. Uploaded
+  files cannot survive a reload, so their names are kept instead, which at least says what to
+  pick again.
+- **<kbd>?</kbd> lists every keyboard shortcut.**
 - **The interface in English or Arabic**, switched from the header. The choice is a cookie, so
   the server renders the page in the right language and direction from the first paint rather
   than flashing English and correcting itself. Arabic gets a real RTL layout and its own
@@ -122,15 +143,20 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
   picker in the last cell of the grid.
 <p align="center">
- <img src="docs/screenshots/QuranClipper_Layout.png" alt="The studio view showing the trimmer section.">
- <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The studio view showing the trimmer section.">
+  <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Layout and Text panel: aspect ratio, Arabic calligraphy face, text sizes, the chosen translations, and the colour fields." width="30%">
 </p>
-- Browser export via `canvas.captureStream()` + `MediaRecorder` (WebM, 18 Mbps, 30 or 60 FPS).
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and FX panel: card opacity and border, the surah badge, the watermark and the audio visualiser." width="30%">
+</p>
+- **Export aimed at a platform, not at a fixed frame** — seven presets, three resolution
+  tiers and two frame rates, described under [Export](#export).
   The save dialog offers `[Surah]_[surah]:[first]-[last]_[timestamp].webm` — for example
-  `Al-Fatihah_1:1-7_1764503112000.webm` — so several renders of the same passage can sit in one
+  `Al-Fatihah_1:1-7_1764503112000.mp4` — so several renders of the same passage can sit in one
   folder without colliding. The range is read off the timeline rather than the ayahs you asked
-  for, so a clip trimmed down to ayahs 2–3 is named `1:2-3` and not `1:1-7`. Windows has no
-  colon in filenames and the browser substitutes one character when saving there.
+  for, so a clip trimmed down to ayahs 2–3 is named `1:2-3` and not `1:1-7`. The extension
+  follows the file that was actually written — `.mp4` frame by frame, `.webm` on the real-time
+  fallback. Windows has no colon in filenames and the browser substitutes one character when
+  saving there.
 - Save, reopen and delete projects with PostgreSQL, or in-memory when no database is
   configured — see [Database](#database-optional) for a five-minute container setup. Deleting
   asks for confirmation and only drops the row from the drawer once the server confirms it is
@@ -278,6 +304,11 @@ an optional capability, and the app degrades cleanly without it.
 | `GEMINI_API_KEY` | the `gemini` provider | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
 | `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |
 | `GEMINI_TIMEOUT_MS` | — | `180000` | Ceiling on a single Gemini request. |
+| `QURAN_FOUNDATION_CLIENT_ID` | The Clear Quran | — | Free client from [api-docs.quran.foundation](https://api-docs.quran.foundation). Both halves have to be set for either to count. |
+| `QURAN_FOUNDATION_CLIENT_SECRET` | The Clear Quran | — | Read on the server only; it never reaches the browser. |
+| `QURAN_FOUNDATION_ENV` | — | `live` | `prelive` is the Foundation's sandbox, which issues its own separate credentials. |
+| `QURAN_TRANSLATION_ID` | — | `131` with credentials, `20` without | Which translation a caption's own text is. |
+| `NEXT_PUBLIC_QURAN_TRANSLATION_ID` | — | as above | The browser's copy of the line above. Set the two together; they are meant to agree. |
 | `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
 | `PEXELS_API_KEY` | pasting Pexels *page* links | — | Without it, copy the file link from Pexels instead. |
 | `STUDIO_TOKEN` | serving this beyond localhost | — | Shared secret in front of the whole studio. Unset means no authentication at all. See below. |
@@ -296,6 +327,13 @@ an optional capability, and the app degrades cleanly without it.
 > working: `/api/audio/proxy` is gated too, and the browser sends the cookie with the `<audio>`
 > element's own request because it is same-origin (verified — the proxy answers 401 without the
 > token and 206 with it, and the player loads through it either way once the cookie is set).
+
+> **The Quran Foundation credentials are optional and change the default translation.** With
+> them set, every Quran fetch goes through that API and the default becomes The Clear Quran;
+> without them the app uses the open `api.quran.com` exactly as before. Read the
+> [developer terms](https://api-docs.quran.foundation/legal/developer-terms/) first — content
+> may not be stored beyond seven days, and the Quran text may not be modified. See
+> [Translations](#translations).
 
 > **Gemini model IDs are retired regularly.** `gemini-2.0-flash` and `gemini-2.5-flash` no
 > longer exist and return HTTP 404. Check the
@@ -322,6 +360,11 @@ they can be swapped freely and compared on the same clip.
 |---|---|---|---|
 | **Local** (`align`) | sidecar | detected from audio, or you | **Exact** — cannot drop or garble a word |
 | **Online** (`gemini`) | API key | you | Approximate |
+
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_Matching.png" alt="The upload panel with a recitation loaded: the two matchers with their current state, the trim button showing the clip length, and the auto-match and manual match choices." width="30%">
+</p>
+<p align="center"><sub>Each matcher says whether it can run right now, and why not if it cannot — here the local sidecar has not been started.</sub></p>
 
 **Local** is the recommended path. It is *given* the Quran text rather than asked to
 guess it: the text becomes a fixed CTC target and the model decides only *when* each word was
@@ -406,6 +449,56 @@ correct range from a wrong one — [docs/ALIGNMENT.md](docs/ALIGNMENT.md) has th
 
 ---
 
+## Translations
+
+The line under the Arabic is a choice, not a constant. **Choose translations**, in
+Style › Layout & Text, opens every edition the configured upstream publishes — 126 of them on
+the open API — grouped by language and searchable by translator, because the question is rarely "where is English", it is
+which of the eight Urdu translations this one is.
+
+Up to three go on the card at once, in the order you pick them, which is how a recitation clip
+reaches an audience that is not monolingual. Three is the cap because the card fits its text by
+shrinking it: a fourth would not overflow, it would make all four unreadable. An Arabic-script
+translation is drawn right to left in the verse face, and each block sets its own direction, so
+two languages running opposite ways sit correctly on the same card.
+
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_Translations.png" alt="The translation picker: the editions already on the card as numbered chips, a search field, and the full list grouped under language headings." width="62%">
+</p>
+
+A translation chosen an hour into an edit reaches a timeline the aligner built from an upload
+just as readily as one that came from **Load ayahs & audio** — the text is fetched by verse key
+rather than by however the captions got there. A saved project keeps the choice and the text; a
+draft keeps only the choice, because three translations across Al-Baqarah is megabytes the API
+will hand back on request.
+
+### Which translation is the default
+
+| Configured | Default | Where it is read from |
+|---|---|---|
+| nothing | Saheeh International (`20`) | `api.quran.com` — open, keyless, 126 translations |
+| Quran Foundation credentials | The Clear Quran, Dr. Mustafa Khattab (`131`) | the Quran Foundation content API |
+
+**The Clear Quran is not in the open API's list.** Asking `api.quran.com` for resource `131`
+returns HTTP 200 with the translation silently absent — which is why the default had fallen
+back to Saheeh International, and why the picker could not offer it either. quran.com's own
+site reads it from the Quran Foundation content API, which is free but wants a client id and
+secret.
+
+Which upstream answers is decided on the *answer* rather than on the status code. A response
+that comes back without a usable translation — a chapter the configured API does not hold, a
+sandbox that returns ayahs with empty captions — is asked for again from the open API, and
+every text request carries Saheeh International alongside the configured id. Configuring the
+Foundation API can therefore add The Clear Quran, but cannot leave the studio worse off than it
+was without it.
+
+> Credentials are per-application and the Foundation decides what each one may read. Its
+> **prelive** sandbox holds two chapters and fourteen translations and does *not* include The
+> Clear Quran, so it is not a smaller copy of the live API — it is a different, much smaller
+> corpus. Production credentials are what carry `131`.
+
+---
+
 ## Using the studio
 
 The studio is one screen: **Source** on the left, the **preview** in the middle, the
@@ -435,7 +528,18 @@ how the work actually goes.
 **Inspector — what each ayah says**
 7. **Ayah** holds the text, the translation, the ayah number, and a chip per word — tap a word to
    hide it from the video. Fine timing nudges (±0.2 s) are here too.
-8. **Style** holds the aspect ratio, background, typography, card and watermark.
+8. **Style** holds the aspect ratio, background, typography, card and watermark, and the
+   [translations](#translations) that appear under the Arabic.
+
+**Throughout**
+9. <kbd>Ctrl</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> undo and redo
+   across the timeline, the selection and the styling. <kbd>?</kbd> lists every shortcut.
+10. The working project is saved to this browser a couple of seconds after it stops changing and
+    offered back next visit — offered, not applied.
+
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_Shortcuts.png" alt="The keyboard shortcuts dialog, listing space, B, undo, redo, question mark and escape." width="52%">
+</p>
 
 Then save the project and export.
 
@@ -446,16 +550,63 @@ Then save the project and export.
 
 ## Export
 
-Exports use browser APIs: `canvas.captureStream()` for frames, a cloned `Audio` element routed
-through Web Audio, and `MediaRecorder` with VP9/opus (falling back to VP8/opus, then generic
-WebM). **Chrome or Chromium is recommended.** Output is `.webm`.
+Two paths, chosen by what the browser can do. Where `VideoEncoder` and `VideoDecoder` exist —
+Chrome and Chromium — frames are encoded one at a time with WebCodecs and muxed to **MP4**
+(H.264, with AAC audio, or Opus where the browser has no AAC encoder). Nothing runs in real
+time, the tab does not have to stay visible, and video backgrounds are demuxed and decoded in
+order rather than seeked, so they come along. Everywhere else the canvas is recorded live with
+`MediaRecorder` to **WebM** (VP9/opus, falling back to VP8/opus). That path captures the
+preview, so it cannot exceed 1080p — the higher resolution buttons are disabled with the reason
+attached rather than quietly producing something smaller than was asked for.
 
-| Aspect ratio | Resolution |
-|---|---|
-| 9:16 | 1080×1920 |
-| 16:9 | 1920×1080 |
-| 1:1 | 1080×1080 |
-| 4:5 | 1080×1350 |
+**Chrome or Chromium is recommended**, and is what gets you the first path.
+
+<p align="center">
+  <img src="docs/screenshots/QuranClipper_Export.png" alt="The export dialog: the detected GPU and codecs, the seven platform presets, frame rate and quality tiers, and the resulting resolution, bitrate and estimated file size." width="52%">
+</p>
+
+### Where the clip is going
+
+A preset sets the frame shape, the resolution and the bitrate together. Resolution used to be
+welded to the aspect ratio, so "make this look good on Reels" and "make this look good on a
+television" produced the same file; they are now different renders.
+
+| Preset | Ratio | Frame rate | Platform ceiling |
+|---|---|---|---|
+| **YouTube Shorts** | 9:16 | 30 | 3 minutes |
+| TikTok | 9:16 | 30 | 10 minutes |
+| Instagram Reels | 9:16 | 30 | 90 seconds |
+| Instagram Portrait | 4:5 | 30 | 90 seconds |
+| Instagram Feed | 1:1 | 30 | 90 seconds |
+| YouTube | 16:9 | 60 | — |
+| Facebook Reels | 9:16 | 30 | 90 seconds |
+
+Shorts leads the list, so a 9:16 project opens on it. A clip longer than the platform accepts
+says so before the render rather than after the upload.
+
+### Quality
+
+The tier sets the long edge of the frame and how many bits each pixel gets. Higher tiers spend
+fewer bits per pixel because there are far more pixels — 4K at the 1080p rate would be 40 Mbps
+of a mostly still frame.
+
+| Tier | Long edge | Bits/pixel | A 9:16 frame at 30 FPS |
+|---|---|---|---|
+| 1080p | 1920 | 0.16 | 1080×1920, ~10 Mbps |
+| 1440p | 2560 | 0.12 | 1440×2560, ~13 Mbps |
+| 4K | 3840 | 0.08 | 2160×3840, ~20 Mbps |
+
+**Those bitrates are deliberately above what the platforms keep.** Every one of them re-encodes
+an upload, and a second encode of an already-thin H.264 stream is where Arabic text goes soft at
+the edges. The headroom is what survives that pass.
+
+What stops it being unbounded is memory rather than taste: the muxer holds the whole MP4 in one
+buffer, so a plan over ~1.25 GB steps down a tier, then gives up bitrate, and says which of the
+two it did. A clip that will not fit however it is planned says that too, before the render
+starts.
+
+The frame-by-frame encoder builds its own canvas at the chosen size, so a 4K render is only
+larger numbers — nothing in the painting code is written in fixed pixels.
 
 ---
 
@@ -467,11 +618,17 @@ App routes:
 |---|---|---|
 | `GET` | `/api/quran/surahs` | All 114 surahs |
 | `GET` | `/api/quran/verses?surah=&start=&end=&reciter=` | Verse data and audio URL |
+| `GET` | `/api/quran/translations` | Every translation the configured upstream publishes, grouped for the picker |
+| `GET` | `/api/quran/translation?surah=&start=&end=&ids=` | The text of up to five translations for one passage, keyed by verse |
 | `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|gemini`) |
 | `GET` | `/api/audio/match` | Which providers are configured and reachable |
+| `GET` | `/api/audio/proxy?url=` | Streams reciter audio, range requests included |
+| `GET` | `/api/background/resolve?url=` | Turns a Pexels page link into the media file link |
 | `GET` `POST` | `/api/projects` | List / save projects |
 | `DELETE` | `/api/projects?id=` | Delete one saved project (`404` if it is already gone) |
 | `GET` `POST` | `/api/exports` | List / save export records |
+| `GET` | `/api/gpu` | Encoder capability reference |
+| `GET` | `/api/health` | App, database and sidecar in one answer — the one route `STUDIO_TOKEN` leaves open |
 
 Sidecar routes (default `http://127.0.0.1:8000`) are documented in
 [asr-service/README.md](asr-service/README.md#api).
@@ -493,13 +650,21 @@ src/app/                     Next.js pages and API routes
   api/audio/match/           Matcher endpoint and provider dispatch
   video-creator/             The studio page
 src/components/              VideoCanvas, Timeline, Inspector, StyleConfigPanel,
-                             GpuExportModal, SavedProjectsDrawer, AudioTrimModal
-                             Dialog, Button, Status, OverflowMenu, PaletteSwitcher
-                             LocaleProvider, LanguageSwitcher
+                             GpuExportModal, SavedProjectsDrawer, AudioTrimModal,
+                             TranslationPicker, ShortcutsDialog, HealthStrip, ColorField,
+                             Dialog, ConfirmDialog, Button, Status, OverflowMenu,
+                             PaletteSwitcher, LocaleProvider, LanguageSwitcher
+src/hooks/                   useAudioPlayback, useTimelineEditing, useTransportKeys,
+                             useVideoExport, useEditHistory, useAutoSaveDraft,
+                             useMediaDurations, useTranslationCatalogue
 src/db/                      Drizzle ORM connection and schema
 src/lib/
   quranData.ts               Surahs, reciters, backgrounds, fonts, sample data
+  quranApi.ts                The one door every Quran fetch goes through, and the
+                             open / Quran Foundation upstream choice
   quranCorpus.ts             Quran text fetch with a memoised chapter cache
+  translations.ts            Picker logic: grouping, search, the three-at-once cap
+  translationCatalogue.ts    The fetched edition list, cached for the session
   arabic.ts                  Arabic normalisation
   matchTypes.ts              Shared segment/result shape for every provider
   matchTimeline.ts           Provider-agnostic segment -> timeline building
@@ -509,6 +674,16 @@ src/lib/
   audioTrim.ts               In-browser decode/slice/re-encode for the trim editor
   waveform.ts                Cached peak data for the timeline's waveform track
   verseEdits.ts              Pure timeline edits shared by the timeline and inspector
+  editHistory.ts             Undo/redo stack, with edits inside 600ms folded into one
+  draftStore.ts              The auto-saved working project, kept in this browser
+  backgroundTimeline.ts      Which background is on screen at a given second
+  backgroundLibrary.ts       Backgrounds you added, uploads held in IndexedDB
+  mediaDuration.ts           Clip lengths, and how many times one repeats in a block
+  exportPresets.ts           Platform, tier and frame rate -> one export plan
+  offlineExport.ts           The frame-by-frame WebCodecs render
+  videoFrames.ts             In-order demux/decode of a video background
+  exportName.ts              The suggested file name, read off the timeline
+  exportHealth.ts            What the export dialog can promise on this browser
   i18n.ts                    Locale registry, cookie name, direction
   i18n.en.ts                 English interface copy -- the Dictionary type is derived from it
   i18n.ar.ts                 Arabic interface copy, typed against the English one
@@ -521,7 +696,12 @@ docs/ALIGNMENT.md            Why alignment is built this way, with measurements
 ```
 
 **Tech stack:** Next.js 16 (App Router), React 19, TypeScript (strict), Tailwind CSS v4,
-Drizzle ORM + PostgreSQL, Quran.com API v4, FastAPI + PyTorch/torchaudio, Silero VAD.
+Drizzle ORM + PostgreSQL, Quran.com API v4 and the Quran Foundation content API,
+WebCodecs + `mp4-muxer` + `mp4box` for export, FastAPI + PyTorch/torchaudio, Silero VAD.
+
+Anything pure — timeline edits, export planning, draft serialisation, the translation
+picker's grouping and search — is a `src/lib/*.ts` module with a `*.test.ts` beside it, run
+with `npm test`.
 
 ### Development
 
@@ -529,6 +709,7 @@ Drizzle ORM + PostgreSQL, Quran.com API v4, FastAPI + PyTorch/torchaudio, Silero
 npm run dev          # start the dev server
 npm run typecheck    # tsc --noEmit
 npm run lint         # eslint
+npm test             # vitest, over src/**/*.test.ts
 npm run build        # production build
 npm run db:push      # apply src/db/schema.ts to DATABASE_URL
 npm run db:studio    # browse the database in Drizzle Studio
@@ -764,7 +945,9 @@ npx next dev --webpack
 
 ## Credits
 
-Quran text, translation, and word data from the [Quran.com API](https://api-docs.quran.com/).
+Quran text, translation, and word data from the [Quran.com API](https://api-docs.quran.com/)
+and, where credentials are configured, the
+[Quran Foundation content API](https://api-docs.quran.foundation).
 Reciter audio from [mp3quran.net](https://mp3quran.net/). Background footage from
 [Pexels](https://www.pexels.com/). Acoustic models from the Hugging Face community.
 
