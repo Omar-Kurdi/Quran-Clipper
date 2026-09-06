@@ -636,6 +636,25 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
       ctx.clearRect(0, 0, width, height);
 
+      // The frame is the user's content, so nothing on it may follow the
+      // language the studio happens to be in. `ctx.direction` defaults to
+      // 'inherit', which resolves against the document -- so with the interface
+      // in Arabic this drew the watermark as "QuranClipper@" and put the
+      // transliteration before the surah name in the badge, neither of which is
+      // a choice anyone made.
+      //
+      // Worse, the three surfaces this paints onto did not even agree with each
+      // other. Measured under `<html dir="rtl">`: the preview's canvas and the
+      // encoder's OffscreenCanvas both inherit 'rtl', while the detached
+      // element the encoder falls back to when OffscreenCanvas is missing does
+      // not -- so on that path the exported file disagreed with the preview it
+      // was rendered from.
+      //
+      // Everything below therefore starts left to right, on every surface. The
+      // ayah and any right-to-left translation set their own direction, and the
+      // save/restore they sit inside returns to this.
+      ctx.direction = 'ltr';
+
       // 1. Background (clip, still, or gradient fallback).
       //
       // Readiness alone decides. It used to also require `!videoErrorRef`, a

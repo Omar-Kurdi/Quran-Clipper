@@ -566,8 +566,17 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
             <div className="flex items-center justify-between mb-2">
               <div className="text-[11px] text-slate-400">
                 {t.trim.playhead}{' '}
-                <span className="font-mono text-lapis-bright" dir="ltr">{formatDuration(playhead)}</span>
-                <span className="font-mono text-slate-400" dir="ltr"> / {formatDuration(duration)}</span>
+                {/*
+                  * One left-to-right run, not two. `dir` isolates each element
+                  * it is on, so two adjacent spans became two runs -- and the
+                  * Arabic paragraph around them then ordered those runs right
+                  * to left, running the timecodes together as "0:50.40:00.0".
+                  * The pair is a single value and has to sit in a single run.
+                  */}
+                <span className="font-mono" dir="ltr">
+                  <span className="text-lapis-bright">{formatDuration(playhead)}</span>
+                  <span className="text-slate-400"> / {formatDuration(duration)}</span>
+                </span>
               </div>
               <div className="flex items-center gap-1">
                 <button
