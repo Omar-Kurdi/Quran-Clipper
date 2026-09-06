@@ -480,28 +480,23 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         <span className="shrink-0 text-[10px] font-mono text-slate-400 tabular-nums" dir="ltr">
                           {seg.start.toFixed(1)}–{seg.end.toFixed(1)}s
                         </span>
+                        {/* No confirmation, for the reason taking a clip out of
+                            the sequence has none: nothing is lost. The clip is
+                            still in the gallery above, the lane lives in the
+                            styling config that the undo history snapshots, and
+                            Ctrl+Z puts the block back where it was. A dialog
+                            here was a second click on every adjustment. */}
                         <button
-                          onClick={() =>
-                            setPendingDelete({
-                              title: t.style.removeBlockTitle,
-                              message: t.style.removeBlockMessage(
-                                nameOf(seg.url),
-                                seg.start.toFixed(1),
-                                seg.end.toFixed(1)
-                              ),
-                              confirmLabel: t.style.removeBlockConfirm,
-                              run: () => {
-                                setLane(removeSegment(laneSegments, i));
-                                onSelectBackground?.(
-                                  selectedBackground === null || selectedBackground === i
-                                    ? null
-                                    : selectedBackground > i
-                                      ? selectedBackground - 1
-                                      : selectedBackground
-                                );
-                              }
-                            })
-                          }
+                          onClick={() => {
+                            setLane(removeSegment(laneSegments, i));
+                            onSelectBackground?.(
+                              selectedBackground === null || selectedBackground === i
+                                ? null
+                                : selectedBackground > i
+                                  ? selectedBackground - 1
+                                  : selectedBackground
+                            );
+                          }}
                           aria-label={t.style.removeBlockAria(nameOf(seg.url), seg.start.toFixed(1))}
                           className="p-0.5 text-slate-400 hover:text-red-400"
                         >

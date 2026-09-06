@@ -413,10 +413,6 @@ export const en = {
       `Cut by hand on the timeline — ${blocks} block${blocks === 1 ? '' : 's'}.`,
     laneHelp:
       'Drag a block to move it, or an edge to change how long it runs; stretching one past the clip’s own length just plays it again. Pick a mode above to go back to automatic.',
-    removeBlockTitle: 'Remove this block?',
-    removeBlockMessage: (name: string, start: string, end: string) =>
-      `“${name}” runs from ${start}s to ${end}s. Removing it leaves a gap there, which shows the plain gradient.`,
-    removeBlockConfirm: 'Remove block',
     removeBlockAria: (name: string, start: string) => `Remove ${name} at ${start}s`,
 
     sequenceEmpty:

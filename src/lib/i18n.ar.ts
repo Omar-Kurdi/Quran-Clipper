@@ -406,10 +406,6 @@ export const ar: Dictionary = {
       `مقصوص يدويًا على المسار الزمني — ${blocks} ${blocks === 1 ? 'كتلة' : blocks === 2 ? 'كتلتان' : 'كتلة'}.`,
     laneHelp:
       'اسحب كتلة لتحريكها، أو حافة لتغيير مدة تشغيلها؛ ومدّها أطول من المقطع نفسه يعيد تشغيله فحسب. اختر وضعًا بالأعلى للعودة إلى الوضع التلقائي.',
-    removeBlockTitle: 'إزالة هذه الكتلة؟',
-    removeBlockMessage: (name, start, end) =>
-      `«${name}» تعمل من ${start} ثانية إلى ${end} ثانية. إزالتها تترك فجوة هناك تظهر فيها الخلفية المتدرجة العادية.`,
-    removeBlockConfirm: 'إزالة الكتلة',
     removeBlockAria: (name, start) => `إزالة ${name} عند ${start} ثانية`,
 
     sequenceEmpty:
