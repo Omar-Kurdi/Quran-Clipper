@@ -1104,13 +1104,46 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       isExportingRef.current = true;
       cancelledRef.current = false;
 
-      // Background clips, decoded in order rather than played. Opened lazily
-      // and kept for the whole render: a playlist revisits the same clip, and
-      // demuxing it again each time would be the expensive part.
+      /**
+       * Background clips, decoded in order rather than played -- and only a
+       * couple of them open at a time.
+       *
+       * These used to be opened lazily and then kept for the whole render, on
+       * the grounds that a playlist revisits a clip and demuxing it again is
+       * the expensive part. It is, but it is not the expensive thing: an open
+       * clip holds the whole video file, every encoded sample of it in a
+       * second array, a live `VideoDecoder` and a queue of raw 1080x1920
+       * frames at about 3 MB each. Seven backgrounds in one lane -- an
+       * ordinary thing to want, and the reason the hand-cut lane exists -- was
+       * therefore several hundred megabytes of that before the muxer had
+       * written a single byte, and it killed the renderer outright on a
+       * thirty-four second 1080p export. Reproduced at seven; the file being
+       * produced had nothing to do with it.
+       *
+       * Output time only moves forward, so the render needs the clip it is on
+       * and, across a boundary, the one it is leaving. Anything else is closed
+       * and re-opened if the lane comes back to it, which costs a re-fetch
+       * (from the browser's cache) and a re-demux once per block rather than
+       * the tab.
+       */
+      const OPEN_CLIPS = 2;
       const clips = new Map<string, BackgroundClip | null>();
       const clipFor = async (url: string) => {
-        if (!clips.has(url)) clips.set(url, await openBackgroundClip(url));
-        return clips.get(url) ?? null;
+        if (clips.has(url)) {
+          // Re-insert so insertion order is least-recently-used first.
+          const open = clips.get(url) ?? null;
+          clips.delete(url);
+          clips.set(url, open);
+          return open;
+        }
+        const clip = await openBackgroundClip(url);
+        clips.set(url, clip);
+        while (clips.size > OPEN_CLIPS) {
+          const oldest = clips.keys().next().value as string;
+          clips.get(oldest)?.close();
+          clips.delete(oldest);
+        }
+        return clip;
       };
 
       /** The background as it looked at `atSeconds`, whatever kind it is. */

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   EXPORT_PRESETS, presetById, presetForAspect, dimensionsFor, bitrateFor,
-  planExport, formatBytes, formatBitrate, MAX_EXPORT_BYTES
+  planExport, formatBytes, formatBitrate,
+  MAX_EXPORT_BYTES, MAX_EXPORT_HEAP_BYTES, EXPORT_MEMORY_FACTOR
 } from './exportPresets';
 
 describe('export presets', () => {
@@ -53,22 +54,34 @@ describe('export presets', () => {
     expect(plan.estimatedBytes).toBeLessThan(MAX_EXPORT_BYTES);
   });
 
-  it('steps down a tier rather than exceeding what one buffer can hold', () => {
-    // Forty minutes of recitation at 4K would be several gigabytes in memory.
-    const plan = planExport({ presetId: 'tiktok', tier: 'max', fps: 60, seconds: 40 * 60 });
+  it('steps down a tier rather than spending more memory than it has', () => {
+    // Eighty seconds at 4K60 is ~400 MB of file and four times that to build.
+    const plan = planExport({ presetId: 'tiktok', tier: 'max', fps: 60, seconds: 80 });
     expect(plan.steppedDownFrom).toBe('max');
     expect(plan.tier).not.toBe('max');
     expect(plan.estimatedBytes).toBeLessThanOrEqual(MAX_EXPORT_BYTES);
   });
 
   it('gives up bitrate only once there is no tier left to give up', () => {
-    // Twenty minutes at 1080p60 is over the ceiling at full bitrate, and fits
+    // Five minutes at 1080p60 is over the ceiling at full bitrate, and fits
     // once it is spent down.
-    const plan = planExport({ presetId: 'tiktok', tier: 'standard', fps: 60, seconds: 20 * 60 });
+    const plan = planExport({ presetId: 'tiktok', tier: 'standard', fps: 60, seconds: 5 * 60 });
     expect(plan.tier).toBe('standard');
     expect(plan.bitrateReduced).toBe(true);
     expect(plan.exceedsMemory).toBe(false);
     expect(plan.estimatedBytes).toBeLessThanOrEqual(MAX_EXPORT_BYTES);
+  });
+
+  it('budgets the memory a render spends, not the file it produces', () => {
+    expect(MAX_EXPORT_BYTES).toBe(Math.round(MAX_EXPORT_HEAP_BYTES / EXPORT_MEMORY_FACTOR));
+
+    // The render that killed a tab: a ninety-second recitation asked for at 4K.
+    // The old ceiling compared the finished file against a budget four times
+    // too generous, so this planned at full 4K and reached about 1.8 GB.
+    const plan = planExport({ presetId: 'tiktok', tier: 'max', fps: 60, seconds: 90 });
+    expect(plan.steppedDownFrom).toBe('max');
+    expect(plan.width).toBeLessThan(2160);
+    expect(plan.estimatedBytes * EXPORT_MEMORY_FACTOR).toBeLessThanOrEqual(MAX_EXPORT_HEAP_BYTES);
   });
 
   it('admits when a clip will not fit however it is planned', () => {

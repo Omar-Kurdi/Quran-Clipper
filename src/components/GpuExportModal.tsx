@@ -515,7 +515,18 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
             {/* Video Player Preview */}
             <div className="w-full max-h-52 overflow-hidden rounded-xl border border-slate-800 bg-black">
-              <video src={exportedBlobUrl} controls className="w-full h-full object-contain" />
+              {/* `preload="none"` because this mounts at the worst possible
+                  moment: the muxer's buffers, the assembled file and the Blob
+                  copy of it are all still live, and starting a decoder for a
+                  4K file on top of them is what "it crashed as soon as the
+                  export ended" is made of. The player still plays on demand --
+                  it just does not read the file before anyone asks. */}
+              <video
+                src={exportedBlobUrl}
+                controls
+                preload="none"
+                className="w-full h-full object-contain"
+              />
             </div>
 
             <a

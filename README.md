@@ -73,9 +73,10 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   the hand-cut lane takes whatever layout is on screen and makes it movable, so choosing it
   changes nothing about the video until you drag something. In the automatic modes the play
   order is a list you can drag to rearrange. Video and stills mix freely in one sequence.
-  Every selected background is preloaded in its own element, so switching never stalls the
-  render — which does mean each one decodes concurrently, so a handful is kinder to the export
-  than all of them.
+  Every selected background is preloaded in its own element for the preview, so switching never
+  stalls. The export does not hold them that way: it keeps a couple of clips open at a time and
+  re-reads one if the lane comes back to it, because an open clip is the whole video file plus a
+  decoder and its raw frames, and seven of those at once killed the tab.
 - **Your own backgrounds, kept between sessions.** Uploading a file or pasting a link adds it
   to the list beside the presets, and to whichever mode is selected — the sequence in the multi
   modes, the lane in a hand-cut one. Uploaded files are stored in the browser's IndexedDB, so
@@ -605,10 +606,15 @@ of a mostly still frame.
 an upload, and a second encode of an already-thin H.264 stream is where Arabic text goes soft at
 the edges. The headroom is what survives that pass.
 
-What stops it being unbounded is memory rather than taste: the muxer holds the whole MP4 in one
-buffer, so a plan over ~1.25 GB steps down a tier, then gives up bitrate, and says which of the
-two it did. A clip that will not fit however it is planned says that too, before the render
-starts.
+What stops it being unbounded is memory rather than taste, and the budget is what the render
+*spends*, not what it produces. Building an MP4 here costs about four times the finished file:
+the chunks are collected, `fastStart: 'in-memory'` assembles them into a second buffer so the
+index sits at the front, and the Blob copies that again — measured at 179 MB of heap for a
+44 MB export and 594 MB for a 129 MB one. So the ceiling is ~1.25 GB of memory, which is a file
+of ~310 MB. A plan over it steps down a tier, then gives up bitrate, and says which of the two
+it did; a clip that will not fit however it is planned says that too, before the render starts.
+Lifting the ceiling means streaming the muxer's output rather than holding it, which costs the
+index its place at the front of the file.
 
 The frame-by-frame encoder builds its own canvas at the chosen size, so a 4K render is only
 larger numbers — nothing in the painting code is written in fixed pixels.

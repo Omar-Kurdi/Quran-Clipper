@@ -97,15 +97,47 @@ const MAX_BITRATE = 60_000_000;
 const MIN_BITRATE = 4_000_000;
 
 /**
- * How large a file this path can actually produce.
+ * How much JS heap a render may spend, which is the thing that actually kills
+ * a tab -- not the size of what it produces.
  *
- * Not a policy: the muxer holds the entire mp4 in one ArrayBuffer before there
- * is a Blob at all, so this is the point where a render stops being slow and
- * starts being a tab that dies. A plan that would exceed it steps down a tier
- * and says so, which is recoverable; running out of memory forty minutes into
- * a render is not.
+ * A plan over this steps down a tier and says so, which is recoverable;
+ * running out of memory forty minutes into a render is not.
+ *
+ * The heap is not the whole story and the name says heap for that reason: the
+ * VideoFrames handed to the encoder, the encoder's own buffers and the decoder
+ * behind the result player all live outside it. This bounds the share that can
+ * be measured and planned against, and the rest is why the number has headroom
+ * under what a browser will actually allow.
  */
-export const MAX_EXPORT_BYTES = 1_250_000_000;
+export const MAX_EXPORT_HEAP_BYTES = 1_250_000_000;
+
+/**
+ * What producing a file costs, as a multiple of the file.
+ *
+ * This ceiling used to be compared against the finished file on the grounds
+ * that "the muxer holds the entire mp4 in one ArrayBuffer" -- one copy. It
+ * holds rather more than that. The chunks are collected first, `fastStart:
+ * 'in-memory'` then assembles them into a second buffer so the index can go at
+ * the front, and `new Blob([buffer])` copies that again; the encoder's queue,
+ * the decoded recitation and the background clip's samples sit on top.
+ *
+ * Measured on this path, JS heap against the finished file: a 44 MB export
+ * peaked at 179 MB and a 129 MB export at 594 MB, both a little over four
+ * times, and neither counts the VideoFrames or the decode buffers that live
+ * outside the heap. So the ceiling was out by a factor of four and never fired
+ * for any clip anyone would actually render -- there was, in effect, no
+ * ceiling, which is how a 4K render of a ninety-second recitation reached
+ * about 1.8 GB and had its tab killed outright.
+ *
+ * The way to raise this is to stop holding the file in the heap at all --
+ * stream the muxer's output into Blob parts as it is produced, which trades
+ * the index's position at the front of the file for a flat memory profile.
+ * Until then the honest number is the file this budget can afford.
+ */
+export const EXPORT_MEMORY_FACTOR = 4;
+
+/** How large a file that budget allows. */
+export const MAX_EXPORT_BYTES = Math.round(MAX_EXPORT_HEAP_BYTES / EXPORT_MEMORY_FACTOR);
 
 export function bitrateFor(width: number, height: number, fps: number, tier: QualityTier): number {
   const raw = width * height * fps * BITS_PER_PIXEL[tier];
