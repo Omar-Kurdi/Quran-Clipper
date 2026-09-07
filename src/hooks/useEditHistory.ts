@@ -70,7 +70,19 @@ export function useEditHistory<C>({
       ? record(historyRef.current, snapshot, { at: Date.now() })
       : replacePresent(historyRef.current, snapshot);
     historyRef.current = next;
-    setHistory(next);
+    // Render only when what this hook actually exposes has changed.
+    //
+    // A drag arrives as an edit per pointermove, and `record` already folds
+    // those into a single step -- but it still returns a fresh object each
+    // time, so this scheduled a render from inside a passive effect on every
+    // one of them. React counts an update scheduled during a commit as a
+    // nested update and throws "Maximum update depth exceeded" past fifty of
+    // them, which took the whole studio down partway through dragging a
+    // background block. The undo and redo flags are the only things read off
+    // this state, and through a coalesced run neither of them moves.
+    setHistory(prev =>
+      canUndo(prev) === canUndo(next) && canRedo(prev) === canRedo(next) ? prev : next
+    );
   }, [verses, selectedIndex, config]);
 
   const step = useCallback((move: (h: History<StudioSnapshot<C>>) => History<StudioSnapshot<C>>) => {

@@ -392,13 +392,16 @@ export const ar: Dictionary = {
       single: 'خلفية واحدة',
       'per-ayah': 'خلفية لكل مقطع',
       cycle: 'تبديل دوري',
-      shuffle: 'عشوائي'
+      shuffle: 'عشوائي',
+      custom: 'ترتيب يدوي'
     },
     bgModeHints: {
       single: 'مقطع واحد يتكرر.',
       'per-ayah': 'ينتقل إلى الخلفية التالية عند بداية كل مقطع.',
       cycle: 'يتغيّر كل بضع ثوانٍ.',
-      shuffle: 'يختار مقطعًا لكل آية، بالترتيب نفسه في كل مرة.'
+      shuffle: 'يختار مقطعًا لكل آية، بالترتيب نفسه في كل مرة.',
+      custom:
+        'أي عدد من المقاطع، كلٌّ منها بالمدة التي تريدها. يأخذ التوزيع الحالي كما هو ويتيح لك سحبه على المسار الزمني.'
     },
     secondsPerBackground: 'ثوانٍ لكل خلفية:',
 
@@ -411,6 +414,7 @@ export const ar: Dictionary = {
     sequenceEmpty:
       'اضغط على الصور المصغّرة بالأسفل لإضافة خلفيات. وبدون أي اختيار يعمل هذا الوضع كخلفية واحدة.',
     sequenceCount: count => `${count} في التسلسل، بترتيب التشغيل — وقد يتكرر المقطع الواحد أكثر من مرة.`,
+    sequenceReorder: 'اسحب أحدها من مقبضه لإعادة ترتيبه.',
     moveEarlier: name => `تقديم ${name}`,
     moveLater: name => `تأخير ${name}`,
     removeFromSequenceAria: (name, position) => `إزالة ${name} من الموضع ${position}`,

@@ -399,13 +399,16 @@ export const en = {
       single: 'One background',
       'per-ayah': 'One per segment',
       cycle: 'Cycle on a timer',
-      shuffle: 'Shuffle'
+      shuffle: 'Shuffle',
+      custom: 'Cut by hand'
     },
     bgModeHints: {
       single: 'A single looping clip.',
       'per-ayah': 'Steps to the next clip at the start of each segment.',
       cycle: 'Changes every few seconds.',
-      shuffle: 'Picks per ayah, repeatably.'
+      shuffle: 'Picks per ayah, repeatably.',
+      custom:
+        'Any number of clips, each for as long as you like. Takes the layout you have now and lets you drag it on the timeline.'
     },
     secondsPerBackground: 'Seconds per background:',
 
@@ -419,6 +422,7 @@ export const en = {
       'Tap thumbnails below to add backgrounds. With none selected this behaves as a single background.',
     sequenceCount: (count: number) =>
       `${count} in the sequence, in play order — the same clip may appear more than once.`,
+    sequenceReorder: 'Drag one by its handle to reorder it.',
     moveEarlier: (name: string) => `Move ${name} earlier`,
     moveLater: (name: string) => `Move ${name} later`,
     removeFromSequenceAria: (name: string, position: number) =>

@@ -2166,6 +2166,7 @@ export default function VideoCreatorPage() {
                   config={canvasConfig}
                   onChangeConfig={setCanvasConfig}
                   clipDuration={audioDuration}
+                  laneBlocks={bgSegments}
                   selectedBackground={activeBackground}
                   onSelectBackground={setSelectedBackground}
                 />

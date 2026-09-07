@@ -5,7 +5,7 @@ import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissor
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
 import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
-import { BackgroundSegment, backgroundLabel } from '@/lib/backgroundTimeline';
+import { BackgroundSegment, backgroundLabel, moveSegmentTo, resizeSegment } from '@/lib/backgroundTimeline';
 import { formatClipLength, repeatCount } from '@/lib/mediaDuration';
 import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { useT } from './LocaleProvider';
@@ -113,7 +113,38 @@ export const Timeline: React.FC<TimelineProps> = ({
    * body drag -- how far into the block the pointer landed, so it does not
    * jump its own left edge under the cursor on the first move.
    */
-  const [bgDrag, setBgDrag] = useState<{ index: number; edge: 'start' | 'end' | 'move'; grabOffset: number } | null>(null);
+  const [bgDrag, setBgDrag] = useState<{
+    index: number;
+    edge: 'start' | 'end' | 'move';
+    grabOffset: number;
+    /** The lane the drag is measured against, frozen when it started. */
+    base: BackgroundSegment[];
+    /** The clip length the same moment, since both clamp the result. */
+    span: number;
+  } | null>(null);
+  /**
+   * The lane as it looks mid-drag, and the one edit that will be committed
+   * when the drag ends.
+   *
+   * A drag used to be written back to the studio on every pointermove: sixty
+   * times a second the canvas config was replaced, which rebuilt the autosave
+   * draft, re-recorded the undo step and repainted the preview. React counts
+   * an update scheduled during a commit as a nested one and throws "Maximum
+   * update depth exceeded" past fifty of them -- so dragging a background
+   * block for about a second took the page down.
+   *
+   * A drag is one edit, so it is committed once. The block follows the pointer
+   * from state that lives here, and the final position goes up on release.
+   * That is exact rather than approximate: `moveSegmentTo` and `resizeSegment`
+   * clamp against neighbours, and no neighbour moves during the drag, so
+   * applying the last value once lands where applying every intermediate value
+   * did. The cost is that the preview above shows the change on release rather
+   * than during -- the block, its times and the ayahs it now covers are all on
+   * this lane, which is what the gesture is being aimed with.
+   */
+  const [bgPreview, setBgPreview] = useState<BackgroundSegment[] | null>(null);
+  /** The last position the pointer asked for; null when the drag never moved. */
+  const bgPendingRef = useRef<{ index: number; edge: 'start' | 'end' | 'move'; value: number } | null>(null);
   const bgDragRef = useRef(bgDrag);
   const bgMoveRef = useRef(onMoveBackground);
   const bgResizeRef = useRef(onResizeBackground);
@@ -159,6 +190,17 @@ export const Timeline: React.FC<TimelineProps> = ({
     !audioUrl ? 'idle' : !settled ? 'loading' : loaded!.peaks ? 'ready' : 'unavailable';
 
   const duration = audioDuration || Math.max(...verses.map(v => v.endTime), 1);
+  /** The lane to draw: where the pointer has it, or where the studio has it. */
+  const lane = bgPreview ?? backgroundSegments;
+  /**
+   * Starts a block drag, freezing the lane it is measured against.
+   *
+   * Every move is applied to this same base rather than to the previous
+   * result, which is what makes committing only the last one equivalent to
+   * committing all of them.
+   */
+  const beginBgDrag = (index: number, edge: 'start' | 'end' | 'move', grabOffset: number) =>
+    setBgDrag({ index, edge, grabOffset, base: backgroundSegments, span: duration });
   const pct = useCallback((t: number) => (duration > 0 ? (t / duration) * 100 : 0), [duration]);
 
   const xToTime = useCallback((clientX: number) => {
@@ -185,17 +227,40 @@ export const Timeline: React.FC<TimelineProps> = ({
     };
   }, [drag, xToTime]);
 
-  // Background blocks drag the same way, through the same window listeners.
+  // Background blocks drag the same way, through the same window listeners --
+  // but they are shown from local state until the pointer comes up, and only
+  // then committed. See `bgPreview`.
   useEffect(() => {
     if (!bgDrag) return;
+    // A fresh drag has asked for nothing yet. `up` clears this too, but a
+    // pointer released outside the window never fires one -- and a leftover
+    // value would then be committed by the *next* drag's release, moving a
+    // block nobody touched.
+    bgPendingRef.current = null;
     const move = (e: PointerEvent) => {
       const d = bgDragRef.current;
       if (!d) return;
-      const t = xToTime(e.clientX);
-      if (d.edge === 'move') bgMoveRef.current?.(d.index, t - d.grabOffset);
-      else bgResizeRef.current?.(d.index, d.edge, t);
+      const value = d.edge === 'move' ? xToTime(e.clientX) - d.grabOffset : xToTime(e.clientX);
+      bgPendingRef.current = { index: d.index, edge: d.edge, value };
+      setBgPreview(
+        d.edge === 'move'
+          ? moveSegmentTo(d.base, d.index, value, d.span)
+          : resizeSegment(d.base, d.index, d.edge, value, d.span)
+      );
     };
-    const up = () => setBgDrag(null);
+    const up = () => {
+      const pending = bgPendingRef.current;
+      bgPendingRef.current = null;
+      // Nothing is sent for a press that never moved. The lane would otherwise
+      // be baked into `custom` mode by a click that changed nothing, quietly
+      // ending the automatic layout it was still following.
+      if (pending) {
+        if (pending.edge === 'move') bgMoveRef.current?.(pending.index, pending.value);
+        else bgResizeRef.current?.(pending.index, pending.edge, pending.value);
+      }
+      setBgPreview(null);
+      setBgDrag(null);
+    };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     return () => {
@@ -500,13 +565,13 @@ export const Timeline: React.FC<TimelineProps> = ({
               nothing to drag. Once a block is dragged the layout is baked to a
               hand-cut lane and stays where it is put. Empty space is a real
               gap: nothing plays there and the frame falls back to its gradient. */}
-          {backgroundSegments.length > 0 && (
+          {lane.length > 0 && (
             <div
               className="relative h-7 border-b border-slate-800/70 bg-slate-950/40"
               aria-label={t.timeline.backgrounds}
               onPointerDown={e => { if (e.target === e.currentTarget) onSelectBackground?.(null); }}
             >
-              {backgroundSegments.map((seg, i) => {
+              {lane.map((seg, i) => {
                 const left = pct(seg.start);
                 const width = Math.max(0.3, pct(seg.end) - left);
                 const editable = Boolean(onMoveBackground && onResizeBackground);
@@ -535,7 +600,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                       onSelectBackground?.(i);
                       if (!editable) return;
                       e.stopPropagation();
-                      setBgDrag({ index: i, edge: 'move', grabOffset: xToTime(e.clientX) - seg.start });
+                      beginBgDrag(i, 'move', xToTime(e.clientX) - seg.start);
                     }}
                     className={`absolute inset-y-0.5 rounded-sm border overflow-hidden flex items-center touch-none ${
                       editable ? 'cursor-grab active:cursor-grabbing' : ''
@@ -583,7 +648,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                         onPointerDown={e => {
                           e.stopPropagation();
                           onSelectBackground?.(i);
-                          setBgDrag({ index: i, edge, grabOffset: 0 });
+                          beginBgDrag(i, edge, 0);
                         }}
                         role="separator"
                         aria-label={

@@ -5,7 +5,8 @@ import {
   VideoCanvasConfig 
 } from './VideoCanvas';
 import {
-  backgroundLabel, appendSegment, removeSegment, mediaKind, rememberMediaKind, MediaKind
+  backgroundLabel, appendSegment, removeSegment, mediaKind, rememberMediaKind, MediaKind,
+  BackgroundSegment
 } from '@/lib/backgroundTimeline';
 import { formatClipLength } from '@/lib/mediaDuration';
 import { useMediaDurations } from '@/hooks/useMediaDurations';
@@ -42,6 +43,7 @@ import {
   FileQuestion,
   ChevronLeft,
   ChevronRight,
+  GripVertical,
   Languages
 } from 'lucide-react';
 
@@ -50,6 +52,14 @@ interface StyleConfigPanelProps {
   onChangeConfig: (newConfig: VideoCanvasConfig) => void;
   /** Length of the clip, so a background added here lands somewhere real on the lane. */
   clipDuration?: number;
+  /**
+   * Where the backgrounds currently sit in time, whichever mode produced them.
+   *
+   * Only needed to *enter* the hand-cut lane: switching to it bakes whatever is
+   * on screen into blocks, so choosing it changes nothing about the video and
+   * everything about whether it can be moved.
+   */
+  laneBlocks?: BackgroundSegment[];
   /** The block picked on the timeline, so both surfaces act on the same one. */
   selectedBackground?: number | null;
   onSelectBackground?: (index: number | null) => void;
@@ -59,6 +69,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   config,
   onChangeConfig,
   clipDuration = 0,
+  laneBlocks = [],
   selectedBackground = null,
   onSelectBackground
 }) => {
@@ -258,6 +269,18 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     });
   };
 
+  /**
+   * The sequence entry being dragged, and the one it is hovering over.
+   *
+   * The arrows reorder one position at a time, which is fine for a swap and
+   * tedious for anything else -- moving the fifth clip to the front was four
+   * clicks. Dragging says where it goes in one gesture. The arrows stay: they
+   * are what works from a keyboard and on a touch screen, where HTML drag and
+   * drop does not.
+   */
+  const [seqDragFrom, setSeqDragFrom] = useState<number | null>(null);
+  const [seqDragOver, setSeqDragOver] = useState<number | null>(null);
+
   const moveInSequence = (from: number, to: number) => {
     if (to < 0 || to >= bgSequence.length) return;
     const next = [...bgSequence];
@@ -441,6 +464,31 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               ))}
             </div>
 
+            {/* The hand-cut lane, as a choice rather than a side effect.
+
+                It used to have no button: it was what dragging a block on the
+                timeline turned the layout into, and nothing else. That made the
+                one arrangement with no rules -- any number of clips, each for
+                as long as you like -- the only one you could not ask for, and
+                left "I want several backgrounds" answerable only by the four
+                automatic modes. Choosing it here bakes whatever is on screen
+                into blocks, so the video does not change; what changes is that
+                the blocks can now be moved. */}
+            <button
+              onClick={() => {
+                onSelectBackground?.(null);
+                onChangeConfig({ ...config, bgMode: 'custom', bgSegments: laneBlocks });
+              }}
+              title={t.style.bgModeHints.custom}
+              className={`mt-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                customBackground
+                  ? 'bg-lapis-bright text-slate-950 border-lapis-bright'
+                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
+              }`}
+            >
+              {t.style.bgModes.custom}
+            </button>
+
             {!customBackground && (config.bgMode || 'single') === 'cycle' && (
               <div className="mt-3">
                 <div className="flex justify-between text-slate-300 mb-1 text-xs">
@@ -514,13 +562,41 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 <p className="text-[11px] text-slate-400 mt-2">{t.style.sequenceEmpty}</p>
               ) : (
                 <div className="mt-3">
-                  <p className="text-[11px] text-slate-400 mb-1.5">{t.style.sequenceCount(bgSequence.length)}</p>
+                  <p className="text-[11px] text-slate-400 mb-1.5">
+                    {t.style.sequenceCount(bgSequence.length)} {t.style.sequenceReorder}
+                  </p>
                   <ol className="flex flex-col gap-1">
                     {bgSequence.map((url, i) => (
                       <li
                         key={`${url}-${i}`}
-                        className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5"
+                        draggable
+                        onDragStart={e => {
+                          setSeqDragFrom(i);
+                          e.dataTransfer.effectAllowed = 'move';
+                          // Firefox starts no drag at all without a payload.
+                          e.dataTransfer.setData('text/plain', String(i));
+                        }}
+                        onDragEnter={() => setSeqDragOver(i)}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => {
+                          e.preventDefault();
+                          if (seqDragFrom !== null) moveInSequence(seqDragFrom, i);
+                          setSeqDragFrom(null);
+                          setSeqDragOver(null);
+                        }}
+                        onDragEnd={() => { setSeqDragFrom(null); setSeqDragOver(null); }}
+                        className={`flex items-center gap-1.5 bg-slate-950 border rounded-lg px-2 py-1.5 ${
+                          seqDragFrom === i
+                            ? 'border-slate-800 opacity-40'
+                            : seqDragOver === i && seqDragFrom !== null
+                              ? 'border-amber-500 ring-1 ring-amber-500/60'
+                              : 'border-slate-800'
+                        }`}
                       >
+                        <GripVertical
+                          aria-hidden="true"
+                          className="w-3.5 h-3.5 shrink-0 text-slate-500 cursor-grab active:cursor-grabbing"
+                        />
                         <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
                         <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{nameOf(url)}</span>
                         <button

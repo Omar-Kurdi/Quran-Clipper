@@ -67,8 +67,12 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Phrase-level display: each segment carries only the words actually spoken, so a repeated
   half-ayah shows exactly those words rather than the whole verse.
 - Full-ayah English translation under the Arabic.
-- **Multiple backgrounds, four ways** — one clip, one per segment, cycling on a timer, or
-  shuffled (repeatably, so a re-export matches the preview). Video and stills mix freely in one sequence.
+- **Multiple backgrounds, five ways** — one clip, one per segment, cycling on a timer,
+  shuffled (repeatably, so a re-export matches the preview), or cut by hand: any number of
+  clips, each for as long as you like, dragged and resized as blocks on the timeline. Picking
+  the hand-cut lane takes whatever layout is on screen and makes it movable, so choosing it
+  changes nothing about the video until you drag something. In the automatic modes the play
+  order is a list you can drag to rearrange. Video and stills mix freely in one sequence.
   Every selected background is preloaded in its own element, so switching never stalls the
   render — which does mean each one decodes concurrently, so a handful is kinder to the export
   than all of them.
