@@ -249,6 +249,7 @@ export default function VideoCreatorPage() {
     progress: exportProgress,
     speed: exportSpeed,
     willEncodeOffline,
+    lastOutput: exportOutput,
     cancel: cancelExport,
     isModalOpen: isExportModalOpen,
     setIsModalOpen: setIsExportModalOpen,
@@ -1284,6 +1285,11 @@ export default function VideoCreatorPage() {
    * What the last render was actually planned at, so the saved record can say
    * the truth rather than the 1080-or-1920 guess it used to make from the
    * aspect ratio alone.
+   *
+   * The plan is only the request. What the render *produced* is reported by
+   * the export hook once it knows which path it took, and that is what is
+   * filed -- a render that could not be encoded frame by frame comes back as
+   * the preview canvas, not as the 4K it was asked for.
    */
   const exportedResolution = useRef('1080x1920');
 
@@ -1293,6 +1299,12 @@ export default function VideoCreatorPage() {
   ) => {
     exportedResolution.current = `${plan.width}x${plan.height}`;
     startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, plan, onComplete);
+  };
+
+  /** The frame the finished file has, whichever path produced it. */
+  const renderedResolution = () => {
+    const made = exportOutput.current;
+    return made ? `${made.width}x${made.height}` : exportedResolution.current;
   };
 
   const handleSaveExportRecord = async ({ fileName, fileSizeBytes, durationSec, renderMs }: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => {
@@ -1306,7 +1318,7 @@ export default function VideoCreatorPage() {
           fileSizeBytes,
           aspectRatio: canvasConfig.aspectRatio,
           duration: Math.round(durationSec),
-          resolution: exportedResolution.current,
+          resolution: renderedResolution(),
           fps: canvasConfig.fps,
           renderTimeMs: Math.round(renderMs),
           gpuDevice: describeGpu()

@@ -39,13 +39,35 @@ export interface OfflineCodecs {
 }
 
 /**
- * H.264 profiles/levels to try, best first.
+ * H.264 profiles and levels to try, lowest level first.
  *
  * The level has to admit the resolution: `avc1.42001f` is Baseline level 3.1
  * and is reported unsupported for 1080x1920 purely because the level is too
  * low, which reads as "no H.264 here" if the list stops there.
+ *
+ * The list used to stop at level 4.0 (with 4.2 behind it), and 1080x1920 is
+ * 8160 macroblocks against 4.0's limit of 8192 -- so it fitted by a third of a
+ * percent and every larger frame did not. That is why picking 1440p or 4K
+ * produced no codec at all, threw, and fell back to capturing the 1080-class
+ * preview canvas in real time while the dialog went on saying 2160x3840. The
+ * higher levels are what those resolutions need. Measured with
+ * `isConfigSupported` at 60fps: 4.0 covers 1080x1920, 5.0 reaches 1440x2560,
+ * and 5.1 reaches 2160x3840.
+ *
+ * Lowest first is deliberate. A level is a promise to the decoder about how
+ * much work a stream can demand, and the lowest one that fits the frame is the
+ * one the most players will take -- so this asks for 5.1 only when the frame
+ * actually needs it.
  */
-const VIDEO_CANDIDATES = ['avc1.640028', 'avc1.4d0028', 'avc1.42002a'];
+const VIDEO_CANDIDATES = [
+  'avc1.640028', // High 4.0
+  'avc1.4d0028', // Main 4.0
+  'avc1.42002a', // Baseline 4.2
+  'avc1.640032', // High 5.0
+  'avc1.640033', // High 5.1
+  'avc1.640034', // High 5.2
+  'avc1.4d0034', // Main 5.2
+];
 
 /** AAC first: MP4 with Opus plays in browsers and VLC but not in QuickTime. */
 const AUDIO_CANDIDATES: { codec: string; isAac: boolean }[] = [

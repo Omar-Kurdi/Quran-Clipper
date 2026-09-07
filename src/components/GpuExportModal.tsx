@@ -424,7 +424,14 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
                 <div className="flex justify-between text-[11px] text-slate-400 mt-1">
                   <span>{t.exportModal.speed(exportSpeed)}</span>
-                  <span title={t.exportModal.realtimeCaptureTitle}>{t.exportModal.realtimeCapture}</span>
+                  {/* Only when it is true. This said "Real-time capture" through
+                      every render, including the frame-by-frame ones it is the
+                      opposite of -- which was easy to miss while only 1080p
+                      took that path, and plainly wrong now that every
+                      resolution does. */}
+                  {!fastPath && (
+                    <span title={t.exportModal.realtimeCaptureTitle}>{t.exportModal.realtimeCapture}</span>
+                  )}
                 </div>
 
                 {/* Kept in front of the person for the whole render, because

@@ -25,6 +25,17 @@ export function useVideoExport() {
   const [speed, setSpeed] = useState('1.0x');
   /** Which container the finished file is in, so it can be named honestly. */
   const [container, setContainer] = useState<'webm' | 'mp4'>('webm');
+  /**
+   * The frame the last render actually produced.
+   *
+   * A ref because it is read in the same tick it is written -- the completion
+   * callback saves the record immediately -- and because it is not something
+   * anything renders. It matters because the two paths do not produce the same
+   * frame: the encoder renders the plan, while the recorder can only capture
+   * the preview canvas, so a render that fell back to it was being filed under
+   * a resolution the file did not have.
+   */
+  const lastOutput = useRef<{ width: number; height: number } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
 
@@ -92,6 +103,7 @@ export function useVideoExport() {
             if (result) {
               setIsExporting(false);
               setContainer('mp4');
+              lastOutput.current = { width: plan.width, height: plan.height };
               setSpeed(`${result.speed.toFixed(1)}x`);
               // No health to report: nothing was captured in real time, so
               // there is no frame to have been starved of.
@@ -117,12 +129,14 @@ export function useVideoExport() {
             console.warn('[export] frame-by-frame encoding unavailable, recording in real time instead:', err);
           }
           setContainer('webm');
+          lastOutput.current = canvasRef.current?.captureSize() ?? null;
           runRealtime(audio, range, targetFps, onComplete);
         })();
         return;
       }
 
       setContainer('webm');
+      lastOutput.current = canvasRef.current?.captureSize() ?? null;
       runRealtime(audio, range, targetFps, onComplete);
     },
     [runRealtime]
@@ -152,6 +166,7 @@ export function useVideoExport() {
     canvasRef,
     cancel,
     willEncodeOffline,
+    lastOutput,
     isExporting,
     progress,
     speed,

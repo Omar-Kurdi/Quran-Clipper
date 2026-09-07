@@ -123,6 +123,15 @@ export interface VideoCanvasRef {
   ) => Promise<OfflineExportResult | null>;
   /** Whether `exportVideoOffline` can run for the project as configured. */
   canExportOffline: () => boolean;
+  /**
+   * The frame the real-time recorder would produce.
+   *
+   * It captures this canvas, so it can only ever record the preview's own
+   * 1080-class frame however large a render was asked for -- and a fallback to
+   * that path is where a saved record started claiming a resolution the file
+   * does not have.
+   */
+  captureSize: () => { width: number; height: number };
 }
 
 interface VideoCanvasProps {
@@ -1087,6 +1096,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     getCanvas: () => canvasRef.current,
 
     canExportOffline: () => canEncodeOffline(config),
+
+    captureSize: () => dimensions,
 
     exportVideoOffline: async (range, audio, targetFps, onProgress, output) => {
       if (!canEncodeOffline(config)) return null;
