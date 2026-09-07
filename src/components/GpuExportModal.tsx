@@ -11,6 +11,7 @@ import {
 } from '@/lib/exportPresets';
 import { Dialog } from './Dialog';
 import { PublishCaption } from './PublishCaption';
+import { StudioVideo } from './StudioVideo';
 import { PublishInput } from '@/lib/publishMetadata';
 import { useT } from './LocaleProvider';
 
@@ -57,16 +58,6 @@ interface GpuExportModalProps {
   /** Length of the clip that will be rendered -- the ayah range, not the whole file. */
   exportSeconds: number;
   /**
-   * Renders a small, quick version of the whole clip to look at first.
-   *
-   * Resolves to `null` when it produced nothing -- cancelled, or an encoder
-   * that refused. Only offered on the frame-by-frame path: a real-time
-   * "preview" would take as long as watching the clip.
-   */
-  onRenderPreview: (output: { width: number; height: number; fps: number; bitrate: number }) => Promise<Blob | null>;
-  isPreviewing: boolean;
-  previewProgress: number;
-  /**
    * What the finished clip is, for the caption offered beside the download.
    *
    * Everything except whether to include the ayah text, which is the one part
@@ -76,6 +67,16 @@ interface GpuExportModalProps {
   publish: Omit<PublishInput, 'includeVerseText' | 'translationNames'>;
   /** Which translations are on screen, for the caption's credit line. */
   translationIds: string[];
+  /**
+   * Renders a small, quick version of the whole clip to look at first.
+   *
+   * Resolves to `null` when it produced nothing -- cancelled, or an encoder
+   * that refused. Only offered on the frame-by-frame path: a real-time
+   * "preview" would take as long as watching the clip.
+   */
+  onRenderPreview: (output: { width: number; height: number; fps: number; bitrate: number }) => Promise<Blob | null>;
+  isPreviewing: boolean;
+  previewProgress: number;
 }
 
 
@@ -524,7 +525,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 <div className="mb-2">
                   {previewUrl ? (
                     <div className="rounded-lg border border-slate-700 bg-slate-950 p-2">
-                      <video
+                      <StudioVideo
                         src={previewUrl}
                         controls
                         autoPlay
@@ -623,7 +624,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   4K file on top of them is what "it crashed as soon as the
                   export ended" is made of. The player still plays on demand --
                   it just does not read the file before anyone asks. */}
-              <video
+              <StudioVideo
                 src={exportedBlobUrl}
                 controls
                 preload="none"

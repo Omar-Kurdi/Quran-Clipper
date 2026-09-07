@@ -2283,15 +2283,13 @@ export default function VideoCreatorPage() {
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}
-          onToggleMute={() => {
-            const next = !isMuted;
-            setIsMuted(next);
-            if (audioElementRef.current) audioElementRef.current.muted = next;
-          }}
+          // The element is no longer poked here: `useAudioPlayback` keeps it in
+          // step with whatever these set, which is also what applies a stored
+          // volume on load rather than only once the slider is touched.
+          onToggleMute={() => setIsMuted(!isMuted)}
           onVolume={v => {
             setVolume(v);
             setIsMuted(v === 0);
-            if (audioElementRef.current) { audioElementRef.current.volume = v; audioElementRef.current.muted = v === 0; }
           }}
         />
       </div>

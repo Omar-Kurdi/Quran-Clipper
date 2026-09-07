@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useVolume, volumePreference } from './useVolume';
 
 /**
  * The studio's audio transport: the element, the clock, and the Web Audio graph
@@ -22,7 +23,13 @@ export function useAudioPlayback() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(43.0);
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(0.9);
+  /**
+   * Read from the shared preference rather than held here, so the trim dialog
+   * and the export preview play at the same loudness as the timeline and a
+   * reload comes back where it was left.
+   */
+  const volume = useVolume();
+  const setVolume = useCallback((next: number) => volumePreference.set(next), []);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -117,6 +124,22 @@ export function useAudioPlayback() {
     setError(null);
     applyPendingSeek();
   }, [applyPendingSeek]);
+
+  /**
+   * Keep the element at the volume that is actually set.
+   *
+   * This used to be applied only inside the slider's own handler, so a stored
+   * preference -- or the default -- did nothing until the slider was touched:
+   * every reload started at whatever the element's own default was, which is
+   * full. Syncing here covers the load, a change from another tab, and a
+   * recording being swapped underneath.
+   */
+  useEffect(() => {
+    const audio = elementRef.current;
+    if (!audio) return;
+    audio.volume = volume;
+    audio.muted = isMuted || volume === 0;
+  }, [volume, isMuted]);
 
   return {
     elementRef,

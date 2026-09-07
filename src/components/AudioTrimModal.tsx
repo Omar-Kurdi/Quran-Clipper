@@ -5,6 +5,7 @@ import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, Chevrons
 import { decodeAudioFile, computePeaks, buildTrimmedFile, TrimResult } from '@/lib/audioTrim';
 import { Dialog } from './Dialog';
 import { useT } from './LocaleProvider';
+import { useVolume, volumePreference } from '@/hooks/useVolume';
 
 interface AudioTrimModalProps {
   isOpen: boolean;
@@ -84,6 +85,16 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
    * and the same arithmetic whether or not a re-render has happened.
    */
   const audioCtxRef = useRef<AudioContext | null>(null);
+  /**
+   * Everything this dialog plays goes through here.
+   *
+   * A buffer source wired straight to the destination has no volume of its
+   * own, so trimming played at full however quiet the timeline was set -- the
+   * same recording, twice as loud, in the one dialog you open to listen
+   * closely. The gain node is what the shared preference can act on.
+   */
+  const gainRef = useRef<GainNode | null>(null);
+  const volume = useVolume();
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const playFromRef = useRef<{ startedAt: number; offset: number } | null>(null);
   /** Where a scrub has reached, and whether playback owes it a resume. */
@@ -293,9 +304,19 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
       // after the tab has been in the background.
       ctx.resume().catch(() => {});
       stopSource();
+      const gain =
+        gainRef.current ??
+        (gainRef.current = (() => {
+          const node = ctx.createGain();
+          // Connected once. Re-connecting the same pair per playback would
+          // stack nodes rather than replace them.
+          node.connect(ctx.destination);
+          return node;
+        })());
+      gain.gain.value = volumePreference.get();
       const source = ctx.createBufferSource();
       source.buffer = buffer;
-      source.connect(ctx.destination);
+      source.connect(gain);
       const from = Math.max(0, Math.min(seconds, buffer.duration - 0.01));
       source.onended = () => {
         // Only the source that is still current may end playback -- a seek
@@ -315,6 +336,12 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     },
     [buffer, stopSource]
   );
+
+  // Applied live, so moving the slider is heard mid-playback rather than at
+  // the next press.
+  useEffect(() => {
+    if (gainRef.current) gainRef.current.gain.value = volume;
+  }, [volume]);
 
   const seek = useCallback(
     (seconds: number) => {

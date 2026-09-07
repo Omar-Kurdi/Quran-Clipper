@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createBooleanPreference } from './uiPreference';
+import { createBooleanPreference, createNumberPreference } from './uiPreference';
 
 const store: Record<string, string> = {};
 beforeEach(() => {
@@ -59,5 +59,49 @@ describe('createBooleanPreference', () => {
     expect(pref.get()).toBe(true);
     expect(() => pref.set(false)).not.toThrow();
     expect(pref.get()).toBe(false);
+  });
+});
+
+describe('createNumberPreference', () => {
+  const range = { min: 0, max: 1 };
+
+  it('uses the fallback when nothing has been stored', () => {
+    expect(createNumberPreference('qc-vol', 0.5, range).get()).toBe(0.5);
+  });
+
+  it('round-trips a value through storage', () => {
+    const pref = createNumberPreference('qc-vol', 0.5, range);
+    pref.set(0.2);
+    expect(pref.get()).toBe(0.2);
+    // A fresh store reads the same value back, which is what a reload does.
+    expect(createNumberPreference('qc-vol', 0.5, range).get()).toBe(0.2);
+  });
+
+  it('clamps what it is given and what it reads back', () => {
+    const pref = createNumberPreference('qc-vol', 0.5, range);
+    pref.set(4);
+    expect(pref.get()).toBe(1);
+    pref.set(-1);
+    expect(pref.get()).toBe(0);
+  });
+
+  it('falls back rather than trusting a stored value that is not a number', () => {
+    // A hand-edited entry, or one written by a version with another range.
+    localStorage.setItem('qc-vol', 'loud');
+    expect(createNumberPreference('qc-vol', 0.5, range).get()).toBe(0.5);
+  });
+
+  it('tells its listeners when the value changes', () => {
+    const pref = createNumberPreference('qc-vol', 0.5, range);
+    let told = 0;
+    pref.subscribe(() => { told += 1; });
+    pref.set(0.3);
+    expect(told).toBe(1);
+  });
+
+  it('renders the fallback on the server, where there is no storage', () => {
+    const pref = createNumberPreference('qc-vol', 0.5, range);
+    pref.set(0.9);
+    expect(pref.getServerSnapshot()).toBe(0.5);
   });
 });
