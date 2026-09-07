@@ -3,11 +3,11 @@
 import React, { useMemo, useState } from 'react';
 import { exportFileName } from '@/lib/exportName';
 import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
-import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Play } from 'lucide-react';
+import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Play, Eye } from 'lucide-react';
 import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
 import {
   EXPORT_PRESETS, QUALITY_TIERS, QualityTier, ExportPlan,
-  planExport, presetForAspect, dimensionsFor, formatBytes, formatBitrate
+  planExport, presetForAspect, dimensionsFor, formatBytes, formatBitrate, previewPlan
 } from '@/lib/exportPresets';
 import { Dialog } from './Dialog';
 import { useT } from './LocaleProvider';
@@ -54,6 +54,16 @@ interface GpuExportModalProps {
   onSaveExportRecord: (record: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => void;
   /** Length of the clip that will be rendered -- the ayah range, not the whole file. */
   exportSeconds: number;
+  /**
+   * Renders a small, quick version of the whole clip to look at first.
+   *
+   * Resolves to `null` when it produced nothing -- cancelled, or an encoder
+   * that refused. Only offered on the frame-by-frame path: a real-time
+   * "preview" would take as long as watching the clip.
+   */
+  onRenderPreview: (output: { width: number; height: number; fps: number; bitrate: number }) => Promise<Blob | null>;
+  isPreviewing: boolean;
+  previewProgress: number;
 }
 
 
@@ -73,6 +83,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   aspectRatio,
   onAspectRatio,
   onSaveExportRecord,
+  onRenderPreview,
+  isPreviewing,
+  previewProgress,
   exportSeconds
 }) => {
   const t = useT();
@@ -102,6 +115,15 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [starvedSeconds, setStarvedSeconds] = useState<number>(0);
   const [pauses, setPauses] = useState<number>(0);
   const [downloadFileName, setDownloadFileName] = useState<string>('QuranClipper.webm');
+  /**
+   * The throwaway preview, if one has been made.
+   *
+   * Revoked whenever it is replaced or dismissed, unlike the export's own blob
+   * url, which is deliberately left alive. Nothing refers back to a preview --
+   * it is not downloaded, not recorded, and not the file anyone keeps.
+   */
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   // Clear the previous render whenever the modal is reopened. Without this the
   // result screen from the last export is still mounted, so a second export --
@@ -113,6 +135,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
     setWasOpen(isOpen);
     if (isOpen) {
       setExportedBlobUrl(null);
+      setPreviewUrl(current => { if (current) URL.revokeObjectURL(current); return null; });
+      setPreviewFailed(false);
       // Open on the platform that matches the shape the studio is already set
       // to, so the frame in the preview is the frame being offered.
       setPresetId(presetForAspect(aspectRatio).id);
@@ -151,6 +175,18 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const handleClose = () => {
     if (isExporting) onCancelExport();
     onClose();
+  };
+
+  const dropPreview = () => {
+    setPreviewUrl(current => { if (current) URL.revokeObjectURL(current); return null; });
+    setPreviewFailed(false);
+  };
+
+  const handlePreview = async () => {
+    dropPreview();
+    const blob = await onRenderPreview(previewPlan(plan));
+    if (!blob) { setPreviewFailed(true); return; }
+    setPreviewUrl(URL.createObjectURL(blob));
   };
 
   const handleExport = () => {
@@ -462,6 +498,53 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   {t.exportModal.keepTabOpenBody}
                 </p>
               )}
+              {/* Offered only where it can be quick. On the recorder there is
+                  no such thing as a fast preview -- it captures in real time,
+                  so watching the clip and previewing it cost the same. */}
+              {fastPath && (
+                <div className="mb-2">
+                  {previewUrl ? (
+                    <div className="rounded-lg border border-slate-700 bg-slate-950 p-2">
+                      <video
+                        src={previewUrl}
+                        controls
+                        autoPlay
+                        className="w-full max-h-64 rounded-md bg-black object-contain"
+                      />
+                      <div className="mt-1.5 flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-slate-400">
+                          {t.exportModal.previewNote(previewPlan(plan).width, previewPlan(plan).height)}
+                        </span>
+                        <button
+                          onClick={dropPreview}
+                          className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] text-slate-300 hover:text-slate-100 hover:bg-slate-800"
+                        >
+                          {t.exportModal.previewClear}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handlePreview}
+                      disabled={isPreviewing}
+                      className="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-100 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-amber-400" />
+                      <span>
+                        {isPreviewing
+                          ? t.exportModal.previewRendering(previewProgress)
+                          : t.exportModal.previewButton}
+                      </span>
+                    </button>
+                  )}
+                  {previewFailed && (
+                    <p role="status" className="mt-1.5 text-[11px] text-amber-300/90">
+                      {t.exportModal.previewFailed}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <button
                 onClick={handleExport}
                 className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-slate-950 font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-98"

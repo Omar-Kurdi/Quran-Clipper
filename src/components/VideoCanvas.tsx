@@ -520,6 +520,53 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   }, [activeBg, syncBackgroundVideo]);
 
   /**
+   * Keeps a decorative background at the phase the export will encode.
+   *
+   * The preview and the export agreed on *which* clip is on screen -- both read
+   * `backgroundAt` -- and disagreed about where inside it. The pooled element
+   * ran on its own clock, so the frame shown was wherever its loop happened to
+   * have reached, while the export computes `(time - block start) % clip
+   * length` and decodes exactly that. During playback the two stayed roughly
+   * together by accident, since both advance in real time. Scrubbing broke it
+   * completely: nothing seeked the background at all, so dragging the playhead
+   * moved the ayahs and left the picture where it was -- which is precisely
+   * when someone is looking for the cuts, and why a clip that repeats gave no
+   * sign of repeating until the file was watched.
+   *
+   * So the phase is computed rather than drifted into, and the clip holds still
+   * when playback does. Nudged past a quarter second rather than assigned every
+   * tick, for the same reason the synced case below is: `currentTime` arrives
+   * from `timeupdate` about four times a second, and seeking on each one
+   * stutters what should be smooth playback.
+   *
+   * Never during an export. A seek briefly drops `readyState` under what the
+   * draw loop requires, which on the real-time path bakes a gradient frame into
+   * the file -- and that path parks and plays these clips itself.
+   */
+  useEffect(() => {
+    if (syncBackgroundVideo || isExportingRef.current || !activeBg) return;
+    const vid = mediaPoolRef.current.get(activeBg.url);
+    if (!vid || !isClip(vid)) return;
+
+    const length = vid.duration;
+    if (Number.isFinite(length) && length > 0) {
+      // A block longer than its footage simply plays it again, which is what
+      // the modulo is: the same arithmetic `videoFrames` uses on export.
+      const target = Math.max(0, currentTime - activeBg.start) % length;
+      if (Math.abs(vid.currentTime - target) > 0.25) {
+        try {
+          vid.currentTime = target;
+        } catch {
+          // Seeking before metadata lands throws; the next tick retries.
+        }
+      }
+    }
+
+    if (isPlaying && vid.paused) vid.play().catch(() => {});
+    else if (!isPlaying && !vid.paused) vid.pause();
+  }, [activeBg, currentTime, isPlaying, syncBackgroundVideo]);
+
+  /**
    * Keeps a synced background video in step with playback.
    *
    * Correction is threshold-based rather than a seek on every tick: `currentTime`

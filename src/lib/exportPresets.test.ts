@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   EXPORT_PRESETS, presetById, presetForAspect, dimensionsFor, bitrateFor,
   planExport, formatBytes, formatBitrate,
-  MAX_EXPORT_BYTES, MAX_EXPORT_HEAP_BYTES, EXPORT_MEMORY_FACTOR
+  MAX_EXPORT_BYTES, MAX_EXPORT_HEAP_BYTES, EXPORT_MEMORY_FACTOR,
+  previewPlan, PREVIEW_LONG_SIDE
 } from './exportPresets';
 
 describe('export presets', () => {
@@ -90,6 +91,44 @@ describe('export presets', () => {
     const plan = planExport({ presetId: 'tiktok', tier: 'max', fps: 60, seconds: 4 * 60 * 60 });
     expect(plan.bitrateReduced).toBe(true);
     expect(plan.exceedsMemory).toBe(true);
+  });
+
+  it('previews at a fraction of the pixels, keeping the frame shape', () => {
+    const plan = planExport({ presetId: 'shorts', tier: 'max', fps: 60, seconds: 30 });
+    const preview = previewPlan(plan);
+    expect(Math.max(preview.width, preview.height)).toBe(PREVIEW_LONG_SIDE);
+    // 9:16 stays 9:16 -- a preview of a different shape would answer a
+    // question about a video nobody is making.
+    expect(preview.width / preview.height).toBeCloseTo(plan.width / plan.height, 2);
+    expect(preview.width % 2).toBe(0);
+    expect(preview.height % 2).toBe(0);
+    expect(preview.width * preview.height).toBeLessThan(plan.width * plan.height / 4);
+    // The render's own rate, not a reduced one: measured, 24fps previews took
+    // longer than 60fps ones, and a different rate would also misrepresent the
+    // timing the preview exists to show.
+    expect(preview.fps).toBe(plan.fps);
+  });
+
+  it('shrinks a landscape frame too, not only a portrait one', () => {
+    const plan = planExport({ presetId: 'youtube', tier: 'max', fps: 60, seconds: 30 });
+    const preview = previewPlan(plan);
+    expect(plan.width).toBeGreaterThan(plan.height);
+    expect(preview.width).toBeLessThan(plan.width);
+    expect(preview.width / preview.height).toBeCloseTo(plan.width / plan.height, 2);
+  });
+
+  it('never previews larger than the render it stands in for, in either direction', () => {
+    const small = planExport({ presetId: 'ig-feed', tier: 'standard', fps: 30, seconds: 10 });
+    // A frame already smaller than the cap must come back untouched rather
+    // than scaled up to meet it.
+    const preview = previewPlan({ ...small, width: 320, height: 320, fps: 30 });
+    expect(preview.width).toBeLessThanOrEqual(320);
+    expect(preview.height).toBeLessThanOrEqual(320);
+    // And a wide, short frame must not keep its full width.
+    const wide = previewPlan({ ...small, width: 1920, height: 360, fps: 30 });
+    expect(wide.width).toBeLessThanOrEqual(1920);
+    expect(wide.width).toBe(PREVIEW_LONG_SIDE);
+    expect(preview.fps).toBe(30);
   });
 
   it('says how far over a platform limit a clip runs', () => {

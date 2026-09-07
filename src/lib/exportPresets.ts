@@ -139,6 +139,46 @@ export const EXPORT_MEMORY_FACTOR = 4;
 /** How large a file that budget allows. */
 export const MAX_EXPORT_BYTES = Math.round(MAX_EXPORT_HEAP_BYTES / EXPORT_MEMORY_FACTOR);
 
+/**
+ * A small render of the same frame, for looking at before committing.
+ *
+ * Not a smaller *export*: nothing about it is meant to be uploaded. It exists
+ * to answer what a still preview cannot -- where the background changes, and
+ * whether a clip that repeats reads as a cut.
+ *
+ * Two things measured rather than assumed, both of which shaped this:
+ *
+ * It is not dramatically quicker, because output pixels are not what this path
+ * spends its time on. A background clip is fetched and decoded in full whatever
+ * size it is being drawn into, and that cost is fixed by the clip's length.
+ * Measured on a 35s clip with three video backgrounds: 11.0s to preview at
+ * 360x640 against 12s to render the real thing at 1080p60. The saving is real
+ * only against a target above 1080p -- the same project at 4K took 34s.
+ *
+ * And the frame rate is the render's own, not a reduced one. Dropping it to 24
+ * made the preview *slower*, not faster -- 18s against 11s -- because asking
+ * for output moments that do not line up with the background clip's own frames
+ * makes `videoFrames` work harder per frame while decoding exactly as many. It
+ * also keeps the preview's timing identical to the export's, which is the
+ * point of watching it.
+ */
+export const PREVIEW_LONG_SIDE = 640;
+
+export function previewPlan(plan: ExportPlan): {
+  width: number; height: number; fps: number; bitrate: number;
+} {
+  // The *long* side, not the height. Capping the height alone shrinks a
+  // portrait frame and leaves a landscape one untouched -- a 16:9 plan would
+  // have previewed at its full width, which is not a preview.
+  const scale = Math.min(1, PREVIEW_LONG_SIDE / Math.max(plan.width, plan.height));
+  // H.264 wants even dimensions in both directions; an odd one is refused
+  // outright rather than rounded for you.
+  const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+  const width = even(plan.width * scale);
+  const height = even(plan.height * scale);
+  return { width, height, fps: plan.fps, bitrate: bitrateFor(width, height, plan.fps, 'standard') };
+}
+
 export function bitrateFor(width: number, height: number, fps: number, tier: QualityTier): number {
   const raw = width * height * fps * BITS_PER_PIXEL[tier];
   return Math.round(Math.min(MAX_BITRATE, Math.max(MIN_BITRATE, raw)));

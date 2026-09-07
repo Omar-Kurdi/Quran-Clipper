@@ -668,6 +668,13 @@ export const en = {
     choppyWarning:
       'The render could not keep up with the frame rate you asked for, so the picture will stutter. Try a lower frame rate, or close other windows using the GPU.',
     download: (container: string) => `Download ${container} video`,
+    previewButton: 'Preview the cuts first',
+    previewRendering: (percent: number) => `Rendering preview… ${percent}%`,
+    previewNote: (width: number, height: number) =>
+      `Preview at ${width}×${height}: the picture, the timing and where the backgrounds change — not the quality. It runs the whole clip, so it takes about as long as a 1080p render and rather less than a 4K one.`,
+    previewClear: 'Close preview',
+    previewFailed:
+      'The preview did not finish. Nothing is wrong with the export itself — try it, or run the preview again.',
     renderAnother: 'Render Another Export'
   },
 

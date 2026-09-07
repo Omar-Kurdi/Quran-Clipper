@@ -251,6 +251,9 @@ export default function VideoCreatorPage() {
     speed: exportSpeed,
     willEncodeOffline,
     lastOutput: exportOutput,
+    renderPreview,
+    previewing,
+    previewProgress,
     cancel: cancelExport,
     isModalOpen: isExportModalOpen,
     setIsModalOpen: setIsExportModalOpen,
@@ -2313,6 +2316,15 @@ export default function VideoCreatorPage() {
         onAspectRatio={(ratio: string) => setCanvasConfig(prev => ({ ...prev, aspectRatio: ratio }))}
         exportSeconds={exportRange.span}
         onSaveExportRecord={handleSaveExportRecord}
+        onRenderPreview={output =>
+          renderPreview(
+            audioElementRef.current,
+            { start: exportRange.start, end: exportRange.end },
+            output
+          )
+        }
+        isPreviewing={previewing}
+        previewProgress={previewProgress}
       />
 
       {/* Saved Projects Drawer */}

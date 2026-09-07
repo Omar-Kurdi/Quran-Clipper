@@ -142,6 +142,59 @@ export function useVideoExport() {
     [runRealtime]
   );
 
+  const [previewing, setPreviewing] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
+
+  /**
+   * A small, quick render of the whole clip, for looking at before committing.
+   *
+   * Its own path rather than a call through `start`, on purpose: this is not an
+   * export and must not be recorded as one. It does not touch `container`, it
+   * does not set `lastOutput`, and nothing above it saves a row for it -- a
+   * render log that fills with 360-pixel previews stops being a record of what
+   * was made.
+   *
+   * Frame by frame only. The alternative path records in real time, so a
+   * "quick preview" there would take exactly as long as watching the clip,
+   * which is the thing it is supposed to save. Callers that cannot encode
+   * offline should not offer this at all.
+   *
+   * `null` means it did not produce anything -- cancelled, or the encoder
+   * refused -- and the caller should say nothing rather than show an empty
+   * player.
+   */
+  const renderPreview = useCallback(
+    async (
+      audio: HTMLAudioElement | null,
+      range: ExportRange,
+      output: { width: number; height: number; fps: number; bitrate: number }
+    ): Promise<Blob | null> => {
+      if (!canvasRef.current || !audio || !canvasRef.current.canExportOffline()) return null;
+      setPreviewing(true);
+      setPreviewProgress(0);
+      try {
+        const source = audio.currentSrc || audio.src;
+        const decoded = await decodeAudioFile(await (await fetch(source)).blob());
+        const result = await canvasRef.current.exportVideoOffline(
+          range,
+          decoded,
+          output.fps,
+          fraction => setPreviewProgress(Math.min(99, Math.round(fraction * 100))),
+          { width: output.width, height: output.height, bitrate: output.bitrate }
+        );
+        return result?.blob ?? null;
+      } catch {
+        // Cancelled, or an encoder that refused this size. Either way there is
+        // nothing to show, and a preview is not worth an error of its own.
+        return null;
+      } finally {
+        setPreviewing(false);
+        setPreviewProgress(0);
+      }
+    },
+    []
+  );
+
   /**
    * Stops a render in progress and throws away what it produced.
    *
@@ -167,6 +220,9 @@ export function useVideoExport() {
     cancel,
     willEncodeOffline,
     lastOutput,
+    renderPreview,
+    previewing,
+    previewProgress,
     isExporting,
     progress,
     speed,
