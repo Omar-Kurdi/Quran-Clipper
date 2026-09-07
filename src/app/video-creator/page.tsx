@@ -1266,6 +1266,36 @@ export default function VideoCreatorPage() {
   }, [verses, selectedSurah, ayahStart, ayahEnd]);
 
   /**
+   * What the caption offered after a render says about the clip.
+   *
+   * Built from `clipPassage` for the same reason the file name is: a trim
+   * narrows what the video contains without rewriting the request, and a
+   * description that names the ayahs that were *asked for* describes a
+   * different video.
+   *
+   * The reciter is named only when the recitation is one of ours. Crediting a
+   * preset reciter for a file the user recorded or uploaded would be putting
+   * someone's name to work that is not theirs -- so an upload is left
+   * unattributed here rather than attributed wrongly.
+   *
+   * Translator names are not resolved here. The catalogue that holds them is
+   * fetched lazily, and the caption panel is what asks for it -- only once it
+   * is opened, which is the moment those names are about to be published.
+   */
+  const publishInput = useMemo(
+    () => ({
+      surahNumber: clipPassage.surahNumber,
+      surahNameArabic,
+      surahNameEnglish,
+      ayahStart: clipPassage.start,
+      ayahEnd: clipPassage.end,
+      reciterName: customAudioFile ? '' : selectedReciterMeta?.name || '',
+      verses
+    }),
+    [clipPassage, surahNameArabic, surahNameEnglish, customAudioFile, selectedReciterMeta, verses]
+  );
+
+  /**
    * The background lane under the timeline: the same segments the canvas plays,
    * so clip changes are visible next to the ayahs they land on.
    */
@@ -2316,6 +2346,8 @@ export default function VideoCreatorPage() {
         onAspectRatio={(ratio: string) => setCanvasConfig(prev => ({ ...prev, aspectRatio: ratio }))}
         exportSeconds={exportRange.span}
         onSaveExportRecord={handleSaveExportRecord}
+        publish={publishInput}
+        translationIds={canvasConfig.translationIds || []}
         onRenderPreview={output =>
           renderPreview(
             audioElementRef.current,

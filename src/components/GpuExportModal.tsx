@@ -10,6 +10,8 @@ import {
   planExport, presetForAspect, dimensionsFor, formatBytes, formatBitrate, previewPlan
 } from '@/lib/exportPresets';
 import { Dialog } from './Dialog';
+import { PublishCaption } from './PublishCaption';
+import { PublishInput } from '@/lib/publishMetadata';
 import { useT } from './LocaleProvider';
 
 // Re-exported so existing importers of this module keep working; the function
@@ -64,6 +66,16 @@ interface GpuExportModalProps {
   onRenderPreview: (output: { width: number; height: number; fps: number; bitrate: number }) => Promise<Blob | null>;
   isPreviewing: boolean;
   previewProgress: number;
+  /**
+   * What the finished clip is, for the caption offered beside the download.
+   *
+   * Everything except whether to include the ayah text, which is the one part
+   * the panel itself owns -- it is a choice about the post, not about the
+   * project.
+   */
+  publish: Omit<PublishInput, 'includeVerseText' | 'translationNames'>;
+  /** Which translations are on screen, for the caption's credit line. */
+  translationIds: string[];
 }
 
 
@@ -83,6 +95,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   aspectRatio,
   onAspectRatio,
   onSaveExportRecord,
+  publish,
+  translationIds,
   onRenderPreview,
   isPreviewing,
   previewProgress,
@@ -124,6 +138,11 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
    */
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  /**
+   * Kept here rather than in the caption panel, which unmounts whenever the
+   * result screen does -- so rendering again would quietly forget it.
+   */
+  const [captionIncludesText, setCaptionIncludesText] = useState(false);
 
   // Clear the previous render whenever the modal is reopened. Without this the
   // result screen from the last export is still mounted, so a second export --
@@ -623,6 +642,15 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                    WebM for a render that produced MP4. */}
               <span>{t.exportModal.download(downloadFileName.endsWith('.mp4') ? 'MP4' : 'WebM')}</span>
             </a>
+
+            {/* Beside the download rather than anywhere else: the next thing
+                that happens to this file is an upload form. */}
+            <PublishCaption
+              publish={publish}
+              translationIds={translationIds}
+              includeVerseText={captionIncludesText}
+              onIncludeVerseText={setCaptionIncludesText}
+            />
 
             {/* Renders are repeatable -- the previous blob URL is left alive on
                 purpose so the saved export record keeps working. */}

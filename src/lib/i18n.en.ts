@@ -678,6 +678,22 @@ export const en = {
     renderAnother: 'Render Another Export'
   },
 
+  publish: {
+    title: 'Caption for this clip',
+    copy: 'Copy',
+    copied: 'Copied',
+    copyFailed:
+      'This browser would not let the page write to the clipboard. Select the text above and copy it by hand.',
+    titleField: 'Title',
+    descriptionField: 'Description',
+    tagsField: 'Tags',
+    includeText: 'Include the ayah text and translation',
+    includeTextHelp:
+      'Off by default, so the description stays short. The source is credited either way; with this on, that credit is what the text is published under.',
+    truncated:
+      'Something was shortened to fit what the platform accepts. The credits and hashtags are kept whole.'
+  },
+
   projects: {
     dialogLabel: 'Saved projects and exports',
     heading: 'Saved Projects & Exports',
