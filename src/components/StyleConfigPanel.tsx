@@ -17,6 +17,7 @@ import { Button } from './Button';
 import { DEFAULT_TRANSLATION_ID, selectedOptions } from '@/lib/translations';
 import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { useT } from './LocaleProvider';
+import { useFileDrop } from '@/hooks/useFileDrop';
 import {
   LibraryItem, subscribeToLibrary, librarySnapshot, serverLibrarySnapshot, hydrateLibrary,
   addLibraryUpload, addLibraryLink, removeLibraryItem
@@ -121,20 +122,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   // into component state.
   useEffect(() => { hydrateLibrary(); }, []);
 
-  const handleCustomFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // Let the same file be picked again after it has been removed from the list.
-    e.target.value = '';
-    const kind: MediaKind = file.type.startsWith('image') ? 'image' : 'video';
-    const { item, stored } = await addLibraryUpload(file, kind);
-    if (item.url) addBackground(item.url, kind);
-    setUploadStatus(
-      stored
-        ? { kind: 'ok', message: t.style.uploadAdded(file.name) }
-        : { kind: 'error', message: t.style.uploadNotStored(file.name) }
-    );
-  };
 
   // A lane cut by hand on the timeline. It is not something you switch to from
   // here -- it is what dragging a block turns the layout into -- so it has no
@@ -199,6 +186,59 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     }
     onChangeConfig({ ...config, bgType: kind, bgUrl: url });
   };
+
+  /**
+   * Takes however many background files it is given.
+   *
+   * One at a time was the only way in, which for the thing this is for --
+   * gathering a set of clips to cut between -- meant repeating the whole
+   * picker dance per file. They are stored in sequence rather than in
+   * parallel: each is an IndexedDB write of a whole video, and starting six
+   * at once is how a quota failure becomes six quota failures.
+   *
+   * A file that will not persist still gets added to the session, so the
+   * status counts the two outcomes separately rather than calling a usable
+   * background a failure.
+   */
+  const addBackgroundFiles = async (files: File[]) => {
+    if (!files.length) return;
+    const stored: string[] = [];
+    const unstored: string[] = [];
+    for (const file of files) {
+      const kind: MediaKind = file.type.startsWith('image') ? 'image' : 'video';
+      const result = await addLibraryUpload(file, kind);
+      if (result.item.url) addBackground(result.item.url, kind);
+      (result.stored ? stored : unstored).push(file.name);
+    }
+
+    if (unstored.length === 0) {
+      setUploadStatus({
+        kind: 'ok',
+        message: stored.length === 1
+          ? t.style.uploadAdded(stored[0])
+          : t.style.uploadAddedMany(stored.length)
+      });
+      return;
+    }
+    setUploadStatus({
+      kind: 'error',
+      message: unstored.length === 1 && stored.length === 0
+        ? t.style.uploadNotStored(unstored[0])
+        : t.style.uploadSomeNotStored(unstored.length, stored.length)
+    });
+  };
+
+  const handleCustomFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    // Let the same file be picked again after it has been removed from the list.
+    e.target.value = '';
+    await addBackgroundFiles(files);
+  };
+
+  const backgroundDrop = useFileDrop(
+    addBackgroundFiles,
+    file => file.type.startsWith('video') || file.type.startsWith('image')
+  );
 
   /**
    * The presets and the user's own backgrounds, in one grid.
@@ -825,16 +865,26 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           {/* Custom Upload */}
           <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
             <label className="font-semibold text-slate-200 block mb-1.5">{t.style.uploadLabel}</label>
-            <div className="relative flex items-center justify-center p-3 border-2 border-dashed border-slate-700 hover:border-amber-500/50 rounded-lg cursor-pointer bg-slate-950/50 transition-colors">
+            <div
+              {...backgroundDrop.dropHandlers}
+              className={`relative flex items-center justify-center p-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                backgroundDrop.isOver
+                  ? 'border-amber-400 bg-amber-500/10'
+                  : 'border-slate-700 hover:border-amber-500/50 bg-slate-950/50'
+              }`}
+            >
               <input
                 type="file"
                 accept="video/*,image/*"
+                multiple
                 onChange={handleCustomFileUpload}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
               <div className="flex items-center gap-2 text-slate-400 hover:text-amber-300">
                 <Upload className="w-4 h-4" />
-                <span className="text-xs font-medium">{t.style.uploadBrowse}</span>
+                <span className="text-xs font-medium">
+                  {backgroundDrop.isOver ? t.style.uploadDropHere : t.style.uploadBrowse}
+                </span>
               </div>
             </div>
             <p className="text-[11px] text-slate-400 mt-1.5">{t.style.uploadHelp}</p>

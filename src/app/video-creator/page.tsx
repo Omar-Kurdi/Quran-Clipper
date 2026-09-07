@@ -9,6 +9,7 @@ import {
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
 import { describeGpu } from '@/lib/gpuInfo';
+import { useFileDrop } from '@/hooks/useFileDrop';
 import type { ExportHealth } from '@/lib/exportHealth';
 import type { ExportPlan } from '@/lib/exportPresets';
 import { createBooleanPreference } from '@/lib/uiPreference';
@@ -554,9 +555,16 @@ export default function VideoCreatorPage() {
     setMatchStatus({ text: t.match.audioRestored, tone: 'info' });
   };
 
-  // Handle Custom Audio / Video File Upload
-  const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  /**
+   * Takes a recitation, however it arrived -- picked or dropped.
+   *
+   * Extracted from the change handler so a dropped file goes through exactly
+   * this path and not a shortened copy of it. The branch below is the reason
+   * that matters: a project restored without its audio is waiting for one
+   * particular file, and starting a fresh upload with it would rebase an
+   * already-rebased timeline and put every caption `trimStart` seconds early.
+   */
+  const acceptRecitationFile = async (file: File | undefined) => {
     if (file) {
       // A project is waiting for its recitation back. Reproduce the clip it was
       // saved against rather than starting a fresh upload, which would leave the
@@ -605,6 +613,24 @@ export default function VideoCreatorPage() {
       if (measured > 0) setAudioDuration(measured);
     }
   };
+
+  // Handle Custom Audio / Video File Upload
+  const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Let the same file be chosen again -- re-picking the recitation a
+    // restored project is asking for is an ordinary thing to do twice.
+    e.target.value = '';
+    await acceptRecitationFile(file);
+  };
+
+  /**
+   * One recitation, not a set: the studio has a single audio track, and
+   * silently taking the first of five dropped files would be a guess.
+   */
+  const recitationDrop = useFileDrop(
+    files => { void acceptRecitationFile(files[0]); },
+    file => file.type.startsWith('audio') || file.type.startsWith('video') || isVideoFile(file)
+  );
 
   /**
    * Replaces the uploaded audio with a trimmed clip.
@@ -1802,7 +1828,14 @@ export default function VideoCreatorPage() {
                     )}
                   </div>
                   
-                  <div className="relative flex items-center justify-center p-3 border-2 border-dashed border-slate-700 hover:border-amber-500/50 rounded-lg cursor-pointer bg-slate-900/60 transition-colors">
+                  <div
+                    {...recitationDrop.dropHandlers}
+                    className={`relative flex items-center justify-center p-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                      recitationDrop.isOver
+                        ? 'border-amber-400 bg-amber-500/10'
+                        : 'border-slate-700 hover:border-amber-500/50 bg-slate-900/60'
+                    }`}
+                  >
                     <input
                       type="file"
                       accept="audio/*,video/*,.mkv,.m4v,.mov"
@@ -1812,7 +1845,11 @@ export default function VideoCreatorPage() {
                     />
                     <div className="flex items-center gap-2 text-slate-300">
                       {uploadIsVideo ? <Video className="w-4 h-4 text-amber-400" /> : <Upload className="w-4 h-4 text-amber-400" />}
-                      <span className="text-xs font-semibold">{customAudioName || t.source.chooseFile}</span>
+                      <span className="text-xs font-semibold">
+                        {recitationDrop.isOver
+                          ? t.source.dropHere
+                          : customAudioName || t.source.chooseFile}
+                      </span>
                     </div>
                   </div>
 

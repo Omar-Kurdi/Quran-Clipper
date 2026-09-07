@@ -136,7 +136,8 @@ export const en = {
     uploadLabel: 'Upload Recitation — Audio or Video:',
     uploadHelp:
       'Audio (MP3 / WAV / M4A / OGG) or video (MP4 / MOV / WebM / MKV). For a video, the audio track is used for matching and the footage becomes the background. AI auto-matching supports files up to ~18 MB (roughly 15–20 minutes of MP3); compress or split longer recordings.',
-    chooseFile: 'Choose Audio or Video File',
+    chooseFile: 'Choose or drop an audio or video file',
+    dropHere: 'Drop it here',
 
     matcherLabel: 'AI Matcher:',
     matcherUses: (technical: string) => `Uses ${technical}`,
@@ -463,13 +464,18 @@ export const en = {
     urlAddedWithCredit: (credit: string) => `Added — ${credit} on Pexels.`,
     urlResolverUnreachable: 'Could not reach the resolver.',
 
-    uploadLabel: 'Upload Custom Video or Image Loop:',
-    uploadBrowse: 'Browse Video or Image file',
+    uploadLabel: 'Upload Custom Video or Image Loops:',
+    uploadBrowse: 'Browse or drop video and image files',
+    uploadDropHere: 'Drop them here',
     uploadHelp:
-      'Kept in this browser, so it is still in the list next time. Clearing site data removes it, and the entry then shows as missing rather than disappearing.',
+      'Pick or drop as many as you like at once. Kept in this browser, so they are still in the list next time. Clearing site data removes them, and an entry then shows as missing rather than disappearing.',
     uploadAdded: (name: string) => `“${name}” added — it will still be here next time.`,
+    uploadAddedMany: (count: number) =>
+      `${count} backgrounds added — they will still be here next time.`,
     uploadNotStored: (name: string) =>
       `“${name}” is in this video, but could not be stored for next time — the browser refused it, usually because it is out of space for this site.`,
+    uploadSomeNotStored: (failed: number, kept: number) =>
+      `${kept === 0 ? `All ${failed}` : `${failed} of ${failed + kept}`} could not be stored for next time — the browser refused them, usually because it is out of space for this site. They are in this video either way.`,
 
     overlayOpacity: 'Dark Overlay Opacity:',
     backgroundBlur: 'Background Blur:',
