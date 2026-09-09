@@ -9,6 +9,7 @@
 import { VerseData, VerseWord } from '@/lib/quranData';
 import { defaultTranslationId, quranApiJson, translationIdsToRequest, preferredTranslation } from './quranApi';
 import { normalizeArabic } from '@/lib/arabic';
+import { primaryTranslation } from './clearQuran';
 
 type QuranApiWord = {
   char_type_name?: string;
@@ -98,7 +99,16 @@ async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
       verseNumber: verse.verse_number,
       verseKey: verse.verse_key,
       textUthmani: verse.text_uthmani,
-      translation: cleanHtml(preferredTranslation(verse.translations)),
+      // Through `primaryTranslation`, not `preferredTranslation`: this is the
+      // path an AI match builds its captions from, and the upstream cannot
+      // serve The Clear Quran.
+      translation: primaryTranslation({
+        surah: surahNumber,
+        ayah: verse.verse_number,
+        translations: verse.translations,
+        wanted: translationIdsToRequest(),
+        clean: cleanHtml
+      }),
       words,
       tokens: words.map(word => normalizeArabic(word.arabic))
     };

@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   getPrimaryTimelineSummary,
-  trimTimeline,
   enforceTimelineOrder,
   parseVerseKey,
   estimateDurationFromSegments,
   fetchVersesByDetectedSegments,
 } from './matchTimeline';
+// Lives in `verseEdits` now: it is a pure rebasing of verse times, and keeping
+// it beside the matcher pulled the whole server-side corpus into the studio.
+import { trimTimeline } from './verseEdits';
 
 // One ayah, four words, so a segment can cover part of it and a restart can
 // cover an overlapping part later in the recording.

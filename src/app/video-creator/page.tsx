@@ -31,9 +31,8 @@ import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
 import { Inspector } from '@/components/Inspector';
-import { segmentAt } from '@/lib/verseEdits';
+import { segmentAt, trimTimeline } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
-import { trimTimeline } from '@/lib/matchTimeline';
 import {
   backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName,
   BackgroundSegment, BACKGROUND_MODES, BackgroundMode

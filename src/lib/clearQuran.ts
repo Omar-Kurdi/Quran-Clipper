@@ -134,3 +134,49 @@ export function clearQuranSurah(surah: number): string[] | null {
 export function clearQuranAyah(surah: number, ayah: number): string {
   return clearQuranSurah(surah)?.[ayah - 1] ?? '';
 }
+
+/**
+ * The translation one verse should show, with this machine filling the gap.
+ *
+ * Both server paths that build captions go through here, and they must: the
+ * Load button reaches `/api/quran/verses`, while an AI match builds its
+ * timeline from `quranCorpus`, and fixing only the first is what left an
+ * aligned timeline showing Saheeh International under a project that said it
+ * was showing The Clear Quran. Adding Saheeh as a second translation then drew
+ * the same words twice, which is how it was noticed.
+ *
+ * Order of preference is the order asked for, with the local copy sitting
+ * directly behind the id it stands in for -- so the upstream still wins the day
+ * the Foundation answers for 131, and the fallback translation is still reached
+ * when neither has the primary.
+ *
+ * `clean` is passed in rather than imported to keep this module free of
+ * anything but `node:fs`: `quranApi` and `quranCorpus` are reachable from the
+ * client bundle, and an import cycle through either would drag the file reader
+ * in with it.
+ */
+export function primaryTranslation(input: {
+  surah: number;
+  ayah: number;
+  translations: { resource_id?: number; text?: string }[] | undefined;
+  wanted: string[];
+  clean: (text: string) => string;
+}): string {
+  const list = input.translations || [];
+  const textFor = (id: string) => list.find(entry => String(entry?.resource_id) === id && entry?.text)?.text;
+
+  const primary = input.wanted[0];
+  const carried = primary ? textFor(primary) : undefined;
+  if (carried) return input.clean(carried);
+
+  if (primary === CLEAR_QURAN_ID) {
+    const local = clearQuranAyah(input.surah, input.ayah);
+    if (local) return local;
+  }
+
+  for (const id of input.wanted.slice(1)) {
+    const found = textFor(id);
+    if (found) return input.clean(found);
+  }
+  return input.clean(list.find(entry => entry?.text)?.text || '');
+}

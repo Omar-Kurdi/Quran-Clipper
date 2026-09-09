@@ -452,3 +452,45 @@ export function formatTime(seconds: number): string {
   const rest = safe - minutes * 60;
   return `${minutes}:${rest.toFixed(2).padStart(5, '0')}`;
 }
+
+/**
+ * Moved here from `matchTimeline`, which is server-only.
+ *
+ * Nothing about rebasing verse times needs the Quran corpus, but living in that
+ * module meant the studio -- a client component -- imported it, and through it
+ * everything the matcher reaches. That was harmless until the corpus learned to
+ * read The Clear Quran off the disk, at which point `node:fs` followed the same
+ * chain into the browser bundle and the page stopped building at all.
+ */
+/**
+ * Clips a timeline to a trimmed audio window and rebases times to the new
+ * clip's start (so segment 0 still starts at/near 0, matching every other
+ * consumer's assumption about where the audio begins).
+ *
+ * Segments entirely outside the window are dropped. A segment that straddles
+ * a trim boundary is clamped rather than dropped, so cutting mid-ayah keeps
+ * the part of it that survived instead of losing the whole verse.
+ */
+export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: number): VerseData[] {
+  return verses
+    .filter(verse => verse.endTime > trimStart && verse.startTime < trimEnd)
+    .map(verse => {
+      const startTime = Math.round((Math.max(verse.startTime, trimStart) - trimStart) * 10) / 10;
+      const endTime = Math.round((Math.min(verse.endTime, trimEnd) - trimStart) * 10) / 10;
+      // Word times are on the same clock as the segment, so they have to move
+      // with it. Left absolute they would sit outside the rebased segment and
+      // every consumer that checks (splitting, for one) would discard them.
+      //
+      // To the millisecond, not to the segment's one decimal. Segment edges are
+      // stored at 1dp by convention, but that convention is theirs: the aligner
+      // reports word times to the millisecond, and rounding 5.582 to 5.6 would
+      // move a cut past a word. Rounding at all is only to keep the subtraction
+      // from leaving float dust (1.2390000000000008) in saved projects.
+      const words = verse.words?.map(word =>
+        typeof word.timestamp === 'number'
+          ? { ...word, timestamp: Math.round((word.timestamp - trimStart) * 1000) / 1000 }
+          : word
+      );
+      return { ...verse, startTime, endTime: Math.max(endTime, startTime + 0.1), words };
+    });
+}
