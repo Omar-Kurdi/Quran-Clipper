@@ -148,6 +148,32 @@ export function reorder(verses: VerseData[], from: number, to: number): VerseDat
   return updated;
 }
 
+/**
+ * Corrects one of the *additional* translations on a caption.
+ *
+ * The first translation is the caption's own `translation` field, overridden by
+ * `displayTranslation`; the rest live in `translations`, keyed by quran.com
+ * resource id, which is where the card reads them from. They had no editor at
+ * all, so a second language could be put on screen and not fixed.
+ *
+ * Only the selected caption's copy changes. These are stored per caption -- a
+ * repeated phrase is two captions of the same ayah -- so correcting one does
+ * not silently rewrite the other.
+ */
+export function setTranslationText(
+  verses: VerseData[],
+  index: number,
+  id: string,
+  value: string
+): VerseData[] {
+  const current = verses[index];
+  if (!current) return verses;
+  if ((current.translations?.[id] ?? '') === value) return verses;
+  const updated = [...verses];
+  updated[index] = { ...current, translations: { ...(current.translations || {}), [id]: value } };
+  return updated;
+}
+
 export function setText(
   verses: VerseData[],
   index: number,

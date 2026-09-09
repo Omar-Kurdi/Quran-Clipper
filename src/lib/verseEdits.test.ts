@@ -14,6 +14,7 @@ import {
   ensureWords,
   splitSegment,
   mergeWithNext,
+  setTranslationText,
 } from './verseEdits';
 import type { VerseData } from './quranData';
 
@@ -502,5 +503,42 @@ describe('extra translations', () => {
   it('survives duplicating a caption', () => {
     const copies = duplicateVerse([withUrdu()], 0, 30);
     expect(copies[1].translations).toEqual({ '158': 'اللہ کے نام سے' });
+  });
+});
+
+describe('setTranslationText', () => {
+  it('writes an additional translation onto the selected caption only', () => {
+    const verses = timeline();
+    const next = setTranslationText(verses, 1, '85', 'اردو');
+    expect(next[1].translations).toEqual({ '85': 'اردو' });
+    // A repeated phrase is two captions of the same ayah; correcting one must
+    // not rewrite the other.
+    expect(next[0].translations).toBeUndefined();
+    expect(next[2].translations).toBeUndefined();
+  });
+
+  it('keeps the translations already there', () => {
+    const verses = timeline();
+    verses[0] = { ...verses[0], translations: { '20': 'kept' } };
+    const next = setTranslationText(verses, 0, '131', 'added');
+    expect(next[0].translations).toEqual({ '20': 'kept', '131': 'added' });
+  });
+
+  it('changes nothing when the text is what it already was', () => {
+    const verses = timeline();
+    verses[0] = { ...verses[0], translations: { '20': 'same' } };
+    expect(setTranslationText(verses, 0, '20', 'same')).toBe(verses);
+  });
+
+  it('ignores an index that is not there', () => {
+    const verses = timeline();
+    expect(setTranslationText(verses, 9, '20', 'x')).toBe(verses);
+  });
+
+  it('leaves the primary translation alone', () => {
+    // The first translation is the caption's own field; this only ever touches
+    // the keyed map beside it.
+    const next = setTranslationText(timeline(), 0, '131', 'other');
+    expect(next[0].translation).toBe('text');
   });
 });

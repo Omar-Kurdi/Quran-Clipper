@@ -2231,6 +2231,9 @@ export default function VideoCreatorPage() {
                   index={selectedIndex}
                   isActive={selectedIndex === activeVerseIndex}
                   onText={edit.text}
+                  translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
+                  onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
+                  onTranslationText={edit.translationText}
                   onVerseNumber={edit.verseNumber}
                   onToggleWord={edit.toggleWord}
                   onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration, rippleEdits)}
