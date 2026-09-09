@@ -415,7 +415,7 @@ export const en = {
     laneSummary: (blocks: number) =>
       `Cut by hand on the timeline — ${blocks} block${blocks === 1 ? '' : 's'}.`,
     laneHelp:
-      'Drag a block to move it, or an edge to change how long it runs; stretching one past the clip’s own length just plays it again. Pick a mode above to go back to automatic.',
+      'Drag a block to move it, or an edge to change how long it runs; stretching one past the clip’s own length just plays it again. In the list below, drag one by its handle to put a different clip in that slot without moving the cuts. Pick a mode above to go back to automatic.',
     removeBlockAria: (name: string, start: string) => `Remove ${name} at ${start}s`,
 
     sequenceEmpty:

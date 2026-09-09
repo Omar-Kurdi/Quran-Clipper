@@ -320,6 +320,27 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
    */
   const [seqDragFrom, setSeqDragFrom] = useState<number | null>(null);
   const [seqDragOver, setSeqDragOver] = useState<number | null>(null);
+  const [laneDragFrom, setLaneDragFrom] = useState<number | null>(null);
+  const [laneDragOver, setLaneDragOver] = useState<number | null>(null);
+
+  /**
+   * Reorders the clips in the hand-cut lane, leaving the cuts alone.
+   *
+   * The urls move between the blocks; the blocks keep their times. That is the
+   * only reading that makes sense here, because in this lane the order *is* the
+   * times -- permuting `{start, end}` instead would move where the background
+   * changes, which is what dragging a block on the timeline is for. This
+   * answers the other question: the cuts are right, the clips are in the wrong
+   * slots.
+   */
+  const moveInLane = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= laneSegments.length) return;
+    const urls = laneSegments.map(seg => seg.url);
+    const [moved] = urls.splice(from, 1);
+    urls.splice(to, 0, moved);
+    setLane(laneSegments.map((seg, i) => ({ ...seg, url: urls[i] })));
+    onSelectBackground?.(to);
+  };
 
   const moveInSequence = (from: number, to: number) => {
     if (to < 0 || to >= bgSequence.length) return;
@@ -556,13 +577,37 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     {laneSegments.map((seg, i) => (
                       <li
                         key={`${seg.url}-${i}`}
+                        draggable
                         onPointerDown={() => onSelectBackground?.(i)}
+                        onDragStart={e => {
+                          setLaneDragFrom(i);
+                          e.dataTransfer.effectAllowed = 'move';
+                          // Firefox starts no drag at all without a payload.
+                          e.dataTransfer.setData('text/plain', String(i));
+                        }}
+                        onDragEnter={() => setLaneDragOver(i)}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => {
+                          e.preventDefault();
+                          if (laneDragFrom !== null) moveInLane(laneDragFrom, i);
+                          setLaneDragFrom(null);
+                          setLaneDragOver(null);
+                        }}
+                        onDragEnd={() => { setLaneDragFrom(null); setLaneDragOver(null); }}
                         className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 border cursor-pointer ${
-                          selectedBackground === i
-                            ? 'bg-lapis-bright/20 border-lapis-bright/60'
-                            : 'bg-slate-950 border-slate-800'
+                          laneDragFrom === i
+                            ? 'bg-slate-950 border-slate-800 opacity-40'
+                            : laneDragOver === i && laneDragFrom !== null
+                              ? 'bg-slate-950 border-amber-500 ring-1 ring-amber-500/60'
+                              : selectedBackground === i
+                                ? 'bg-lapis-bright/20 border-lapis-bright/60'
+                                : 'bg-slate-950 border-slate-800'
                         }`}
                       >
+                        <GripVertical
+                          aria-hidden="true"
+                          className="w-3.5 h-3.5 shrink-0 text-slate-500 cursor-grab active:cursor-grabbing"
+                        />
                         <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
                         <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{nameOf(seg.url)}</span>
                         <span className="shrink-0 text-[10px] font-mono text-slate-400 tabular-nums" dir="ltr">
