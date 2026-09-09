@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cleanHtml } from '@/lib/quranCorpus';
 import { quranApiJson, translationIdsToRequest, preferredTranslation } from '@/lib/quranApi';
+import { CLEAR_QURAN_ID, clearQuranAyah } from '@/lib/clearQuran';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
@@ -132,6 +133,27 @@ export async function GET(req: NextRequest) {
       // a chapter the configured upstream does not hold still arrives with a
       // translation rather than with none.
       const wantedTranslations = translationIdsToRequest();
+
+      /**
+       * The primary translation, from this machine when the upstream has not
+       * got it.
+       *
+       * The upstream wins whenever it actually carried the id that was asked
+       * for -- so the day the Foundation starts answering for 131, its text is
+       * what is used and the local copy stops being reached. Until then this is
+       * what makes the configured default mean what it says: without it, asking
+       * for The Clear Quran and being handed Saheeh International looks exactly
+       * like success, and the caption's credit would name the wrong translator
+       * over the wrong words.
+       */
+      const translationFor = (verse: ApiVerse): string => {
+        const upstream = cleanHtml(preferredTranslation(verse.translations, wantedTranslations));
+        const carriedPrimary = (verse.translations || []).some(
+          entry => String(entry?.resource_id) === wantedTranslations[0] && entry?.text
+        );
+        if (carriedPrimary || wantedTranslations[0] !== CLEAR_QURAN_ID) return upstream;
+        return clearQuranAyah(surahNumber, verse.verse_number) || upstream;
+      };
       const { data: quranData } = await quranApiJson<{ verses?: ApiVerse[] }>(
         `/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${wantedTranslations.join(',')}` +
           `&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
@@ -180,8 +202,7 @@ export async function GET(req: NextRequest) {
             currentOffset += approxDuration + 0.8;
           }
 
-          const rawTranslation = preferredTranslation(v.translations, wantedTranslations);
-          const cleanTranslation = cleanHtml(rawTranslation);
+          const cleanTranslation = translationFor(v);
 
           return {
             verseNumber: v.verse_number,

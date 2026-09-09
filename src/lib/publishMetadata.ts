@@ -133,7 +133,11 @@ export function buildPublishMetadata(input: PublishInput): PublishMetadata {
   const credits: string[] = [];
   const named = (input.translationNames ?? []).filter(name => name.trim());
   if (named.length) credits.push(`Translation: ${named.join(', ')}`);
-  credits.push('Quran text and translations via quran.com.');
+  // The Arabic comes from quran.com; a translation may not -- The Clear Quran
+  // is read from a local copy while the Foundation's id 131 is out of reach --
+  // so the translator is credited on its own line above rather than folded
+  // into a source that is only half right.
+  credits.push('Quran text via quran.com.');
 
   const head = [
     `${surah} (${input.surahNameArabic}) · Ayah ${input.ayahEnd > input.ayahStart ? `${input.ayahStart}-${input.ayahEnd}` : input.ayahStart}`,

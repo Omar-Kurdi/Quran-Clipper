@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isRtlLanguage, displayLanguage, TranslationOption } from '@/lib/translations';
 import { quranApiJson, defaultTranslationId, quranApiSource } from '@/lib/quranApi';
+import { CLEAR_QURAN_ID, CLEAR_QURAN_NAME, clearQuranAvailable } from '@/lib/clearQuran';
 
 /**
  * Every translation quran.com publishes, trimmed to what the picker needs.
@@ -54,6 +55,19 @@ export async function GET() {
           rtl: isRtlLanguage(item.language_name || '')
         };
       });
+
+    // The Clear Quran, when this machine holds a copy. The open API's 126 do
+    // not include it, so without this the picker would show the default
+    // translation as a bare id and the caption would credit "131" rather than
+    // its translator.
+    if (clearQuranAvailable() && !translations.some(item => item.id === CLEAR_QURAN_ID)) {
+      translations.unshift({
+        id: CLEAR_QURAN_ID,
+        name: CLEAR_QURAN_NAME,
+        language: 'English',
+        rtl: false
+      });
+    }
 
     return NextResponse.json({
       success: true,

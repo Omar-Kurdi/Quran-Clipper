@@ -68,3 +68,8 @@ asr-service/=*
 
 # Pid files and logs from ./start.sh
 .run/
+
+# The Clear Quran, fetched from quranapi.pages.dev. Held locally until the
+# Quran Foundation grants access to their id 131. Copyrighted text, not ours
+# to redistribute, and 5.9 MB besides.
+data/quran/

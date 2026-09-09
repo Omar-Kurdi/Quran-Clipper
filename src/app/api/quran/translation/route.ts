@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { quranApiFetch } from '@/lib/quranApi';
 import { cleanHtml } from '@/lib/quranCorpus';
+import { CLEAR_QURAN_ID, clearQuranSurah } from '@/lib/clearQuran';
 
 /**
  * The text of one or more translations, for one passage.
@@ -37,11 +38,43 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, verses: {} }, { status: 400 });
     }
 
+    /**
+     * Fills in The Clear Quran from this machine.
+     *
+     * Applied after the upstream rather than instead of it, so an upstream that
+     * does carry 131 is preferred and this becomes dead weight the moment the
+     * Foundation grants access. Written from the *local* surah's own length
+     * rather than from the response, because the response may hold no verses at
+     * all -- asking the open API for 131 alone comes back empty, which is the
+     * case this exists for.
+     */
+    const fillClearQuran = (into: Record<string, Record<string, string>>) => {
+      if (!ids.includes(CLEAR_QURAN_ID)) return into;
+      const local = clearQuranSurah(surah);
+      if (!local) return into;
+      const last = Math.min(end, local.length);
+      for (let ayah = Math.max(1, start); ayah <= last; ayah++) {
+        const text = local[ayah - 1];
+        if (!text) continue;
+        const key = `${surah}:${ayah}`;
+        const texts = into[key] || (into[key] = {});
+        if (!texts[CLEAR_QURAN_ID]) texts[CLEAR_QURAN_ID] = text;
+      }
+      return into;
+    };
+
     const { res } = await quranApiFetch(
       `/verses/by_chapter/${surah}?translations=${ids.join(',')}&fields=verse_key&per_page=300`,
       { next: { revalidate: 86400 } }
     );
-    if (!res?.ok) return NextResponse.json({ success: false, verses: {} }, { status: 502 });
+    // A failed upstream still leaves the local translation answerable, which is
+    // the difference between a caption in one language and no caption at all.
+    if (!res?.ok) {
+      const local = fillClearQuran({});
+      return Object.keys(local).length
+        ? NextResponse.json({ success: true, verses: local })
+        : NextResponse.json({ success: false, verses: {} }, { status: 502 });
+    }
 
     const data = await res.json();
     const list: ApiVerse[] = Array.isArray(data?.verses) ? data.verses : [];
@@ -62,7 +95,7 @@ export async function GET(req: NextRequest) {
       if (Object.keys(texts).length) verses[key] = texts;
     }
 
-    return NextResponse.json({ success: true, verses });
+    return NextResponse.json({ success: true, verses: fillClearQuran(verses) });
   } catch {
     return NextResponse.json({ success: false, verses: {} }, { status: 502 });
   }
