@@ -13,6 +13,9 @@
 #   ./start.sh          web app in dev mode (hot reload; use while editing)
 #   ./start.sh --prod   build once, then serve the build (faster canvas/export)
 #   ./stop.sh           stop everything this started
+#
+# It also says whether a newer copy of The Clear Quran has been published. See
+# scripts/clear-quran.mjs for what to do about it.
 set -uo pipefail
 
 cd "$(dirname "$(readlink -f "$0")")"
@@ -22,12 +25,12 @@ mkdir -p "$RUN_DIR"
 MODE="dev"
 [[ "${1:-}" == "--prod" ]] && MODE="prod"
 
-DB_STATE="skipped"; ASR_STATE="skipped"; WEB_STATE="skipped"
+DB_STATE="skipped"; ASR_STATE="skipped"; WEB_STATE="skipped"; TEXT_STATE="skipped"
 
 alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
 # --- database ---------------------------------------------------------------
-printf '[1/3] database  ... '
+printf '[1/4] database    ... '
 if scripts/db.sh start >"$RUN_DIR/db.log" 2>&1; then
   DB_STATE="up on 127.0.0.1:5432"
   echo "up"
@@ -37,7 +40,7 @@ else
 fi
 
 # --- alignment sidecar ------------------------------------------------------
-printf '[2/3] sidecar   ... '
+printf '[2/4] sidecar     ... '
 if curl -sf --max-time 2 http://127.0.0.1:8000/health >/dev/null 2>&1; then
   ASR_STATE="already running on :8000"
   echo "already running"
@@ -62,7 +65,7 @@ else
 fi
 
 # --- web app ----------------------------------------------------------------
-printf '[3/3] web app   ... '
+printf '[3/4] web app     ... '
 if curl -sf --max-time 2 http://127.0.0.1:3000 >/dev/null 2>&1; then
   WEB_STATE="already running on :3000"
   echo "already running"
@@ -93,11 +96,49 @@ else
   fi
 fi
 
+# --- translation ------------------------------------------------------------
+# One HEAD request against the source of The Clear Quran, which the studio
+# serves from data/quran/ because quran.com only publishes it through an API we
+# do not have live access to yet. Nothing is downloaded and nothing is changed
+# here: this only says whether a newer version exists, because accepting one
+# alters the words that go into published videos and that is not something a
+# start script should do on its own. Three-second timeout, and being offline is
+# not a failure -- the file is sitting right there either way.
+printf '[4/4] translation ... '
+TEXT_UPDATE=0
+if [[ -f data/quran/english.json ]]; then
+  TEXT_STATE="$(node scripts/clear-quran.mjs check 2>/dev/null)"
+  # 10 means a newer version is waiting. Read as a code rather than by matching
+  # the wording, so the two can be reworded independently.
+  [[ $? -eq 10 ]] && TEXT_UPDATE=1
+  [[ -z "$TEXT_STATE" ]] && TEXT_STATE="could not be checked"
+else
+  TEXT_STATE="not installed -- captions fall back to Saheeh International"
+fi
+echo "$TEXT_STATE"
+
 cat <<SUMMARY
 
-  database   $DB_STATE
-  sidecar    $ASR_STATE
-  web app    $WEB_STATE
+  database     $DB_STATE
+  sidecar      $ASR_STATE
+  web app      $WEB_STATE
+  translation  $TEXT_STATE
 
   logs in $RUN_DIR/    stop with ./stop.sh
 SUMMARY
+
+# The command, on its own line, where it can be copied. Only when there is
+# something to run it for: a newer translation changes the words that go into
+# published videos, so it is offered rather than done.
+if [[ "$TEXT_UPDATE" == 1 ]]; then
+  cat <<UPDATE
+
+  A newer copy of The Clear Quran has been published. Review it with:
+
+      node scripts/clear-quran.mjs update
+
+  It audits the download first and refuses one that has lost an ayah or gained
+  a character this edition has never used. Nothing changes until it passes.
+
+UPDATE
+fi
