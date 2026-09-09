@@ -93,6 +93,27 @@ export function toggleTranslation(
   return [...ids, id];
 }
 
+/**
+ * Names the studio knows without asking, for the moment before the catalogue
+ * has loaded.
+ *
+ * The panel used to print one hardcoded name here -- "Saheeh International" --
+ * on the reasoning that it was the default and therefore what an unnamed
+ * default must be. That stopped being true the moment the default moved, and
+ * it failed silently: the chip named one translation while the card underneath
+ * drew another. Keyed by id, so it is wrong for nobody.
+ *
+ * Only the two the studio ships a default for. Anything else is named by the
+ * catalogue or shown as its own id, which is at least not a claim.
+ */
+const KNOWN_NAMES: Record<string, string> = {
+  '20': 'Saheeh International',
+  '131': 'Dr. Mustafa Khattab, the Clear Quran'
+};
+
+/** A name for `id` without the catalogue: a known one, else the id itself. */
+export const knownTranslationName = (id: string): string => KNOWN_NAMES[id] || id;
+
 /** The selected ids as options, in the order they were chosen; unknown ids keep their place. */
 export function selectedOptions(ids: string[], catalogue: TranslationOption[]): TranslationOption[] {
   return ids.map(

@@ -14,7 +14,7 @@ import { ColorField } from './ColorField';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TranslationPicker } from './TranslationPicker';
 import { Button } from './Button';
-import { DEFAULT_TRANSLATION_ID, selectedOptions } from '@/lib/translations';
+import { DEFAULT_TRANSLATION_ID, selectedOptions, knownTranslationName } from '@/lib/translations';
 import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { useT } from './LocaleProvider';
 import { useFileDrop } from '@/hooks/useFileDrop';
@@ -1036,9 +1036,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 >
                   <span className="font-mono text-[10px] text-amber-400">{index + 1}</span>
                   <span className="truncate max-w-44">
-                    {option.id === DEFAULT_TRANSLATION_ID && !option.language
-                      ? t.translations.defaultName
-                      : option.name}
+                    {/* `language` is only set by the catalogue, so its absence
+                        means this id has not been named yet. */}
+                    {option.language ? option.name : knownTranslationName(option.id)}
                   </span>
                   {option.language && <span className="text-slate-500">· {option.language}</span>}
                 </span>

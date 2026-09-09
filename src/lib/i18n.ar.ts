@@ -276,8 +276,7 @@ export const ar: Dictionary = {
 
     panelLabel: 'الترجمات',
     panelHelp: 'ما يظهر أسفل النص العربي. اختر لغة، أو اعرض لغتين معًا.',
-    choose: 'اختيار الترجمات',
-    defaultName: 'Saheeh International'
+    choose: 'اختيار الترجمات'
   },
 
   shortcuts: {

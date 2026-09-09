@@ -283,8 +283,7 @@ export const en = {
 
     panelLabel: 'Translations',
     panelHelp: 'What appears under the Arabic. Choose a language, or show two at once.',
-    choose: 'Choose translations',
-    defaultName: 'Saheeh International'
+    choose: 'Choose translations'
   },
 
   shortcuts: {
