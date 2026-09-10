@@ -1008,7 +1008,25 @@ export default function VideoCreatorPage() {
    * is remembered, so a translation quran.com does not actually serve for this
    * surah is requested once rather than on every render that notices it missing.
    */
-  const requestedTranslations = useRef<Set<string>>(new Set());
+  /**
+   * `surah:id` pairs the upstream has already refused to serve.
+   *
+   * Only the *empty* answers are remembered. This used to record every request
+   * the moment it was made, which stopped a translation quran.com does not
+   * carry from being asked for on every render -- and also stopped a
+   * translation that had arrived perfectly well from ever being fetched again.
+   * "Load ayahs & audio" replaces the captions with fresh ones that carry no
+   * translations, so the second language silently vanished and could not be
+   * brought back without a reload: chosen, shown, then gone the moment the
+   * passage was loaded.
+   *
+   * A successful fetch needs no memory. Once it is merged the captions are no
+   * longer missing it, and if they are replaced then asking again is exactly
+   * the right thing to do.
+   */
+  const unavailableTranslations = useRef<Set<string>>(new Set());
+  /** In flight right now, so a re-render cannot start the same request twice. */
+  const fetchingTranslations = useRef<Set<string>>(new Set());
   useEffect(() => {
     const wanted = canvasConfig.translationIds || [];
     const missing = missingTranslationIds(verses, wanted);
@@ -1029,9 +1047,13 @@ export default function VideoCreatorPage() {
 
     const jobs: { surah: number; start: number; end: number; ids: string[] }[] = [];
     for (const [surah, range] of passages) {
-      const ids = missing.filter(id => !requestedTranslations.current.has(`${surah}:${id}`));
+      const ids = missing.filter(
+        id =>
+          !unavailableTranslations.current.has(`${surah}:${id}`) &&
+          !fetchingTranslations.current.has(`${surah}:${id}`)
+      );
       if (!ids.length) continue;
-      ids.forEach(id => requestedTranslations.current.add(`${surah}:${id}`));
+      ids.forEach(id => fetchingTranslations.current.add(`${surah}:${id}`));
       jobs.push({ surah, ...range, ids });
     }
     if (!jobs.length) return;
@@ -1040,17 +1062,29 @@ export default function VideoCreatorPage() {
     void (async () => {
       const arrived: Record<string, Record<string, string>> = {};
       for (const job of jobs) {
+        const answered = new Set<string>();
         try {
           const res = await fetch(
             `/api/quran/translation?surah=${job.surah}&start=${job.start}&end=${job.end}&ids=${job.ids.join(',')}`
           );
-          if (!res.ok) continue;
-          const data = await res.json();
-          for (const [key, texts] of Object.entries(data?.verses || {})) {
-            arrived[key] = { ...arrived[key], ...(texts as Record<string, string>) };
+          if (res.ok) {
+            const data = await res.json();
+            for (const [key, texts] of Object.entries(data?.verses || {})) {
+              const map = texts as Record<string, string>;
+              Object.keys(map).forEach(id => answered.add(id));
+              arrived[key] = { ...arrived[key], ...map };
+            }
           }
         } catch {
           // Offline, or the resource is gone. The card shows what it has.
+        } finally {
+          // Anything that did not come back is one this upstream does not serve
+          // for this surah; asking again on every render would be a loop.
+          // Anything that did is simply forgotten, so a later reload re-fetches.
+          job.ids.forEach(id => {
+            fetchingTranslations.current.delete(`${job.surah}:${id}`);
+            if (!answered.has(id)) unavailableTranslations.current.add(`${job.surah}:${id}`);
+          });
         }
       }
       if (cancelled || !Object.keys(arrived).length) return;
