@@ -351,6 +351,7 @@ export const Inspector: React.FC<InspectorProps> = ({
       {similar.length > 0 && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-200">
           {t.inspector.alsoAppears(
+            verseKey,
             similar[0].elsewhere.length,
             similar[0].elsewhere.slice(0, 4).map(place => place.verseKey).join(', ')
           )}

@@ -377,10 +377,10 @@ export const en = {
     arabic: 'Arabic',
     translation: 'Translation',
     dragToResize: 'drag the corner to resize',
-    alsoAppears: (count: number, examples: string) =>
+    alsoAppears: (verseKey: string, count: number, examples: string) =>
       count === 1
-        ? `These words also appear at ${examples}. Worth checking the caption is on the right one.`
-        : `These words also appear in ${count} other places — ${examples}${count > 4 ? ', and more' : ''}. Worth checking the caption is on the right one.`,
+        ? `The same words are recited at ${examples} too. This caption is labelled ${verseKey} — if the reciter was on the other one, the ayah number on the video is wrong.`
+        : `The same words are recited in ${count} other places — ${examples}${count > 4 ? ', and more' : ''}. This caption is labelled ${verseKey} — if the reciter was on one of those instead, the ayah number on the video is wrong.`,
     translationFollowsWords: 'Translate only these words',
     translationFollowsWordsHint:
       'The text under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. These glosses are quran.com’s own word-by-word English — one dataset, not one per edition — so the wording differs from the translation chosen above, it reads as words in a row ("Say He (is) Allah the One"), and every translation on the card collapses into that single line. The caption credit follows suit. Applies to every caption.',
