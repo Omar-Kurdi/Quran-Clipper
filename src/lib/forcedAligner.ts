@@ -332,11 +332,25 @@ export async function runForcedAlignMatch(params: {
       endTime: segment.end,
       confidence: Math.max(0, Math.min(1, segment.score)),
       displayTextUthmani: recited.map(word => word.arabic).join(' '),
-      // Translation is NOT. The corpus's per-word glosses are grammatical
-      // fragments ("(is) with Allah", "even though") that do not compose into
-      // a sentence -- concatenating the slice produced unreadable English.
-      // Show the ayah's own translation for the segment instead.
-      displayTranslation: verse?.translation || '',
+      // No translation of its own. This used to copy the ayah's translation
+      // into every segment on the reasoning that per-word glosses are
+      // grammatical fragments -- "(is) with Allah", "even though" -- that do
+      // not compose into a sentence, and reading them in a row is worse than
+      // reading the whole ayah.
+      //
+      // That reasoning stands, but it is not this function's to enforce. The
+      // caption already carries the ayah's translation in `translation`, so
+      // the copy changed nothing about what was drawn -- while
+      // `displayTranslation` means "a line chosen for this segment
+      // specifically" and outranks everything, including the word-by-word
+      // option the studio now offers. Pre-filling it therefore did nothing
+      // except make that option impossible on every aligned timeline. Left
+      // empty, the caption falls through to the same ayah translation as
+      // before, and someone who asks for word-by-word gets it.
+      //
+      // Gemini is different and keeps its own: it writes a real translation of
+      // just the words it selected, which is not the ayah's.
+      displayTranslation: '',
       // Exact word range, so the timeline doesn't have to re-derive which words
       // were recited by matching text -- which picks the wrong occurrence when
       // a word repeats inside one ayah.
