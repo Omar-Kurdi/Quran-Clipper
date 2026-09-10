@@ -33,10 +33,10 @@ FILES=(scripts/expected_*.txt)
   exit 1
 }
 
-printf '\n  %-26s %-22s %s\n' "clip" "passage" "score"
-printf '  %s\n' "------------------------------------------------------------------"
+printf '\n  %-26s %-20s %-7s %s\n' "clip" "passage" "score" "what the misses were"
+printf '  %s\n' "--------------------------------------------------------------------------------"
 
-TOTAL_HIT=0; TOTAL_EXP=0; SKIPPED=()
+TOTAL_HIT=0; TOTAL_EXP=0; SKIPPED=(); CATEGORIES=()
 
 for file in "${FILES[@]}"; do
   name="$(basename "$file")"
@@ -48,8 +48,8 @@ for file in "${FILES[@]}"; do
 
   line="$(grep -m1 '^SCORE:' "$log" || true)"
   if [[ -z "$line" ]]; then
-    reason="$(grep -m1 -iE 'not in the repo root|no ground truth|carries no|Error|Traceback' "$log" | cut -c1-58)"
-    SKIPPED+=("$name -- ${reason:-see $log}")
+    reason="$(grep -m1 -iE 'nowhere on disk|no ground truth|carries no|Error|Traceback' "$log" | cut -c1-70)"
+    SKIPPED+=("$name" "  -> ${reason:-see $log}")
     continue
   fi
 
@@ -60,20 +60,34 @@ for file in "${FILES[@]}"; do
   trim="$(sed -nE 's/^# trim:[[:space:]]*//p' "$file" | head -1)"
   [[ "$trim" == "none" || -z "$trim" ]] || passage="$passage (trimmed)"
 
+  # Why the misses missed, not just how many -- "9/11" says a change made
+  # things worse without saying what broke. `eval_segments.py` classifies each
+  # one; the per-clip log has the offending word ranges.
+  cats="$(sed -nE 's/^CATEGORIES:[[:space:]]*//p' "$log" | head -1)"
+  [[ "$cats" == "none" ]] && cats=""
+  [[ -n "$cats" ]] && CATEGORIES+=("$cats")
+
   TOTAL_HIT=$(( TOTAL_HIT + hits )); TOTAL_EXP=$(( TOTAL_EXP + total ))
-  printf '  %-26s %-22s %s/%s\n' "${clip:-${name}}" "${passage:-33:21-23}" "$hits" "$total"
+  printf '  %-26s %-20s %-7s %s\n' "${clip:-${name}}" "${passage:-33:21-23}" "$hits/$total" "$cats"
 done
 
-printf '  %s\n' "------------------------------------------------------------------"
+printf '  %s\n' "--------------------------------------------------------------------------------"
 if (( TOTAL_EXP > 0 )); then
-  printf '  %-49s %s/%s\n\n' "TOTAL" "$TOTAL_HIT" "$TOTAL_EXP"
+  # Same buckets added up. Categories never move the score, so a total here is
+  # comparable with every total from before they existed.
+  all_cats="$(printf '%s, ' "${CATEGORIES[@]:-}" | tr ',' '\n' | sed 's/^ *//;s/ *$//' \
+    | awk 'NF {n=$1; $1=""; sub(/^ /,""); total[$0]+=n} END {for (c in total) printf "%d %s, ", total[c], c}' \
+    | sed 's/, $//')"
+  printf '  %-47s %-7s %s\n\n' "TOTAL" "$TOTAL_HIT/$TOTAL_EXP" "$all_cats"
 else
-  printf '  %-49s %s\n\n' "TOTAL" "nothing scored"
+  printf '  %-47s %s\n\n' "TOTAL" "nothing scored"
 fi
 
 if (( ${#SKIPPED[@]} )); then
   echo "  skipped:"
   printf '    %s\n' "${SKIPPED[@]}"
+  echo "    (\"Ground truth\" in the studio now writes the recording into scripts/audio/ alongside,"
+  echo "     so a file exported from there needs nothing put anywhere by hand.)"
   echo
 fi
 

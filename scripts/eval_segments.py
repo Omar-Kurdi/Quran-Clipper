@@ -102,10 +102,72 @@ def count_hits(predicted: list[tuple[str, int, int]], expected: list[tuple[str, 
     return hits
 
 
+def classify_miss(
+    key: tuple[str, int, int],
+    predicted: list[tuple[str, int, int]],
+    expected: list[tuple[str, int, int, str]],
+) -> tuple[str, str]:
+    """Say *how* one expected segment was missed, not just that it was.
+
+    "9/11" says a change made things worse without saying what broke, so every
+    argument about a threshold ended in reading three log files side by side.
+    These are the shapes a miss actually takes, derived from the word ranges
+    that are already being compared:
+
+      merge      one predicted range swallowed this expected one and its
+                 neighbour -- the aligner did not hear the pause between them
+      split      several predicted ranges cover this one expected range
+      boundary   the right span, off by a word or two at one end
+      wrong ayah the same words, attributed to a different verse -- what the
+                 mutashabihat warning in the studio is about
+      missing    nothing predicted overlaps this at all
+
+    What this deliberately does NOT report is timing. A ground-truth file is a
+    list of expected texts with no timestamps in it, and the score is a pure
+    word-range comparison, so there is no answer here about whether a caption
+    came up early or late. Claiming one would be inventing it.
+
+    Returns (category, detail); detail names the predicted range at fault.
+    """
+    verse_key, start, end = key
+    same_verse = [p for p in predicted if p[0] == verse_key]
+    overlapping = [p for p in same_verse if p[1] <= end and p[2] >= start]
+
+    if not overlapping:
+        elsewhere = [p for p in predicted if p[1] == start and p[2] == end and p[0] != verse_key]
+        if elsewhere:
+            return "wrong ayah", f"predicted as {elsewhere[0][0]}:{start}-{end}"
+        return "missing", "nothing predicted overlaps it"
+
+    if len(overlapping) > 1:
+        spans = ", ".join(f"{p[1]}-{p[2]}" for p in overlapping)
+        return "split", f"covered by {len(overlapping)} predictions ({spans})"
+
+    p = overlapping[0]
+    covers = p[1] <= start and p[2] >= end
+    if covers and (p[1] < start or p[2] > end):
+        # A merge proper is one prediction standing in for two expected
+        # segments; a prediction merely wider at one end is a boundary call.
+        others = [
+            e for e in expected
+            if (e[0], e[1], e[2]) != key and e[0] == verse_key and p[1] <= e[2] and p[2] >= e[1]
+        ]
+        if others:
+            joined = ", ".join(f"{e[1]}-{e[2]}" for e in others[:2])
+            return "merge", f"predicted {p[1]}-{p[2]}, run together with {joined}"
+    head, tail = p[1] - start, p[2] - end
+    return "boundary", f"predicted {p[1]}-{p[2]} ({head:+d} at the start, {tail:+d} at the end)"
+
+
 def score(predicted: list[tuple[str, int, int]], expected: list[tuple[str, int, int, str]]) -> float:
-    """Exact (verse, start_word, end_word) matches, order-independent, no double-counting."""
+    """Exact (verse, start_word, end_word) matches, order-independent, no double-counting.
+
+    Categories are printed alongside but do not move the number: a miss is a
+    miss whatever shape it took, so scores stay comparable across this change.
+    """
     remaining = list(predicted)
     hits = 0
+    misses: list[tuple[int, str, str]] = []
     print(f"\n{'#':>3}  {'expected':<18} {'matched?':<10} text")
     print("-" * 78)
     for i, (verse_key, start, end, text) in enumerate(expected, 1):
@@ -115,13 +177,26 @@ def score(predicted: list[tuple[str, int, int]], expected: list[tuple[str, int, 
             hits += 1
             mark = "YES"
         else:
-            mark = "no"
+            category, detail = classify_miss(key, predicted, expected)
+            misses.append((i, category, detail))
+            mark = category
         print(f"{i:>3}  {verse_key+':'+str(start)+'-'+str(end):<18} {mark:<10} {text[:44]}")
 
     if remaining:
         print(f"\n{len(remaining)} predicted segment(s) with no expected counterpart:")
         for verse_key, start, end in remaining:
             print(f"     {verse_key}:{start}-{end}")
+
+    if misses:
+        print("\nwhy each miss missed:")
+        for i, category, detail in misses:
+            print(f"  #{i:<3} {category:<11} {detail}")
+
+    tally: dict[str, int] = {}
+    for _, category, _ in misses:
+        tally[category] = tally.get(category, 0) + 1
+    # One machine-readable line for gauge.sh, in the same style as SCORE.
+    print("CATEGORIES: " + (", ".join(f"{n} {c}" for c, n in sorted(tally.items())) or "none"))
 
     print(f"\nSCORE: {hits}/{len(expected)} exact word-range matches "
           f"({len(predicted)} predicted vs {len(expected)} expected)")
@@ -163,12 +238,38 @@ def read_metadata(expected_path: str) -> dict:
     return facts
 
 
-def find_audio(clip: str) -> str | None:
-    """Locate the clip named in the ground truth, relative to the repo root."""
+AUDIO_EXTENSIONS = (".wav", ".mp3", ".m4a", ".ogg", ".opus", ".webm", ".flac")
+
+
+def find_audio(clip: str, trim: tuple[float, float] | None = None) -> str | None:
+    """Locate the clip named in the ground truth, relative to the repo root.
+
+    `scripts/audio/` is where the studio's "Ground truth" button now writes the
+    recording, so a file exported from there needs nothing put anywhere by hand.
+
+    The last resort is for the files exported before it did. Those name the
+    *trimmed* audio -- `x-trimmed.wav`, which only ever existed in the browser
+    -- while their `# trim:` window is measured in the *original* recording's
+    clock. So when a window is set, the file that window indexes is the original,
+    and stripping the `-trimmed` suffixes back off is a real chance of finding
+    it. Without that they are unscoreable forever, since the file they name was
+    never written down.
+    """
     root = os.path.join(os.path.dirname(__file__), "..")
-    for candidate in (os.path.join(root, clip), os.path.join(root, "scripts", clip), clip):
-        if os.path.exists(candidate):
-            return candidate
+    directories = (root, os.path.join(root, "scripts"), os.path.join(root, "scripts", "audio"), ".")
+
+    names = [clip]
+    if trim:
+        stem, extension = os.path.splitext(clip)
+        original = re.sub(r"(-trimmed)+$", "", stem)
+        if original != stem:
+            names = [original + extension] + [original + e for e in AUDIO_EXTENSIONS] + names
+
+    for name in names:
+        for directory in directories:
+            candidate = os.path.join(directory, name)
+            if os.path.exists(candidate):
+                return candidate
     return None
 
 
@@ -208,11 +309,19 @@ def main() -> None:
             )
         surah, start, end = (int(g) for g in passage.groups())
         clip = facts.get("clip")
-        audio_path = find_audio(clip) if clip else None
+        window = re.match(r"([\d.]+)-([\d.]+)$", facts.get("trim", "none"))
+        wanted = (float(window.group(1)), float(window.group(2))) if window else None
+        audio_path = find_audio(clip, wanted) if clip else None
         if not audio_path:
             raise SystemExit(
-                f"{os.path.basename(expected_path)} names the clip {clip!r}, which is not in the repo "
-                "root. Audio is deliberately not committed -- put the file there and run this again."
+                f"{os.path.basename(expected_path)} names the clip {clip!r}, which is nowhere on disk. "
+                "Audio is deliberately not committed. Re-export this timeline from the studio and the "
+                "\"Ground truth\" button will write the recording into scripts/audio/ beside it"
+                + (
+                    f"; or put the recording it was cut from ({wanted[0]:.2f}-{wanted[1]:.2f}s of it) "
+                    "in the repo root."
+                    if wanted else "."
+                )
             )
     else:
         if len(args) < 4:
