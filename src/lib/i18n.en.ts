@@ -372,6 +372,10 @@ export const en = {
     arabic: 'Arabic',
     translation: 'Translation',
     dragToResize: 'drag the corner to resize',
+    alsoAppears: (count: number, examples: string) =>
+      count === 1
+        ? `These words also appear at ${examples}. Worth checking the caption is on the right one.`
+        : `These words also appear in ${count} other places — ${examples}${count > 4 ? ', and more' : ''}. Worth checking the caption is on the right one.`,
     translationFollowsWords: 'Translate only these words',
     translationFollowsWordsHint:
       'The English under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. Note that these glosses are quran.com’s own word-by-word English, not the translation chosen above — so the wording differs, and it reads as words in a row: "Say He (is) Allah the One". The caption credit follows suit. Applies to every caption.',

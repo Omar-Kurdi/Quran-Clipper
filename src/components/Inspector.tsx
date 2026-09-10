@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle, SplitSquareHorizontal, Combine, Languages } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
@@ -94,6 +94,42 @@ export const Inspector: React.FC<InspectorProps> = ({
   const chosen = selectedOptions(translationIds, catalogue);
   const nameOf = (option: { id: string; name: string; language: string; rtl?: boolean }) =>
     option.language ? option.name : knownTranslationName(option.id);
+
+  /**
+   * Where else this caption's words occur in the Quran.
+   *
+   * The aligner's hardest calls are the passages it cannot settle from the
+   * audio, because a phrase repeated in seventy places sounds the same in all
+   * seventy. This says so while a caption is being reviewed, which is the
+   * moment a wrong pick is cheap to fix -- and it narrows to the words actually
+   * on screen, so a caption is not warned about a repeat in the half it is not
+   * showing.
+   *
+   * Silent when the QUL export is not on this machine.
+   */
+  const shownWords = verse ? ensureWords(verse) : [];
+  const firstShown = shownWords.findIndex(word => !word.excluded);
+  const lastShown = shownWords.length - 1 - [...shownWords].reverse().findIndex(word => !word.excluded);
+  const range = firstShown >= 0 ? `${firstShown + 1}-${lastShown + 1}` : '';
+  const verseKey = verse?.verseKey || '';
+  // Stamped with the caption and word range it answers, so "still loading" and
+  // "belongs to the caption before this one" are both derived rather than
+  // cleared -- clearing synchronously inside the effect is the cascading render
+  // the lint rule is about, and the waveform loader beside it works the same way.
+  const asked = verseKey && range ? `${verseKey}|${range}` : '';
+  const [found, setFound] = useState<{ asked: string; phrases: { from: number; to: number; elsewhere: { verseKey: string }[] }[] } | null>(null);
+  const similar = found?.asked === asked ? found.phrases : [];
+  useEffect(() => {
+    if (!asked) return;
+    const [key, words] = asked.split('|');
+    const [from, to] = words.split('-');
+    let cancelled = false;
+    fetch(`/api/quran/similar?verse=${key}&from=${from}&to=${to}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (!cancelled) setFound({ asked, phrases: data?.phrases || [] }); })
+      .catch(() => { if (!cancelled) setFound({ asked, phrases: [] }); });
+    return () => { cancelled = true; };
+  }, [asked]);
 
   /**
    * Rendered above the early return below, so it is reachable before a
@@ -291,6 +327,15 @@ export const Inspector: React.FC<InspectorProps> = ({
           />
         </div>
       ))}
+
+      {similar.length > 0 && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-200">
+          {t.inspector.alsoAppears(
+            similar[0].elsewhere.length,
+            similar[0].elsewhere.slice(0, 4).map(place => place.verseKey).join(', ')
+          )}
+        </p>
+      )}
 
       <div>
         <span className="text-[11px] font-semibold text-slate-400 block mb-1">
