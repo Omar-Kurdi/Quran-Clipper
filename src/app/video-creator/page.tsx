@@ -42,7 +42,7 @@ import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectA
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
 import { ShortcutsDialog } from '@/components/ShortcutsDialog';
-import { groundTruthFile, groundTruthFileName } from '@/lib/groundTruth';
+import { groundTruthFile, groundTruthFileName, groundTruthAudioName } from '@/lib/groundTruth';
 import { useAudioPlayback } from '@/hooks/useAudioPlayback';
 import { useTransportKeys } from '@/hooks/useTransportKeys';
 import { useVideoExport } from '@/hooks/useVideoExport';
@@ -1130,10 +1130,62 @@ export default function VideoCreatorPage() {
    * next change has to pass. Drop the file in `scripts/` and point
    * `eval_segments.py` at it.
    */
-  const handleDownloadGroundTruth = () => {
+  const handleDownloadGroundTruth = async () => {
+    const duration = customAudioDuration || audioDuration;
+
+    /**
+     * The audio goes with it, or the file describes a recording nobody has.
+     *
+     * Trimming here is destructive and never writes to disk: `customAudioFile`
+     * after a trim is `x-trimmed.wav`, which exists in this tab and nowhere
+     * else. A ground-truth file naming it was naming a file the evaluator could
+     * not open -- which is exactly why two of them have sat in `scripts/`
+     * unscoreable. Saving the trimmed copy alongside means the audio the
+     * captions were corrected against is the audio they are scored against,
+     * with no cut to reproduce: hence `trim: null` on this path, and the window
+     * kept only as provenance under `from`.
+     */
+    const saved = groundTruthAudioName(customAudioName);
+    const withAudio = groundTruthFile(verses, {
+      clipName: saved,
+      duration,
+      trim: null,
+      from: trimWindow && uploadOriginalName
+        ? { name: uploadOriginalName, start: trimWindow.start, end: trimWindow.end }
+        : null,
+    });
+    if (!withAudio) return;
+
+    if (customAudioFile) {
+      setSaveStatus({ text: t.header.groundTruthWriting, kind: 'pending' });
+      try {
+        const body = new FormData();
+        body.set('contents', withAudio);
+        body.set('clipName', customAudioName);
+        body.set('audio', customAudioFile, saved);
+        const res = await fetch('/api/ground-truth', { method: 'POST', body });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.success) {
+          setSaveStatus({
+            text: t.header.groundTruthWritten,
+            kind: 'ok',
+            detail: (data.written as string[]).map(name => `scripts/${name}`).join('  ·  '),
+          });
+          setTimeout(() => setSaveStatus(null), 8000);
+          return;
+        }
+      } catch {
+        // Falls through to the download below.
+      }
+    }
+
+    // No server able to write, or no audio to write: the text file on its own,
+    // naming the recording the person still has on disk and the window to cut
+    // from it. Less convenient than the path above and better than nothing --
+    // silently writing nothing would be worse than what this replaced.
     const contents = groundTruthFile(verses, {
-      clipName: customAudioName,
-      duration: customAudioDuration || audioDuration,
+      clipName: uploadOriginalName || customAudioName,
+      duration,
       trim: trimWindow,
     });
     if (!contents) return;
@@ -1142,6 +1194,10 @@ export default function VideoCreatorPage() {
     link.href = url;
     link.download = groundTruthFileName(customAudioName);
     link.click();
+    if (customAudioFile) {
+      setSaveStatus({ text: t.header.groundTruthDownloaded, kind: 'ok', detail: t.header.groundTruthNeedsAudio(uploadOriginalName || customAudioName) });
+      setTimeout(() => setSaveStatus(null), 10000);
+    }
     // Revoking immediately can cancel the download in some browsers; a tick is
     // enough for it to have been handed over.
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -1729,7 +1785,7 @@ export default function VideoCreatorPage() {
                 all it takes to put it back. */}
             {SHOW_DEV_TOOLS && (
               <Button
-                onClick={handleDownloadGroundTruth}
+                onClick={() => void handleDownloadGroundTruth()}
                 disabled={verses.length === 0}
                 title={t.header.groundTruthTitle}
                 icon={<ClipboardCheck className="w-3.5 h-3.5 text-sky-400" />}

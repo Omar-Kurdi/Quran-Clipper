@@ -24,22 +24,28 @@ function recitedText(verse: VerseData): string {
 }
 
 export interface GroundTruthMeta {
-  /** The audio this timeline belongs to, e.g. `test5.mp3`. */
+  /** The audio the evaluator should decode, e.g. `test5.mp3`. */
   clipName?: string;
   /** Length of the audio the timeline describes, in seconds. */
   duration?: number;
   /**
-   * The window of the *original* file this timeline covers, when it was
-   * trimmed in the studio.
+   * The window of `clipName` this timeline covers, when the file still needs
+   * cutting.
    *
-   * This is the field that makes the file reproducible. Trimming here is
-   * destructive: the trimmed audio exists only in the browser, while the file
-   * on disk is still the whole recording. Without the window, an evaluator
-   * pointed at that file scores a timeline against audio it does not describe
-   * and reports failures that are not real. With it, the same cut can be made
-   * again with ffmpeg before scoring.
+   * Null whenever the named audio is already the audio the captions describe --
+   * which is the case whenever the studio saved a copy alongside this file,
+   * because the copy it saves is the trimmed one. Cutting it again would score
+   * a timeline against a window inside a window.
    */
   trim?: { start: number; end: number } | null;
+  /**
+   * Where that audio was cut from, for a person reading the file later.
+   *
+   * Provenance only -- nothing reads it back. It exists because "which part of
+   * which recording is this?" is otherwise unanswerable once the trimmed copy
+   * is the only file left.
+   */
+  from?: { name: string; start: number; end: number } | null;
 }
 
 /**
@@ -84,6 +90,9 @@ export function groundTruthFile(verses: VerseData[], meta: GroundTruthMeta = {})
     meta.trim
       ? `# trim: ${meta.trim.start.toFixed(2)}-${meta.trim.end.toFixed(2)}`
       : '# trim: none',
+    ...(meta.from
+      ? [`# from: ${meta.from.name} ${meta.from.start.toFixed(2)}-${meta.from.end.toFixed(2)}`]
+      : []),
   ];
 
   return [
@@ -109,8 +118,37 @@ export function groundTruthFile(verses: VerseData[], meta: GroundTruthMeta = {})
   ].join('\n');
 }
 
+/**
+ * The stem both files share, from the clip's name.
+ *
+ * Everything outside `[A-Za-z0-9_-]` goes: a clip called
+ * `Surah Hashr ... 😭😭 #surahhashr [4LXnIpuIYgA]-trimmed.wav` is a perfectly
+ * ordinary file name and a menace as an argument -- to ffmpeg, to a shell loop
+ * over `scripts/expected_*.txt`, and to anyone typing it. It is also the
+ * traversal vector when it names a file the server writes, so the same
+ * stripping is what makes it safe to join to a path.
+ */
+export function groundTruthBaseName(clipName?: string): string {
+  const base = (clipName || 'timeline').replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_');
+  return base || 'timeline';
+}
+
 /** `expected_test5.txt` -- what `eval_segments.py` should be pointed at. */
 export function groundTruthFileName(clipName?: string): string {
-  const base = (clipName || 'timeline').replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_');
-  return `expected_${base || 'timeline'}.txt`;
+  return `expected_${groundTruthBaseName(clipName)}.txt`;
+}
+
+/**
+ * Audio containers the studio will write beside a ground-truth file.
+ *
+ * A whitelist rather than "whatever extension the upload had", because this
+ * decides a file name on disk.
+ */
+export const GROUND_TRUTH_AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.ogg', '.opus', '.webm', '.flac'];
+
+/** `Aal-E-Imran-trimmed.wav` -- the copy saved next to the expected file. */
+export function groundTruthAudioName(clipName?: string): string {
+  const match = (clipName || '').toLowerCase().match(/\.[a-z0-9]+$/);
+  const extension = match && GROUND_TRUTH_AUDIO_EXTENSIONS.includes(match[0]) ? match[0] : '.wav';
+  return `${groundTruthBaseName(clipName)}${extension}`;
 }

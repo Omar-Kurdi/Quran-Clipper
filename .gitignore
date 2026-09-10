@@ -66,6 +66,11 @@ asr-service/=*
 *.m4a
 *.ogg
 
+# Where the studio's "Ground truth" button saves the recording a set of expected
+# captions describes. The extensions above cover most of it; this covers the
+# rest, because what lands here is whatever container the upload was in.
+scripts/audio/
+
 # Pid files and logs from ./start.sh
 .run/
 

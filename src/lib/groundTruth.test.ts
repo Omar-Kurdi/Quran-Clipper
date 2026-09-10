@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groundTruthFile, groundTruthFileName } from './groundTruth';
+import { groundTruthFile, groundTruthFileName, groundTruthAudioName } from './groundTruth';
 import type { VerseData } from './quranData';
 
 const verse = (verseKey: string, textUthmani: string, extra: Partial<VerseData> = {}): VerseData => ({
@@ -125,5 +125,43 @@ describe('metadata block', () => {
     const file = groundTruthFile(verses, {});
     expect(file).toContain('# clip: unknown');
     expect(file).toContain('# audio-seconds: unknown');
+  });
+});
+
+describe('the audio saved beside a ground-truth file', () => {
+  it('shares its stem with the expected file, so `# clip:` finds it', () => {
+    expect(groundTruthAudioName('test5.mp3')).toBe('test5.mp3');
+    expect(groundTruthFileName('test5.mp3')).toBe('expected_test5.txt');
+  });
+
+  it('strips a name that would be a menace as an argument', () => {
+    // A real one: emoji, hashes, spaces and brackets, straight from YouTube.
+    expect(groundTruthAudioName('Surah Hashr 😭 #quran [4LXn]-trimmed.wav'))
+      .toBe('Surah_Hashr_quran_4LXn_-trimmed.wav');
+  });
+
+  it('refuses an extension it does not recognise, rather than writing it', () => {
+    expect(groundTruthAudioName('clip.exe')).toBe('clip.wav');
+    expect(groundTruthAudioName('')).toBe('timeline.wav');
+  });
+
+  it('says the audio needs no cutting once a copy travels with the file', () => {
+    // The bug this is about: the file named the trimmed audio and carried a
+    // window measured in the original's clock, so anything acting on both cut
+    // a window out of a window.
+    const verses = [{ verseKey: '3:5', verseNumber: 5, textUthmani: 'إِنَّ ٱللَّهَ', translation: '', startTime: 0, endTime: 2 }];
+    const file = groundTruthFile(verses, {
+      clipName: 'Aal-E-Imran-trimmed.wav',
+      trim: null,
+      from: { name: 'Aal-E-Imran.wav', start: 57.8, end: 148.96 },
+    });
+    expect(file).toContain('# clip: Aal-E-Imran-trimmed.wav');
+    expect(file).toContain('# trim: none');
+    expect(file).toContain('# from: Aal-E-Imran.wav 57.80-148.96');
+  });
+
+  it('leaves the provenance line out when there was no trim to record', () => {
+    const verses = [{ verseKey: '3:5', verseNumber: 5, textUthmani: 'إِنَّ ٱللَّهَ', translation: '', startTime: 0, endTime: 2 }];
+    expect(groundTruthFile(verses, { clipName: 'test5.mp3' })).not.toContain('# from:');
   });
 });
