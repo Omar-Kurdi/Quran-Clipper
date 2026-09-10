@@ -47,6 +47,17 @@ export const projects = pgTable('projects', {
   /** @deprecated The studio no longer renders transliteration. Kept so existing rows load; nothing writes it. */
   showTransliteration: boolean('show_transliteration').notNull().default(true),
   showTranslation: boolean('show_translation').notNull().default(true),
+  /**
+   * Which translations the card carries, in the order they are stacked.
+   *
+   * Stored because the choice is part of the project: reopening one that was
+   * built in The Clear Quran and getting whatever the studio currently defaults
+   * to is a different video. Empty means "whatever the default is", which is
+   * what every row written before this column existed means.
+   */
+  translationIds: jsonb('translation_ids').$type<string[]>().default([]),
+  /** Whether the card's English follows the word mask rather than the ayah. */
+  translationFollowsWords: boolean('translation_follows_words').notNull().default(false),
   showWaveform: boolean('show_waveform').notNull().default(true),
   showSurahBadge: boolean('show_surah_badge').notNull().default(true),
   surahBadgeText: text('surah_badge_text').default(''),

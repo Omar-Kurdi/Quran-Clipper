@@ -1535,6 +1535,12 @@ export default function VideoCreatorPage() {
       textAlignment: proj.textAlignment || 'center',
       textShadow: proj.textShadow ?? true,
       showTranslation: proj.showTranslation ?? true,
+      // An empty list is what a row written before this column existed holds,
+      // and it means "the default" rather than "no translation at all".
+      translationIds: Array.isArray(proj.translationIds) && proj.translationIds.length
+        ? proj.translationIds
+        : [DEFAULT_TRANSLATION_ID],
+      translationFollowsWords: proj.translationFollowsWords ?? false,
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
       surahBadgeText: proj.surahBadgeText || '',

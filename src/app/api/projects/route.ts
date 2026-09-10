@@ -106,6 +106,12 @@ export async function POST(req: NextRequest) {
       translationColor: body.translationColor || '#e2e8f0',
       textShadow: body.textShadow ?? true,
       showTranslation: body.showTranslation ?? true,
+      // Ids are strings on the way in and out; anything else is dropped rather
+      // than stored, since these end up in a request url.
+      translationIds: Array.isArray(body.translationIds)
+        ? body.translationIds.filter((id: unknown) => typeof id === 'string' && id).slice(0, 5)
+        : [],
+      translationFollowsWords: body.translationFollowsWords ?? false,
       showWaveform: body.showWaveform ?? true,
       showSurahBadge: body.showSurahBadge ?? true,
       surahBadgeText: body.surahBadgeText || '',
