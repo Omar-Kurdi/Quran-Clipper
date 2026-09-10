@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle, SplitSquareHorizontal, Combine, Languages } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
-import { selectedOptions, knownTranslationName } from '@/lib/translations';
+import { selectedOptions, knownTranslationName, primaryCaptionText } from '@/lib/translations';
 import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { TranslationPicker } from './TranslationPicker';
 import { Button } from './Button';
@@ -252,7 +252,9 @@ export const Inspector: React.FC<InspectorProps> = ({
         </label>
         <textarea
           id="insp-translation"
-          value={verse.displayTranslation || verse.translation}
+          // The same text the card draws, through the same function -- so
+          // hiding a word changes both together instead of only the video.
+          value={primaryCaptionText(verse, translationFollowsWords)}
           onChange={e => onText('translation', e.target.value)}
           dir="ltr"
           rows={5}

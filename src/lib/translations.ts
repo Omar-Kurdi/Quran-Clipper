@@ -226,6 +226,26 @@ export function wordByWordTranslation(
     .trim();
 }
 
+/**
+ * The first translation a caption shows, by the one order of precedence.
+ *
+ * Exported so the ayah panel's box and the card cannot disagree about it. They
+ * did: the box read `displayTranslation || translation` directly, so with the
+ * word mask on, hiding a word changed the video and left the box showing the
+ * whole ayah -- the thing being edited and the thing being watched were two
+ * different sentences.
+ */
+export function primaryCaptionText(verse: CaptionSource, wordByWord = false): string {
+  const fromWords = wordByWord ? wordByWordTranslation(verse.words) : '';
+  return (
+    verse.displayTranslation ||
+    fromWords ||
+    verse.translation ||
+    verse.translations?.[DEFAULT_TRANSLATION_ID] ||
+    ''
+  );
+}
+
 export function captionTranslations(
   verse: CaptionSource,
   ids: string[],
@@ -239,12 +259,9 @@ export function captionTranslations(
     // caption's own translation, `displayTranslations` for the rest. A
     // correction is someone's own words and outranks anything generated,
     // including the word-by-word line.
-    const fromWords = id === DEFAULT_TRANSLATION_ID && wordByWord
-      ? wordByWordTranslation(verse.words)
-      : '';
     const text =
       id === DEFAULT_TRANSLATION_ID
-        ? verse.displayTranslation || fromWords || verse.translation || verse.translations?.[id] || ''
+        ? primaryCaptionText(verse, wordByWord)
         : verse.displayTranslations?.[id] || verse.translations?.[id] || '';
     const trimmed = text.trim();
     if (!trimmed) continue;

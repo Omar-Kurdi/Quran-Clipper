@@ -130,4 +130,26 @@ describe('publish metadata', () => {
     expect(meta.title).toContain('1:3-7');
     expect(meta.description).toContain('Ayah 3-7');
   });
+
+  it('credits the gloss source, not the translator, when the card shows word-by-word', () => {
+    // Those glosses are quran.com's own word-by-word English; naming Khattab
+    // over them would put his name to words he did not write.
+    const meta = buildPublishMetadata({
+      ...base,
+      translationNames: ['Dr. Mustafa Khattab, the Clear Quran'],
+      wordByWord: true
+    });
+    expect(meta.description).toContain('Word-by-word glosses (quran.com)');
+    expect(meta.description).not.toContain('Khattab');
+  });
+
+  it('still credits the other translators on the card', () => {
+    const meta = buildPublishMetadata({
+      ...base,
+      translationNames: ['Dr. Mustafa Khattab, the Clear Quran', 'Saheeh International'],
+      wordByWord: true
+    });
+    expect(meta.description).toContain('Word-by-word glosses (quran.com)');
+    expect(meta.description).toContain('Saheeh International');
+  });
 });

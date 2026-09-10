@@ -374,7 +374,7 @@ export const en = {
     dragToResize: 'drag the corner to resize',
     translationFollowsWords: 'Translate only these words',
     translationFollowsWordsHint:
-      'The English under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. It reads as words in a row — "Say He (is) Allah the One" — because that is what word-by-word is. Applies to every caption.',
+      'The English under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. Note that these glosses are quran.com’s own word-by-word English, not the translation chosen above — so the wording differs, and it reads as words in a row: "Say He (is) Allah the One". The caption credit follows suit. Applies to every caption.',
     wordsOnScreen: 'Words in this ayah',
     wordsHint: 'Highlighted words are on screen for this caption. Tap one to show or hide it.',
     moveAyahEarlier: 'Move ayah earlier',

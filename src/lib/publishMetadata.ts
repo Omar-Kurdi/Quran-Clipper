@@ -38,6 +38,15 @@ export interface PublishInput {
   verses?: VerseData[];
   /** Whether the ayah text and its translation go in the description. */
   includeVerseText?: boolean;
+  /**
+   * Set when the card's English is built from word-by-word glosses.
+   *
+   * It changes who is being credited. Those glosses are quran.com's own
+   * word-by-word dataset, not the translation named in the picker -- so
+   * crediting the chosen translator over them would put their name to words
+   * they did not write.
+   */
+  wordByWord?: boolean;
 }
 
 export interface PublishMetadata {
@@ -132,7 +141,12 @@ export function buildPublishMetadata(input: PublishInput): PublishMetadata {
   // --- description -------------------------------------------------------
   const credits: string[] = [];
   const named = (input.translationNames ?? []).filter(name => name.trim());
-  if (named.length) credits.push(`Translation: ${named.join(', ')}`);
+  // The first translation is the one the word-by-word line replaces; any
+  // others on the card are still their translators' own work.
+  const credited = input.wordByWord
+    ? ['Word-by-word glosses (quran.com)', ...named.slice(1)]
+    : named;
+  if (credited.length) credits.push(`Translation: ${credited.join(', ')}`);
   // The Arabic comes from quran.com; a translation may not -- The Clear Quran
   // is read from a local copy while the Foundation's id 131 is out of reach --
   // so the translator is credited on its own line above rather than folded

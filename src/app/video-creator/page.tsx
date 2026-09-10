@@ -1333,9 +1333,13 @@ export default function VideoCreatorPage() {
       ayahStart: clipPassage.start,
       ayahEnd: clipPassage.end,
       reciterName: customAudioFile ? '' : selectedReciterMeta?.name || '',
+      wordByWord: !!canvasConfig.translationFollowsWords,
       verses
     }),
-    [clipPassage, surahNameArabic, surahNameEnglish, customAudioFile, selectedReciterMeta, verses]
+    [
+      clipPassage, surahNameArabic, surahNameEnglish, customAudioFile,
+      selectedReciterMeta, canvasConfig.translationFollowsWords, verses
+    ]
   );
 
   /**
