@@ -69,7 +69,10 @@ asr-service/=*
 # Pid files and logs from ./start.sh
 .run/
 
-# The Clear Quran, fetched from quranapi.pages.dev. Held locally until the
-# Quran Foundation grants access to their id 131. Copyrighted text, not ours
-# to redistribute, and 5.9 MB besides.
-data/quran/
+# Quranic data held locally rather than committed: someone else's copyright in
+# every case, and tens of megabytes besides.
+#   data/quran/  The Clear Quran, from quranapi.pages.dev, until the Quran
+#                Foundation grants access to their id 131.
+#   data/qul/    Morphology and mutashabihat exports from qul.tarteel.ai, which
+#                are downloaded from a signed-in account rather than fetched.
+data/
