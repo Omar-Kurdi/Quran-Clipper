@@ -224,6 +224,18 @@ export const en = {
     passageTooLong: (minutes: number, limit: number) =>
       `That passage is about ${minutes} minutes long and the aligner handles up to ${limit}. Choose fewer ayahs.`,
     alignReciter: 'Align to audio',
+    segments: 'Reciter timings',
+    segmentsTitle:
+      'Time this passage from the reciter’s own published word timings. Measured for this recording rather than worked out from the audio, and it gives every word a start.',
+    segmentsLoading: 'Reading the reciter’s published timings…',
+    segmentsUnavailable:
+      'This reciter has no published timings — their recording is not one of the measured ones. Use AI Auto-match instead.',
+    segmentsNone:
+      'No published timings came back for this passage. The other two ways of timing it are unaffected.',
+    segmentsDone: (ayahs: number, timed: number, bounds: number) =>
+      bounds > 0
+        ? `Timed ${ayahs} ayah${ayahs === 1 ? '' : 's'} from the reciter’s own recording — ${timed} with word-by-word times, ${bounds} with the ayah’s bounds only.`
+        : `Timed ${ayahs} ayah${ayahs === 1 ? '' : 's'} from the reciter’s own recording, every word included.`,
     alignReciterTitle:
       'Read the reciter\u2019s own recording and place every word, instead of estimating where the ayahs fall.',
     needUpload: 'Upload an audio file before running AI auto-match.',

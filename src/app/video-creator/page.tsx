@@ -934,6 +934,48 @@ export default function VideoCreatorPage() {
     void alignLoadedReciter(verses, audioUrl, audioDuration);
   };
 
+  /**
+   * Times the passage from the reciter's own published segments.
+   *
+   * Deliberately separate from the two matchers rather than folded into them.
+   * It is not inference: quran.com measured these recordings and publishes a
+   * start for every word, and the studio has been asking for that data on
+   * every load and reading only the ayah bounds off it. Nothing here can run
+   * against an uploaded file -- the timings belong to one specific recording --
+   * so the aligner and the manual path are untouched by it.
+   */
+  const handleReciterSegments = async () => {
+    const apiId = selectedReciterMeta?.quranApiId;
+    if (!apiId) {
+      setMatchStatus({ text: t.match.segmentsUnavailable, tone: 'error' });
+      return;
+    }
+    setIsMatching(true);
+    setMatchStatus({ text: t.match.segmentsLoading, tone: 'info' });
+    try {
+      const res = await fetch(
+        `/api/quran/segments?surah=${selectedSurah}&start=${ayahStart}&end=${ayahEnd}&reciter=${apiId}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.success || !Array.isArray(data.verses) || !data.verses.length) {
+        setMatchStatus({ text: t.match.segmentsNone, tone: 'error' });
+        return;
+      }
+      setVerses(data.verses);
+      setSelectedIndex(0);
+      if (data.totalSeconds > 0) setAudioDuration(data.totalSeconds);
+      const { timedWords = 0, boundsOnly = 0 } = data.coverage || {};
+      setMatchStatus({
+        text: t.match.segmentsDone(data.verses.length, timedWords, boundsOnly),
+        tone: 'info'
+      });
+    } catch {
+      setMatchStatus({ text: t.match.segmentsNone, tone: 'error' });
+    } finally {
+      setIsMatching(false);
+    }
+  };
+
   const handleManualMatchUploadedAudio = () => {
     setMatchStatus({ text: t.match.manualMode, tone: 'info' });
     setMobileSurface('preview');
@@ -2136,15 +2178,34 @@ export default function VideoCreatorPage() {
                         reciter's own recording gives the phrase-level
                         boundaries an uploaded file gets. */}
                     {loadResult.ok && !loadResult.againstUpload && (
-                      <button
-                        onClick={handleAutoMatchReciter}
-                        disabled={isMatching}
-                        title={t.match.alignReciterTitle}
-                        className="mt-2 w-full py-2 px-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>{isMatching ? t.match.aligning : t.match.alignReciter}</span>
-                      </button>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={handleAutoMatchReciter}
+                          disabled={isMatching}
+                          title={t.match.alignReciterTitle}
+                          className="py-2 px-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{isMatching ? t.match.aligning : t.match.alignReciter}</span>
+                        </button>
+                        {/* The third way to time a recitation, and the only one
+                            that is not inference. Offered only where it exists:
+                            three of the built-in reciters have no quran.com id
+                            at all, and their recordings were never measured. */}
+                        <button
+                          onClick={handleReciterSegments}
+                          disabled={isMatching || !selectedReciterMeta?.quranApiId}
+                          title={
+                            selectedReciterMeta?.quranApiId
+                              ? t.match.segmentsTitle
+                              : t.match.segmentsUnavailable
+                          }
+                          className="py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{t.match.segments}</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
