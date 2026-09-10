@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_TRANSLATION_ID, MAX_TRANSLATIONS, TranslationOption,
   toggleTranslation, groupByLanguage, searchTranslations, selectedOptions,
-  captionTranslations, missingTranslationIds, isRtlText, isRtlLanguage
+  captionTranslations, missingTranslationIds, isRtlText, isRtlLanguage,
+  wordByWordTranslation
 } from './translations';
 
 const option = (id: string, name: string, language: string, rtl = false): TranslationOption =>
@@ -114,5 +115,53 @@ describe('fetching what is missing', () => {
   it('asks for nothing when every caption has every translation', () => {
     const complete = [{ verseKey: '1:1', translations: { '158': 'x' } }];
     expect(missingTranslationIds(complete, ['20', '158'])).toEqual([]);
+  });
+});
+
+describe('translating only the words on screen', () => {
+  const words = [
+    { translation: 'Say', excluded: false },
+    { translation: 'He', excluded: false },
+    { translation: '(is) Allah', excluded: false },
+    { translation: 'the One', excluded: false }
+  ];
+
+  it('joins the glosses of the visible words', () => {
+    expect(wordByWordTranslation(words)).toBe('Say He (is) Allah the One');
+  });
+
+  it('leaves out the words the caption is hiding', () => {
+    // This is the case it exists for: a caption over half an ayah used to
+    // carry the whole ayah's translation, including the half never recited.
+    const half = words.map((w, i) => (i > 1 ? { ...w, excluded: true } : w));
+    expect(wordByWordTranslation(half)).toBe('Say He');
+  });
+
+  it('is empty when the words carry no glosses, so the caller can fall back', () => {
+    expect(wordByWordTranslation([{ translation: '' }, { translation: '  ' }])).toBe('');
+    expect(wordByWordTranslation(undefined)).toBe('');
+  });
+
+  it('replaces the ayah translation only when asked', () => {
+    const verse = { translation: 'the whole ayah', words };
+    expect(captionTranslations(verse, [DEFAULT_TRANSLATION_ID])[0].text).toBe('the whole ayah');
+    expect(captionTranslations(verse, [DEFAULT_TRANSLATION_ID], true)[0].text)
+      .toBe('Say He (is) Allah the One');
+  });
+
+  it('falls back to the ayah when the words have nothing to say', () => {
+    const verse = { translation: 'the whole ayah', words: [{ translation: '' }] };
+    expect(captionTranslations(verse, [DEFAULT_TRANSLATION_ID], true)[0].text).toBe('the whole ayah');
+  });
+
+  it('lets a hand correction outrank the generated line', () => {
+    const verse = { translation: 'the whole ayah', displayTranslation: 'mine', words };
+    expect(captionTranslations(verse, [DEFAULT_TRANSLATION_ID], true)[0].text).toBe('mine');
+  });
+
+  it('leaves the other translations alone -- glosses exist for one language', () => {
+    const verse = { translation: 'en', words, translations: { '158': 'اردو' } };
+    const [, urdu] = captionTranslations(verse, [DEFAULT_TRANSLATION_ID, '158'], true);
+    expect(urdu.text).toBe('اردو');
   });
 });

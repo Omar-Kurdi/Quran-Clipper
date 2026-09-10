@@ -174,6 +174,13 @@ export interface CaptionSource {
   translations?: Record<string, string>;
   /** Hand corrections to those, which win over the fetched text. */
   displayTranslations?: Record<string, string>;
+  /**
+   * The ayah's words, each with its own gloss.
+   *
+   * Read only when the caption is asked to follow the word mask -- see
+   * `wordByWord` below.
+   */
+  words?: { translation?: string; excluded?: boolean }[];
 }
 
 export interface CaptionTranslation {
@@ -191,15 +198,53 @@ export interface CaptionTranslation {
  * nobody has aligned, and inventing a division would be worse than showing the
  * ayah's own sentence.
  */
-export function captionTranslations(verse: CaptionSource, ids: string[]): CaptionTranslation[] {
+/**
+ * The English of just the words this caption is showing.
+ *
+ * A caption covering half an ayah still carried the whole ayah's translation,
+ * so the line underneath said things that were never recited. The word list is
+ * already per-word and already carries the mask -- the chips in the ayah panel
+ * are that mask -- so the glosses of the visible words are exactly the English
+ * of what is on screen.
+ *
+ * What comes out is a gloss line rather than prose: "Say He (is) Allah the
+ * One". That is inherent to word-by-word and is why this is a choice rather
+ * than the default -- for a caption showing a whole ayah, the translator's
+ * sentence reads far better than its words in a row.
+ *
+ * Empty when the words carry no glosses at all, so the caller can fall back
+ * rather than draw a blank line.
+ */
+export function wordByWordTranslation(
+  words: { translation?: string; excluded?: boolean }[] | undefined
+): string {
+  return (words || [])
+    .filter(word => !word.excluded)
+    .map(word => (word.translation || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+export function captionTranslations(
+  verse: CaptionSource,
+  ids: string[],
+  /** Build the first translation from the visible words rather than the ayah. */
+  wordByWord = false
+): CaptionTranslation[] {
   const wanted = ids.length ? ids : [DEFAULT_TRANSLATION_ID];
   const out: CaptionTranslation[] = [];
   for (const id of wanted) {
-    // The hand correction first in both cases -- `displayTranslation` for the
-    // caption's own translation, `displayTranslations` for the rest.
+    // The hand correction first in every case -- `displayTranslation` for the
+    // caption's own translation, `displayTranslations` for the rest. A
+    // correction is someone's own words and outranks anything generated,
+    // including the word-by-word line.
+    const fromWords = id === DEFAULT_TRANSLATION_ID && wordByWord
+      ? wordByWordTranslation(verse.words)
+      : '';
     const text =
       id === DEFAULT_TRANSLATION_ID
-        ? verse.displayTranslation || verse.translation || verse.translations?.[id] || ''
+        ? verse.displayTranslation || fromWords || verse.translation || verse.translations?.[id] || ''
         : verse.displayTranslations?.[id] || verse.translations?.[id] || '';
     const trimmed = text.trim();
     if (!trimmed) continue;

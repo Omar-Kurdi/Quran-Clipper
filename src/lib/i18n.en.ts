@@ -360,6 +360,9 @@ export const en = {
     arabic: 'Arabic',
     translation: 'Translation',
     dragToResize: 'drag the corner to resize',
+    translationFollowsWords: 'Translate only these words',
+    translationFollowsWordsHint:
+      'The English under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. It reads as words in a row — "Say He (is) Allah the One" — because that is what word-by-word is. Applies to every caption.',
     wordsOnScreen: 'Words in this ayah',
     wordsHint: 'Highlighted words are on screen for this caption. Tap one to show or hide it.',
     moveAyahEarlier: 'Move ayah earlier',

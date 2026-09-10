@@ -58,6 +58,12 @@ export interface VideoCanvasConfig {
    * they appear. Absent means the one every project started with.
    */
   translationIds?: string[];
+  /**
+   * Draw the English of the visible words instead of the whole ayah's.
+   *
+   * Off by default: an unchanged project keeps the translator's sentence.
+   */
+  translationFollowsWords?: boolean;
   showWaveform: boolean;
   showSurahBadge: boolean;
   surahBadgeText: string;
@@ -913,7 +919,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // One block per chosen translation, in the order they were chosen. A
         // language whose text has not arrived yet is absent rather than blank,
         // so the card never reserves space for nothing.
-        const translationBlocks = captionTranslations(activeVerse, config.translationIds || [DEFAULT_TRANSLATION_ID]);
+        const translationBlocks = captionTranslations(
+          activeVerse,
+          config.translationIds || [DEFAULT_TRANSLATION_ID],
+          config.translationFollowsWords
+        );
         const withTranslation = Boolean(config.showTranslation && translationBlocks.length);
         const maxTextWidth = cardWidth - 80;
         const ayahFontSize = (config.ayahNumberFontSize || 34) * (height / 1920);

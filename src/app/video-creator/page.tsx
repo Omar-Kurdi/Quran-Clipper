@@ -281,6 +281,8 @@ export default function VideoCreatorPage() {
     // The translation every project has always shown. Choosing others adds to
     // this list; the first one is still the text `verse.translation` holds.
     translationIds: [DEFAULT_TRANSLATION_ID],
+    // Off, so an existing project reads exactly as it did.
+    translationFollowsWords: false,
     showWaveform: true,
     showSurahBadge: true,
     surahBadgeText: '',
@@ -2234,6 +2236,9 @@ export default function VideoCreatorPage() {
                   translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
                   onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
                   onTranslationText={edit.translationText}
+                  translationFollowsWords={!!canvasConfig.translationFollowsWords}
+                  onTranslationFollowsWords={follows =>
+                    setCanvasConfig(prev => ({ ...prev, translationFollowsWords: follows }))}
                   onVerseNumber={edit.verseNumber}
                   onToggleWord={edit.toggleWord}
                   onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration, rippleEdits)}

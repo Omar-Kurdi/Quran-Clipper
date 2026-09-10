@@ -52,6 +52,14 @@ interface InspectorProps {
    * in.
    */
   onTranslationText: (id: string, value: string) => void;
+  /**
+   * Whether the card's English follows the word mask instead of the ayah.
+   *
+   * A project-wide setting rather than a per-caption one, offered here because
+   * this is the panel the mask lives in -- the label says so.
+   */
+  translationFollowsWords: boolean;
+  onTranslationFollowsWords: (follows: boolean) => void;
 }
 
 /**
@@ -66,7 +74,8 @@ export const Inspector: React.FC<InspectorProps> = ({
   verses, index, isActive,
   onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onAdd,
   onSplit, onMerge, currentTime,
-  translationIds, onTranslationIds, onTranslationText
+  translationIds, onTranslationIds, onTranslationText,
+  translationFollowsWords, onTranslationFollowsWords
 }) => {
   const t = useT();
   const verse = verses[index];
@@ -286,6 +295,21 @@ export const Inspector: React.FC<InspectorProps> = ({
           {t.inspector.wordsOnScreen}
           <span className="block font-normal text-[11px] text-slate-400">{t.inspector.wordsHint}</span>
         </span>
+
+        {/* Beside the mask because that is what it follows, though it applies
+            to every caption rather than this one. */}
+        <label className="mb-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={translationFollowsWords}
+            onChange={e => onTranslationFollowsWords(e.target.checked)}
+            className="mt-0.5 accent-amber-500"
+          />
+          <span>
+            {t.inspector.translationFollowsWords}
+            <span className="block text-slate-400">{t.inspector.translationFollowsWordsHint}</span>
+          </span>
+        </label>
         <div className="flex flex-wrap gap-1.5" dir="rtl">
           {words.map((word, wi) => (
             <button
