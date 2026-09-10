@@ -21,6 +21,11 @@
  * across Al-Baqarah is megabytes of text that the API will hand back on
  * request, and a draft that will not fit turns auto-save off for the session --
  * so the *choice* is stored and the text is asked for again on restore.
+ *
+ * Hand corrections to those translations are kept, because nothing can hand
+ * them back. `displayTranslations` is the user's own work in the same way
+ * `displayTranslation` is, and it is small: a draft carries the lines someone
+ * actually retyped, not every ayah of every language they looked at.
  */
 
 import { VerseData } from './quranData';
@@ -99,6 +104,8 @@ export function buildDraft(input: DraftInput): ProjectDraft {
   const { config, dropped } = stripUploads(input.config);
   const uploaded = isTransientUrl(input.audioUrl);
   // Re-fetchable by verse key, and by far the largest thing a caption carries.
+  // Only the fetched text goes; `displayTranslations` beside it is a correction
+  // nobody can re-fetch, and survives.
   const verses = input.verses.map(verse => {
     if (!verse.translations) return verse;
     const { translations: _fetched, ...rest } = verse;

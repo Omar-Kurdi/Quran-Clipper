@@ -57,6 +57,17 @@ export interface VerseData {
    * auto-saved draft, which can ask for them again.
    */
   translations?: Record<string, string>;
+  /**
+   * Hand corrections to those, keyed the same way.
+   *
+   * Separate from `translations` for the reason `displayTranslation` is
+   * separate from `translation`: one is fetched and re-fetchable, the other is
+   * the user's own work and exists nowhere else. Keeping them apart is what
+   * lets the draft drop megabytes of re-fetchable text and still bring an edit
+   * back -- and it means a re-fetch refreshes the source text underneath a
+   * correction instead of being blocked by it.
+   */
+  displayTranslations?: Record<string, string>;
 }
 
 // Audio URLs verified against mp3quran.net download pages (Aug 2026).

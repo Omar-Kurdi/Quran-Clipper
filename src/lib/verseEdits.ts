@@ -168,9 +168,13 @@ export function setTranslationText(
 ): VerseData[] {
   const current = verses[index];
   if (!current) return verses;
-  if ((current.translations?.[id] ?? '') === value) return verses;
+  const shown = current.displayTranslations?.[id] ?? current.translations?.[id] ?? '';
+  if (shown === value) return verses;
   const updated = [...verses];
-  updated[index] = { ...current, translations: { ...(current.translations || {}), [id]: value } };
+  updated[index] = {
+    ...current,
+    displayTranslations: { ...(current.displayTranslations || {}), [id]: value }
+  };
   return updated;
 }
 

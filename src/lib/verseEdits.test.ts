@@ -507,26 +507,35 @@ describe('extra translations', () => {
 });
 
 describe('setTranslationText', () => {
-  it('writes an additional translation onto the selected caption only', () => {
+  it('writes a correction onto the selected caption only', () => {
     const verses = timeline();
     const next = setTranslationText(verses, 1, '85', 'اردو');
-    expect(next[1].translations).toEqual({ '85': 'اردو' });
+    expect(next[1].displayTranslations).toEqual({ '85': 'اردو' });
     // A repeated phrase is two captions of the same ayah; correcting one must
     // not rewrite the other.
-    expect(next[0].translations).toBeUndefined();
-    expect(next[2].translations).toBeUndefined();
+    expect(next[0].displayTranslations).toBeUndefined();
+    expect(next[2].displayTranslations).toBeUndefined();
   });
 
-  it('keeps the translations already there', () => {
+  it('leaves the fetched text alone, so a re-fetch still refreshes it', () => {
     const verses = timeline();
-    verses[0] = { ...verses[0], translations: { '20': 'kept' } };
-    const next = setTranslationText(verses, 0, '131', 'added');
-    expect(next[0].translations).toEqual({ '20': 'kept', '131': 'added' });
+    verses[0] = { ...verses[0], translations: { '20': 'fetched' } };
+    const next = setTranslationText(verses, 0, '20', 'corrected');
+    expect(next[0].translations).toEqual({ '20': 'fetched' });
+    expect(next[0].displayTranslations).toEqual({ '20': 'corrected' });
   });
 
-  it('changes nothing when the text is what it already was', () => {
+  it('keeps corrections already made to other translations', () => {
+    const verses = timeline();
+    verses[0] = { ...verses[0], displayTranslations: { '20': 'kept' } };
+    const next = setTranslationText(verses, 0, '131', 'added');
+    expect(next[0].displayTranslations).toEqual({ '20': 'kept', '131': 'added' });
+  });
+
+  it('changes nothing when the text is what is already shown', () => {
     const verses = timeline();
     verses[0] = { ...verses[0], translations: { '20': 'same' } };
+    // Typing the fetched text back is not a correction.
     expect(setTranslationText(verses, 0, '20', 'same')).toBe(verses);
   });
 

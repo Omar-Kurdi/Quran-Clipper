@@ -172,6 +172,8 @@ export interface CaptionSource {
   displayTranslation?: string;
   /** Extra translations for the whole ayah, keyed by resource id. */
   translations?: Record<string, string>;
+  /** Hand corrections to those, which win over the fetched text. */
+  displayTranslations?: Record<string, string>;
 }
 
 export interface CaptionTranslation {
@@ -193,10 +195,12 @@ export function captionTranslations(verse: CaptionSource, ids: string[]): Captio
   const wanted = ids.length ? ids : [DEFAULT_TRANSLATION_ID];
   const out: CaptionTranslation[] = [];
   for (const id of wanted) {
+    // The hand correction first in both cases -- `displayTranslation` for the
+    // caption's own translation, `displayTranslations` for the rest.
     const text =
       id === DEFAULT_TRANSLATION_ID
         ? verse.displayTranslation || verse.translation || verse.translations?.[id] || ''
-        : verse.translations?.[id] || '';
+        : verse.displayTranslations?.[id] || verse.translations?.[id] || '';
     const trimmed = text.trim();
     if (!trimmed) continue;
     out.push({ id, text: trimmed, rtl: isRtlText(trimmed) });

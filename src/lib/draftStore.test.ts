@@ -107,3 +107,27 @@ describe('draftStore', () => {
     expect(readDraft()).toBeNull();
   });
 });
+
+describe('hand-corrected translations', () => {
+  it('keeps a correction and still drops the text it can re-fetch', () => {
+    // The whole point of the split: `translations` is megabytes the API will
+    // hand back, `displayTranslations` is work that exists nowhere else.
+    const corrected: VerseData = {
+      ...verse('2:1'),
+      translations: { '85': 'fetched Urdu, and a great deal of it' },
+      displayTranslations: { '85': 'my correction' }
+    };
+    const draft = buildDraft(input({ verses: [corrected] }));
+    expect(draft.verses[0].translations).toBeUndefined();
+    expect(draft.verses[0].displayTranslations).toEqual({ '85': 'my correction' });
+  });
+
+  it('survives a round trip through storage', () => {
+    const corrected: VerseData = {
+      ...verse('2:1'),
+      displayTranslations: { '85': 'my correction' }
+    };
+    saveDraft(buildDraft(input({ verses: [corrected] })));
+    expect(readDraft()?.verses[0].displayTranslations).toEqual({ '85': 'my correction' });
+  });
+});

@@ -269,7 +269,7 @@ export const Inspector: React.FC<InspectorProps> = ({
           </label>
           <textarea
             id={`insp-translation-${option.id}`}
-            value={verse.translations?.[option.id] || ''}
+            value={verse.displayTranslations?.[option.id] ?? verse.translations?.[option.id] ?? ''}
             onChange={e => onTranslationText(option.id, e.target.value)}
             // An Arabic-script translation is written right to left; the card
             // already draws it that way, and typing into a box that does not
