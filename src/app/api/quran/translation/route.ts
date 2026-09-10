@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { quranApiFetch } from '@/lib/quranApi';
+import { quranApiJson } from '@/lib/quranApi';
 import { cleanHtml } from '@/lib/quranCorpus';
 import { CLEAR_QURAN_ID, clearQuranSurah } from '@/lib/clearQuran';
 
@@ -63,20 +63,37 @@ export async function GET(req: NextRequest) {
       return into;
     };
 
-    const { res } = await quranApiFetch(
+    // Through `quranApiJson` with an acceptance test, not a bare fetch.
+    //
+    // This asked the configured upstream and took whatever came back with a
+    // 200. The Quran Foundation's pre-live sandbox holds a couple of chapters
+    // and answers for them -- successfully, and without carrying the
+    // translation that was asked for. So a second translation silently arrived
+    // empty for exactly those chapters and worked everywhere else, which reads
+    // as "the extra translation is broken for Al-Fatihah" rather than as an
+    // upstream that should have been passed over. An answer that does not
+    // contain a single one of the requested ids is not an answer.
+    const requested = new Set(ids);
+    const { data } = await quranApiJson<{ verses?: ApiVerse[] }>(
       `/verses/by_chapter/${surah}?translations=${ids.join(',')}&fields=verse_key&per_page=300`,
-      { next: { revalidate: 86400 } }
+      { next: { revalidate: 86400 } },
+      body =>
+        (body.verses || []).some(verse =>
+          (verse.translations || []).some(
+            entry => entry?.text && requested.has(String(entry.resource_id))
+          )
+        )
     );
+
     // A failed upstream still leaves the local translation answerable, which is
     // the difference between a caption in one language and no caption at all.
-    if (!res?.ok) {
+    if (!data) {
       const local = fillClearQuran({});
       return Object.keys(local).length
         ? NextResponse.json({ success: true, verses: local })
         : NextResponse.json({ success: false, verses: {} }, { status: 502 });
     }
 
-    const data = await res.json();
     const list: ApiVerse[] = Array.isArray(data?.verses) ? data.verses : [];
 
     const verses: Record<string, Record<string, string>> = {};
