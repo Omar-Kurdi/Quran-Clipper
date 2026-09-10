@@ -388,6 +388,8 @@ export const en = {
       count === 1
         ? 'The other translation is hidden while this is ticked: the word-by-word glosses are a single English dataset, so it would draw the identical line. Untick to edit it on its own.'
         : `${count} other translations are hidden while this is ticked: the word-by-word glosses are a single English dataset, so they would all draw the identical line. Untick to edit them on their own.`,
+    wordByWord: 'Word-by-word',
+    wordByWordFrom: (language: string, provider: string) => `${language} · ${provider}`,
     wordsOnScreen: 'Words in this ayah',
     wordsHint: 'Highlighted words are on screen for this caption. Tap one to show or hide it.',
     moveAyahEarlier: 'Move ayah earlier',

@@ -5,8 +5,9 @@ import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCir
 import { VerseData } from '@/lib/quranData';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import {
-  selectedOptions, knownTranslationName, captionTextFor, DEFAULT_TRANSLATION_ID,
-  type TranslationOption
+  selectedOptions, knownTranslationName, captionText, DEFAULT_TRANSLATION_ID,
+  WORD_BY_WORD_LANGUAGE, WORD_BY_WORD_PROVIDER,
+  type TranslationOption, type CaptionTextSource
 } from '@/lib/translations';
 import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { TranslationPicker } from './TranslationPicker';
@@ -125,15 +126,17 @@ export const Inspector: React.FC<InspectorProps> = ({
    * edition. The card collapses them the same way, so the note under the boxes
    * is describing what is actually on screen.
    */
-  const boxes: { option: TranslationOption; text: string }[] = [];
+  const boxes: { option: TranslationOption; text: string; source: CaptionTextSource }[] = [];
   let collapsed = 0;
   const alreadyShown = new Set<string>();
   for (const option of chosen) {
-    const text = verse ? captionTextFor(verse, option.id, translationFollowsWords) : '';
+    const { text, source } = verse
+      ? captionText(verse, option.id, translationFollowsWords)
+      : { text: '', source: 'none' as CaptionTextSource };
     const key = text.trim();
     if (key && alreadyShown.has(key)) { collapsed += 1; continue; }
     if (key) alreadyShown.add(key);
-    boxes.push({ option, text });
+    boxes.push({ option, text, source });
   }
 
   const shownWords = verse ? ensureWords(verse) : [];
@@ -314,12 +317,25 @@ export const Inspector: React.FC<InspectorProps> = ({
             htmlFor={`insp-translation-${box.option.id}`}
             className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2"
           >
+            {/* The label follows what the box is drawing, not what was
+                chosen. With the mask on, that is quran.com's own word-by-word
+                edition -- a separate work from every translation in the picker
+                -- and naming the chosen translator over it was putting their
+                name to words they never wrote. A box someone has since edited
+                is their own text for that edition, so it takes the edition's
+                name back. */}
             <span>
-              {t.inspector.translation}
-              {/* Named once there is more than one, so the boxes below are
-                  telling apart rather than guessing at. */}
-              {chosen.length > 1 && (
-                <span className="ms-1.5 font-normal text-slate-500">{nameOf(box.option)}</span>
+              {box.source === 'words' ? t.inspector.wordByWord : t.inspector.translation}
+              {box.source === 'words' ? (
+                <span className="ms-1.5 font-normal text-slate-500">
+                  {t.inspector.wordByWordFrom(WORD_BY_WORD_LANGUAGE, WORD_BY_WORD_PROVIDER)}
+                </span>
+              ) : (
+                // Named once there is more than one, so the boxes below are
+                // telling apart rather than guessing at.
+                chosen.length > 1 && (
+                  <span className="ms-1.5 font-normal text-slate-500">{nameOf(box.option)}</span>
+                )
               )}
             </span>
             <span className="font-normal text-slate-400">{t.inspector.dragToResize}</span>

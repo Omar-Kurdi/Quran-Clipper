@@ -166,6 +166,32 @@ export function searchTranslations(catalogue: TranslationOption[], query: string
   );
 }
 
+/**
+ * The word-by-word gloss dataset the studio draws, named as it names itself.
+ *
+ * quran.com publishes exactly one English word-by-word edition -- id 59,
+ * `author_name: "Unknown"` in their own catalogue -- and it is a separate work
+ * from every prose translation in the picker. Naming a chosen translator over
+ * it puts their name to words that are not theirs, which is what the panel was
+ * doing: it labelled a box "Dr. Mustafa Khattab, the Clear Quran" and drew
+ * "Miserly towards you", a phrase that appears nowhere in that translation.
+ *
+ * The language is English because both fetch paths ask for it -- see
+ * `language=en` in `quranCorpus.ts` and `/api/quran/verses`. If that ever
+ * becomes a choice, this is the constant that has to follow it.
+ */
+export const WORD_BY_WORD_LANGUAGE = 'English';
+export const WORD_BY_WORD_PROVIDER = 'quran.com';
+
+/**
+ * Where the text in a translation slot came from.
+ *
+ * Carried alongside the text because the label depends on it: a hand
+ * correction is the user's own words for that edition and keeps the edition's
+ * name, while the gloss line belongs to a different work and has to say so.
+ */
+export type CaptionTextSource = 'correction' | 'words' | 'fetched' | 'none';
+
 export interface CaptionSource {
   translation?: string;
   /** What this caption shows for the default translation, when it was edited or split. */
@@ -187,6 +213,8 @@ export interface CaptionTranslation {
   id: string;
   text: string;
   rtl: boolean;
+  /** Where this line came from, so a caller can say whose words it is drawing. */
+  source: CaptionTextSource;
 }
 
 /**
@@ -238,23 +266,32 @@ export function wordByWordTranslation(
  * caption's own `translation` field -- the one every project started with --
  * and everything else is looked up in `translations`.
  */
-export function captionTextFor(verse: CaptionSource, id: string, wordByWord = false): string {
+export function captionText(
+  verse: CaptionSource,
+  id: string,
+  wordByWord = false
+): { text: string; source: CaptionTextSource } {
   const isOwn = id === DEFAULT_TRANSLATION_ID;
   const correction = (isOwn ? verse.displayTranslation : verse.displayTranslations?.[id]) || '';
-  if (correction.trim()) return correction;
+  if (correction.trim()) return { text: correction, source: 'correction' };
 
   // One dataset, not one per edition: quran.com publishes a single word-by-word
   // English, so every slot that follows the mask resolves to the same line.
   // `captionTranslations` collapses the repeats rather than stacking them.
   if (wordByWord) {
     const glosses = wordByWordTranslation(verse.words);
-    if (glosses) return glosses;
+    if (glosses) return { text: glosses, source: 'words' };
   }
 
   const fetched = isOwn
     ? verse.translation || verse.translations?.[DEFAULT_TRANSLATION_ID]
     : verse.translations?.[id];
-  return fetched || '';
+  return fetched ? { text: fetched, source: 'fetched' } : { text: '', source: 'none' };
+}
+
+/** The text alone, for the callers that do not care where it came from. */
+export function captionTextFor(verse: CaptionSource, id: string, wordByWord = false): string {
+  return captionText(verse, id, wordByWord).text;
 }
 
 /** The caption's own translation slot, which is what the first box edits. */
@@ -282,12 +319,42 @@ export function captionTranslations(
   // card saying the same thing twice in a smaller font.
   const drawn = new Set<string>();
   for (const id of wanted) {
-    const trimmed = captionTextFor(verse, id, wordByWord).trim();
+    const { text, source } = captionText(verse, id, wordByWord);
+    const trimmed = text.trim();
     if (!trimmed || drawn.has(trimmed)) continue;
     drawn.add(trimmed);
-    out.push({ id, text: trimmed, rtl: isRtlText(trimmed) });
+    out.push({ id, text: trimmed, rtl: isRtlText(trimmed), source });
   }
   return out;
+}
+
+/**
+ * The ids whose own text these captions actually draw.
+ *
+ * Chosen is not drawn. With the word mask on, the card shows quran.com's
+ * word-by-word glosses -- a separate work from every translation in the picker
+ * -- and identical gloss lines collapse into one, so a chosen translation can
+ * end up contributing nothing to the video. Crediting its translator then names
+ * someone over words the clip does not contain, which is the same false
+ * attribution as naming them over the glosses, pointing the other way.
+ *
+ * A slot showing a hand correction survives the collapse and counts as drawn:
+ * it is a correction *to* that edition, and it is on screen.
+ *
+ * Returned in the chosen order, so a credit reads in the order the card stacks.
+ */
+export function drawnTranslationIds(
+  verses: CaptionSource[],
+  ids: string[],
+  wordByWord = false
+): string[] {
+  const drawn = new Set<string>();
+  for (const verse of verses) {
+    for (const block of captionTranslations(verse, ids, wordByWord)) {
+      if (block.source !== 'words') drawn.add(block.id);
+    }
+  }
+  return ids.filter(id => drawn.has(id));
 }
 
 /** Which of the wanted translations a set of captions is still missing. */

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_TRANSLATION_ID, MAX_TRANSLATIONS, TranslationOption,
   toggleTranslation, groupByLanguage, searchTranslations, selectedOptions,
-  captionTranslations, missingTranslationIds, isRtlText, isRtlLanguage,
+  captionTranslations, drawnTranslationIds, missingTranslationIds, isRtlText, isRtlLanguage,
   wordByWordTranslation
 } from './translations';
 
@@ -68,7 +68,7 @@ describe('what a caption shows', () => {
 
   it('defaults to the translation the caption already carried', () => {
     expect(captionTranslations(verse, [DEFAULT_TRANSLATION_ID])).toEqual([
-      { id: '20', text: 'In the name of Allah', rtl: false }
+      { id: '20', text: 'In the name of Allah', rtl: false, source: 'fetched' }
     ]);
   });
 
@@ -194,5 +194,42 @@ describe('translating only the words on screen', () => {
     const verse = { translation: 'en', words, translations: { '158': 'اردو' } };
     const plain = captionTranslations(verse, [DEFAULT_TRANSLATION_ID, '158']);
     expect(plain.map(block => block.text)).toEqual(['en', 'اردو']);
+  });
+});
+
+describe('which translations a clip actually draws', () => {
+  const words = [
+    { arabic: 'قُلْ', translation: 'Say' },
+    { arabic: 'هُوَ', translation: 'He' }
+  ];
+
+  it('is the chosen ones, when the mask is off', () => {
+    const verse = { translation: 'en', words, translations: { '158': 'اردو' } };
+    expect(drawnTranslationIds([verse], [DEFAULT_TRANSLATION_ID, '158'])).toEqual(['20', '158']);
+  });
+
+  it('is none of them, when the glosses have replaced every one', () => {
+    // The credit this exists for: naming a translator over a clip that does not
+    // contain a syllable of their work is the same false attribution as naming
+    // them over the glosses, pointing the other way.
+    const verse = { translation: 'en', words, translations: { '158': 'اردو' } };
+    expect(drawnTranslationIds([verse], [DEFAULT_TRANSLATION_ID, '158'], true)).toEqual([]);
+  });
+
+  it('keeps a hand-corrected slot, which is on screen and is that edition', () => {
+    const verse = {
+      translation: 'en',
+      words,
+      translations: { '158': 'اردو' },
+      displayTranslations: { '158': 'میرا' }
+    };
+    expect(drawnTranslationIds([verse], [DEFAULT_TRANSLATION_ID, '158'], true)).toEqual(['158']);
+  });
+
+  it('counts a translation drawn on any caption, not only the first', () => {
+    const glossed = { translation: 'en', words };
+    const plain = { translation: 'en', words: [{ arabic: 'قُلْ', translation: '' }] };
+    // The second caption has no glosses to fall back on, so it draws the ayah.
+    expect(drawnTranslationIds([glossed, plain], [DEFAULT_TRANSLATION_ID], true)).toEqual(['20']);
   });
 });

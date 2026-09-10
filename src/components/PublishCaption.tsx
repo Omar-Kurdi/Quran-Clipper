@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Copy, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { buildPublishMetadata, PublishInput, TITLE_MAX } from '@/lib/publishMetadata';
-import { selectedOptions } from '@/lib/translations';
+import { selectedOptions, drawnTranslationIds } from '@/lib/translations';
 import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { useT } from './LocaleProvider';
 
@@ -57,13 +57,26 @@ export const PublishCaption: React.FC<PublishCaptionProps> = ({
    * is a shorter credit rather than a wrong one.
    */
   const catalogue = useTranslationCatalogue(open);
-  const translationNames = useMemo(
-    () =>
-      catalogue.options.length
-        ? selectedOptions(translationIds, catalogue.options).map(option => option.name)
-        : [],
-    [translationIds, catalogue.options]
-  );
+  /**
+   * The translators to credit: the ones whose words are on screen.
+   *
+   * Chosen is not the same as drawn. With the word mask on, the card draws
+   * quran.com's word-by-word glosses -- a separate work from every translation
+   * in the picker -- and identical gloss lines collapse into one, so a chosen
+   * translation can be credited for a video that does not contain a syllable of
+   * it. Asking the captions themselves is the only honest answer, and it is the
+   * same function the canvas draws with.
+   *
+   * A slot showing a hand correction survives that collapse and stays credited:
+   * it is a correction *to* that edition, and it is on screen.
+   */
+  const translationNames = useMemo(() => {
+    if (!catalogue.options.length) return [];
+    const options = selectedOptions(translationIds, catalogue.options);
+    if (!publish.verses?.length) return options.map(option => option.name);
+    const drawn = drawnTranslationIds(publish.verses, translationIds, publish.wordByWord);
+    return options.filter(option => drawn.includes(option.id)).map(option => option.name);
+  }, [translationIds, catalogue.options, publish.verses, publish.wordByWord]);
 
   const meta = useMemo(
     () => buildPublishMetadata({ ...publish, translationNames, includeVerseText }),

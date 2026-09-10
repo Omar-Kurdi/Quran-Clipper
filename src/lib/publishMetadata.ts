@@ -16,6 +16,7 @@
  * the text is included, the credit lines come with it and are not optional.
  */
 
+import { WORD_BY_WORD_PROVIDER } from '@/lib/translations';
 import { VerseData } from './quranData';
 
 /** YouTube's limits, which are the ones this has to fit. */
@@ -32,7 +33,17 @@ export interface PublishInput {
   ayahStart: number;
   ayahEnd: number;
   reciterName: string;
-  /** Named translations on screen, for the credit. Empty is fine; the source is still credited. */
+  /**
+   * Named translations actually drawn on the card, for the credit.
+   *
+   * Drawn, not chosen. With the word mask on, a chosen translation may not be
+   * on screen at all -- the glosses replace it, and identical gloss lines
+   * collapse to one -- and crediting a translator for text the video does not
+   * contain is a false attribution in the other direction. The caller filters
+   * to what is drawn; this credits what it is handed.
+   *
+   * Empty is fine; the source is still credited.
+   */
   translationNames?: string[];
   /** The captions themselves, when the text is to be included. */
   verses?: VerseData[];
@@ -141,10 +152,11 @@ export function buildPublishMetadata(input: PublishInput): PublishMetadata {
   // --- description -------------------------------------------------------
   const credits: string[] = [];
   const named = (input.translationNames ?? []).filter(name => name.trim());
-  // The first translation is the one the word-by-word line replaces; any
-  // others on the card are still their translators' own work.
+  // The gloss line is credited to the dataset it comes from. `named` already
+  // holds only the translations still on screen beside it -- hand-corrected
+  // slots, in practice -- so nothing is dropped and nothing is invented.
   const credited = input.wordByWord
-    ? ['Word-by-word glosses (quran.com)', ...named.slice(1)]
+    ? [`Word-by-word glosses (${WORD_BY_WORD_PROVIDER})`, ...named]
     : named;
   if (credited.length) credits.push(`Translation: ${credited.join(', ')}`);
   // The Arabic comes from quran.com; a translation may not -- The Clear Quran

@@ -131,22 +131,22 @@ describe('publish metadata', () => {
     expect(meta.description).toContain('Ayah 3-7');
   });
 
-  it('credits the gloss source, not the translator, when the card shows word-by-word', () => {
-    // Those glosses are quran.com's own word-by-word English; naming Khattab
-    // over them would put his name to words he did not write.
-    const meta = buildPublishMetadata({
-      ...base,
-      translationNames: ['Dr. Mustafa Khattab, the Clear Quran'],
-      wordByWord: true
-    });
+  it('credits the gloss source when the card shows word-by-word', () => {
+    // Those glosses are quran.com's own word-by-word English -- a separate work
+    // from every translation in the picker -- so the dataset is what gets named.
+    // `translationNames` holds what is *drawn*, and with the mask on the glosses
+    // have replaced it, so the caller hands over nothing to credit.
+    const meta = buildPublishMetadata({ ...base, translationNames: [], wordByWord: true });
     expect(meta.description).toContain('Word-by-word glosses (quran.com)');
     expect(meta.description).not.toContain('Khattab');
   });
 
-  it('still credits the other translators on the card', () => {
+  it('credits a translator whose own words are still on the card beside them', () => {
+    // A hand-corrected slot survives the collapse: it is that edition's text,
+    // and it is on screen.
     const meta = buildPublishMetadata({
       ...base,
-      translationNames: ['Dr. Mustafa Khattab, the Clear Quran', 'Saheeh International'],
+      translationNames: ['Saheeh International'],
       wordByWord: true
     });
     expect(meta.description).toContain('Word-by-word glosses (quran.com)');
