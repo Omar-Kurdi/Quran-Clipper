@@ -8,7 +8,6 @@
 
 import { VerseData, VerseWord } from '@/lib/quranData';
 import { defaultTranslationId, quranApiJson, translationIdsToRequest, preferredTranslation } from './quranApi';
-import { normalizeArabic } from '@/lib/arabic';
 import { primaryTranslation } from './clearQuran';
 
 type QuranApiWord = {
@@ -32,8 +31,6 @@ export type CorpusVerse = {
   textUthmani: string;
   translation: string;
   words: VerseWord[];
-  /** Normalised tokens, index-aligned with `words`. */
-  tokens: string[];
 };
 
 export function cleanHtml(input = '') {
@@ -109,8 +106,7 @@ async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
         wanted: translationIdsToRequest(),
         clean: cleanHtml
       }),
-      words,
-      tokens: words.map(word => normalizeArabic(word.arabic))
+      words
     };
   });
 }
