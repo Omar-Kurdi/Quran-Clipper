@@ -84,7 +84,12 @@ export const en = {
     healthAligner: 'Aligner',
     groundTruth: 'Ground truth',
     groundTruthTitle:
-      'Download this timeline as a ground-truth file, so a change to the aligner can be scored against the captions you corrected by ear',
+      'Save this timeline and its audio into scripts/, so a change to the aligner can be scored against the captions you corrected by ear',
+    groundTruthWriting: 'Writing ground truth…',
+    groundTruthWritten: 'Ground truth saved',
+    groundTruthDownloaded: 'Ground truth downloaded',
+    groundTruthNeedsAudio: (name: string) =>
+      `Could not write into scripts/ from here, so the audio did not come with it — put ${name} in the repo root before running ./gauge.sh.`,
     trimAudio: 'Trim audio',
     trimAudioWithLength: (length: string) => `Trim audio (${length})`,
     trimAudioTitle: 'Trim the uploaded audio — your timeline edits are kept',
@@ -378,7 +383,11 @@ export const en = {
         : `These words also appear in ${count} other places — ${examples}${count > 4 ? ', and more' : ''}. Worth checking the caption is on the right one.`,
     translationFollowsWords: 'Translate only these words',
     translationFollowsWordsHint:
-      'The English under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. Note that these glosses are quran.com’s own word-by-word English, not the translation chosen above — so the wording differs, and it reads as words in a row: "Say He (is) Allah the One". The caption credit follows suit. Applies to every caption.',
+      'The text under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. These glosses are quran.com’s own word-by-word English — one dataset, not one per edition — so the wording differs from the translation chosen above, it reads as words in a row ("Say He (is) Allah the One"), and every translation on the card collapses into that single line. The caption credit follows suit. Applies to every caption.',
+    oneGlossLine: (count: number) =>
+      count === 1
+        ? 'The other translation is hidden while this is ticked: the word-by-word glosses are a single English dataset, so it would draw the identical line. Untick to edit it on its own.'
+        : `${count} other translations are hidden while this is ticked: the word-by-word glosses are a single English dataset, so they would all draw the identical line. Untick to edit them on their own.`,
     wordsOnScreen: 'Words in this ayah',
     wordsHint: 'Highlighted words are on screen for this caption. Tap one to show or hide it.',
     moveAyahEarlier: 'Move ayah earlier',

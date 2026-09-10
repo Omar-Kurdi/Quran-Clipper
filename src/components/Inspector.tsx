@@ -4,7 +4,10 @@ import React, { useEffect, useState } from 'react';
 import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle, SplitSquareHorizontal, Combine, Languages } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
-import { selectedOptions, knownTranslationName, primaryCaptionText } from '@/lib/translations';
+import {
+  selectedOptions, knownTranslationName, captionTextFor, DEFAULT_TRANSLATION_ID,
+  type TranslationOption
+} from '@/lib/translations';
 import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { TranslationPicker } from './TranslationPicker';
 import { Button } from './Button';
@@ -107,6 +110,32 @@ export const Inspector: React.FC<InspectorProps> = ({
    *
    * Silent when the QUL export is not on this machine.
    */
+  /**
+   * The translation boxes to draw, in the order the card stacks them.
+   *
+   * Built rather than hardcoded as "the first one plus the rest" because those
+   * were two different slots: the first box drew the caption's own
+   * `translation` field while the card's first line came from whichever id was
+   * chosen first, so dropping the default from the selection made the panel and
+   * the video disagree about which translation was being edited.
+   *
+   * `collapsed` counts the slots that fell away because they resolved to text
+   * already shown -- which, with the word mask on, is every one of them after
+   * the first: the glosses are a single word-by-word English, not one per
+   * edition. The card collapses them the same way, so the note under the boxes
+   * is describing what is actually on screen.
+   */
+  const boxes: { option: TranslationOption; text: string }[] = [];
+  let collapsed = 0;
+  const alreadyShown = new Set<string>();
+  for (const option of chosen) {
+    const text = verse ? captionTextFor(verse, option.id, translationFollowsWords) : '';
+    const key = text.trim();
+    if (key && alreadyShown.has(key)) { collapsed += 1; continue; }
+    if (key) alreadyShown.add(key);
+    boxes.push({ option, text });
+  }
+
   const shownWords = verse ? ensureWords(verse) : [];
   const firstShown = shownWords.findIndex(word => !word.excluded);
   const lastShown = shownWords.length - 1 - [...shownWords].reverse().findIndex(word => !word.excluded);
@@ -274,59 +303,50 @@ export const Inspector: React.FC<InspectorProps> = ({
         />
       </div>
 
-      <div>
-        <label htmlFor="insp-translation" className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2">
-          <span>
-            {t.inspector.translation}
-            {/* Named once there is more than one, so the boxes below are
-                telling apart rather than guessing at. */}
-            {chosen.length > 1 && chosen[0] && (
-              <span className="ms-1.5 font-normal text-slate-500">{nameOf(chosen[0])}</span>
-            )}
-          </span>
-          <span className="font-normal text-slate-400">{t.inspector.dragToResize}</span>
-        </label>
-        <textarea
-          id="insp-translation"
-          // The same text the card draws, through the same function -- so
-          // hiding a word changes both together instead of only the video.
-          value={primaryCaptionText(verse, translationFollowsWords)}
-          onChange={e => onText('translation', e.target.value)}
-          dir="ltr"
-          rows={5}
-          className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 leading-relaxed"
-        />
-      </div>
-
-      {/* A box for every other translation on the card.
-          Choosing a second language put a line on the card with no way to
-          correct it -- the only editable text was the first one. These write
-          into `verse.translations`, which is where the card reads them from. */}
-      {chosen.slice(1).map(option => (
-        <div key={option.id}>
+      {/* A box for every translation on the card, resolved through the same
+          function the canvas draws with -- so the box and the video cannot
+          disagree, in any language rather than only the first. Editing the
+          caption's own slot writes `translation`; the rest write into
+          `displayTranslations`, which outranks the fetched text. */}
+      {boxes.map(box => (
+        <div key={box.option.id}>
           <label
-            htmlFor={`insp-translation-${option.id}`}
+            htmlFor={`insp-translation-${box.option.id}`}
             className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2"
           >
             <span>
               {t.inspector.translation}
-              <span className="ms-1.5 font-normal text-slate-500">{nameOf(option)}</span>
+              {/* Named once there is more than one, so the boxes below are
+                  telling apart rather than guessing at. */}
+              {chosen.length > 1 && (
+                <span className="ms-1.5 font-normal text-slate-500">{nameOf(box.option)}</span>
+              )}
             </span>
             <span className="font-normal text-slate-400">{t.inspector.dragToResize}</span>
           </label>
           <textarea
-            id={`insp-translation-${option.id}`}
-            value={verse.displayTranslations?.[option.id] ?? verse.translations?.[option.id] ?? ''}
-            onChange={e => onTranslationText(option.id, e.target.value)}
+            id={`insp-translation-${box.option.id}`}
+            value={box.text}
+            onChange={e =>
+              box.option.id === DEFAULT_TRANSLATION_ID
+                ? onText('translation', e.target.value)
+                : onTranslationText(box.option.id, e.target.value)
+            }
             // An Arabic-script translation is written right to left; the card
             // already draws it that way, and typing into a box that does not
             // is its own small misery.
-            dir={option.rtl ? 'rtl' : 'ltr'}
+            dir={box.option.rtl ? 'rtl' : 'ltr'}
             rows={5}
             className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 leading-relaxed"
           />
         </div>
       ))}
+
+      {collapsed > 0 && (
+        <p className="rounded-lg border border-slate-800 bg-slate-950 p-2 text-[11px] leading-relaxed text-slate-400">
+          {t.inspector.oneGlossLine(collapsed)}
+        </p>
+      )}
 
       {similar.length > 0 && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-200">

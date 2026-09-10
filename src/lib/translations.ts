@@ -190,15 +190,6 @@ export interface CaptionTranslation {
 }
 
 /**
- * What one caption puts under its Arabic, in the order chosen.
- *
- * The default translation keeps coming from the caption's own fields, which is
- * what makes a hand-edited or split caption show the words it actually covers.
- * The others are whole-ayah text: splitting an ayah cannot split a translation
- * nobody has aligned, and inventing a division would be worse than showing the
- * ayah's own sentence.
- */
-/**
  * The English of just the words this caption is showing.
  *
  * A caption covering half an ayah still carried the whole ayah's translation,
@@ -227,44 +218,73 @@ export function wordByWordTranslation(
 }
 
 /**
- * The first translation a caption shows, by the one order of precedence.
+ * The text one translation slot shows, by the one order of precedence.
  *
- * Exported so the ayah panel's box and the card cannot disagree about it. They
- * did: the box read `displayTranslation || translation` directly, so with the
- * word mask on, hiding a word changed the video and left the box showing the
- * whole ayah -- the thing being edited and the thing being watched were two
- * different sentences.
+ * Exported so every place that draws a translation goes through it. They did
+ * not, twice over, and both times the panel and the card disagreed:
+ *
+ *   - the ayah panel's box read `displayTranslation || translation` directly,
+ *     so with the word mask on, hiding a word changed the video and left the
+ *     box showing the whole ayah;
+ *   - the mask itself was applied to the caption's own translation only, so a
+ *     second or third language went on drawing the whole ayah's sentence
+ *     underneath two Arabic words.
+ *
+ * The order, for any slot: a hand correction, then the word-by-word line when
+ * the mask is being followed, then the fetched text. A correction is someone's
+ * own words and outranks anything generated, including the glosses.
+ *
+ * `id` picks where the fetched text comes from. `DEFAULT_TRANSLATION_ID` is the
+ * caption's own `translation` field -- the one every project started with --
+ * and everything else is looked up in `translations`.
  */
-export function primaryCaptionText(verse: CaptionSource, wordByWord = false): string {
-  const fromWords = wordByWord ? wordByWordTranslation(verse.words) : '';
-  return (
-    verse.displayTranslation ||
-    fromWords ||
-    verse.translation ||
-    verse.translations?.[DEFAULT_TRANSLATION_ID] ||
-    ''
-  );
+export function captionTextFor(verse: CaptionSource, id: string, wordByWord = false): string {
+  const isOwn = id === DEFAULT_TRANSLATION_ID;
+  const correction = (isOwn ? verse.displayTranslation : verse.displayTranslations?.[id]) || '';
+  if (correction.trim()) return correction;
+
+  // One dataset, not one per edition: quran.com publishes a single word-by-word
+  // English, so every slot that follows the mask resolves to the same line.
+  // `captionTranslations` collapses the repeats rather than stacking them.
+  if (wordByWord) {
+    const glosses = wordByWordTranslation(verse.words);
+    if (glosses) return glosses;
+  }
+
+  const fetched = isOwn
+    ? verse.translation || verse.translations?.[DEFAULT_TRANSLATION_ID]
+    : verse.translations?.[id];
+  return fetched || '';
 }
 
+/** The caption's own translation slot, which is what the first box edits. */
+export function primaryCaptionText(verse: CaptionSource, wordByWord = false): string {
+  return captionTextFor(verse, DEFAULT_TRANSLATION_ID, wordByWord);
+}
+
+/**
+ * What one caption puts under its Arabic, in the order chosen.
+ *
+ * Each slot resolves through `captionTextFor`, so the mask reaches all of them
+ * rather than the first. A language whose text has not arrived yet is absent
+ * rather than blank, so the card never reserves space for nothing.
+ */
 export function captionTranslations(
   verse: CaptionSource,
   ids: string[],
-  /** Build the first translation from the visible words rather than the ayah. */
+  /** Build every translation from the visible words rather than the ayah. */
   wordByWord = false
 ): CaptionTranslation[] {
   const wanted = ids.length ? ids : [DEFAULT_TRANSLATION_ID];
   const out: CaptionTranslation[] = [];
+  // Two editions of the same language resolve to one word-by-word line, and
+  // stacking a line on top of itself is not a second translation -- it is the
+  // card saying the same thing twice in a smaller font.
+  const drawn = new Set<string>();
   for (const id of wanted) {
-    // The hand correction first in every case -- `displayTranslation` for the
-    // caption's own translation, `displayTranslations` for the rest. A
-    // correction is someone's own words and outranks anything generated,
-    // including the word-by-word line.
-    const text =
-      id === DEFAULT_TRANSLATION_ID
-        ? primaryCaptionText(verse, wordByWord)
-        : verse.displayTranslations?.[id] || verse.translations?.[id] || '';
-    const trimmed = text.trim();
-    if (!trimmed) continue;
+    const trimmed = captionTextFor(verse, id, wordByWord).trim();
+    if (!trimmed || drawn.has(trimmed)) continue;
+    drawn.add(trimmed);
     out.push({ id, text: trimmed, rtl: isRtlText(trimmed) });
   }
   return out;

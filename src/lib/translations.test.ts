@@ -159,9 +159,40 @@ describe('translating only the words on screen', () => {
     expect(captionTranslations(verse, [DEFAULT_TRANSLATION_ID], true)[0].text).toBe('mine');
   });
 
-  it('leaves the other translations alone -- glosses exist for one language', () => {
+  it('masks every translation, not only the first', () => {
+    // The bug this replaces: the mask reached the caption's own translation and
+    // stopped, so a second language went on drawing the whole ayah's sentence
+    // underneath two Arabic words -- the exact thing the mask exists to stop.
     const verse = { translation: 'en', words, translations: { '158': 'اردو' } };
-    const [, urdu] = captionTranslations(verse, [DEFAULT_TRANSLATION_ID, '158'], true);
-    expect(urdu.text).toBe('اردو');
+    const masked = captionTranslations(verse, [DEFAULT_TRANSLATION_ID, '158'], true);
+    expect(masked.map(block => block.text)).toEqual(['Say He (is) Allah the One']);
+  });
+
+  it('draws the gloss line once, however many translations are chosen', () => {
+    // quran.com publishes one word-by-word English, not one per edition, so
+    // every slot resolves to the same line. Stacked, that is the card saying
+    // the same thing three times in a smaller font.
+    const verse = { translation: 'en', words, translations: { '158': 'اردو', '85': 'français' } };
+    const masked = captionTranslations(verse, [DEFAULT_TRANSLATION_ID, '158', '85'], true);
+    expect(masked).toHaveLength(1);
+  });
+
+  it('keeps a hand correction on a second translation visible beside the glosses', () => {
+    // A correction is someone's own words for that edition; it is not a repeat
+    // of the gloss line and must survive the collapse.
+    const verse = {
+      translation: 'en',
+      words,
+      translations: { '158': 'اردو' },
+      displayTranslations: { '158': 'میرا' }
+    };
+    const masked = captionTranslations(verse, [DEFAULT_TRANSLATION_ID, '158'], true);
+    expect(masked.map(block => block.text)).toEqual(['Say He (is) Allah the One', 'میرا']);
+  });
+
+  it('leaves every translation alone when the mask is off', () => {
+    const verse = { translation: 'en', words, translations: { '158': 'اردو' } };
+    const plain = captionTranslations(verse, [DEFAULT_TRANSLATION_ID, '158']);
+    expect(plain.map(block => block.text)).toEqual(['en', 'اردو']);
   });
 });
