@@ -710,10 +710,16 @@ def detect_boundaries(pcm: np.ndarray, window_sec: float = 0.02) -> list[float]:
     percentile, threshold, dips = DIP_PERCENTILE, 0.0, []
     attempt = DIP_PERCENTILE
     while attempt <= MAX_DIP_PERCENTILE:
-        found = _dips_below(db, window_sec, float(np.percentile(db, attempt)))
-        if attempt > DIP_PERCENTILE and len(found) <= len(dips):
-            break
-        percentile, threshold, dips = attempt, float(np.percentile(db, attempt)), found
+        line = float(np.percentile(db, attempt))
+        found = _dips_below(db, window_sec, line)
+        # Keep the richest attempt, and do not stop at one that adds nothing.
+        # Raising the line can leave the count flat for a step or two and then
+        # open up: a clip trimmed to 243.50-309.30s of the same recording sat
+        # at 4 dips from p15 through p25 and reached 10 at p35. Breaking on the
+        # plateau froze it at 4 -- one 36.8-second phrase that read back as
+        # garble and matched 9:112 at 0.47, under the 0.55 a phrase needs.
+        if len(found) > len(dips):
+            percentile, threshold, dips = attempt, line, found
         if len(dips) >= wanted:
             break
         attempt += 5
@@ -734,7 +740,9 @@ def detect_boundaries(pcm: np.ndarray, window_sec: float = 0.02) -> list[float]:
         len(boundaries) - 2,
         percentile,
         threshold,
-        "" if percentile == DIP_PERCENTILE else f" -- relaxed from p{DIP_PERCENTILE:.0f}, which found none",
+        ""
+        if percentile == DIP_PERCENTILE
+        else f" -- relaxed from p{DIP_PERCENTILE:.0f}, too sparse for a {duration:.0f}s clip",
     )
     return boundaries
 
