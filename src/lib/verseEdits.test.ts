@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   MIN_SEGMENT,
+  fitVersesToAudio,
   setBoundary,
   nudgeBoundary,
   markBoundaryAt,
@@ -549,5 +550,46 @@ describe('setTranslationText', () => {
     // the keyed map beside it.
     const next = setTranslationText(timeline(), 0, '131', 'other');
     expect(next[0].translation).toBe('text');
+  });
+});
+
+describe('fitting a loaded passage into an uploaded recording', () => {
+  const verse = (start: number, end: number, ayah: number): VerseData => ({
+    verseNumber: ayah,
+    verseKey: `9:${ayah}`,
+    textUthmani: 'نص',
+    translation: '',
+    startTime: start,
+    endTime: end,
+  });
+
+  it('brings a passage that sits minutes into the chapter back on screen', () => {
+    // The reported case: At-Tawbah 9:111 is published at 2520-2566s, and the
+    // upload is 101.89s, so the block sat twenty-four screens past the edge.
+    const fitted = fitVersesToAudio([verse(2520.3, 2566.5, 111)], 101.89);
+    expect(fitted[0].startTime).toBe(0);
+    expect(fitted[0].endTime).toBeCloseTo(46.2, 1);
+  });
+
+  it('keeps the reciter’s own lengths when the passage already fits', () => {
+    const fitted = fitVersesToAudio([verse(100, 110, 1), verse(110, 125, 2)], 60);
+    expect(fitted.map(v => [v.startTime, v.endTime])).toEqual([[0, 10], [10, 25]]);
+  });
+
+  it('scales a passage longer than the recording down to fit', () => {
+    const fitted = fitVersesToAudio([verse(0, 100, 1), verse(100, 200, 2)], 50);
+    expect(fitted[fitted.length - 1].endTime).toBeCloseTo(50, 5);
+    expect(fitted[0].endTime).toBeCloseTo(25, 5);
+  });
+
+  it('leaves a timeline that already starts at zero alone', () => {
+    const original = [verse(0, 10, 1)];
+    expect(fitVersesToAudio(original, 60)).toBe(original);
+  });
+
+  it('does nothing until the recording’s duration is known', () => {
+    const original = [verse(2520, 2566, 111)];
+    expect(fitVersesToAudio(original, 0)).toBe(original);
+    expect(fitVersesToAudio([], 60)).toEqual([]);
   });
 });

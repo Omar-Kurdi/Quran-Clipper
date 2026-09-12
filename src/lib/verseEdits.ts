@@ -501,6 +501,45 @@ export function formatTime(seconds: number): string {
  * a trim boundary is clamped rather than dropped, so cutting mid-ayah keeps
  * the part of it that survived instead of losing the whole verse.
  */
+/**
+ * Brings a passage loaded against an uploaded recording into that recording.
+ *
+ * Published ayah timings are absolute positions in the reciter's own recording
+ * of the whole chapter, so At-Tawbah 9:111 arrives at 2520-2566 seconds. Laid
+ * on a timeline scaled to a 102-second upload, that block sits twenty-four
+ * times past the right-hand edge: the ayah showed in the preview and in the
+ * panel, the timeline looked empty, and there was nothing to select, nudge or
+ * split. The passage had loaded correctly and was simply unreachable.
+ *
+ * These times are wrong against an upload either way -- the panel says so, and
+ * the way to fix them is to align or to set them by hand. The only question is
+ * whether they are wrong and editable or wrong and invisible. So the block is
+ * shifted to start at zero and, when the passage is longer than the recording,
+ * scaled to fit: order and relative proportion survive, and every segment is
+ * somewhere a pointer can reach.
+ *
+ * Returns the timeline untouched when there is nothing to do, including when
+ * the duration is not known yet.
+ */
+export function fitVersesToAudio(verses: VerseData[], duration: number): VerseData[] {
+  if (!verses.length || !(duration > 0)) return verses;
+
+  const offset = Math.min(...verses.map(verse => verse.startTime));
+  const span = Math.max(...verses.map(verse => verse.endTime)) - offset;
+  if (!(span > 0)) return verses;
+  // Only ever shrink. A passage shorter than the recording keeps its own
+  // lengths, which are the reciter's real ones and a better starting point for
+  // editing than the same phrases stretched to fill the file.
+  const scale = span > duration ? duration / span : 1;
+  if (offset === 0 && scale === 1) return verses;
+
+  return verses.map(verse => ({
+    ...verse,
+    startTime: (verse.startTime - offset) * scale,
+    endTime: (verse.endTime - offset) * scale,
+  }));
+}
+
 export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: number): VerseData[] {
   return verses
     .filter(verse => verse.endTime > trimStart && verse.startTime < trimEnd)
