@@ -402,9 +402,21 @@ async def align_endpoint(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if detected is None:
+            # Coded, because this is the one failure a reference genuinely
+            # fixes -- the caller usually knows the passage, having picked it
+            # in the UI, and can retry with it instead of handing the person a
+            # dead end. Unrecognisable audio is a different answer from an
+            # aligner that cannot read audio at all, and the two need telling
+            # apart before a retry is worth the wait.
             raise HTTPException(
                 status_code=422,
-                detail="Could not identify any Quran passage in this audio. Supply 'reference' to align a known range.",
+                detail={
+                    "code": "passage_not_detected",
+                    "message": (
+                        "Could not identify any Quran passage in this audio. "
+                        "Supply 'reference' to align a known range."
+                    ),
+                },
             )
         # Every detected passage goes into the reference, not just the largest.
         # A recitation that opens with Al-Fatihah before the main surah needs
