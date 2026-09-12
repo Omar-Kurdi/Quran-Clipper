@@ -41,7 +41,27 @@ fi
 
 # --- alignment sidecar ------------------------------------------------------
 printf '[2/4] sidecar     ... '
-if curl -sf --max-time 2 http://127.0.0.1:8000/health >/dev/null 2>&1; then
+# A sidecar already up is reused -- except when it is running code older than
+# what is on disk. Python is loaded once at import, so editing the aligner and
+# re-running this changed nothing: the service kept serving the old code, the
+# same failure came back, and the fix looked like it had not worked. The pid
+# file is written at launch, so anything under `app/` newer than it has not
+# been loaded. Only ever checked against a pid this script wrote and that is
+# still alive -- a leftover file from a previous run would compare against the
+# wrong moment entirely.
+SIDECAR_PID="$(cat "$RUN_DIR/asr.pid" 2>/dev/null || true)"
+SIDECAR_STALE=""
+if [[ -n "$SIDECAR_PID" ]] && kill -0 "$SIDECAR_PID" 2>/dev/null \
+   && [[ -n "$(find asr-service/app -name '*.py' -newer "$RUN_DIR/asr.pid" -print -quit 2>/dev/null)" ]]; then
+  SIDECAR_STALE=1
+fi
+
+if [[ -n "$SIDECAR_STALE" ]]; then
+  kill "$SIDECAR_PID" 2>/dev/null || true
+  for _ in $(seq 1 20); do kill -0 "$SIDECAR_PID" 2>/dev/null || break; sleep 0.5; done
+fi
+
+if [[ -z "$SIDECAR_STALE" ]] && curl -sf --max-time 2 http://127.0.0.1:8000/health >/dev/null 2>&1; then
   ASR_STATE="already running on :8000"
   echo "already running"
 elif [[ -x asr-service/.venv/bin/python ]]; then
@@ -53,8 +73,13 @@ elif [[ -x asr-service/.venv/bin/python ]]; then
     sleep 1
   done
   if curl -sf --max-time 2 http://127.0.0.1:8000/health >/dev/null 2>&1; then
-    ASR_STATE="up on :8000"
-    echo "up"
+    if [[ -n "$SIDECAR_STALE" ]]; then
+      ASR_STATE="restarted on :8000 -- it was running code older than asr-service/app/"
+      echo "restarted (app code had changed)"
+    else
+      ASR_STATE="up on :8000"
+      echo "up"
+    fi
   else
     ASR_STATE="did NOT come up -- see $RUN_DIR/asr.log"
     echo "failed (local alignment unavailable; Gemini matching still works)"
