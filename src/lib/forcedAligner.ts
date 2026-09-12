@@ -212,8 +212,8 @@ export async function runForcedAlignMatch(params: {
   autoDetect?: boolean;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
-  /** Why the selected range was used, when auto-detect was asked for and did not deliver. */
-  let fellBackToSelected: '' | 'unsupported' | 'not_detected' = '';
+  /** Set when auto-detect was asked for but the sidecar couldn't do it. */
+  let fellBackToSelected = false;
 
   // Auto-detect sends no reference at all: the sidecar decodes the audio,
   // finds the passage in the full Quran, and aligns against exactly that.
@@ -242,28 +242,20 @@ export async function runForcedAlignMatch(params: {
       reference
     });
   } catch (err) {
-    // Retry with the user's range for the two failures a reference actually
-    // fixes: a sidecar that cannot auto-detect at all, and one that read the
-    // audio and could not place it.
+    // Retry with the user's range only when the sidecar said auto-detection is
+    // *unsupported here* -- that is the one failure a reference actually fixes.
     //
-    // The second used to be a dead end. Detection reads the recording and
-    // matches what it hears against the whole Quran, so a heavily reverberant
-    // or compressed recording can defeat it while the person at the keyboard
-    // has already said which surah and ayahs they are working on. Erroring out
-    // asks them to report a bug for every passage that trips it; aligning what
-    // they selected is what the sidecar's own message tells the caller to do.
-    //
-    // Nothing else is retried. Most other failures are the backend not loading,
-    // which fails the same way with a reference attached -- that is exactly
-    // what it did before this was narrowed: two 400s per upload, both the same
-    // protobuf error.
-    const because =
-      err instanceof AlignRequestError && err.code === 'auto_detect_unsupported'
-        ? 'unsupported'
-        : err instanceof AlignRequestError && err.code === 'passage_not_detected'
-          ? 'not_detected'
-          : '';
-    const retryable = because && autoDetect && params.surah && params.start && params.end;
+    // Any other failure (most often the backend not loading at all) fails the
+    // same way with a reference attached, so retrying just doubles the wait and
+    // logs a second 400 for the same underlying problem. That is exactly what
+    // it did: two 400s per upload, both the same protobuf error.
+    const retryable =
+      err instanceof AlignRequestError &&
+      err.code === 'auto_detect_unsupported' &&
+      autoDetect &&
+      params.surah &&
+      params.start &&
+      params.end;
     if (!retryable) throw err;
 
     console.warn(
@@ -279,7 +271,7 @@ export async function runForcedAlignMatch(params: {
         .map(verse => `${verse.verseKey}\t${verse.words.map(word => word.arabic).join(' ')}`)
         .join('\n')
     });
-    fellBackToSelected = because;
+    fellBackToSelected = true;
   }
 
   const detected = result.detectedRange;
@@ -405,11 +397,9 @@ export async function runForcedAlignMatch(params: {
       (detected
         ? `Detected ${rangeLabel} from the audio itself (${Math.round(detected.confidence * 100)}% match on ` +
           `${detected.matched_phrases}/${detected.total_phrases} phrases) and force-aligned it`
-        : fellBackToSelected === 'unsupported'
+        : fellBackToSelected
           ? `This sidecar can't detect the range from audio, so the selected range ${rangeLabel} was force-aligned instead — confirm it matches the recording`
-          : fellBackToSelected === 'not_detected'
-            ? `Couldn't make out the passage from this recording, so the selected range ${rangeLabel} was force-aligned instead — check it is the right ayahs, because forced alignment fits whatever text it is given`
-            : `Force-aligned the selected text of ${rangeLabel}`) +
+          : `Force-aligned the selected text of ${rangeLabel}`) +
       ` (${result.model}). Every reference word has a timestamp by construction.${repeatNote}`
   };
 }

@@ -402,12 +402,16 @@ async def align_endpoint(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if detected is None:
-            # Coded, because this is the one failure a reference genuinely
-            # fixes -- the caller usually knows the passage, having picked it
-            # in the UI, and can retry with it instead of handing the person a
-            # dead end. Unrecognisable audio is a different answer from an
-            # aligner that cannot read audio at all, and the two need telling
-            # apart before a retry is worth the wait.
+            # Coded so a caller can tell this apart from an aligner that
+            # cannot read audio at all. They are different answers and only
+            # one of them is about this recording.
+            #
+            # Deliberately *not* retried with the range selected in the studio.
+            # That range is a default nobody has to touch -- surah 1, ayahs 1
+            # to 7 -- so a caller retrying with it would force-align
+            # Al-Fatihah onto whatever was actually recited and return a
+            # complete, confident, entirely wrong timeline. An error that says
+            # what happened is worth more than that.
             raise HTTPException(
                 status_code=422,
                 detail={
