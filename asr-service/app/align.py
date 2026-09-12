@@ -651,6 +651,23 @@ MIN_DIP_SEC = 0.20
 #: a meaningful on-screen segment.
 MIN_PHRASE_SEC = 0.8
 
+#: How sparse the candidates may get before the threshold is relaxed.
+#:
+#: A percentile adapts to a recording's *level* but not to its *dynamics*. On a
+#: heavily compressed recording the p15 line sits barely below the median, so
+#: the envelope crosses it constantly and comes straight back -- the dips are
+#: there, just never for the 0.2s that makes one count. Measured on a Dosari
+#: recitation trimmed to 141.68-243.56s: 435 excursions below p15, longest
+#: 0.18s, zero candidates over 101.9 seconds. Every clip with ground truth sits
+#: between one candidate per 4.9s and one per 6.9s, so 8s is below all of them
+#: and well above nothing.
+MIN_CANDIDATE_DENSITY_SEC = 8.0
+
+#: Where relaxing stops. Past the fortieth percentile a "dip" is no longer a
+#: pause in any sense; the search is better off with too few candidates than
+#: with the whole clip chopped at arbitrary instants.
+MAX_DIP_PERCENTILE = 40.0
+
 
 @dataclass
 class Phrase:
@@ -681,21 +698,26 @@ def detect_boundaries(pcm: np.ndarray, window_sec: float = 0.02) -> list[float]:
         return [Phrase(0.0, len(pcm) / SAMPLE_RATE)]
 
     db = 20 * np.log10(frames + 1e-12)
-    threshold = float(np.percentile(db, DIP_PERCENTILE))
-
-    dips: list[tuple[float, float]] = []
-    run_start: int | None = None
-    for i, quiet in enumerate(db < threshold):
-        if quiet and run_start is None:
-            run_start = i
-        elif not quiet and run_start is not None:
-            if (i - run_start) * window_sec >= MIN_DIP_SEC:
-                dips.append((run_start * window_sec, i * window_sec))
-            run_start = None
-    if run_start is not None and (len(db) - run_start) * window_sec >= MIN_DIP_SEC:
-        dips.append((run_start * window_sec, len(db) * window_sec))
-
     duration = len(pcm) / SAMPLE_RATE
+
+    # Relax the threshold until the candidates are no sparser than any clip
+    # with ground truth. A clip whose envelope already yields them keeps the
+    # default on the first pass and is untouched by this loop; only a recording
+    # too compressed to dip for 0.2s at p15 ever climbs. Stopping as soon as a
+    # step adds nothing keeps a pathological envelope from walking to the cap
+    # for no gain.
+    wanted = duration / MIN_CANDIDATE_DENSITY_SEC
+    percentile, threshold, dips = DIP_PERCENTILE, 0.0, []
+    attempt = DIP_PERCENTILE
+    while attempt <= MAX_DIP_PERCENTILE:
+        found = _dips_below(db, window_sec, float(np.percentile(db, attempt)))
+        if attempt > DIP_PERCENTILE and len(found) <= len(dips):
+            break
+        percentile, threshold, dips = attempt, float(np.percentile(db, attempt)), found
+        if len(dips) >= wanted:
+            break
+        attempt += 5
+
     # Cut at the middle of each dip; the exact instant matters little because a
     # dip is by definition the quietest part of the boundary.
     boundaries = [0.0]
@@ -708,9 +730,29 @@ def detect_boundaries(pcm: np.ndarray, window_sec: float = 0.02) -> list[float]:
     boundaries.append(duration)
 
     log.info(
-        "%d candidate boundaries at the p%.0f energy threshold (%.1f dB)", len(boundaries) - 2, DIP_PERCENTILE, threshold
+        "%d candidate boundaries at the p%.0f energy threshold (%.1f dB)%s",
+        len(boundaries) - 2,
+        percentile,
+        threshold,
+        "" if percentile == DIP_PERCENTILE else f" -- relaxed from p{DIP_PERCENTILE:.0f}, which found none",
     )
     return boundaries
+
+
+def _dips_below(db: np.ndarray, window_sec: float, threshold: float) -> list[tuple[float, float]]:
+    """Runs of frames under `threshold` lasting at least `MIN_DIP_SEC`."""
+    dips: list[tuple[float, float]] = []
+    run_start: int | None = None
+    for i, quiet in enumerate(db < threshold):
+        if quiet and run_start is None:
+            run_start = i
+        elif not quiet and run_start is not None:
+            if (i - run_start) * window_sec >= MIN_DIP_SEC:
+                dips.append((run_start * window_sec, i * window_sec))
+            run_start = None
+    if run_start is not None and (len(db) - run_start) * window_sec >= MIN_DIP_SEC:
+        dips.append((run_start * window_sec, len(db) * window_sec))
+    return dips
 
 
 def _blank_score(emission, frame_start: int, frame_end: int) -> float:
