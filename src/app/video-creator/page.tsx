@@ -31,7 +31,7 @@ import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
 import { Inspector } from '@/components/Inspector';
-import { segmentAt, trimTimeline } from '@/lib/verseEdits';
+import { segmentAt, trimTimeline, fitVersesToAudio } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import {
   backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName,
@@ -438,7 +438,13 @@ export default function VideoCreatorPage() {
       if (!customAudioUrl) {
         setAudioUrl(data.audioUrl);
       }
-      const loaded = data.verses || [];
+      // Against an upload the reciter's absolute timings put the passage
+      // outside the recording entirely -- see `fitVersesToAudio`. They are
+      // wrong for this audio whatever happens; this is what makes them
+      // reachable enough to correct.
+      const loaded = customAudioUrl
+        ? fitVersesToAudio(data.verses || [], customAudioDuration || audioDuration)
+        : data.verses || [];
       setVerses(loaded);
       setIsSampleProject(false);
       setSelectedIndex(0);
@@ -1160,7 +1166,12 @@ export default function VideoCreatorPage() {
       setSaveStatus({ text: t.header.groundTruthWriting, kind: 'pending' });
       try {
         const body = new FormData();
-        body.set('contents', withAudio);
+        // A Blob, not a string: a multipart encoder normalises the newlines in
+        // a *text* field to CRLF, and the file it wrote then carried `\r` on
+        // every line -- enough for `gauge.sh` to read `# trim: none` as a trim
+        // window and label an untrimmed clip "(trimmed)". Blob bytes go
+        // through untouched.
+        body.set('contents', new Blob([withAudio], { type: 'text/plain;charset=utf-8' }));
         body.set('clipName', customAudioName);
         body.set('audio', customAudioFile, saved);
         const res = await fetch('/api/ground-truth', { method: 'POST', body });

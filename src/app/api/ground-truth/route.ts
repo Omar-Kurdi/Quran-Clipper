@@ -35,7 +35,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const form = await req.formData();
-    const contents = String(form.get('contents') || '');
+    // Sent as a Blob so the multipart encoder cannot rewrite its newlines --
+    // a text field would arrive with CRLF on every line.
+    const field = form.get('contents');
+    const contents = field instanceof Blob ? await field.text() : String(field || '');
     const clipName = String(form.get('clipName') || '');
     const audio = form.get('audio');
 
