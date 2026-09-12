@@ -165,3 +165,31 @@ describe('the audio saved beside a ground-truth file', () => {
     expect(groundTruthFile(verses, { clipName: 'test5.mp3' })).not.toContain('# from:');
   });
 });
+
+describe('clips whose names do not survive the strip', () => {
+  const arabic = '{التائبون العابدون الحامدون السائحون} تلاوة عراقية مؤثرة ياسر الدوسري.mp3';
+  const other = 'سورة الحشر عبدالله مصطفى.mp3';
+
+  it('keeps two differently-named clips apart', () => {
+    // Both reduce to `_` on their own, so without this the second export
+    // overwrites the first -- destroying a hand-corrected timeline silently.
+    expect(groundTruthFileName(arabic)).not.toBe(groundTruthFileName(other));
+    expect(groundTruthAudioName(arabic)).not.toBe(groundTruthAudioName(other));
+  });
+
+  it('keeps them apart after the studio has trimmed them', () => {
+    expect(groundTruthFileName('_-trimmed-trimmed.wav')).not.toBe(groundTruthFileName(arabic));
+    expect(groundTruthFileName(arabic.replace('.mp3', '-trimmed-trimmed.wav')))
+      .not.toBe(groundTruthFileName(other.replace('.mp3', '-trimmed-trimmed.wav')));
+  });
+
+  it('gives the same name for the same clip every time', () => {
+    expect(groundTruthFileName(arabic)).toBe(groundTruthFileName(arabic));
+  });
+
+  it('leaves a name that carries any identity of its own alone', () => {
+    expect(groundTruthFileName('test5.mp3')).toBe('expected_test5.txt');
+    expect(groundTruthFileName('my clip (2).mp3')).toBe('expected_my_clip_2_.txt');
+    expect(groundTruthAudioName('Aal-E-Imran-trimmed.wav')).toBe('Aal-E-Imran-trimmed.wav');
+  });
+});

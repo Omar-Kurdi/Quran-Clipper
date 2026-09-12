@@ -129,8 +129,38 @@ export function groundTruthFile(verses: VerseData[], meta: GroundTruthMeta = {})
  * stripping is what makes it safe to join to a path.
  */
 export function groundTruthBaseName(clipName?: string): string {
-  const base = (clipName || 'timeline').replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_');
-  return base || 'timeline';
+  const name = clipName || 'timeline';
+  const base = name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_') || 'timeline';
+
+  // A name written entirely in another script survives the strip as nothing:
+  // `{التائبون العابدون...} تلاوة عراقية مؤثرة ياسر الدوسري.mp3` becomes `_`, and
+  // after two trims `_-trimmed-trimmed`. Two such clips trimmed the same number
+  // of times land on the same file name, and saving the second overwrites the
+  // first -- silently, and the corrected timeline it destroys is hand work that
+  // exists nowhere else.
+  //
+  // So when nothing distinguishing survives -- everything left is the `-trimmed`
+  // suffixes the studio added and the separators -- the original name is carried
+  // through as a short digest of itself. Names that keep any identity of their
+  // own are untouched.
+  const distinguishing = base.replace(/(-trimmed)+$/, '').replace(/[_-]+/g, '');
+  return distinguishing ? base : `${base}-${shortDigest(name)}`;
+}
+
+/**
+ * A few stable characters standing in for a name, for telling two apart.
+ *
+ * FNV-1a, because this only has to differ for different names -- it is not
+ * guarding anything -- and it has to give the same answer in the browser and in
+ * Node without pulling in a hash implementation for six lines of work.
+ */
+function shortDigest(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36).padStart(6, '0').slice(-6);
 }
 
 /** `expected_test5.txt` -- what `eval_segments.py` should be pointed at. */
