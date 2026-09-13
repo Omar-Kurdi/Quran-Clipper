@@ -1,7 +1,7 @@
 # Core service
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-python-multipart==0.0.20
+python-multipart==0.0.32
 numpy>=1.26,<2.2
 
 # Voice activity detection (pause / breath boundaries)
