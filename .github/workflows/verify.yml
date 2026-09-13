@@ -9,6 +9,12 @@
 # `npm ci`, a numpy-only interpreter and a cold corpus cache passes the fast
 # tier in under seven seconds, and the Skylos gate passes from a checkout at a
 # different absolute path both with and without node_modules present.
+#
+# Every action is pinned to a commit SHA rather than a tag. A tag is a moving
+# pointer the action's owner can repoint at any time, so `@v4` is an agreement
+# to run whatever they publish next; a SHA is the code that was reviewed. The
+# version each SHA belongs to is in the comment beside it, because a bare SHA
+# tells a reader nothing about how far behind they are.
 name: verify
 
 on:
@@ -29,22 +35,33 @@ jobs:
     name: fast tier
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Nothing here pushes, so the checkout token has no reason to stay in
+          # .git/config where every later step could read it.
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # 22 is the active LTS and clears next's ">=20.9.0". Bump it here when
           # the version you develop against moves.
           node-version: '22'
           cache: npm
 
-      - run: npm ci
+      # --ignore-scripts: a dependency's install hook runs with the workflow's
+      # privileges, and nothing here needs one. Three packages in the tree
+      # declare them -- esbuild, unrs-resolver and fsevents -- and all three
+      # ship their platform binaries as optionalDependencies, which npm still
+      # installs. Verified in a clean clone: @esbuild/linux-x64 and the
+      # unrs resolver bindings land either way, and typecheck, lint, the unit
+      # tests and `npm run build` all pass without the hooks.
+      - run: npm ci --ignore-scripts
 
       # 3.12 matches asr-service/.venv. The rules test needs numpy and nothing
       # else -- the aligner imports torch, NeMo and transformers inside the
       # functions that use them, so none of that heavy stack is installed here.
       # The bound is the one in asr-service/requirements.txt.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
       - run: pip install "numpy>=1.26,<2.2"
@@ -53,7 +70,7 @@ jobs:
       # fetched from api.quran.com on first use. Caching it keeps a green run
       # from depending on someone else's uptime; a cold cache still works, it
       # just costs one 1.6 MB download.
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/quran-clip-creator
           key: quran-corpus-v1
@@ -64,9 +81,11 @@ jobs:
     name: skylos gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
