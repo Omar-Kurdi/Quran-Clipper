@@ -33,13 +33,11 @@ reported separately -- never folded into a single "verification passed". It
 takes about 50 seconds, which is why it is not in the fast tier. Run it before
 calling a change done.
 
-`.skylos/baseline.json` records what this repo already had; `.skylos/accepted.txt`
-lists the few findings the baseline cannot capture, each with its reason. The
-gate scans the whole tree and reports only what is outside both.
-
-The baseline stores absolute paths, so it is valid only for the checkout that
-generated it. Regenerate it after a move or a fresh clone:
-`skylos baseline . -a --no-upload`.
+`.skylos/baseline.portable.json` records what this repo already had;
+`.skylos/accepted.txt` lists the few findings the baseline cannot capture, each
+with its reason. The gate scans the whole tree and reports only what is outside
+both. `.skylos/baseline.json` is rebuilt from the portable copy on every run and
+is gitignored -- edit the portable one, never the generated one.
 
 - Never suppress, ignore or baseline a NEW finding to get a green run. That is
   the one thing this gate exists to prevent.
@@ -75,3 +73,10 @@ runs neither in CI nor as part of `npm run verify`.
   should be something the task asked for.
 - No unrelated cleanup, reformatting or refactoring.
 - State plainly what was verified and what was not.
+
+## CI
+
+`.github/workflows/verify.yml` runs the fast tier and the Skylos gate on every
+push to main and every pull request. It does not run `./gauge.sh`, which needs
+audio, a gated checkpoint and a GPU -- that stays local, and a change to the
+aligner is not finished because CI is green.

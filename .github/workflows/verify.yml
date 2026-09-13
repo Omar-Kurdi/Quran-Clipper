@@ -1,0 +1,80 @@
+# The checks that can run on someone else's machine.
+#
+# This is the fast tier and the Skylos gate, nothing else. `./gauge.sh` is
+# deliberately absent: it scores the aligner against real recitations, which
+# means audio that is not committed, a gated NeMo checkpoint and a GPU. It stays
+# a local gate -- see docs/ALIGNMENT.md and .claude/CLAUDE.md.
+#
+# Both jobs were rehearsed locally before being written: a fresh clone with
+# `npm ci`, a numpy-only interpreter and a cold corpus cache passes the fast
+# tier in under seven seconds, and the Skylos gate passes from a checkout at a
+# different absolute path both with and without node_modules present.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: fast tier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22 is the active LTS and clears next's ">=20.9.0". Bump it here when
+          # the version you develop against moves.
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # 3.12 matches asr-service/.venv. The rules test needs numpy and nothing
+      # else -- the aligner imports torch, NeMo and transformers inside the
+      # functions that use them, so none of that heavy stack is installed here.
+      # The bound is the one in asr-service/requirements.txt.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install "numpy>=1.26,<2.2"
+
+      # The rules test asks the corpus for one ayah range, and the corpus is
+      # fetched from api.quran.com on first use. Caching it keeps a green run
+      # from depending on someone else's uptime; a cold cache still works, it
+      # just costs one 1.6 MB download.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/quran-clip-creator
+          key: quran-corpus-v1
+
+      - run: scripts/verify.sh
+
+  skylos:
+    name: skylos gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Pinned: Skylos ships rules often, and an unpinned upgrade would turn
+      # new rules into a red build on a branch that changed nothing.
+      - run: pip install skylos==4.36.1
+
+      # No npm ci here on purpose -- verified that the gate reports the same
+      # findings with and without node_modules, so installing it would only
+      # cost time.
+      - run: scripts/verify-skylos.sh

@@ -17,6 +17,14 @@
 # (it never captures SKY-U006, SKY-E003 or SKY-SCA-*, whatever it is told). Each
 # line there is one pre-existing finding, with its reason written beside it.
 #
+# The committed baseline is `.skylos/baseline.portable.json`, in which the repo
+# root is written as `{ROOT}`. Skylos records absolute paths for the quality,
+# danger and repo-policy rules, so a baseline committed verbatim matches only the
+# machine that made it -- relativising them was measured to leak 166 of 177
+# suppressed findings back. This script substitutes the real root and writes the
+# `.skylos/baseline.json` that Skylos reads, which is why that file is generated
+# and gitignored rather than committed. The substitution is lossless.
+#
 # Neither file is a dumping ground. Adding an entry to either to get a green run
 # is the one thing this gate exists to stop.
 #
@@ -57,7 +65,9 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 
 RUN_DIR=".run"; mkdir -p "$RUN_DIR"
 LOG="$RUN_DIR/verify-skylos.log"
-BASELINE=".skylos/baseline.json"
+BASELINE=".skylos/baseline.json"            # generated, gitignored
+PORTABLE=".skylos/baseline.portable.json"   # committed, {ROOT}-relative
+MATERIALISE="scripts/skylos-baseline.py"
 ACCEPTED=".skylos/accepted.txt"
 
 fail() { echo; echo "  $*"; echo; exit 1; }
@@ -92,13 +102,18 @@ if [[ -z "$SKY" ]]; then
   exit 1
 fi
 
-# The baseline records absolute paths for the quality and danger rules, so it
-# only matches on the machine that generated it. Measured: relativising those
-# paths leaked 166 of 177 suppressed findings straight back. Regenerate after a
-# move, a rename, or a fresh clone elsewhere.
-[[ -f "$BASELINE" ]] || fail "No $BASELINE. Create it once with:
+# Rebuild the baseline Skylos reads from the committed portable copy, pinning
+# every {ROOT} to this checkout. Done every run: it is a sub-second rewrite, and
+# it means moving or re-cloning the repo cannot leave a stale baseline behind
+# that suppresses the wrong things.
+if [[ -f "$PORTABLE" ]]; then
+  python3 "$MATERIALISE" "$PORTABLE" "$BASELINE" "$PWD" \
+    || fail "Could not rebuild $BASELINE from $PORTABLE."
+elif [[ ! -f "$BASELINE" ]]; then
+  fail "Neither $PORTABLE nor $BASELINE exists. Create one with:
       $SKY baseline . -a --no-upload
-  The paths inside are absolute, so each checkout needs its own."
+  then store it in portable form -- see $PORTABLE in git history."
+fi
 
 echo
 echo "  skylos     $("$SKY" --version 2>&1 | head -1)"
