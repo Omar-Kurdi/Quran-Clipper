@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify": "scripts/verify.sh",
+    "verify:skylos": "scripts/verify-skylos.sh",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:start": "scripts/db.sh start",

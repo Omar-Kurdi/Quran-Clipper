@@ -1,0 +1,24 @@
+# Pre-existing findings that `skylos baseline` cannot record.
+#
+# `--baseline` captures most of what this repo already had, but three rule
+# families are re-reported on every run no matter what is in the baseline.
+# The ones below were all present before the gate existed, they are listed
+# here individually rather than waved through by rule, and anything NEW --
+# including a new occurrence of these same rules anywhere else -- still blocks.
+#
+# Format: the exact "file:line  RULE-ID" prefix of the finding. Comments and
+# blank lines are ignored. Do not add a line here to make a run go green; that
+# is the one thing this gate exists to prevent. Fix it, or bring it up.
+
+# Two parameters kept for signature symmetry with the other aligner entry
+# points. Real findings, and worth cleaning up -- but removing a parameter is
+# an application change, which the verification work is deliberately not doing.
+asr-service/app/align.py:1665  SKY-U006
+asr-service/app/align.py:2186  SKY-U006
+
+# False positives. Both are config files loaded by tooling rather than imported
+# by application code -- drizzle-kit reads one, PostCSS the other -- so "not
+# imported by any other file" is true and means nothing. Deleting either breaks
+# the build.
+drizzle.config.ts:1  SKY-E003
+postcss.config.mjs:1  SKY-E003

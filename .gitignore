@@ -81,3 +81,11 @@ scripts/audio/
 #   data/qul/    Morphology and mutashabihat exports from qul.tarteel.ai, which
 #                are downloaded from a signed-in account rather than fetched.
 data/
+
+# Skylos. The baseline and the accepted list are committed: together they record
+# the findings this repo already had, so the gate blocks on new problems rather
+# than on debt it did not create. The baseline stores absolute paths, so a
+# different checkout has to regenerate it -- it is committed as the record of
+# what was accepted, not as something every machine can use as-is. The cache
+# beside them is local scratch and is not committed.
+.skylos/cache/
