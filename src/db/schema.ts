@@ -34,11 +34,11 @@ export const projects = pgTable('projects', {
   aspectRatio: text('aspect_ratio').notNull().default('9:16'), // '9:16', '16:9', '1:1', '4:5'
   fontArabic: text('font_arabic').notNull().default('Scheherazade New'),
   fontTranslation: text('font_translation').notNull().default('Inter'),
-  arabicFontSize: integer('arabic_font_size').notNull().default(38),
+  arabicFontSize: integer('arabic_font_size').notNull().default(45),
   /** @deprecated The studio no longer renders transliteration. Kept so existing rows load; nothing writes it. */
   transliterationFontSize: integer('transliteration_font_size').notNull().default(24),
-  translationFontSize: integer('translation_font_size').notNull().default(38),
-  ayahNumberFontSize: integer('ayah_number_font_size').notNull().default(40),
+  translationFontSize: integer('translation_font_size').notNull().default(45),
+  ayahNumberFontSize: integer('ayah_number_font_size').notNull().default(50),
   textAlignment: text('text_alignment').notNull().default('center'),
   textColor: text('text_color').notNull().default('#ffffff'),
   accentColor: text('accent_color').notNull().default('#b8c7dc'),
@@ -77,7 +77,7 @@ export const projects = pgTable('projects', {
   cardBorder: boolean('card_border').notNull().default(true),
   
   // Branding
-  watermarkText: text('watermark_text').default('@QuranClipper'),
+  watermarkText: text('watermark_text').default('Quran-Clipper'),
   watermarkPosition: text('watermark_position').default('bottom-right'),
   
   // Timestamps JSON array: [{ verseNumber, verseKey, arabicText, translationText, startTime, endTime }]

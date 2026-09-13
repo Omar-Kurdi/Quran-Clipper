@@ -861,6 +861,39 @@ class RecitationResult:
     decode_agreement: float | None = None
 
 
+
+def _ayah_bounds(ref_words: list[tuple[str, int, str]]) -> dict[str, tuple[int, int]]:
+    """First and last reference index of every ayah, in reference order."""
+    bounds: dict[str, tuple[int, int]] = {}
+    for index, (verse_key, _, _) in enumerate(ref_words):
+        first, last = bounds.get(verse_key, (index, index))
+        bounds[verse_key] = (min(first, index), max(last, index))
+    return bounds
+
+
+def skipped_ayahs(ref_words: list[tuple[str, int, str]], segments: list[Segment]) -> list[str]:
+    """Ayahs with a caption either side of them but none of their own.
+
+    The completeness question asked the way it actually matters. An ayah in the
+    middle of a recitation that got no segment does not appear in the video at
+    all, and the caption before it is stretched over the audio where it was
+    recited, so the wrong ayah is on screen for several seconds.
+
+    `reference_coverage` cannot answer this. It is a fraction, and a fraction
+    cannot separate a dropped middle ayah from the trailing word or two a
+    phrase search legitimately stops short of -- on Al-Muddaththir 74:11-30
+    four whole ayahs went missing at a coverage of 0.87, which is unremarkable.
+
+    Only interior ayahs count, which is the boundary `_restore_skipped_ayahs`
+    repairs to, read back as a check on it.
+    """
+    keys = list(_ayah_bounds(ref_words))
+    captioned = {segment.verse_key for segment in segments}
+    placed = [i for i, key in enumerate(keys) if key in captioned]
+    if not placed:
+        return []
+    return [keys[i] for i in range(placed[0] + 1, placed[-1]) if keys[i] not in captioned]
+
 def _verse_starts(ref_words: list[tuple[str, int, str]]) -> dict[int, int]:
     """Index of the first reference word of each word's own ayah."""
     starts: dict[int, int] = {}
@@ -1356,6 +1389,67 @@ def _absorb_orphan_words(
 
     return repaired
 
+
+#: Why an ayah goes missing, and why nothing downstream notices.
+#:
+#: `assign_phrase_ranges_by_decode` gives each phrase window one range of
+#: reference words, and a range never spans an ayah boundary. So when the
+#: boundary detector offers no candidate between two ayahs, the window holding
+#: both can only claim one of them, and the other leaves the script entirely.
+#: It is not mistimed or mislabelled: `align_script` only ever sees the script,
+#: so those words get no frames, no segment and no caption.
+#:
+#: Measured on Al-Muddaththir 74:11-30, where 17 phrase windows had to carry 20
+#: ayahs: 74:13, 74:18, 74:21 and 74:29 all went this way. The read-out proves
+#: they were recited -- the window keyed 74:14 read back both ayahs,
+#: `وَبَنِينَ شُهُودًا وَمَهَّدْتُ لَهُ تَمْهِيدًا`. The matcher had no way to keep
+#: the half it could not key.
+#:
+#: `_absorb_orphan_words` cannot reach these, by construction: it offers
+#: stranded words to the two neighbouring segments, and both refuse a run that
+#: is a whole ayah of its own, since neither may carry another ayah's text.
+def _restore_skipped_ayahs(script: list[int], ref_words: list[tuple[str, int, str]]) -> list[int]:
+    """Put back an ayah the segmentation stepped over entirely.
+
+    Restoring the words to the script is the whole repair. Timing is decided
+    afterwards by one forced alignment over the entire clip, monotonic and
+    gapless over whatever it is given, so the recovered words are placed from
+    the acoustics rather than from anything guessed here. It also removes the
+    hole they left behind: `_fill_gaps_with_repeats` had been covering that
+    audio with invented repeats of the surrounding words, which is how three
+    segments of 74:22 -- two of them scoring 0.00 -- came to stand over the
+    place where 74:21 was recited.
+
+    Only ayahs the reading passes *over* are restored: ones with claimed text
+    both before and after them. A reference range that overhangs either end of
+    the recording is the ordinary case rather than a fault -- auto-detection
+    opens a little early on passages the Quran repeats verbatim, and a clip
+    routinely stops mid-passage -- and those ayahs really were not recited.
+    Forcing them in would steal time from words that were.
+    """
+    claimed = set(script)
+    if not claimed:
+        return script
+
+    lowest, highest = min(claimed), max(claimed)
+    restored = list(script)
+
+    for verse_key, (first, last) in _ayah_bounds(ref_words).items():
+        if not (lowest < first and last < highest):
+            continue
+        if any(word in claimed for word in range(first, last + 1)):
+            continue
+        # Where the script first steps past this ayah is where it was skipped.
+        at = next((p for p, word in enumerate(restored) if word > last), len(restored))
+        restored[at:at] = range(first, last + 1)
+        log.warning(
+            "ayah %s was recited but no phrase claimed it -- restoring its %d word(s): %r",
+            verse_key,
+            last - first + 1,
+            " ".join(ref_words[word][2] for word in range(first, last + 1)),
+        )
+
+    return restored
 
 def _carries_a_word(token: str, ref_words=None, expected: int | None = None) -> bool:
     """Is this read-out token a word, or a piece of one left by a cut?
@@ -2474,6 +2568,11 @@ def align_recitation(
         script.extend(range(begin, finish + 1))
     if not script:
         script = list(range(len(ref_words)))
+
+    # An ayah no phrase window could claim is still an ayah that was recited.
+    # See `_restore_skipped_ayahs` -- without this it leaves the pipeline here
+    # and never reappears.
+    script = _restore_skipped_ayahs(script, ref_words)
 
     # Give the reciter's own repeats text of their own, so the words around a
     # hole are not stretched across audio that said something else. See

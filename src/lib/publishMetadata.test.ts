@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildPublishMetadata, ayahReference, hashtagFor,
-  TITLE_MAX, DESCRIPTION_MAX, TAGS_MAX
+  TITLE_MAX, DESCRIPTION_MAX, TAGS_MAX, TITLE_HASHTAGS, TITLE_HASHTAG_MAX, captionFileText
 } from './publishMetadata';
 import { VerseData } from './quranData';
 
@@ -37,9 +37,52 @@ describe('publish metadata', () => {
 
   it('titles the clip by what it is, and marks it as a Short', () => {
     const meta = buildPublishMetadata(base);
-    expect(meta.title).toBe('Surah Al-Fatihah 1:1-7 | Abdul Rahman Al-Sudais #Shorts');
+    expect(meta.title).toBe(
+      'Surah Al-Fatihah 1:1-7 | Abdul Rahman Al-Sudais #Shorts #BeautifulRecitation #Quran'
+    );
     expect(meta.title.length).toBeLessThanOrEqual(TITLE_MAX);
     expect(meta.truncated).toBe(false);
+  });
+
+  it('carries at most TITLE_HASHTAG_MAX of the pool, all of them from it', () => {
+    const extras = buildPublishMetadata(base).title.match(/#\w+/g)!.filter(tag => tag !== '#Shorts');
+    expect(extras.length).toBeLessThanOrEqual(TITLE_HASHTAG_MAX);
+    expect(extras.every(tag => TITLE_HASHTAGS.includes(tag))).toBe(true);
+    // No tag twice, whatever the shuffle does.
+    expect(new Set(extras).size).toBe(extras.length);
+  });
+
+  it('gives one clip the same title every time it is asked', () => {
+    // The panel re-renders and the copy button reads it again; a title that
+    // reshuffled between the two would put something on the clipboard that
+    // nobody had read.
+    expect(buildPublishMetadata(base).title).toBe(buildPublishMetadata(base).title);
+  });
+
+  it('orders the pool differently for different clips', () => {
+    // The point of shuffling at all: consecutive uploads should not all carry
+    // the same tag in the same place. Two clips whose seeds differ is enough
+    // to show the order is not fixed.
+    const first = buildPublishMetadata(base).title;
+    const second = buildPublishMetadata({
+      ...base, surahNumber: 74, surahNameEnglish: 'Al-Muddaththir', ayahStart: 11, ayahEnd: 30
+    }).title;
+    const tagsOf = (title: string) => title.match(/#\w+/g)!.filter(tag => tag !== '#Shorts').join(' ');
+    expect(tagsOf(first)).not.toBe(tagsOf(second));
+  });
+
+  it('drops the pool hashtags before the reciter when the title will not fit', () => {
+    // Cut from the decorative end first: the hashtags are decoration, the
+    // reciter is a credit, and the passage is what the clip is.
+    const meta = buildPublishMetadata({
+      ...base,
+      reciterName: 'A Reciter With A Really Quite Long Name Indeed Yes'
+    });
+    expect(meta.title).toContain('A Reciter With A Really Quite Long Name Indeed Yes');
+    expect(meta.title).toContain('#Shorts');
+    expect(TITLE_HASHTAGS.some(tag => meta.title.includes(tag))).toBe(false);
+    expect(meta.title.length).toBeLessThanOrEqual(TITLE_MAX);
+    expect(meta.truncated).toBe(true);
   });
 
   it('drops the reciter rather than the passage when the title will not fit', () => {
@@ -152,4 +195,25 @@ describe('publish metadata', () => {
     expect(meta.description).toContain('Word-by-word glosses (quran.com)');
     expect(meta.description).toContain('Saheeh International');
   });
+  it('writes the caption file as title, description and tags, ruled apart', () => {
+    const meta = buildPublishMetadata(base);
+    const text = captionFileText(meta);
+    const [title, , description, , tags] = text.split('\n\n---\n\n').flatMap(part => [part, null]);
+    expect(title).toBe(meta.title);
+    expect(description).toBe(meta.description);
+    expect(tags).toBe(`TAGS\n${meta.tags.join(', ')}`);
+  });
+
+  it('keeps the caption file readable when the description runs to many lines', () => {
+    // The rule is what stops a title being read as the description's first
+    // line, which is the whole reason the file is not just three fields glued.
+    const text = captionFileText(buildPublishMetadata({
+      ...base,
+      includeVerseText: true,
+      verses: [verse('1:1', 'بِسْمِ ٱللَّهِ', 'In the Name of Allah')]
+    }));
+    expect(text.split('\n\n---\n\n')).toHaveLength(3);
+    expect(text.startsWith(buildPublishMetadata(base).title)).toBe(true);
+  });
+
 });

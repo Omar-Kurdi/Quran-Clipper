@@ -368,3 +368,33 @@ export function missingTranslationIds(
       verses.some(verse => !verse.translations?.[id])
   );
 }
+
+/**
+ * The translators to credit: the ones whose words are actually on screen.
+ *
+ * Chosen is not the same as drawn. With the word mask on, the card draws
+ * quran.com's word-by-word glosses -- a separate work from every translation in
+ * the picker -- and identical gloss lines collapse into one, so a chosen
+ * translation can be credited for a video that does not contain a syllable of
+ * it. Asking the captions themselves is the only honest answer, and it is the
+ * same function the canvas draws with.
+ *
+ * A slot showing a hand correction survives that collapse and stays credited:
+ * it is a correction *to* that edition, and it is on screen.
+ *
+ * Shared because the credit is written in two places now -- the caption panel
+ * and the caption file saved beside the video -- and they must not disagree
+ * about who wrote the words in the clip.
+ */
+export function creditedTranslationNames(
+  catalogue: TranslationOption[],
+  ids: string[],
+  verses?: { verseKey: string }[],
+  wordByWord?: boolean
+): string[] {
+  if (!catalogue.length) return [];
+  const options = selectedOptions(ids, catalogue);
+  if (!verses?.length) return options.map(option => option.name);
+  const drawn = drawnTranslationIds(verses as Parameters<typeof drawnTranslationIds>[0], ids, wordByWord);
+  return options.filter(option => drawn.includes(option.id)).map(option => option.name);
+}

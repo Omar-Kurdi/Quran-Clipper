@@ -679,6 +679,7 @@ export const ar: Dictionary = {
     choppyWarning:
       'لم يلحق العرض بمعدّل الإطارات المطلوب، فستتقطّع الصورة. جرّب معدّلًا أقل، أو أغلق النوافذ الأخرى التي تستعمل بطاقة الرسوميات.',
     download: container => `تنزيل الفيديو بصيغة ${container}`,
+    downloadWithCaption: container => `تنزيل ${container} مع النص`,
     previewButton: 'عاين الانتقالات أولًا',
     previewRendering: percent => `يجري إعداد المعاينة… ${percent}%`,
     previewNote: (width, height) =>

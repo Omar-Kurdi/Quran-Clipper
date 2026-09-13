@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
       bgBlur: body.bgBlur ?? 0,
       cardBgOpacity: body.cardBgOpacity ?? 30,
       cardBorder: body.cardBorder ?? true,
-      watermarkText: body.watermarkText || '@QuranClipper',
+      watermarkText: body.watermarkText || 'Quran-Clipper',
       watermarkPosition: body.watermarkPosition || 'bottom-right',
       versesJson: body.versesJson || [],
       fps: body.fps || 60,

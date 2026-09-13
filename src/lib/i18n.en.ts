@@ -697,6 +697,7 @@ export const en = {
     choppyWarning:
       'The render could not keep up with the frame rate you asked for, so the picture will stutter. Try a lower frame rate, or close other windows using the GPU.',
     download: (container: string) => `Download ${container} video`,
+    downloadWithCaption: (container: string) => `Download ${container} & caption`,
     previewButton: 'Preview the cuts first',
     previewRendering: (percent: number) => `Rendering preview… ${percent}%`,
     previewNote: (width: number, height: number) =>

@@ -387,5 +387,123 @@ check(
     align.alignment_bytes(10523, 7220, 1025) < align.MAX_ALIGN_MEMORY_GB * 1024**3 / 4,
 )
 
+
+# ---------------------------------------------------------------------------
+# Every ayah of the range reaches the script
+# ---------------------------------------------------------------------------
+#
+# Al-Muddaththir 74:11-30 recited by Abdullah Al-Mousa: the boundary detector
+# offered 17 phrase windows for 20 ayahs, and since a phrase range never spans
+# an ayah boundary, a window holding two ayahs could only claim one of them.
+# 74:13, 74:18, 74:21 and 74:29 left the script and so got no frames, no
+# segment and no caption -- the video simply skipped from 12 to 14. The
+# read-out proves they were recited: the window keyed 74:14 read back both
+# ayahs. `_absorb_orphan_words` cannot reach them, because a whole ayah is
+# refused by both neighbours.
+
+print("\n_restore_skipped_ayahs -- an ayah no phrase window could claim")
+
+muddaththir = corpus.words_for_range(74, 11, 30)
+
+bounds = align._ayah_bounds(muddaththir)
+dropped = {"74:13", "74:18", "74:21", "74:29"}
+skipped = [i for i, (key, _, _) in enumerate(muddaththir) if key not in dropped]
+restored = align._restore_skipped_ayahs(skipped, muddaththir)
+back = {muddaththir[i][0] for i in restored}
+
+check(
+    "all four skipped ayahs are back in the script",
+    back == set(bounds),
+    f"still missing {sorted(set(bounds) - back)}",
+)
+check(
+    "and nothing else was added or duplicated",
+    len(restored) == len(muddaththir),
+    f"script is {len(restored)} words against {len(muddaththir)} in the reference",
+)
+check(
+    "the script is still in reference order",
+    restored == sorted(restored),
+)
+check(
+    "a restored ayah lands between its own neighbours, not at the end",
+    restored.index(bounds["74:13"][0]) == restored.index(bounds["74:12"][1]) + 1
+    and restored.index(bounds["74:13"][1]) + 1 == restored.index(bounds["74:14"][0]),
+)
+
+# The guard that keeps this from inventing recitation. A reference range
+# routinely overhangs the audio at either end -- auto-detection opens early on
+# passages the Quran repeats verbatim, and a clip stops where the user cut it
+# -- and those ayahs really were not recited.
+truncated = [i for i, (key, _, _) in enumerate(muddaththir) if int(key.split(":")[1]) <= 20]
+check(
+    "an ayah past the end of the recording is left alone",
+    align._restore_skipped_ayahs(truncated, muddaththir) == truncated,
+)
+
+opens_early = [i for i, (key, _, _) in enumerate(muddaththir) if int(key.split(":")[1]) >= 14]
+check(
+    "an ayah before the recitation starts is left alone",
+    align._restore_skipped_ayahs(opens_early, muddaththir) == opens_early,
+)
+
+# A restart is the same words said twice, and the script represents it as
+# exactly that. Repairing a hole elsewhere must not disturb it.
+first22, last22 = bounds["74:22"]
+without13 = [i for i, (key, _, _) in enumerate(muddaththir) if key != "74:13"]
+with_restart = (
+    without13[: without13.index(last22) + 1]
+    + list(range(first22, last22 + 1))
+    + without13[without13.index(last22) + 1 :]
+)
+repaired = align._restore_skipped_ayahs(with_restart, muddaththir)
+check(
+    "a restart's repeated words survive the repair",
+    repaired.count(first22) == 2 and repaired.count(last22) == 2,
+)
+check(
+    "and the skipped ayah is still restored alongside it",
+    "74:13" in {muddaththir[i][0] for i in repaired},
+)
+
+# The same boundary, read back as a check rather than a repair. This is what
+# now reaches the studio as a warning when an ayah does go missing.
+print("\nskipped_ayahs -- saying so when an ayah gets no caption")
+
+
+def segments_for(keys: list[str]) -> list[align.Segment]:
+    return [align.Segment(key, 0, 0, 0.0, 1.0, 1.0) for key in keys]
+
+
+all_keys = list(dict.fromkeys(word[0] for word in muddaththir))
+
+check(
+    # `skipped_ayahs` reads its ayah order straight off this, and the repair
+    # inserts by it, so the order is load-bearing in both.
+    "ayah bounds come back in reference order",
+    list(align._ayah_bounds(muddaththir)) == all_keys,
+)
+check(
+    "the four that went missing are named",
+    align.skipped_ayahs(muddaththir, segments_for([k for k in all_keys if k not in dropped]))
+    == ["74:13", "74:18", "74:21", "74:29"],
+)
+check(
+    "a complete timeline reports nothing",
+    align.skipped_ayahs(muddaththir, segments_for(all_keys)) == [],
+)
+check(
+    "a recording that stops early reports nothing",
+    align.skipped_ayahs(muddaththir, segments_for(all_keys[:10])) == [],
+)
+check(
+    "nor does one whose reference opens before the recitation",
+    align.skipped_ayahs(muddaththir, segments_for(all_keys[6:])) == [],
+)
+check(
+    "and with no segments at all there is nothing to report",
+    align.skipped_ayahs(muddaththir, []) == [],
+)
+
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

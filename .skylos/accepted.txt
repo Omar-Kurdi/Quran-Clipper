@@ -13,8 +13,8 @@
 # Two parameters kept for signature symmetry with the other aligner entry
 # points. Real findings, and worth cleaning up -- but removing a parameter is
 # an application change, which the verification work is deliberately not doing.
-asr-service/app/align.py:1665  SKY-U006
-asr-service/app/align.py:2186  SKY-U006
+asr-service/app/align.py:1759  SKY-U006
+asr-service/app/align.py:2280  SKY-U006
 
 # False positives. Both are config files loaded by tooling rather than imported
 # by application code -- drizzle-kit reads one, PostCSS the other -- so "not

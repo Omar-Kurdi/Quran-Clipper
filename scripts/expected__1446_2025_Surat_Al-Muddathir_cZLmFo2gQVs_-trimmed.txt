@@ -1,0 +1,33 @@
+# Ground truth for _1446_2025_Surat_Al-Muddathir_cZLmFo2gQVs_-trimmed.wav (Al-Muddaththir 74:11-30), captured from the studio timeline.
+# One expected segment per line, in recitation order. Blank lines and #-comments ignored.
+#
+# Text is matched to corpus word ranges by skeleton, so the orthography does not have
+# to be exact.
+#
+# The lines below are read by scripts/eval_segments.py -- keep them.
+# clip: _1446_2025_Surat_Al-Muddathir_cZLmFo2gQVs_-trimmed.wav
+# passage: 74:11-30
+# audio-seconds: 86.34
+# trim: none
+# from: سورة المدثر كاملة ｜ الشيخ عبدالله الموسى ｜ شوال 1446هـ ｜ 2025 ｜ Surat Al-Muddathir [cZLmFo2gQVs].mp3 42.71-129.05
+
+ذَرْنِى وَمَنْ خَلَقْتُ وَحِيدًۭا
+وَجَعَلْتُ لَهُۥ مَالًۭا مَّمْدُودًۭا
+وَبَنِينَ شُهُودًۭا
+وَمَهَّدتُّ لَهُۥ تَمْهِيدًۭا
+ثُمَّ يَطْمَعُ أَنْ أَزِيدَ
+كَلَّآ ۖ إِنَّهُۥ كَانَ لِـَٔايَـٰتِنَا عَنِيدًۭا
+سَأُرْهِقُهُۥ صَعُودًا
+إِنَّهُۥ فَكَّرَ وَقَدَّرَ
+فَقُتِلَ كَيْفَ قَدَّرَ
+ثُمَّ قُتِلَ كَيْفَ قَدَّرَ
+ثُمَّ نَظَرَ
+ثُمَّ عَبَسَ وَبَسَرَ
+ثُمَّ أَدْبَرَ وَٱسْتَكْبَرَ
+فَقَالَ إِنْ هَـٰذَآ إِلَّا سِحْرٌۭ يُؤْثَرُ
+إِنْ هَـٰذَآ إِلَّا قَوْلُ ٱلْبَشَرِ
+سَأُصْلِيهِ سَقَرَ
+وَمَآ أَدْرَىٰكَ مَا سَقَرُ
+لَا تُبْقِى وَلَا تَذَرُ
+لَوَّاحَةٌۭ لِّلْبَشَرِ
+عَلَيْهَا تِسْعَةَ عَشَرَ

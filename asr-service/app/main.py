@@ -515,7 +515,27 @@ async def align_endpoint(
             "The ayah range probably does not match the recording."
         )
         log.warning("%s (reference was %d words, mean score %.4f)", warning, len(ref_words), mean_score)
-    elif coverage < MIN_REFERENCE_COVERAGE:
+    else:
+        # An ayah with captions on both sides of it but none of its own is the
+        # failure this must never repeat quietly. On Al-Muddaththir 74:11-30 it
+        # took four of them -- 13, 18, 21 and 29 -- and the only sign was a
+        # coverage of 0.87, comfortably inside the threshold below, while the
+        # video jumped from 12 straight to 14 and the caption before each hole
+        # was stretched over its audio.
+        #
+        # `align._restore_skipped_ayahs` should leave this unreachable. If it
+        # fires, that recovery has a case it does not yet cover -- so say which
+        # ayahs, because otherwise they are found by watching the video.
+        skipped = align.skipped_ayahs(ref_words, segments)
+        if skipped:
+            warning = (
+                f"No caption was produced for {', '.join(skipped)}, "
+                f"though {'they were' if len(skipped) > 1 else 'it was'} recited "
+                "between ayahs that did get one. The timeline is incomplete."
+            )
+            log.warning("%s (reference was %d words, coverage %.4f)", warning, len(ref_words), coverage)
+
+    if warning is None and coverage < MIN_REFERENCE_COVERAGE:
         warning = (
             f"Only {coverage:.0%} of the supplied text was given any time in this recording. "
             "The range is probably wider than the audio."

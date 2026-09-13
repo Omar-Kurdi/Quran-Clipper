@@ -90,8 +90,77 @@ export function hashtagFor(name: string): string {
   return cleaned ? `#${cleaned}` : '';
 }
 
+/**
+ * Hashtags that may ride along with `#Shorts` in the title.
+ *
+ * A list rather than two words spelled into the title, so the cap below means
+ * something: add a third and a title still carries two, chosen per clip
+ * instead of always the same two.
+ */
+export const TITLE_HASHTAGS = ['#Quran', '#BeautifulRecitation'];
+
+/** How many of `TITLE_HASHTAGS` one title may carry, on top of `#Shorts`. */
+export const TITLE_HASHTAG_MAX = 2;
+
+/**
+ * `TITLE_HASHTAGS` shuffled for one clip, capped at `TITLE_HASHTAG_MAX`.
+ *
+ * Deterministic on the clip rather than on the call, which is the whole point
+ * of doing it here. `buildPublishMetadata` is pure and the caption panel
+ * re-renders freely, so `Math.random()` would rewrite the title while someone
+ * was reading it -- and reshuffle it between the copy button and the paste.
+ * Seeding on what identifies the clip gives what is actually wanted, which is
+ * that consecutive uploads do not all carry the same tag in the same place,
+ * while any one clip's title stays put.
+ *
+ * FNV-1a and an LCG, spelled out here rather than shared: this needs a stable
+ * spread over a handful of strings, not a hash, and the only other digest in
+ * the codebase belongs to ground-truth file naming.
+ */
+export function titleHashtags(seed: string): string[] {
+  const pool = [...TITLE_HASHTAGS];
+  let state = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    state = Math.imul(state ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+  }
+  for (let i = pool.length - 1; i > 0; i--) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const j = state % (i + 1);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, TITLE_HASHTAG_MAX);
+}
+
 const trimTo = (text: string, limit: number) =>
   text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+
+/**
+ * The title, and whether anything had to be dropped to fit `TITLE_MAX`.
+ *
+ * Assembled longest-first and cut from the most decorative end: the pool
+ * hashtags are decoration, the reciter is a credit, and the surah with its
+ * reference is what the clip *is* -- a title that loses those is no longer
+ * about this video. `#Shorts` survives every candidate; it is the one part
+ * that changes how the platform treats the upload rather than how it reads.
+ */
+export function buildTitle(surah: string, reference: string, reciter: string): {
+  title: string;
+  truncated: boolean;
+} {
+  const extras = titleHashtags(`${reference}|${reciter}`);
+  const subject = `Surah ${surah} ${reference}`;
+  const withReciter = `${subject}${reciter ? ` | ${reciter}` : ''}`;
+
+  const candidates: string[] = [];
+  for (let keep = extras.length; keep >= 0; keep--) {
+    candidates.push(`${withReciter} #Shorts ${extras.slice(0, keep).join(' ')}`.trimEnd());
+  }
+  candidates.push(`${subject} #Shorts`);
+
+  const fits = candidates.find(candidate => candidate.length <= TITLE_MAX);
+  const chosen = fits ?? candidates[candidates.length - 1];
+  return { title: trimTo(chosen, TITLE_MAX), truncated: chosen !== candidates[0] };
+}
 
 export function buildPublishMetadata(input: PublishInput): PublishMetadata {
   const reference = ayahReference(input.surahNumber, input.ayahStart, input.ayahEnd);
@@ -100,17 +169,9 @@ export function buildPublishMetadata(input: PublishInput): PublishMetadata {
   let truncated = false;
 
   // --- title -------------------------------------------------------------
-  // The reciter goes first when something has to give: the surah and the
-  // reference are what the clip *is*, and a title that loses them is no longer
-  // about this video. #Shorts is kept whatever happens -- it is the one part
-  // that changes how the platform treats the upload rather than how it reads.
-  const full = `Surah ${surah} ${reference}${reciter ? ` | ${reciter}` : ''} #Shorts`;
-  let title = full;
-  if (title.length > TITLE_MAX) {
-    title = `Surah ${surah} ${reference} #Shorts`;
-    truncated = true;
-  }
-  title = trimTo(title, TITLE_MAX);
+  const titled = buildTitle(surah, reference, reciter);
+  const title = titled.title;
+  if (titled.truncated) truncated = true;
 
   // --- hashtags and tags -------------------------------------------------
   const surahTag = hashtagFor(surah);
@@ -203,4 +264,17 @@ export function buildPublishMetadata(input: PublishInput): PublishMetadata {
   );
 
   return { title, description, hashtags, tags, truncated };
+}
+
+/**
+ * The caption as a file, for saving next to the video.
+ *
+ * The same three fields the caption panel shows, in the order an upload form
+ * asks for them, with rules between so a title is never mistaken for the first
+ * line of a description when this is read back weeks later. Plain text rather
+ * than JSON: the only thing that ever opens it is a person with an upload form
+ * in the other window.
+ */
+export function captionFileText(meta: PublishMetadata): string {
+  return [meta.title, '---', meta.description, '---', `TAGS\n${meta.tags.join(', ')}`].join('\n\n');
 }

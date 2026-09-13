@@ -12,7 +12,9 @@ import {
 import { Dialog } from './Dialog';
 import { PublishCaption } from './PublishCaption';
 import { StudioVideo } from './StudioVideo';
-import { PublishInput } from '@/lib/publishMetadata';
+import { buildPublishMetadata, captionFileText, PublishInput } from '@/lib/publishMetadata';
+import { creditedTranslationNames } from '@/lib/translations';
+import { loadTranslationCatalogue } from '@/lib/translationCatalogue';
 import { useT } from './LocaleProvider';
 
 // Re-exported so existing importers of this module keep working; the function
@@ -144,6 +146,62 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
    * result screen does -- so rendering again would quietly forget it.
    */
   const [captionIncludesText, setCaptionIncludesText] = useState(false);
+
+  /** One file, by the same anchor click the plain download button is. */
+  const save = (href: string, name: string) => {
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = name;
+    link.click();
+  };
+
+  /** Set while the caption is being fetched and written, so the button can say so. */
+  const [savingCaption, setSavingCaption] = useState(false);
+
+  /**
+   * The video and its caption, from one click.
+   *
+   * Two files rather than one, because the caption is text and the video is
+   * not, and the next thing that happens to both is an upload form that wants
+   * them separately. They share a stem so the pair stays obvious in a downloads
+   * folder holding a dozen renders -- the container is stripped rather than
+   * assumed, since a fallback render writes `.webm`.
+   *
+   * The catalogue is fetched here rather than held in state: this is the same
+   * "about to be published" moment that justifies the caption panel fetching it
+   * on open, and going to the network on a click nobody made would put the
+   * studio's startup back on it. `loadTranslationCatalogue` serves the cache
+   * after the first call, so opening the panel first costs nothing here.
+   *
+   * The text goes first. Browsers meter downloads that a single gesture starts,
+   * and the small one is the one that suffers if the second is held back -- and
+   * if the browser does ask to allow multiple downloads, the video is the file
+   * whose prompt is obviously worth answering.
+   */
+  const downloadWithCaption = async () => {
+    if (!exportedBlobUrl || savingCaption) return;
+    setSavingCaption(true);
+    try {
+      const catalogue = await loadTranslationCatalogue();
+      const meta = buildPublishMetadata({
+        ...publish,
+        translationNames: creditedTranslationNames(
+          catalogue, translationIds, publish.verses, publish.wordByWord
+        ),
+        includeVerseText: captionIncludesText
+      });
+      const caption = URL.createObjectURL(
+        new Blob([captionFileText(meta)], { type: 'text/plain;charset=utf-8' })
+      );
+      save(caption, `${downloadFileName.replace(/\.[^./]+$/, '')}.txt`);
+      // Revoking straight away cancels a download the browser has not started
+      // reading yet; the URL is dropped once it plainly has.
+      window.setTimeout(() => URL.revokeObjectURL(caption), 10_000);
+      save(exportedBlobUrl, downloadFileName);
+    } finally {
+      setSavingCaption(false);
+    }
+  };
 
   // Clear the previous render whenever the modal is reopened. Without this the
   // result screen from the last export is still mounted, so a second export --
@@ -643,6 +701,23 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                    WebM for a render that produced MP4. */}
               <span>{t.exportModal.download(downloadFileName.endsWith('.mp4') ? 'MP4' : 'WebM')}</span>
             </a>
+
+            {/* The same file, plus the text that goes in the upload form beside
+                it. A second button rather than a change to the one above: the
+                caption costs a catalogue fetch and writes a file nobody asked
+                for, and the plain download is what most renders want. */}
+            <button
+              onClick={downloadWithCaption}
+              disabled={savingCaption}
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-emerald-300 font-bold rounded-xl border border-emerald-500/40 flex items-center justify-center gap-2 transition-all"
+            >
+              {savingCaption
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Download className="w-4 h-4" />}
+              <span>
+                {t.exportModal.downloadWithCaption(downloadFileName.endsWith('.mp4') ? 'MP4' : 'WebM')}
+              </span>
+            </button>
 
             {/* Beside the download rather than anywhere else: the next thing
                 that happens to this file is an upload form. */}
