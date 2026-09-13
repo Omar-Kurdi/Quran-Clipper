@@ -1,7 +1,7 @@
 # Quran Clipper Studio
 
 <p align="center">
-  <img src="docs/screenshots/Banner.png" alt="Banner.">
+  <img src="docs/screenshots/Banner.jpg" alt="Banner.">
 </p>
 
 **English · [العربية](README.ar.md)**

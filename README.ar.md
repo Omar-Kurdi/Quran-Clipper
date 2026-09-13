@@ -1,7 +1,7 @@
 # Quran Clipper — استوديو فيديوهات التلاوة
 
 <p align="center">
-  <img src="docs/screenshots/Banner.png" alt="لافتة المشروع.">
+  <img src="docs/screenshots/Banner.jpg" alt="لافتة المشروع.">
 </p>
 
 **[English](README.md) · العربية**
