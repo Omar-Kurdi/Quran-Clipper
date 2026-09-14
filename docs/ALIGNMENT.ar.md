@@ -1,5 +1,7 @@
 # كيف يعمل توقيت التلاوة
 
+<div dir="rtl">
+
 **[English](ALIGNMENT.md) · العربية**
 
 يشرح هذا المستند لماذا بُني خط مطابقة الصوت على هذا النحو، ويسجّل القياسات التي وراء التصميم. وكل
@@ -456,3 +458,5 @@ asr-service/.venv/bin/python scripts/test_alignment_rules.py
 # أعطال التقطيع المبلَّغ عنها على تلاوات حقيقية (تحتاج المقاطع)
 asr-service/.venv/bin/python scripts/test_reported_cases.py
 ```
+
+</div>

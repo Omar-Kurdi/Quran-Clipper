@@ -34,9 +34,9 @@ postcss.config.mjs:1  SKY-E003
 # text, and the mark is how a Latin word or a number is kept from flipping the
 # run around it. It is invisible because that is its entire job. Removing them
 # would corrupt the rendering of the very documentation they appear in.
-README.ar.md:482  SKY-D260
-README.ar.md:798  SKY-D260
-docs/ALIGNMENT.ar.md:91  SKY-D260
+README.ar.md:484  SKY-D260
+README.ar.md:800  SKY-D260
+docs/ALIGNMENT.ar.md:93  SKY-D260
 
 # The other two are ordinary prose and an ordinary docstring, flagged for
 # describing how forced alignment differs from free decoding. Both sentences are
