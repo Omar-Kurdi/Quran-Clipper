@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { exportFileName } from '@/lib/exportName';
 import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
-import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Play, Eye } from 'lucide-react';
+import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Eye } from 'lucide-react';
 import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
 import {
   EXPORT_PRESETS, QUALITY_TIERS, QualityTier, ExportPlan,
@@ -385,7 +385,6 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">{t.exportModal.presetHelp}</p>
             </div>
 
             {/* Export Settings */}
@@ -564,13 +563,19 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               </div>
             ) : (
               <>
+              {/* What the exporter cannot check for you, said where the render
+                  is actually started rather than in a panel that may never
+                  have been opened. */}
+              <div className="mb-3 flex items-start gap-2.5 rounded-lg border-2 border-amber-500/70 bg-amber-500/10 px-3 py-2.5">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-300 mt-0.5" aria-hidden="true" />
+                <p className="text-xs leading-relaxed text-amber-100">
+                  <strong className="text-amber-200">{t.exportModal.beforeYouPublish}</strong>{' '}
+                  {t.exportModal.beforeYouPublishBody}
+                </p>
+              </div>
               {/* Said before it costs anything, so it is a known rule rather
                   than a surprise afterwards. */}
-              {fastPath ? (
-                <p className="mb-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-200">
-                  <strong>{t.exportModal.fastPathTitle}</strong> {t.exportModal.fastPathBody}
-                </p>
-              ) : (
+              {!fastPath && (
                 <p className="mb-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[11px] leading-relaxed text-slate-300">
                   <strong className="text-amber-300">{t.exportModal.keepTabOpenTitle}</strong>{' '}
                   {t.exportModal.keepTabOpenBody}

@@ -446,11 +446,6 @@ export const Inspector: React.FC<InspectorProps> = ({
         <span className="flex-1" />
         <Button variant="danger" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={onDelete} disabled={verses.length <= 1} aria-label={t.inspector.deleteAyah} />
       </div>
-
-      <p className="text-[11px] text-slate-400 leading-relaxed border-t border-slate-800 pt-2">
-        <strong className="text-slate-200">{t.inspector.beforeYouPublish}</strong>{' '}
-        {t.inspector.beforeYouPublishBody}
-      </p>
     </div>
   );
 };

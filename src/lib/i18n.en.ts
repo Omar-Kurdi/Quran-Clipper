@@ -383,7 +383,7 @@ export const en = {
         : `The same words are recited in ${count} other places — ${examples}${count > 4 ? ', and more' : ''}. This caption is labelled ${verseKey} — if the reciter was on one of those instead, the ayah number on the video is wrong.`,
     translationFollowsWords: 'Translate only these words',
     translationFollowsWordsHint:
-      'The text under the Arabic follows the words above rather than the whole ayah, so a caption covering half a verse stops saying the other half. These glosses are quran.com’s own word-by-word English — one dataset, not one per edition — so the wording differs from the translation chosen above, it reads as words in a row ("Say He (is) Allah the One"), and every translation on the card collapses into that single line. The caption credit follows suit. Applies to every caption.',
+      'The text under the Arabic follows the selected words rather than the whole ayah, and uses quran.com’s word-by-word English.',
     oneGlossLine: (count: number) =>
       count === 1
         ? 'The other translation is hidden while this is ticked: the word-by-word glosses are a single English dataset, so it would draw the identical line. Untick to edit it on its own.'
@@ -401,10 +401,7 @@ export const en = {
     splitOneWord: 'A caption showing one word cannot be split in two',
     merge: 'Merge',
     mergeHint: 'Join this caption to the one after it',
-    mergeNotSameAyah: 'Captions can only be merged within one ayah',
-    beforeYouPublish: 'Before you publish:',
-    beforeYouPublishBody:
-      'review every ayah, its timing and its translation yourself. You are responsible for what you publish.'
+    mergeNotSameAyah: 'Captions can only be merged within one ayah'
   },
 
   style: {
@@ -637,9 +634,11 @@ export const en = {
     fps30: '30 FPS Standard',
     resolutionLabel: 'Output Resolution:',
 
+    beforeYouPublish: 'Before you publish:',
+    beforeYouPublishBody:
+      'review every ayah, its timing and its translation yourself. You are responsible for what you publish.',
+
     presetLabel: 'Where is this going?',
-    presetHelp:
-      'Sets the frame shape, the resolution and the bitrate for that platform. Every one of them re-encodes what you upload, so these render well above what they keep — their pass then has something clean to work from.',
     presets: {
       tiktok: 'TikTok',
       reels: 'Instagram Reels',
@@ -681,9 +680,6 @@ export const en = {
     renderedIn: 'Rendered in',
     renderedOn: (gpu: string) => ` on ${gpu}.`,
     cancelRender: 'Stop this render and close',
-    fastPathTitle: 'Encoded frame by frame.',
-    fastPathBody:
-      'This browser can encode with WebCodecs, so the clip is rendered as fast as the machine manages rather than in real time \u2014 measured at 6\u201310\u00d7 \u2014 and written as MP4. Video backgrounds are decoded frame by frame and come along. You can switch tabs while it runs.',
     keepTabOpenTitle: 'Keep this tab open and visible.',
     keepTabOpenBody:
       'The picture is recorded from the canvas as it plays, and browsers stop drawing a tab that is in the background. If you switch away the render pauses and waits for you \u2014 nothing is lost, but the wait is added to the total.',
