@@ -9,14 +9,26 @@
  * N+1, with no clock involved: it runs at whatever speed the encoder sustains,
  * in a canvas that never has to be on screen.
  *
- * What it cannot do is video backgrounds. Producing a frame for an arbitrary
- * moment needs the background at that moment too, and the only way to ask an
- * HTMLVideoElement for one is to seek it -- measured here at 21.9ms median on
- * a buffered 1080x1920 clip, which is 6.3 minutes of seeking alone for a
- * ten-minute export at 30fps, and slower than real time at 60. Doing that
- * would make this path slower than the one it replaces. Stills, gradients and
- * solid colours have no such problem, so those are what it accepts;
- * `canEncodeOffline` is the gate and video backgrounds keep the recorder.
+ * Video backgrounds used to be what it could not do. Producing a frame for an
+ * arbitrary moment needs the background at that moment too, and the only way
+ * to ask an HTMLVideoElement for one is to seek it -- measured here at 21.9ms
+ * median on a buffered 1080x1920 clip, which is 6.3 minutes of seeking alone
+ * for a ten-minute export at 30fps, and slower than real time at 60. That is
+ * why `videoFrames` decodes a clip in order instead, and why this path now
+ * takes them.
+ *
+ * The container used to be what was left. `videoFrames` demuxes with mp4box,
+ * which reads MP4 and nothing else, while the upload control accepts any
+ * `video/*` -- so a Matroska background was fetched, failed to demux, and the
+ * render carried on and painted the gradient fallback in its place. An export
+ * came back without the clip in it and nothing said why. A container mp4box
+ * cannot read is now read by seeking a video element instead, so whatever the
+ * browser plays, this path renders. Only a file the browser cannot play either
+ * aborts, and then the whole export falls back to the real-time recorder.
+ *
+ * `canEncodeOffline` is therefore about the browser, not the project: it
+ * cannot tell an unreadable background from a readable one without fetching it
+ * first, which is the render's own work.
  */
 
 import { spectrumAt, SPECTRUM_BINS } from '@/lib/spectrum';

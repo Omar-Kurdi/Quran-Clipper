@@ -65,6 +65,8 @@ asr-service/=*
 *.wav
 *.m4a
 *.ogg
+# A background clip for testing the export path keeps the same company.
+*.mkv
 
 # Where the studio's "Ground truth" button saves the recording a set of expected
 # captions describes. The extensions above cover most of it; this covers the

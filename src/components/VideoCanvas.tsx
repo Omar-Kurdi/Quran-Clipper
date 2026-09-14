@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData } from '@/lib/quranData';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
@@ -1213,7 +1213,13 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           return mediaPoolRef.current.get(active.url) ?? null;
         }
         const clip = await clipFor(active.url);
-        if (!clip) return null;
+        // Null here means the browser could not play the file at all --
+        // `videoFrames` already tried demuxing it and then seeking it. That is
+        // not a background-less frame: painting on without it would hand back
+        // an export with the gradient fallback where the clip should be, and
+        // nothing would say so. The throw reaches `useVideoExport`, which
+        // falls back to recording in real time.
+        if (!clip) throw new Error(`background cannot be decoded frame by frame: ${active.url.slice(0, 80)}`);
         // Backgrounds loop, which is the whole reason this can be sequential:
         // the clip's own time sweeps 0 to its length over and over while
         // output time only moves forward.
@@ -1223,9 +1229,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
       try {
         // The same `paintFrame` the preview uses, which is the point of having
-        // split it out: one drawing, two ways of driving it. The background is
-        // whichever still is loaded -- `canEncodeOffline` has already refused
-        // anything that would need decoding at a particular moment.
+        // split it out: one drawing, two ways of driving it. Backgrounds come
+        // from `videoFrames`, demuxed where that works and seeked where it
+        // does not; one it cannot read at all aborts this path rather than
+        // being left out of the picture.
         return await encodeOffline({
           width: output?.width ?? dimensions.width,
           height: output?.height ?? dimensions.height,

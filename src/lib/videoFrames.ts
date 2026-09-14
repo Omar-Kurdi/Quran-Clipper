@@ -60,8 +60,137 @@ function codecDescription(
   return undefined;
 }
 
-/** Why a clip could not be opened, for the console when one cannot. */
+/** Why a clip could not be demuxed, for the console when one cannot. */
 type OpenFailure = 'fetch' | 'demux' | 'no-video-track' | 'no-samples' | 'unsupported-codec' | 'no-decoder';
+
+/** How long to wait for one seek before drawing whatever frame is there. */
+const SEEK_TIMEOUT_MS = 2000;
+
+/** Box types an ISO base-media file can legitimately open with. */
+const ISO_BMFF_OPENERS = ['ftyp', 'styp', 'moov', 'mdat', 'free', 'skip'];
+
+/**
+ * Whether these bytes are even a candidate for the MP4 demuxer.
+ *
+ * An ISO base-media file opens with a box: four bytes of size, then four
+ * characters of type. Matroska opens with the EBML signature instead, and
+ * handing that to mp4box makes it read a length and a type out of the middle
+ * of a header and report `Invalid box type` -- on `console.error`, which in
+ * development is an error overlay and a red issue badge over the studio. The
+ * export was fine; the message was mp4box declining a container that was never
+ * its to read, once per background per render.
+ *
+ * There is no quieting it from outside: mp4box's own `setLogLevel` treats
+ * anything above `error` as `error`, and the log site that emits this one does
+ * not pass the file, so `onError` never gets the chance to swallow it. Asking
+ * the question before the demuxer does is what actually stops it.
+ *
+ * A false yes costs nothing -- the demuxer fails as it did before and the
+ * seeking path still gets its turn.
+ */
+function looksLikeIsoBmff(bytes: ArrayBuffer): boolean {
+  if (bytes.byteLength < 8) return false;
+  const type = String.fromCharCode(...new Uint8Array(bytes, 4, 4));
+  return ISO_BMFF_OPENERS.includes(type);
+}
+
+/**
+ * The same clip, read by seeking a video element instead of demuxing.
+ *
+ * `openBackgroundClip` demuxes with mp4box, which reads MP4 and nothing else.
+ * The upload control accepts any `video/*`, and a Matroska or WebM background
+ * is an ordinary thing to have -- so when the demuxer cannot read a container,
+ * the browser's own media stack is asked instead. It plays everything the
+ * `<video>` element does, which is the whole point: what the studio previewed
+ * is what the export renders, whatever it arrived in.
+ *
+ * Seeking is what the decode path exists to avoid, and this is slower. It is
+ * not slower than the alternative it replaces: without it an unreadable
+ * container aborts the frame-by-frame path and the whole export falls back to
+ * recording in real time, at the preview's resolution and in WebM. Measured on
+ * a 720x1280 AV1-in-Matroska clip, forward-only: 8.6ms median a frame, 12.1ms
+ * at p90 -- about 41 seconds of seeking for a 160 second export at 30fps,
+ * against the 160 the recorder would take.
+ *
+ * Frames are owned the way the decode path owns them: the one handed out stays
+ * valid until the next call, and the clip closes it. A caller that keeps one
+ * past that is holding a closed frame either way.
+ */
+/** A video element with the clip loaded, or null when the browser refuses it too. */
+async function loadElement(url: string): Promise<HTMLVideoElement | null> {
+  const video = document.createElement('video');
+  video.crossOrigin = 'anonymous';
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.src = url;
+
+  const loaded = await new Promise<boolean>(resolve => {
+    let settled = false;
+    const done = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
+    video.addEventListener('loadeddata', () => done(true), { once: true });
+    video.addEventListener('error', () => done(false), { once: true });
+    video.load();
+  });
+  return loaded && video.videoWidth ? video : null;
+}
+
+/** Moves the element to `seconds`, resolving when the frame there is showing. */
+function seekTo(video: HTMLVideoElement, seconds: number): Promise<void> {
+  return new Promise<void>(resolve => {
+    // An exact re-ask fires no `seeked` at all, and waiting for one would hang
+    // the render on a background that simply has not moved yet.
+    if (video.currentTime === seconds) return resolve();
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      video.removeEventListener('seeked', done);
+      resolve();
+    };
+    const timer = setTimeout(done, SEEK_TIMEOUT_MS);
+    video.addEventListener('seeked', done);
+    video.currentTime = seconds;
+  });
+}
+
+async function openSeekingClip(url: string): Promise<BackgroundClip | null> {
+  if (typeof VideoFrame === 'undefined') return null;
+
+  const video = await loadElement(url);
+  if (!video) {
+    console.warn(`[videoFrames] ${url.slice(0, 80)}: the browser cannot play this either; the export falls back to recording.`);
+    return null;
+  }
+
+  let held: VideoFrame | null = null;
+
+  return {
+    duration: Number.isFinite(video.duration) ? video.duration : 0,
+    width: video.videoWidth,
+    height: video.videoHeight,
+    close() {
+      held?.close();
+      held = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    },
+    async frameAt(seconds) {
+      const at = Math.max(0, seconds);
+      await seekTo(video, at);
+      held?.close();
+      try {
+        held = new VideoFrame(video, { timestamp: Math.round(at * 1e6) });
+      } catch {
+        // A tainted element, or one that lost its data mid-render.
+        held = null;
+      }
+      return held;
+    },
+  };
+}
 
 /**
  * Opens a clip for sequential reading, or returns null when it cannot be read
@@ -69,20 +198,32 @@ type OpenFailure = 'fetch' | 'demux' | 'no-video-track' | 'no-samples' | 'unsupp
  * Null is an ordinary answer: the caller falls back to real-time recording.
  */
 export async function openBackgroundClip(url: string): Promise<BackgroundClip | null> {
-  const give_up = (why: OpenFailure) => {
-    console.warn(`[videoFrames] ${url.slice(0, 80)}: ${why}; this background keeps the real-time recorder.`);
-    return null;
+  // Every demux failure is a container or codec mp4box could not read, not a
+  // verdict on the file -- so the seeking path gets a turn before the export
+  // gives up on the background. The exception is having no WebCodecs at all,
+  // where there is nothing left to try.
+  const fall_back = (why: OpenFailure) => {
+    console.warn(`[videoFrames] ${url.slice(0, 80)}: ${why}; reading this background by seeking instead.`);
+    return openSeekingClip(url);
   };
-  if (typeof VideoDecoder === 'undefined') return give_up('no-decoder');
+  if (typeof VideoDecoder === 'undefined') {
+    console.warn(`[videoFrames] ${url.slice(0, 80)}: no-decoder; this background keeps the real-time recorder.`);
+    return null;
+  }
 
   let bytes: ArrayBuffer;
   try {
     const res = await fetch(url);
-    if (!res.ok) return give_up('fetch');
+    if (!res.ok) return fall_back('fetch');
     bytes = await res.arrayBuffer();
   } catch {
-    return give_up('fetch');
+    return fall_back('fetch');
   }
+
+  // Ask before handing it over, so a container that is plainly not an MP4
+  // goes straight to the seeking path instead of through the demuxer's
+  // complaint.
+  if (!looksLikeIsoBmff(bytes)) return fall_back('demux');
 
   const MP4Box = (await import('mp4box')) as unknown as {
     createFile(): Record<string, unknown>;
@@ -132,8 +273,8 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
     setTimeout(() => done(false), 20000);
   });
 
-  if (!track) return give_up('no-video-track');
-  if (!ready || !samples.length) return give_up('no-samples');
+  if (!track) return fall_back('no-video-track');
+  if (!ready || !samples.length) return fall_back('no-samples');
 
   const info = track as Record<string, unknown>;
   const timescale = info.timescale as number;
@@ -150,9 +291,9 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
   };
   try {
     const check = await VideoDecoder.isConfigSupported(config);
-    if (!check.supported) return give_up('unsupported-codec');
+    if (!check.supported) return fall_back('unsupported-codec');
   } catch {
-    return give_up('unsupported-codec');
+    return fall_back('unsupported-codec');
   }
 
   let queue: VideoFrame[] = [];
