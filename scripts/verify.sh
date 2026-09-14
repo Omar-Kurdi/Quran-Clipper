@@ -71,6 +71,9 @@ run "unit tests" unit       npx vitest run
 
 if [[ -n "$PY" ]]; then
   run "alignment rules" alignment-rules "$PY" scripts/test_alignment_rules.py
+  # The Skylos gate decides whether a change ships, so the rule it applies is
+  # checked here rather than only in the gate that applies it.
+  run "gate matcher" skylos-accepted "$PY" scripts/test_skylos_accepted.py
 else
   printf '  %-20s ... FAILED  (no usable interpreter)\n' "alignment rules"
   SUMMARY+=("$(printf '  %-20s FAILED -- no Python with numpy' "alignment rules")")

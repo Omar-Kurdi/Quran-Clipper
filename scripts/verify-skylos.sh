@@ -15,7 +15,11 @@
 #
 # `.skylos/accepted.txt` covers the handful `skylos baseline` refuses to record
 # (it never captures SKY-U006, SKY-E003 or SKY-SCA-*, whatever it is told). Each
-# line there is one pre-existing finding, with its reason written beside it.
+# line there names a file, a rule and how many of that rule the file is allowed,
+# with its reason written above it. It carries no line numbers on purpose --
+# those drift the moment anything above them moves, which is the fault the
+# baseline has and cannot be regenerated away here. scripts/skylos-accepted.py
+# does the matching and explains the trade.
 #
 # The committed baseline is `.skylos/baseline.portable.json`, in which the repo
 # root is written as `{ROOT}`. Skylos records absolute paths for the quality,
@@ -69,6 +73,7 @@ BASELINE=".skylos/baseline.json"            # generated, gitignored
 PORTABLE=".skylos/baseline.portable.json"   # committed, {ROOT}-relative
 MATERIALISE="scripts/skylos-baseline.py"
 ACCEPTED=".skylos/accepted.txt"
+MATCH_ACCEPTED="scripts/skylos-accepted.py"
 
 fail() { echo; echo "  $*"; echo; exit 1; }
 
@@ -125,18 +130,13 @@ echo "done"
 
 # One scan, three verdicts: dependency findings are advisory, accepted ones are
 # named in a committed file, everything else blocks.
-ACCEPT_RE="$RUN_DIR/skylos-accepted.tmp"
-grep -vE '^\s*#|^\s*$' "$ACCEPTED" 2>/dev/null >"$ACCEPT_RE" || : >"$ACCEPT_RE"
-
-ALL="$(grep -E '  SKY-' "$LOG" | grep -v '  SKY-SCA-' || true)"
-if [[ -s "$ACCEPT_RE" ]]; then
-  NEW="$(printf '%s\n' "$ALL" | grep -vFf "$ACCEPT_RE" || true)"
-else
-  NEW="$ALL"
-fi
+SPLIT="$RUN_DIR/skylos-accepted.tmp"
+python3 "$MATCH_ACCEPTED" >"$SPLIT" \
+  || fail "Could not read $ACCEPTED -- see the error above."
+ACCEPTED_SEEN="$(sed -n '1s/^#accepted //p' "$SPLIT")"
+NEW="$(tail -n +2 "$SPLIT")"
 SCA_COUNT="$(grep -cE '  SKY-SCA-' "$LOG" || true)"
-ACCEPTED_SEEN="$(printf '%s\n' "$ALL" | grep -cFf "$ACCEPT_RE" 2>/dev/null || true)"
-rm -f "$ACCEPT_RE"
+rm -f "$SPLIT"
 
 echo
 if [[ -n "${NEW//[[:space:]]/}" ]]; then
