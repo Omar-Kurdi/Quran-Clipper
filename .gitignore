@@ -73,6 +73,13 @@ asr-service/=*
 # rest, because what lands here is whatever container the upload was in.
 scripts/audio/
 
+# The expected captions themselves, for the same reason the recordings are out:
+# they belong to whoever is testing. A ground-truth file names the clip it was
+# cut from -- often a video id -- and is only useful beside a recording that is
+# not here anyway. Write your own from the studio's "Ground truth" button; see
+# docs/ALIGNMENT.md.
+scripts/expected_*.txt
+
 # Pid files and logs from ./start.sh
 .run/
 

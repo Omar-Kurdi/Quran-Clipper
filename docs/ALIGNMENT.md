@@ -488,6 +488,12 @@ is the structure the pipeline has to reproduce, not something to tidy away.
 Every clip added this way is a case the next change has to keep passing. The thresholds in
 `align.py` were tuned against one recording; this is how that stops being true.
 
+The files themselves stay out of the repository, for the same reason the recordings do: they
+belong to whoever is testing, they name the clip they were cut from — often a video id — and one
+is no use without a recording that is not here either. `scripts/expected_*.txt` is gitignored, so
+a fresh clone scores nothing until you write your own, and `./gauge.sh` says exactly that when it
+finds none.
+
 ---
 
 ## How long a recording this can take

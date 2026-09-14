@@ -12,6 +12,11 @@
 # arguments. Audio is not committed, so a clip whose mp3 is missing is skipped
 # and named rather than failing the run.
 #
+# Neither are the ground-truth files themselves -- `scripts/expected_*.txt` is
+# gitignored, because a set of expected captions belongs to whoever is testing
+# and names the clip it was cut from. A fresh clone therefore has none, and this
+# says so rather than pretending to have scored something.
+#
 # Usage:
 #   ./gauge.sh              score every ground-truth file
 #   ./gauge.sh test3        score only the ones matching "test3"
