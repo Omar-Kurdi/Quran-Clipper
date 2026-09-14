@@ -65,8 +65,10 @@ asr-service/=*
 *.wav
 *.m4a
 *.ogg
-# A background clip for testing the export path keeps the same company.
+# Video containers keep the same company: a background clip for testing the
+# export path, and the .mp4 WhatsApp wraps a voice note in.
 *.mkv
+*.mp4
 
 # Where the studio's "Ground truth" button saves the recording a set of expected
 # captions describes. The extensions above cover most of it; this covers the
