@@ -49,3 +49,11 @@ docs/ALIGNMENT.ar.md  SKY-D260  2
 # too -- which is exactly what happened on the first attempt.
 docs/ALIGNMENT.md  SKY-D260  1
 asr-service/app/align.py  SKY-D260  1
+
+# One caveat for whoever regenerates the baseline next. `skylos baseline` now
+# captures SKY-D260 for Python sources -- it did not when this baseline was
+# first taken, and it still captures none of the Markdown ones above. Letting
+# the align.py fingerprint into baseline.portable.json moves that finding
+# somewhere it carries no reason, and leaves the allowance of 1 above sitting
+# on top of it, quietly permitting a second. It is kept out on purpose; this
+# file stays the only place that finding is allowed from.

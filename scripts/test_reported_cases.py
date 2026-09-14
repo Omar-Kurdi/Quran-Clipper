@@ -86,5 +86,82 @@ if os.path.exists(source):
 else:
     print("  SKIP  test_this.mp3 not found")
 
+# At-Tur 52:21, recited in the teaching manner: أَلْحَقْنَا بِهِمْ ذُرِّيَّتَهُمْ
+# said twice, then وَمَآ أَلَتْنَـٰهُم مِّنْ عَمَلِهِم مِّن شَىْءٍ twice. Reported as
+# "it was going perfectly then on ayah 21 it did not perform as expected".
+# The second وَمَآ ... reaches no further into the text than the first, so the
+# phrase search dropped it; the script came up six words short, the forced pass
+# covered the surplus audio by seating both أَلْحَقْنَا passes one utterance
+# late, and the hole that left drew three more captions of it out of the repeat
+# search. Four passes over three words, for a phrase recited twice.
+at_tur = "scripts/audio/WhatsApp_Audio_2026-09-14_at_9_03_44_PM.wav"
+if os.path.exists(ROOT + at_tur):
+    tur = [(s.start_word + 1, s.end_word + 1) for s in segs(at_tur) if s.verse_key == "52:21"]
+    check(
+        "at-tur: أَلْحَقْنَا بِهِمْ ذُرِّيَّتَهُمْ comes back once, not four times (52:21)",
+        len([r for r in tur if r[0] == 6]) == 1,
+        str(tur),
+    )
+    check(
+        "at-tur: and carries on to the end of the sentence (52:21 w6-14)",
+        (6, 14) in tur,
+        str(tur),
+    )
+    check(
+        "at-tur: and the tail said again is whole too (52:21 w9-14)",
+        (9, 14) in tur,
+        str(tur),
+    )
+    check(
+        "at-tur: nothing is captioned on its own in the middle of it",
+        all(r[1] > r[0] for r in tur),
+        str(tur),
+    )
+else:
+    print("  SKIP  the At-Tur voice note is not in scripts/audio/")
+
+# Al-Furqan 25:61-66, read into a phone as a voice note. Reported as segmenting
+# "where it should not have, as there was no pause or break to do so". There
+# was: the file is noise-gated, its floor is digital silence rather than room
+# tone, and the four breaks sit on 0.34s to 1.02s of it. What the silence is
+# not evidence about is where the sentence can end -- two of the four fell
+# after أَن and after ٱلَّذِينَ, which is what `_CANNOT_END_A_PHRASE` is for.
+#
+# The third was the shadda on رَبَّنَا: a held closure is silence inside a word,
+# with the word still to come, which `MAX_PAUSE_INSET` is what tests for.
+#
+# One is still here, 0.58s of quiet after جَعَلَ -- and the reciter never
+# stopped. They say a very soft فِى inside it, peaking 8 dB under their own
+# speech level, and both measurements that could stop calling that silence cost
+# more than they win: the drop threshold at 15 dB takes the corpus from 128 to
+# 106 and breaks four of these checks, a shorter quiet merge takes it to 119
+# and breaks four.
+furqan = "scripts/audio/WhatsApp_Ptt_2026-09-14_at_9_12_16_PM.ogg"
+if os.path.exists(ROOT + furqan):
+    def whole(key):
+        return [(s.start_word + 1, s.end_word + 1) for s in segs(furqan) if s.verse_key == key]
+    check(
+        "al-furqan: the pause after أَن does not end a caption (25:62 w1-13)",
+        whole("25:62") == [(1, 13)],
+        str(whole("25:62")),
+    )
+    check(
+        "al-furqan: nor the one after ٱلَّذِينَ (25:63 w1-12)",
+        whole("25:63") == [(1, 12)],
+        str(whole("25:63")),
+    )
+    check(
+        "al-furqan: nor the closure of the shadda in رَبَّنَا (25:65 w1-7)",
+        (1, 7) in whole("25:65"),
+        str(whole("25:65")),
+    )
+    check(
+        "al-furqan: the mark on جَهَنَّمَ ۖ still does (25:65 w8-11 on its own)",
+        (8, 11) in whole("25:65"),
+        str(whole("25:65")),
+    )
+else:
+    print("  SKIP  the Al-Furqan voice note is not in scripts/audio/")
+
 print(f"\n{'FAILED: '+', '.join(fails) if fails else 'all reported cases pass'}")
 sys.exit(1 if fails else 0)

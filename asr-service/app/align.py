@@ -647,6 +647,40 @@ DIP_PERCENTILE = float(os.getenv("ALIGN_DIP_PERCENTILE", "15"))
 #: ordinary micro-gap between two words.
 MIN_DIP_SEC = 0.20
 
+#: Quiet either side of a brief interruption is one dip, for the same reason
+#: `QUIET_MERGE_SEC` joins them when measuring a stop: a breath taken in the
+#: middle of a silence is audible, and the run of quiet frames breaks in two
+#: around it. Without this the length test is run on the pieces.
+#:
+#: What that cost was a whole repeat. On At-Tur the reciter stops for 0.94s
+#: between the two readings of وَمَآ أَلَتْنَـٰهُم ... , and the envelope pops back
+#: over the line four times inside it, so no piece reached 0.20s and no
+#: candidate was offered there. A consonant closure 2.4s further on *was*
+#: unbroken, so before this the boundary landed inside أَلَتْنَـٰهُم instead.
+#: The phrase decoded from there read وََبْنَاهُم, matched four words where six
+#: were recited, and the two the search lost came back as a caption reading مِّنْ.
+#: With the silence offered, that window opens at 184.80 and reads whole.
+#:
+#: Two conditions, and both were paid for.
+#:
+#: Only quiet is bridged. Joining across whatever happened to interrupt took
+#: the corpus from 127 to 124, because the thing interrupting a dip is often a
+#: word: the reciter says a very soft فِى in 25:61, peaking 8 dB under their
+#: speech level but a decibel over the line that decides stops, and bridging it
+#: turned the gaps either side of a word into one silence. So the frames being
+#: bridged have to be quiet by that line too -- still not making sound, just
+#: not as far down as the dip percentile.
+#:
+#: And the merge forgives interruptions rather than manufacturing length: what
+#: has to reach `MIN_DIP_SEC` is the quiet itself, added up, not the span it is
+#: spread over. Without that a flicker qualifies -- 0.10s of quiet scattered
+#: through 0.22s put a candidate inside يَمْشُونَ and captioned it twice, where
+#: the At-Tur silence is 0.32s of quiet across 0.48s and is the real thing.
+#:
+#: Safe where tightening `quiet_spans` is not. These are candidates the search
+#: may decline, not decisions -- see `detect_boundaries`.
+DIP_MERGE_SEC = 0.12
+
 #: Phrases shorter than this are merged into their neighbour -- too short to be
 #: a meaningful on-screen segment.
 MIN_PHRASE_SEC = 0.8
@@ -747,20 +781,47 @@ def detect_boundaries(pcm: np.ndarray, window_sec: float = 0.02) -> list[float]:
     return boundaries
 
 
-def _dips_below(db: np.ndarray, window_sec: float, threshold: float) -> list[tuple[float, float]]:
-    """Runs of frames under `threshold` lasting at least `MIN_DIP_SEC`."""
-    dips: list[tuple[float, float]] = []
+def _runs_below(db: np.ndarray, window_sec: float, threshold: float) -> list[list[float]]:
+    """Every stretch of frames under `threshold`, however short."""
+    runs: list[list[float]] = []
     run_start: int | None = None
     for i, quiet in enumerate(db < threshold):
         if quiet and run_start is None:
             run_start = i
         elif not quiet and run_start is not None:
-            if (i - run_start) * window_sec >= MIN_DIP_SEC:
-                dips.append((run_start * window_sec, i * window_sec))
+            runs.append([run_start * window_sec, i * window_sec])
             run_start = None
-    if run_start is not None and (len(db) - run_start) * window_sec >= MIN_DIP_SEC:
-        dips.append((run_start * window_sec, len(db) * window_sec))
-    return dips
+    if run_start is not None:
+        runs.append([run_start * window_sec, len(db) * window_sec])
+    return runs
+
+
+def _dips_below(db: np.ndarray, window_sec: float, threshold: float) -> list[tuple[float, float]]:
+    """Dips long enough and quiet enough to offer a phrase boundary.
+
+    Runs a breath broke apart are joined first, and what then has to reach
+    `MIN_DIP_SEC` is the quiet itself rather than the span it is spread over.
+    """
+    # Anything above this is sound being made, whatever the dip percentile says.
+    speaking = float(np.percentile(db, 70)) - QUIET_DROP_DB
+
+    def only_a_breath(previous_end: float, next_begin: float) -> bool:
+        """Is what separates these two runs short enough, and quiet enough, to join them?"""
+        if next_begin - previous_end > DIP_MERGE_SEC:
+            return False
+        between = db[int(previous_end / window_sec) : int(next_begin / window_sec)]
+        return not len(between) or between.max() < speaking
+
+    dips: list[list[float]] = []
+    quiet_for: list[float] = []
+    for begin, end in _runs_below(db, window_sec, threshold):
+        if dips and only_a_breath(dips[-1][1], begin):
+            dips[-1][1] = end
+            quiet_for[-1] += end - begin
+        else:
+            dips.append([begin, end])
+            quiet_for.append(end - begin)
+    return [(begin, end) for (begin, end), quiet in zip(dips, quiet_for) if quiet >= MIN_DIP_SEC]
 
 
 def _blank_score(emission, frame_start: int, frame_end: int) -> float:
@@ -814,6 +875,25 @@ MAX_ORPHAN_WORDS = 4
 #: caller isn't aligning. Emitting it anyway produced segments captioned with
 #: text nobody recited, at 0.00 match, which is worse than emitting nothing.
 MIN_ASSIGN_SCORE = 0.5
+
+#: A run recited a second time, reaching no further into the text than the
+#: first pass did. This is the one repeat the search used to throw away:
+#: `match[1] <= reached` is true of every exact repetition, so on At-Tur 52:21
+#: the second `وَمَآ أَلَتْنَـٰهُم مِّنْ عَمَلِهِم مِّن شَىْءٍ` -- 7.7s of audio
+#: reading back at 0.89, as the clipped window of the day read it -- was
+#: dropped. The script came up six words short, the forced pass covered the
+#: surplus audio by seating the two
+#: `أَلْحَقْنَا بِهِمْ ذُرِّيَّتَهُمْ` one utterance late, and the 4.8s hole that
+#: left drew three more copies of it out of `_fill_gaps_with_repeats`.
+#:
+#: There is no minimum length here, and a first attempt that set one at three
+#: words was wrong. A repeat is a repeat: reciters go back over a single word
+#: as readily as over a whole ayah, and any number picked here throws the short
+#: ones away. What the suppression this bypasses is really for is a re-read of
+#: a window claiming a word that is already on screen, and what separates that
+#: from a repetition is how well the audio reads back as the words claimed --
+#: not how many of them there are.
+MIN_SAID_AGAIN_SCORE = 0.75
 
 
 @dataclass
@@ -1518,6 +1598,17 @@ def phrase_search() -> bool:
     return (os.getenv("ASR_PHRASE_SEARCH") or "1").strip().lower() not in ("0", "false", "no")
 
 
+def _said_again(match: tuple[int, int, float]) -> bool:
+    """Is this window a run of the reference the reciter has just said again?
+
+    Read off the match rather than off the audio, because the window's own
+    decode is what produced the match: words that read back this well, over a
+    stretch of audio of their own, were recited. Length does not come into it --
+    see `MIN_SAID_AGAIN_SCORE`.
+    """
+    return match[2] >= MIN_SAID_AGAIN_SCORE
+
+
 def assign_phrase_ranges_by_decode(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -1606,7 +1697,7 @@ def assign_phrase_ranges_by_decode(
                     # This span explains nothing. Still a legal step -- the audio may
                     # be silence, an intro, or a du'a -- it just earns no credit.
                     candidate = (explained, used + 1, assignments, decodes)
-                elif match[1] <= reached:
+                elif match[1] <= reached and not _said_again(match):
                     # This window reaches no further into the reference than
                     # what is already on screen, so it has nothing of its own
                     # to show -- a second reading of a window can now match
@@ -1618,7 +1709,9 @@ def assign_phrase_ranges_by_decode(
                     # Reaching *further* is a different thing entirely and is
                     # kept: that is a restart, where the reciter goes back and
                     # carries on past where they stopped, and it is a segment
-                    # in its own right.
+                    # in its own right. So is a whole run said a second time
+                    # with the same extent, which reaches no further and is no
+                    # re-read either -- see `_said_again`.
                     candidate = (explained, used + 1, assignments, decodes)
                 else:
                     start, end, score = match
@@ -1646,17 +1739,20 @@ def assign_phrase_ranges_by_decode(
         window = (boundaries[i], boundaries[i + 1])
         if window not in claimed and not any(a[3] <= window[0] and window[1] <= a[4] for a in assignments):
             log.info("phrase %.2f-%.2fs matched nothing in the reference -- no segment emitted", *window)
+    furthest = -1
     for (start, end, score, phrase_start, phrase_end), decoded in zip(assignments, decodes):
         log.info(
-            "phrase %.2f-%.2fs -> %s:%d-%d (%.2f) %r",
+            "phrase %.2f-%.2fs -> %s:%d-%d (%.2f)%s %r",
             phrase_start,
             phrase_end,
             ref_words[start][0],
             ref_words[start][1] + 1,
             ref_words[end][1] + 1,
             score,
+            " said again" if end <= furthest else "",
             decoded[:60],
         )
+        furthest = max(furthest, end)
 
     return _absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries)
 
@@ -2150,7 +2246,14 @@ QUIET_MERGE_SEC = float(os.getenv("ALIGN_QUIET_MERGE_SEC", "0.12"))
 #: How far short of a word's end a silence may stop and still be read as
 #: following that word. Beyond this the word is plainly still being said after
 #: the quiet, so the quiet is inside it rather than at the join.
-MAX_PAUSE_INSET = float(os.getenv("ALIGN_MAX_PAUSE_INSET", "0.25"))
+#:
+#: Tight, because a word can hold real silence inside itself. A shadda on a
+#: stop consonant is a held closure: the vocal tract is shut and nothing comes
+#: out, so it reads as quiet with the word still to come. The بّ of رَبَّنَا in
+#: 25:65 measures 0.34s of it, released in a burst 30 dB louder, with 0.19s of
+#: word left after -- and at 0.25 that passed for a stop and put a caption
+#: break where the reciter never paused.
+MAX_PAUSE_INSET = float(os.getenv("ALIGN_MAX_PAUSE_INSET", "0.10"))
 
 #: Quiet shorter than this is the ordinary articulation gap between two words,
 #: not a stop.
@@ -2180,6 +2283,45 @@ MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.34")
 #: not stop, against 0.72s at a join carrying the same rule where they did.
 #: See `_held_nasal_junction`.
 NASAL_JUNCTION_FACTOR = float(os.getenv("ALIGN_NASAL_JUNCTION_FACTOR", "2"))
+
+#: Words a caption may not end on, because the next word is what completes them.
+#:
+#: The reciter's own silence decides an unmarked break, and it should: a stop
+#: is a stop whether the mushaf marks it or not. What silence is *not* evidence
+#: about is where a sentence can end, and on a hesitant reading the two come
+#: apart. On one voice note there is 1.02s of true silence between أَن and
+#: يَذَّكَّرَ, and 0.56s between ٱلَّذِينَ and يَمْشُونَ -- genuine stops, in a
+#: file whose floor is digital silence rather than room tone -- at two places no
+#: reader would end a line.
+#:
+#: Relative pronouns, the أن/إن family and the prepositions are the words that
+#: cannot stand last: whatever follows them is what they govern. Measured
+#: against every ground-truth file in `scripts/`, this costs nothing -- of the
+#: 70 mid-ayah breaks they ask for, 39 are at a mushaf mark and all 31 of the
+#: rest end on a noun or a verb. Not one ends on a word in this set.
+#:
+#: Only the unmarked break consults it. A waqf mark is the mushaf saying the
+#: sense is complete, and it never falls on one of these anyway.
+#:
+#: Compared after `normalize_for_vocab`, so orthography does not matter. Two
+#: words that belong here by sense are deliberately absent, because folding
+#: puts them on top of a word that does end phrases: عَلَىٰ onto عَلِىٌّ, and
+#: كَأَنَّ onto كَانَ. Blocking those would cost more than the pair is worth.
+_CANNOT_END_A_PHRASE = {
+    # Relative pronouns -- the clause they open is still to come.
+    "الذي", "التي", "الذين", "اللذان", "اللذين", "اللتان", "اللتين",
+    "اللاتي", "اللائي", "اللواتي",
+    # Particles waiting on the clause they govern. "ان" is أَن, أَنَّ, إِن and
+    # إِنَّ, which all reduce to it; ءَانٍ keeps its hamza and does not.
+    "ان", "لكن", "لعل", "ليت", "لو", "لولا", "كي",
+    # Prepositions, waiting on the noun they govern.
+    "في", "من", "عن", "الي", "حتي", "مع", "لدي",
+}
+
+
+def _completed_by_what_follows(text: str) -> bool:
+    """Would ending a caption here leave a word hanging on the next one?"""
+    return normalize_for_vocab(text) in _CANNOT_END_A_PHRASE
 
 
 def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
@@ -2420,6 +2562,11 @@ def _segment_the_timeline(
             # the last word, not between two of them.
             continue
         marked = _stop_licence(aligned[i].text) in ("allowed", "always", "paired")
+        if not marked and _completed_by_what_follows(aligned[i].text):
+            # They stopped, but not where a line can end -- see
+            # `_CANNOT_END_A_PHRASE`. Nothing but the mushaf's own mark
+            # overrides this, and a mark never falls here.
+            continue
         bar = MIN_MARKED_PAUSE_SEC if marked else MIN_UNMARKED_PAUSE_SEC
         if _sustained_junction(aligned[i].text, aligned[i + 1].text) and not marked:
             # A ghunnah or a madd is held across this join, so quiet here is

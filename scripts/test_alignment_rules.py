@@ -15,6 +15,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "asr-service"))
 
+import numpy as np  # noqa: E402
+
 from app import align, corpus  # noqa: E402
 
 FAILED: list[str] = []
@@ -203,16 +205,37 @@ for mark, name in (("\u06D6", "صلى"), ("\u06D7", "قلى"), ("\u06DA", "ج"))
     check(f"{name} permits a stop", align._stop_licence("كَلِمَةٌ" + mark) == "allowed")
 check("a plain word carries no licence", align._stop_licence("كَلِمَةٌ") == "none")
 
-# A line must not break where the mushaf says the sense does not.
+# A line must not break where the mushaf says the sense does not -- and yet the
+# audio decides, so a reciter who plainly stopped still ends one.
+#
+# This used to be shown on ٱلَّذِى, which made it two claims at once: that the
+# لا does not veto a break, and that a caption may end on a relative pronoun.
+# The second is no longer true (see `_CANNOT_END_A_PHRASE`), and it was never
+# what the check was about, so the mark now sits on a word that can stand last.
 forbidden = [
-    word("40:13", 0, "هُوَ", 0.0, 0.5),
-    word("40:13", 1, "ٱلَّذِى\u06D9", 0.6, 1.1),   # لا -- do not stop
-    word("40:13", 2, "يُرِيكُمْ", 2.4, 3.0),
+    word("40:13", 2, "يُرِيكُمْ", 0.0, 0.5),
+    word("40:13", 3, "ءَايَـٰتِهِۦ\u06D9", 0.6, 1.1),   # لا -- do not stop
+    word("40:13", 4, "وَيُنَزِّلُ", 2.4, 3.0),
 ]
-segments, _ = align._segment_the_timeline(forbidden, [0, 1, 2], 3.0, pauses=[(1.15, 2.35)])
+segments, _ = align._segment_the_timeline(forbidden, [2, 3, 4], 3.0, pauses=[(1.15, 2.35)])
 check(
     "the audio wins over the mark: a reciter who stopped at a لا still ends a line",
     len(segments) == 2,
+    f"got {[(s.start_word, s.end_word) for s in segments]}",
+)
+# The one place it does not win, and it turns on the word rather than the mark.
+# The same 1.2s of silence after ٱلَّذِى leaves the caption open: ending a line
+# there strands the clause the pronoun opens, which is what a voice note of
+# Al-Furqan 25:61-66 was reported for.
+hanging = [
+    word("40:13", 0, "هُوَ", 0.0, 0.5),
+    word("40:13", 1, "ٱلَّذِى", 0.6, 1.1),
+    word("40:13", 2, "يُرِيكُمْ", 2.4, 3.0),
+]
+segments, _ = align._segment_the_timeline(hanging, [0, 1, 2], 3.0, pauses=[(1.15, 2.35)])
+check(
+    "but a caption may not end on ٱلَّذِى, however long the silence after it",
+    len(segments) == 1,
     f"got {[(s.start_word, s.end_word) for s in segments]}",
 )
 # What a mark still does is lower the bar, not raise or veto one.
@@ -503,6 +526,97 @@ check(
 check(
     "and with no segments at all there is nothing to report",
     align.skipped_ayahs(muddaththir, []) == [],
+)
+
+# Candidate phrase boundaries, and what a dip has to be to offer one.
+#
+# Frames at 0.02s: speech, then the silence under test, then speech again. The
+# threshold passed in stands for the clip's p15 line; `_dips_below` works out
+# the still-quiet line from the array itself.
+print("\ndips -- a breath inside a silence, against a word inside one")
+SPEECH, QUIET, BREATH, WORD = -10.0, -40.0, -30.0, -18.0
+
+
+def envelope(middle: list[float]) -> np.ndarray:
+    return np.array([SPEECH] * 50 + middle + [SPEECH] * 50)
+
+
+broken = envelope([QUIET] * 6 + [BREATH] * 3 + [QUIET] * 6 + [BREATH] * 3 + [QUIET] * 6)
+check(
+    "a breath breaking a silence in three still leaves one dip",
+    len(align._dips_below(broken, 0.02, -35.0)) == 1,
+    f"got {align._dips_below(broken, 0.02, -35.0)}",
+)
+spoken = envelope([QUIET] * 5 + [WORD] * 5 + [QUIET] * 5)
+check(
+    "a word inside it does not -- the two gaps are not one silence",
+    align._dips_below(spoken, 0.02, -35.0) == [],
+    f"got {align._dips_below(spoken, 0.02, -35.0)}",
+)
+flicker = envelope([QUIET] * 1 + [BREATH] * 3 + [QUIET] * 3 + [BREATH] * 3 + [QUIET] * 1)
+check(
+    "nor does a flicker: what has to last is the quiet, not the span it is spread over",
+    align._dips_below(flicker, 0.02, -35.0) == [],
+    f"got {align._dips_below(flicker, 0.02, -35.0)}",
+)
+unbroken = envelope([QUIET] * 12)
+check(
+    "and a plain silence is a dip, as it always was",
+    len(align._dips_below(unbroken, 0.02, -35.0)) == 1,
+    f"got {align._dips_below(unbroken, 0.02, -35.0)}",
+)
+
+# Words the next word completes. An unmarked break is decided by the reciter's
+# own silence, and these are where silence stops being evidence about the
+# sentence -- see `_CANNOT_END_A_PHRASE`.
+print("\nwords a caption cannot end on")
+for text, why in (
+    ("أَن", "the أن/إن family"),
+    ("إِنَّ", "however it is spelled"),
+    ("ٱلَّذِينَ", "a relative pronoun"),
+    ("ٱلَّتِى", "either gender"),
+    ("فِى", "a preposition"),
+    ("مِّن", "however it is voweled"),
+):
+    check(f"{why}: {text} cannot stand last", align._completed_by_what_follows(text))
+for text, why in (
+    ("جَعَلَ", "a verb can"),
+    ("رَبَّنَا", "so can a noun"),
+    ("هُوَ", "and a personal pronoun, which ends 59:23 w7"),
+    ("عَلِىٌّ", "عَلَىٰ is left out because it folds onto this"),
+    ("كَانَ", "and كَأَنَّ because it folds onto this"),
+):
+    check(f"{why}: {text} may end a caption", not align._completed_by_what_follows(text))
+
+# A run the reciter said a second time, against the re-read the suppression in
+# `assign_phrase_ranges_by_decode` is there to stop. Both reach no further into
+# the text than what is already on screen. What separates them is how well the
+# audio reads back as the words claimed, and nothing else: length is not a
+# signal here, because a reciter repeats one word as readily as a whole ayah.
+print("\nsaying a run again -- what the phrase search may keep behind the cursor")
+check(
+    "four words read back at 0.89 were said again",
+    align._said_again((101, 104, 0.89)),
+)
+check(
+    "so was a whole clause read a second time",
+    align._said_again((17, 23, 1.00)),
+)
+check(
+    "and so was a single word, which is every bit as much a repeat",
+    align._said_again((104, 104, 1.00)),
+)
+check(
+    "two of them likewise",
+    align._said_again((103, 104, 0.90)),
+)
+check(
+    "what is not is a run the audio barely supports",
+    not align._said_again((99, 104, 0.60)),
+)
+check(
+    "however many words it covers",
+    not align._said_again((104, 104, 0.60)),
 )
 
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
