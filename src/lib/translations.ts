@@ -294,11 +294,6 @@ export function captionTextFor(verse: CaptionSource, id: string, wordByWord = fa
   return captionText(verse, id, wordByWord).text;
 }
 
-/** The caption's own translation slot, which is what the first box edits. */
-export function primaryCaptionText(verse: CaptionSource, wordByWord = false): string {
-  return captionTextFor(verse, DEFAULT_TRANSLATION_ID, wordByWord);
-}
-
 /**
  * What one caption puts under its Arabic, in the order chosen.
  *

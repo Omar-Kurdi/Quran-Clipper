@@ -12,11 +12,10 @@ import { formatClipLength } from '@/lib/mediaDuration';
 import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { ColorField } from './ColorField';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Button } from './Button';
 import { useT } from './LocaleProvider';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import {
-  LibraryItem, subscribeToLibrary, librarySnapshot, serverLibrarySnapshot, hydrateLibrary,
+  subscribeToLibrary, librarySnapshot, serverLibrarySnapshot, hydrateLibrary,
   addLibraryUpload, addLibraryLink, removeLibraryItem
 } from '@/lib/backgroundLibrary';
 import { 
@@ -29,7 +28,6 @@ import {
   Type, 
   Image as ImageIcon, 
   Sliders, 
-  Sparkles, 
   ShieldCheck, 
   Upload, 
   Palette,

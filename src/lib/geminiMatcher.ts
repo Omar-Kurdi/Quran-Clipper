@@ -9,7 +9,6 @@
  */
 
 import { getRange } from '@/lib/quranCorpus';
-import { SURAHS_LIST } from '@/lib/quranData';
 import type { MatchResult, MatchSegment } from '@/lib/matchTypes';
 
 type GeminiRawResponse = {

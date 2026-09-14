@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { 
   VideoCanvas, 
-  VideoCanvasConfig, 
-  VideoCanvasRef 
+  VideoCanvasConfig
 } from '@/components/VideoCanvas';
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';

@@ -83,14 +83,6 @@ type AlignResponse = {
 };
 
 /**
- * Silence between two aligned words long enough to be a deliberate phrase
- * break rather than the micro-gap between words in continuous recitation.
- * This is a measurement on real word boundaries rather than a VAD-region
- * guess, which is why it can be a single threshold.
- */
-const SEGMENT_GAP_SEC = 0.45;
-
-/**
  * Where the audio to align comes from.
  *
  * A file for an upload; a URL and a window for one of the built-in reciters,
@@ -157,49 +149,6 @@ class AlignRequestError extends Error {
     super(message);
     this.name = 'AlignRequestError';
   }
-}
-
-/**
- * Cuts the aligned word stream into on-screen segments.
- *
- * A new segment starts at an ayah change, at a pause longer than
- * `SEGMENT_GAP_SEC`, or when the recitation crosses into (or out of) a
- * repeated phrase — a repeat is a separate thing to show, even mid-ayah.
- */
-export function buildSegments(words: AlignedWord[]): MatchSegment[] {
-  const segments: MatchSegment[] = [];
-  let current: AlignedWord[] = [];
-
-  const flush = () => {
-    if (!current.length) return;
-    const [surahStr, verseStr] = current[0].verse_key.split(':');
-    const scores = current.map(word => word.score);
-    segments.push({
-      verseKey: current[0].verse_key,
-      surahNumber: Number(surahStr),
-      verseNumber: Number(verseStr),
-      startTime: current[0].start,
-      endTime: current[current.length - 1].end,
-      confidence: Math.max(0, Math.min(1, scores.reduce((a, b) => a + b, 0) / scores.length)),
-      displayTextUthmani: current.map(word => word.text).join(' '),
-      notes: current[0].is_repeat ? 'repeated phrase' : undefined
-    });
-    current = [];
-  };
-
-  words.forEach((word, index) => {
-    if (index > 0) {
-      const previous = words[index - 1];
-      const changedVerse = word.verse_key !== previous.verse_key;
-      const changedRepeat = word.is_repeat !== previous.is_repeat;
-      const paused = word.start - previous.end > SEGMENT_GAP_SEC;
-      if (changedVerse || changedRepeat || paused) flush();
-    }
-    current.push(word);
-  });
-  flush();
-
-  return segments;
 }
 
 export async function runForcedAlignMatch(params: {

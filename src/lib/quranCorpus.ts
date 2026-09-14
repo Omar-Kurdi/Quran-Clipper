@@ -6,8 +6,8 @@
  * same passage repeatedly without hammering api.quran.com.
  */
 
-import { VerseData, VerseWord } from '@/lib/quranData';
-import { defaultTranslationId, quranApiJson, translationIdsToRequest, preferredTranslation } from './quranApi';
+import { VerseWord } from '@/lib/quranData';
+import { quranApiJson, translationIdsToRequest, preferredTranslation } from './quranApi';
 import { primaryTranslation } from './clearQuran';
 
 type QuranApiWord = {
@@ -46,23 +46,6 @@ export function cleanHtml(input = '') {
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
-
-/**
- * Ayah-level English translation resource id.
- *
- * Decided in `quranApi.ts`, because which id is even *available* depends on
- * which upstream is configured: 131 (The Clear Quran) exists only on the
- * Quran Foundation API, and asking the open API for it returns HTTP 200 with
- * the `translations` field silently omitted -- which is how every ayah once
- * came back with an empty translation. Verify any id you set by hand against
- * the resource list of the upstream you are actually using; an invalid one
- * fails quietly rather than erroring.
- *
- * Exported because `/api/quran/verses` fetches the same resource for the Load
- * path. It kept its own copy of the number, which is how it was still asking
- * for 131 long after this one moved.
- */
-export const TRANSLATION_ID = defaultTranslationId();
 
 const CHAPTER_PATH = (surah: number) =>
   `/verses/by_chapter/${surah}` +

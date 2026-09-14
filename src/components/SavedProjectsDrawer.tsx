@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, FolderOpen, Film, Clock, Play, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { X, FolderOpen, Play, Trash2, Loader2 } from 'lucide-react';
 import { Dialog } from './Dialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useT } from './LocaleProvider';
