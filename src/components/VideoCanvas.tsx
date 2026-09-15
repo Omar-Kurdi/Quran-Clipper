@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData, arabicFontFamily } from '@/lib/quranData';
 import {
-  mushafCaption, pagesUsedBy, ensureQpcPages, FALLBACK_ARABIC_FAMILY
+  mushafCaption, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY
 } from '@/lib/mushafFonts';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
@@ -1006,20 +1006,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         /** The breathing space between two translations, so they read as two. */
         const blockGap = (size: number) => size * 0.7;
 
-        // Wraps greedily and never drops a word. A word too wide for the card
-        // still gets its own line; the fitting loop then shrinks the type until
-        // even that line fits, which is what keeps this from silently cutting.
-        const wrapAll = (text: string, limit: number) => {
-          const out: string[] = [];
-          let line = '';
-          for (const word of text.split(/\s+/).filter(Boolean)) {
-            const test = line ? `${line} ${word}` : word;
-            if (ctx.measureText(test).width > limit && line) { out.push(line); line = word; }
-            else line = test;
-          }
-          if (line) out.push(line);
-          return out;
-        };
+        const wrapAll = (text: string, limit: number) =>
+          wrapCaption(text, limit, line => ctx.measureText(line).width);
 
         const layoutAt = (arabic: number, translation: number) => {
           ctx.font = arabicFont(arabic);

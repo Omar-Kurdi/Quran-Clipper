@@ -64,6 +64,7 @@ import {
   FONT_ARABIC_DEFAULT,
   resolveArabicFont
 } from '@/lib/quranData';
+import { canDrawAsMushaf, withGlyphs } from '@/lib/mushafFonts';
 import { 
   Sparkles, 
   Save, 
@@ -193,39 +194,59 @@ export default function VideoCreatorPage() {
   const [isSampleProject, setIsSampleProject] = useState<boolean>(true);
 
   /**
-   * Give the opening sample its words, so the mushaf has something to draw.
+   * Which ayahs have already been asked for their page glyphs.
    *
-   * `SAMPLE_PROJECTS` carries ayah text and timings but no word list, and the
-   * mushaf face draws per-word glyphs -- so on a first visit it had nothing to
-   * work with and fell back to the Unicode face, which is the same face the
-   * Digital Khatt option uses. Choosing between those two appeared to do
-   * nothing at all, while the other two changed as expected. Every other
-   * timeline comes from the API with its words attached; this one now does too.
+   * The fetch below writes to the timeline it reads, so without this it would
+   * ask again on the render its own answer caused. Keyed per ayah rather than
+   * per range: a segment whose word list is a subset -- what an AI match or a
+   * split repeat produces -- can never be paired, so it stays in the gap list
+   * for good, and a range key would ask again every time an edit moved the
+   * range's ends. One ayah, one request, however the timeline is rearranged.
+   */
+  const glyphsRequested = useRef<Set<string>>(new Set());
+
+  /**
+   * Give the timeline the page glyphs the mushaf needs to draw it.
    *
-   * Times, translations and everything else are left exactly as they are: only
-   * the missing word lists are filled in, and only while the sample is still
-   * what is on screen.
+   * Two timelines arrive without them. `SAMPLE_PROJECTS` carries ayah text and
+   * timings but no word list at all, and a project saved before the page fonts
+   * existed carries words with no `glyph`. In both the mushaf face had nothing
+   * to work with and fell back to the Unicode face -- the same face the Digital
+   * Khatt option uses -- so choosing between those two appeared to do nothing,
+   * and the caption was drawn by that font's rules rather than the printed
+   * page's. The waqf marks are where that shows most: the mushaf gives each one
+   * its own glyph, placed; a Unicode face has to hang a combining mark on the
+   * space in front of it, and each face hangs it somewhere different.
+   *
+   * Only what is missing is filled in. Timings, translations, exclusions and
+   * the saved spelling are left exactly as they were.
    */
   useEffect(() => {
-    if (!isSampleProject) return;
+    const gaps = verses.filter(verse =>
+      verse.verseKey && !canDrawAsMushaf(verse.words) && !glyphsRequested.current.has(verse.verseKey)
+    );
+    if (!gaps.length) return;
+    // One surah per pass, which is all a timeline has ever held. Anything
+    // else is left for the next one rather than marked as asked about.
+    const surah = Number(gaps[0].verseKey.split(':')[0]);
+    const asking = gaps.filter(verse => verse.verseKey.startsWith(`${surah}:`));
+    const numbers = asking.map(verse => Number(verse.verseKey.split(':')[1])).filter(Number.isFinite);
+    if (!numbers.length) return;
+    asking.forEach(verse => glyphsRequested.current.add(verse.verseKey));
+    const start = Math.min(...numbers);
+    const end = Math.max(...numbers);
+
     let cancelled = false;
-    fetch(`/api/quran/verses?surah=1&start=1&end=7&reciter=${SAMPLE_PROJECTS[0].reciterId}`)
+    fetch(`/api/quran/verses?surah=${surah}&start=${start}&end=${end}`)
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         const fetched: VerseData[] = data?.verses || [];
         if (cancelled || !fetched.length) return;
-        const wordsFor = new Map(fetched.map(verse => [verse.verseKey, verse.words]));
-        setVerses(current =>
-          current.map(verse =>
-            verse.words?.length ? verse : { ...verse, words: wordsFor.get(verse.verseKey) || verse.words }
-          )
-        );
+        setVerses(current => withGlyphs(current, fetched));
       })
       .catch(() => {});
     return () => { cancelled = true; };
-    // Once, for the sample. A reload of it is a reload of the page.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [verses, setVerses]);
 
   // Audio Playback & Web Audio API
   // Transport, clock and Web Audio graph. Destructured to the names the rest of

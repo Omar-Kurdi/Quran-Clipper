@@ -9,6 +9,15 @@
  * KFGQPC Hafs and Amiri, and an open head in Digital Khatt -- and the printed
  * mushaf does not draw one there at all.
  *
+ * *Where* a mark appears is the font's decision too, and the waqf signs are
+ * the worst of it. Uthmani script writes them as free-standing tokens
+ * (`مُتَشَـٰبِهَـٰتٌ ۖ`), and they are combining marks with no width, so the only base
+ * in front of them is the space -- which no font has anchor data for. Measured
+ * at 60px on `3:7`: Digital Khatt drops the sign onto the last letter, AlQuran
+ * IndoPak flings it clear of the word and above the line, and none of them put
+ * it where the mushaf prints it. No Unicode face can be asked to do better,
+ * because the text does not say where it goes.
+ *
  * A **page** face settles that by not rendering text. The King Fahd Complex
  * typesets each of the 604 pages by hand; QUL publishes each page as a font in
  * which every word on it is a single glyph, addressed by a private-use
@@ -126,4 +135,108 @@ export function wordFace(word: { arabic: string; glyph?: string; glyphPage?: num
   return word.glyph && word.glyphPage
     ? { text: word.glyph, family: qpcPageFamily(word.glyphPage) }
     : { text: word.arabic };
+}
+
+/** A word as far as the page glyphs are concerned. */
+type Glyphable = { glyph?: string; glyphPage?: number };
+
+/**
+ * Fill in the page glyphs a timeline arrived without.
+ *
+ * Two timelines reach the studio with none. The opening sample carries ayah
+ * text and timings but no word list at all, and a project saved before the
+ * page fonts existed carries words that have no `glyph`. Either way
+ * `canDrawAsMushaf` is false, the mushaf face falls back to the Unicode one --
+ * which is the face the Digital Khatt option already uses -- and so choosing
+ * between those two appears to do nothing while the caption is drawn by that
+ * font's rules rather than the printed page's. The reader picked the mushaf
+ * and did not get it.
+ *
+ * Only the missing glyphs are filled. Timings, translations, exclusions and
+ * the saved spelling are left exactly as they were: this repairs how a word is
+ * *drawn*, never what it says. An ayah whose saved word count no longer
+ * matches the upstream's is left alone rather than paired off by one, and the
+ * array comes back by identity when nothing changed, so a caller may run this
+ * on every render without looping.
+ */
+export function withGlyphs<W extends Glyphable, V extends { verseKey: string; words?: W[] }>(
+  verses: V[],
+  fetched: { verseKey: string; words?: W[] }[]
+): V[] {
+  const source = new Map(fetched.map(verse => [verse.verseKey, verse.words || []]));
+  let changed = false;
+
+  const filled = verses.map(verse => {
+    const from = source.get(verse.verseKey);
+    if (!from?.length || canDrawAsMushaf(verse.words)) return verse;
+
+    // No word list of its own: the fetched one is the only one there is.
+    if (!verse.words?.length) {
+      changed = true;
+      return { ...verse, words: from };
+    }
+    // One entry per recited word in both, or the pairing is a guess.
+    if (verse.words.length !== from.length) return verse;
+
+    let filledHere = false;
+    const words = verse.words.map((word, index) => {
+      const glyph = from[index].glyph;
+      const glyphPage = from[index].glyphPage;
+      // Nothing to copy is not a change. Writing `glyph: undefined` onto the
+      // word would rebuild the list for no gain, and the key would then be
+      // saved into the project the next time it is written out.
+      if ((word.glyph && word.glyphPage) || !glyph || !glyphPage) return word;
+      filledHere = true;
+      return { ...word, glyph, glyphPage };
+    });
+    if (!filledHere) return verse;
+    changed = true;
+    return { ...verse, words };
+  });
+
+  return changed ? filled : verses;
+}
+
+/**
+ * A token of nothing but combining marks, which cannot begin a line.
+ *
+ * Uthmani script writes the waqf signs as free-standing tokens --
+ * `مُتَشَـٰبِهَـٰتٌ ۖ` is one word and one mark, with a space between them, and the
+ * word list keeps them that way. They have no width of their own, so a break
+ * in that space would carry the mark to the next line and draw it over that
+ * line's first word, saying "you may stop here" where the mushaf does not.
+ *
+ * Only Unicode text can produce such a token. A page glyph is a private-use
+ * character, so a mushaf caption never matches and wraps exactly as before.
+ *
+ * The non-spacing marks only. `۞` and `۩` are free-standing tokens too, but
+ * they are drawn symbols with a width of their own and may begin a line.
+ */
+const MARK_ONLY = /^[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]+$/;
+
+/**
+ * Wrap one caption to `limit`, greedily, dropping nothing.
+ *
+ * A word too wide for the card still gets its own line; the caller's
+ * shrink-to-fit search then reduces the type until even that line fits, which
+ * is what keeps a long ayah from being silently cut.
+ */
+export function wrapCaption(
+  text: string,
+  limit: number,
+  measure: (line: string) => number
+): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const token of text.split(/\s+/).filter(Boolean)) {
+    const test = line ? `${line} ${token}` : token;
+    if (line && !MARK_ONLY.test(token) && measure(test) > limit) {
+      lines.push(line);
+      line = token;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }

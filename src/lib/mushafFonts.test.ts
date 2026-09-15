@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   surahNameText, pagesUsedBy, canDrawAsMushaf, qpcPageFamily, qpcPageUrl, mushafCaption,
-  QPC_V2, SURAH_NAME_FAMILY
+  QPC_V2, SURAH_NAME_FAMILY, withGlyphs, wrapCaption
 } from './mushafFonts';
 
 describe('surahNameText', () => {
@@ -80,5 +80,141 @@ describe('mushafCaption', () => {
     expect(mushafCaption([page(1)], 'DigitalKhatt')).toBeNull();
     expect(mushafCaption([{ }], QPC_V2)).toBeNull();
     expect(mushafCaption(undefined, QPC_V2)).toBeNull();
+  });
+});
+
+
+/** A timeline word and entry, spelled as the studio's own types spell them. */
+type TestWord = {
+  arabic: string; translation: string;
+  timestamp?: number; excluded?: boolean;
+  glyph?: string; glyphPage?: number;
+};
+type TestVerse = { verseKey: string; words?: TestWord[] };
+
+describe('withGlyphs', () => {
+  const fetched: TestVerse[] = [{
+    verseKey: '3:6',
+    words: [
+      { arabic: 'يَشَآءُ ۚ', translation: 'He wills', glyph: 'ﱾﱿ', glyphPage: 50 },
+      { arabic: 'ٱلْحَكِيمُ', translation: 'the Wise', glyph: 'ﲀ', glyphPage: 50 }
+    ]
+  }];
+
+  it('fills in the glyphs a project saved before the page fonts has none of', () => {
+    // The bug this exists for: 19 saved projects named the mushaf face and
+    // carried no glyphs, so every one of them drew in the Unicode fallback.
+    const saved: TestVerse[] = [{
+      verseKey: '3:6',
+      words: [
+        { arabic: 'يَشَآءُ ۚ', translation: 'He wills' },
+        { arabic: 'ٱلْحَكِيمُ', translation: 'the Wise' }
+      ]
+    }];
+    const filled = withGlyphs(saved, fetched);
+    expect(filled[0].words?.map(word => word.glyph)).toEqual(['ﱾﱿ', 'ﲀ']);
+    expect(canDrawAsMushaf(filled[0].words)).toBe(true);
+  });
+
+  it('keeps the saved spelling, timings and exclusions', () => {
+    // This repairs how a word is drawn. It must never change what it says.
+    const saved: TestVerse[] = [{
+      verseKey: '3:6',
+      words: [
+        { arabic: 'يشاء', translation: 'mine', timestamp: 12.5, excluded: true },
+        { arabic: 'ٱلْحَكِيمُ', translation: 'the Wise' }
+      ]
+    }];
+    expect(withGlyphs(saved, fetched)[0].words?.[0]).toEqual({
+      arabic: 'يشاء', translation: 'mine', timestamp: 12.5, excluded: true,
+      glyph: 'ﱾﱿ', glyphPage: 50
+    });
+  });
+
+  it('takes the whole word list when the timeline has none', () => {
+    // The opening sample: ayah text and timings, no words at all.
+    const sample: TestVerse[] = [{ verseKey: '3:6' }];
+    expect(withGlyphs(sample, fetched)[0].words).toEqual(fetched[0].words);
+  });
+
+});
+
+describe('withGlyphs, when it should not act', () => {
+  const fetched: TestVerse[] = [{
+    verseKey: '3:6',
+    words: [
+      { arabic: 'يَشَآءُ ۚ', translation: 'He wills', glyph: 'ﱾﱿ', glyphPage: 50 },
+      { arabic: 'ٱلْحَكِيمُ', translation: 'the Wise', glyph: 'ﲀ', glyphPage: 50 }
+    ]
+  }];
+
+  it('does not rebuild a word list to write in glyphs the fetch lacks', () => {
+    // `glyph: undefined` is not an improvement, and `projectPayload` saves the
+    // timeline verbatim -- so the key would be written into the project.
+    const thin: TestVerse[] = [{
+      verseKey: '3:6',
+      words: [{ arabic: 'a', translation: '' }, { arabic: 'b', translation: '' }]
+    }];
+    const partial: TestVerse[] = [{
+      verseKey: '3:6',
+      words: [{ arabic: 'a', translation: '' }, { arabic: 'b', translation: '' }]
+    }];
+    expect(withGlyphs(partial, thin)).toBe(partial);
+  });
+
+  it('leaves an ayah alone rather than pair its words off by one', () => {
+    // A count that no longer matches means the upstream re-split the ayah.
+    // Pairing by index anyway would put every glyph under the wrong word.
+    const saved: TestVerse[] = [
+      { verseKey: '3:6', words: [{ arabic: 'يَشَآءُ ۚ', translation: '' }] }
+    ];
+    expect(withGlyphs(saved, fetched)).toBe(saved);
+  });
+
+  it('returns the same array when there is nothing to fill', () => {
+    // The caller runs this from an effect that also reads the timeline, so a
+    // new array on every pass would loop.
+    const already: TestVerse[] = [{ verseKey: '3:6', words: fetched[0].words }];
+    expect(withGlyphs(already, fetched)).toBe(already);
+    // An ayah the fetch did not cover is the same case.
+    const elsewhere: TestVerse[] = [
+      { verseKey: '9:1', words: [{ arabic: 'بَرَآءَةٌ', translation: '' }] }
+    ];
+    expect(withGlyphs(elsewhere, fetched)).toBe(elsewhere);
+  });
+});
+
+describe('wrapCaption', () => {
+  /** One unit per character, so a limit reads as "this many characters". */
+  const perChar = (line: string) => line.length;
+
+  it('wraps greedily and drops nothing', () => {
+    expect(wrapCaption('alpha beta gamma delta', 12, perChar))
+      .toEqual(['alpha beta', 'gamma delta']);
+  });
+
+  it('gives a token too wide for the line a line of its own', () => {
+    // The caller shrinks the type until even this fits. It is never cut.
+    expect(wrapCaption('a enormousword b', 5, perChar))
+      .toEqual(['a', 'enormousword', 'b']);
+  });
+
+  it('never starts a line with a free-standing waqf mark', () => {
+    // `ۖ` is a combining mark with no width. Broken onto the next line it
+    // would be drawn over that line's first word, marking a stop the mushaf
+    // does not mark. It stays with the word it was written after, however
+    // far that puts the line over the limit.
+    const lines = wrapCaption('وَأُخَرُ مُتَشَـٰبِهَـٰتٌ ۖ فَأَمَّا', 20, perChar);
+    expect(lines.every(line => !/^[\u06D6-\u06DC]/.test(line))).toBe(true);
+    expect(lines.find(line => line.includes('\u06D6'))).toMatch(/مُتَشَـٰبِهَـٰتٌ ۖ$/);
+  });
+
+  it('wraps a mushaf caption on every glyph, marks included', () => {
+    // Page glyphs are private-use characters, so the guard above never
+    // matches one and a mushaf line breaks wherever it needs to.
+    // The break lands right before the word-plus-waqf pair, which the guard
+    // above would have forbidden had a glyph ever matched it.
+    expect(wrapCaption('\uFC91 \uFC92 \uFC93\uFC94 \uFC95', 3, perChar))
+      .toEqual(['\uFC91 \uFC92', '\uFC93\uFC94', '\uFC95']);
   });
 });
