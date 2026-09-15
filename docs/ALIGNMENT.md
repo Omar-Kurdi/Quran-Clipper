@@ -32,6 +32,13 @@ be answered exactly:
 
 That split is the whole architecture.
 
+**The known text is Hafs ʿan ʿĀsim.** Everything here -- the corpus fetched from the upstream,
+the vocabulary the acoustic model was trained on, the reference the sidecar aligns to, and the
+mushaf fonts the studio draws with -- is that one riwayah. It is what the Madani mushaf prints
+and what nearly every published recitation uses. A recitation in another riwayah would still
+align, badly: the fixed constraint would be the wrong text, which is the one failure this
+method cannot detect for itself. See `FutureIdeas.md` for what supporting another would take.
+
 ---
 
 ## Why forced alignment is categorically different

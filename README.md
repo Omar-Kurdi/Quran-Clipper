@@ -46,6 +46,11 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   translation under the Arabic — chosen from 126 editions in any language quran.com
   publishes, up to three on the card at once. Which one is the default depends on which
   upstream is configured; see [Translations](#translations).
+- **Hafs ʿan ʿĀsim only.** Every text, font and timing in the studio is that one riwayah --
+  the reading the Madani mushaf is printed in and the one nearly every published recitation
+  uses. Warsh, Qalun, Duri, Susi and Shuʿbah differ in the letters themselves, not merely in
+  pronunciation, so they are not a setting: they would need their own text, their own fonts
+  and their own aligner vocabulary. See [FutureIdeas.md](FutureIdeas.md).
 - Six reciters. The three marked **timed** carry per-ayah boundaries measured from the
   recording, published by Quran.com; loading them gives a real timeline, and the recording is
   streamed through `/api/audio/proxy`. The rest stream from mp3quran.net with boundaries
