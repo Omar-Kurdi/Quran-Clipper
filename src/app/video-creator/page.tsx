@@ -65,6 +65,7 @@ import {
   resolveArabicFont
 } from '@/lib/quranData';
 import { canDrawAsMushaf, withGlyphs } from '@/lib/mushafFonts';
+import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
 import { 
   Sparkles, 
   Save, 
@@ -1306,7 +1307,10 @@ export default function VideoCreatorPage() {
         audioKey: storedAudio ? audioKey : '',
         trimWindow,
         verses,
-        config: canvasConfig as unknown as Record<string, unknown>,
+        // An uploaded background is a `blob:` url that dies with this tab, so
+        // what goes to the row is the library's id for the file instead. A
+        // pasted link is already durable and passes through untouched.
+        config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
       });
 
       const res = await fetch('/api/projects', {
@@ -1670,8 +1674,16 @@ export default function VideoCreatorPage() {
     }
   };
 
-  // Load project from saved projects
-  const handleLoadSavedProject = (proj: any) => {
+  /**
+   * Load a project from the saved-projects drawer.
+   *
+   * Asynchronous for one reason: an uploaded background is stored in the
+   * library by id, and turning that id back into something the canvas can play
+   * needs the library read from IndexedDB first. `hydrateLibrary` runs once per
+   * session and the Style panel calls it too -- but only once that panel has
+   * been opened, and a project can be loaded without ever opening it.
+   */
+  const handleLoadSavedProject = async (proj: any) => {
     if (!proj) return;
     setSelectedSurah(proj.surahNumber || 1);
     setAyahStart(proj.ayahStart || 1);
@@ -1689,7 +1701,11 @@ export default function VideoCreatorPage() {
     // that made it.
     void restoreProjectAudio(proj);
 
-    setCanvasConfig({
+    // Before the config is set, not after: an unresolved reference reaching
+    // the canvas would be a url it cannot play.
+    await hydrateLibrary();
+
+    setCanvasConfig(withRestoredBackgrounds({
       ...canvasConfig,
       aspectRatio: proj.aspectRatio || '9:16',
       // A project saved before the Google faces were removed still names one.
@@ -1728,7 +1744,7 @@ export default function VideoCreatorPage() {
       watermarkPosition: proj.watermarkPosition || 'bottom-right',
       fps: proj.fps || 60,
       gpuAccelerated: proj.gpuAccelerated ?? true
-    });
+    }));
   };
 
   const currentSurahObj = SURAHS_LIST.find(s => s.number === selectedSurah) || SURAHS_LIST[0];

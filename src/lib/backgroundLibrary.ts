@@ -1,4 +1,4 @@
-import { MediaKind, rememberMediaKind, rememberMediaName } from './backgroundTimeline';
+import { MediaKind, rememberMediaKind, rememberMediaName, STORED_BACKGROUND_PREFIX } from './backgroundTimeline';
 import { idbPut, idbGet, idbDelete } from './idb';
 
 /**
@@ -191,4 +191,71 @@ export async function removeLibraryItem(id: string): Promise<void> {
     if (item.url) URL.revokeObjectURL(item.url);
     await drop(id);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Referring to a stored upload from outside this session
+//
+// The list above survives a restart, but the object urls in it do not: each
+// upload gets a fresh one every time `hydrateLibrary` runs. Anything that
+// outlives the tab -- a saved project -- therefore cannot hold the url. It
+// holds the library's own id for the file, and asks for a url when it is read
+// back. This is the same trade the recitation makes with `audioKey`.
+// ---------------------------------------------------------------------------
+
+/** The durable form of one background url: an upload's id, or the url as given. */
+export function storedBackgroundUrl(url: string, list: LibraryItem[] = items): string {
+  if (!url || !url.startsWith('blob:')) return url;
+  const item = list.find(entry => entry.source === 'upload' && entry.url === url);
+  return item ? `${STORED_BACKGROUND_PREFIX}${item.id}` : url;
+}
+
+/**
+ * The playable form of one background url.
+ *
+ * A reference whose file is gone comes back unchanged rather than as the
+ * default background. The canvas draws its gradient through a url it cannot
+ * load, which is the same thing it does for a link that has stopped working --
+ * and the reference is still in the project, so re-adding the file restores
+ * it. Substituting a default would look like a repair while quietly replacing
+ * a choice the user made, and the next save would make that permanent.
+ */
+export function restoredBackgroundUrl(url: string, list: LibraryItem[] = items): string {
+  if (!url || !url.startsWith(STORED_BACKGROUND_PREFIX)) return url;
+  const item = list.find(entry => entry.id === url.slice(STORED_BACKGROUND_PREFIX.length));
+  return item?.url || url;
+}
+
+/** The three places a styling config keeps a background url. */
+type BackgroundUrls = {
+  bgUrl?: string;
+  bgUrls?: string[];
+  bgSegments?: { url: string; start: number; end: number }[];
+};
+
+function mapBackgroundUrls<C extends BackgroundUrls>(config: C, map: (url: string) => string): C {
+  return {
+    ...config,
+    ...(typeof config.bgUrl === 'string' ? { bgUrl: map(config.bgUrl) } : {}),
+    ...(Array.isArray(config.bgUrls) ? { bgUrls: config.bgUrls.map(url => map(url)) } : {}),
+    // Never filtered, only rewritten: dropping a segment whose file is missing
+    // would shift what every segment after it covers.
+    ...(Array.isArray(config.bgSegments)
+      ? { bgSegments: config.bgSegments.map(segment => ({ ...segment, url: map(segment.url) })) }
+      : {})
+  };
+}
+
+/** A config as it should be written out: uploads by id, everything else as-is. */
+export function withStoredBackgrounds<C extends BackgroundUrls>(
+  config: C, list: LibraryItem[] = items
+): C {
+  return mapBackgroundUrls(config, url => storedBackgroundUrl(url, list));
+}
+
+/** A config as it should be used: ids turned back into this session's urls. */
+export function withRestoredBackgrounds<C extends BackgroundUrls>(
+  config: C, list: LibraryItem[] = items
+): C {
+  return mapBackgroundUrls(config, url => restoredBackgroundUrl(url, list));
 }

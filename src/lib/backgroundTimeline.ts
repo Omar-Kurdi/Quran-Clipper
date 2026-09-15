@@ -39,6 +39,15 @@ export type BackgroundMode = 'single' | 'per-ayah' | 'cycle' | 'shuffle' | 'cust
 /** What a background actually is: footage, or a still. */
 export type MediaKind = 'video' | 'image';
 
+/**
+ * Marks a background url that names a stored upload instead of a location.
+ *
+ * Written by `backgroundLibrary`, which owns the store behind it; declared
+ * here because this is the module that says what a background url may be, and
+ * because the label below has to recognise one that could not be resolved.
+ */
+export const STORED_BACKGROUND_PREFIX = 'qcbg:';
+
 const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?|#|$)/i;
 
 /**
@@ -253,7 +262,12 @@ export function backgroundLabel(url: string, labels: BackgroundLabels = DEFAULT_
   const known = knownNames.get(url);
   if (known) return known;
   const kind = mediaKind(url);
-  if (url.startsWith('blob:')) return kind === 'image' ? labels.uploadedImage : labels.uploadedClip;
+  // A reference still here is one whose file this session could not find. It
+  // is an upload either way, and it reads as one already when the url is a
+  // `blob:` that has expired -- naming it after the id would say nothing.
+  if (url.startsWith('blob:') || url.startsWith(STORED_BACKGROUND_PREFIX)) {
+    return kind === 'image' ? labels.uploadedImage : labels.uploadedClip;
+  }
   // A data: url's "path" is the file itself -- naming it after that would put a
   // kilobyte of base64 in the list.
   if (url.startsWith('data:')) return kind === 'image' ? labels.pastedImage : labels.pastedClip;
