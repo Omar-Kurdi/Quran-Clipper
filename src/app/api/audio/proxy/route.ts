@@ -21,6 +21,24 @@ const ALLOWED_HOSTS = new Set([
   'verses.quran.com'
 ]);
 
+/**
+ * mp3quran.net, which hosts the reciters quran.com has no timings for.
+ *
+ * A suffix rather than a list: those recitations are spread across server6, 7,
+ * 11 and 12, and which server holds whom is theirs to change. The sidecar's
+ * `ALLOWED_AUDIO_HOSTS` has carried this entry from the start and its comment
+ * asks for the two lists to be kept in step; this one had fallen behind, so a
+ * reciter without measured timings was served straight from the CDN while
+ * every timed one went through here. That is the difference between a
+ * recording that survives a dead IPv6 route and one that does not --
+ * `server11.mp3quran.net` publishes an AAAA record too.
+ */
+const ALLOWED_HOST_SUFFIX = '.mp3quran.net';
+
+function hostAllowed(hostname: string): boolean {
+  return ALLOWED_HOSTS.has(hostname) || hostname.endsWith(ALLOWED_HOST_SUFFIX);
+}
+
 /** Same shape used by the client, so callers do not hand-build the query. */
 export function proxiedAudioUrl(upstream: string) {
   return `/api/audio/proxy?url=${encodeURIComponent(upstream)}`;
@@ -35,7 +53,7 @@ function resolveTarget(req: NextRequest): URL | null {
   } catch {
     return null;
   }
-  if (target.protocol !== 'https:' || !ALLOWED_HOSTS.has(target.hostname)) return null;
+  if (target.protocol !== 'https:' || !hostAllowed(target.hostname)) return null;
   return target;
 }
 
@@ -74,7 +92,7 @@ async function fetchAllowedOnly(
     } catch {
       return null;
     }
-    if (next.protocol !== 'https:' || !ALLOWED_HOSTS.has(next.hostname)) return null;
+    if (next.protocol !== 'https:' || !hostAllowed(next.hostname)) return null;
     url = next;
   }
   return null;

@@ -57,3 +57,16 @@ asr-service/app/align.py  SKY-D260  1
 # somewhere it carries no reason, and leaves the allowance of 1 above sitting
 # on top of it, quietly permitting a second. It is kept out on purpose; this
 # file stays the only place that finding is allowed from.
+
+# `hostAllowed` in the audio proxy, which Skylos cannot see the call sites for.
+# It is called twice in its own file -- resolveTarget checks the URL the caller
+# supplied, and fetchAllowedOnly re-checks every redirect hop -- and the gate's
+# own header says why that reads as unused: Skylos does not resolve same-file
+# call sites in TypeScript. Verified by hand at both. It is here rather than in
+# the baseline because the baseline does not suppress SKY-U001 either: the
+# fingerprint was added at the exact file and line Skylos reports, regenerated,
+# and the finding came back unchanged.
+#
+# The helper exists because the allowlist has to be applied in both places and
+# a security check duplicated is a security check that drifts.
+src/app/api/audio/proxy/route.ts  SKY-U001  1

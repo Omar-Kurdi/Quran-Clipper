@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cleanHtml } from '@/lib/quranCorpus';
+import { cleanHtml, verseWords } from '@/lib/quranCorpus';
 import { quranApiJson, translationIdsToRequest, preferredTranslation } from '@/lib/quranApi';
 import { primaryTranslation } from '@/lib/clearQuran';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
@@ -33,7 +33,13 @@ interface ApiVerse {
   verse_key: string;
   text_uthmani: string;
   translations?: { resource_id?: number; text?: string }[];
-  words?: { char_type_name?: string; text_uthmani?: string; translation?: { text?: string } }[];
+  words?: {
+    char_type_name?: string;
+    text_uthmani?: string;
+    code_v2?: string;
+    v2_page?: number;
+    translation?: { text?: string };
+  }[];
 }
 
 async function fetchReciterTimings(
@@ -145,7 +151,7 @@ export async function GET(req: NextRequest) {
         });
       const { data: quranData } = await quranApiJson<{ verses?: ApiVerse[] }>(
         `/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${wantedTranslations.join(',')}` +
-          `&fields=text_uthmani&word_fields=text_uthmani,translation&per_page=300`,
+          `&fields=text_uthmani&word_fields=text_uthmani,translation,code_v2,v2_page&per_page=300`,
         { next: { revalidate: 86400 } },
         // A chapter the configured upstream does not carry, or carries without
         // the translation, is not usable however cleanly it answered.
@@ -166,12 +172,7 @@ export async function GET(req: NextRequest) {
 
         let currentOffset = 0;
         const mappedVerses = filtered.map(v => {
-          const quranWords = (v.words || []).filter(w => w.char_type_name === 'word');
-          const words = quranWords.map(w => ({
-            arabic: w.text_uthmani || '',
-            translation: cleanHtml(w.translation?.text || ''),
-            excluded: false
-          })).filter(w => w.arabic);
+          const words = verseWords(v);
 
           const timing = useMeasured ? measured!.timings.get(v.verse_key)! : null;
           let verseStart: number;
@@ -213,7 +214,11 @@ export async function GET(req: NextRequest) {
           surahNameArabic: surahMeta.nameArabic,
           surahNameEnglish: surahMeta.nameEnglish,
           // Paired with the timings above -- see `fetchReciterTimings`.
-          audioUrl: useMeasured ? proxiedAudioUrl(measured!.audioUrl) : getReciterAudioUrl(reciter, surahNumber),
+          // Proxied either way. A reciter with no measured timings used to be
+          // served straight from mp3quran.net, which publishes an AAAA record --
+          // so on a machine with no IPv6 route that one reciter failed while the
+          // timed ones worked.
+          audioUrl: proxiedAudioUrl(useMeasured ? measured!.audioUrl : getReciterAudioUrl(reciter, surahNumber)),
           audioDuration: `${Math.floor(totalSeconds / 60)}:${Math.floor(totalSeconds % 60).toString().padStart(2, '0')}`,
           /** 'measured' means the boundaries came from the recording; 'estimated' means they were guessed from text length. */
           timingSource: useMeasured ? 'measured' : 'estimated',
@@ -233,7 +238,7 @@ export async function GET(req: NextRequest) {
       surahNumber,
       surahNameArabic: surahMeta.nameArabic,
       surahNameEnglish: surahMeta.nameEnglish,
-      audioUrl: getReciterAudioUrl(reciter, surahNumber),
+      audioUrl: proxiedAudioUrl(getReciterAudioUrl(reciter, surahNumber)),
       audioDuration: `${Math.floor(approxTotal / 60)}:${Math.floor(approxTotal % 60).toString().padStart(2, '0')}`,
       timingSource: 'estimated',
       verses: fallbackVerses

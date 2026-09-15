@@ -65,6 +65,38 @@ function resolveProvider(requested: string | null): Provider {
   return PROVIDERS.includes(envDefault) ? envDefault : 'gemini';
 }
 
+
+/**
+ * How long the audio the timeline plays against is.
+ *
+ * Three sources disagree and the order matters, because the timeline is
+ * clamped to this and a wrong value silently empties it.
+ *
+ * The sidecar's figure is a measurement -- it decodes the file -- so it wins,
+ * **except when the request named a window**. There it decodes only the slice
+ * it was given and reports that slice's length, while the times it returns are
+ * shifted back onto the whole recording's clock. Aligning 10:26-27 of Surah
+ * Yunus asks for 456.7-550.5s and the sidecar answers "93.9 seconds" alongside
+ * segments starting at 456.7s; clamping those against 93.9 drops every one of
+ * them, and the studio reports an empty timeline. Adding the window's start
+ * back puts the figure on the same clock as the times it has to bound.
+ *
+ * Gemini only *estimates* duration -- 108s for a 68.5s clip, measured -- and
+ * stretches its segment times to match, so there the browser's own decode of
+ * the uploaded file is the better source.
+ */
+export function timelineDuration(params: {
+  provider: string;
+  reported: number;
+  windowStart: number;
+  client: number;
+}): number {
+  const client = Number.isFinite(params.client) && params.client > 0 ? params.client : 0;
+  if (params.provider === 'gemini') return client || params.reported || 0;
+  if (!params.reported) return client;
+  return params.windowStart > 0 ? params.windowStart + params.reported : params.reported;
+}
+
 export async function POST(req: NextRequest) {
   let provider: Provider = 'gemini';
   try {
@@ -208,12 +240,14 @@ export async function POST(req: NextRequest) {
     // Gemini only *estimates* it (108s for a 68.5s clip on the test file) and
     // stretches its segment times to match, so there the client's value, taken
     // from the browser's own decode of the uploaded file, is the better source.
-    const measuredDuration = provider === 'gemini' ? 0 : Number(result.audioDuration || 0);
     const clientDuration = Number(formData.get('audioDuration') || 0);
     const audioDuration =
-      measuredDuration ||
-      (Number.isFinite(clientDuration) && clientDuration > 0 ? clientDuration : 0) ||
-      Number(result.audioDuration || 0) ||
+      timelineDuration({
+        provider,
+        reported: Number(result.audioDuration || 0),
+        windowStart: hasWindow ? windowStart : 0,
+        client: clientDuration
+      }) ||
       estimateDurationFromSegments(segments) ||
       segments.length * 5;
     const rawTimeline = await fetchVersesByDetectedSegments({ segments, selectedSurah, audioDuration });

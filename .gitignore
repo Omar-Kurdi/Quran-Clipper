@@ -89,9 +89,16 @@ scripts/expected_*.txt
 # every case, and tens of megabytes besides.
 #   data/quran/  The Clear Quran, from quranapi.pages.dev, until the Quran
 #                Foundation grants access to their id 131.
-#   data/qul/    Morphology and mutashabihat exports from qul.tarteel.ai, which
-#                are downloaded from a signed-in account rather than fetched.
+#   data/qul/    Morphology, mutashabihat and the mushaf fonts from
+#                qul.tarteel.ai, which are downloaded from a signed-in account
+#                rather than fetched.
 data/
+
+# The mushaf fonts, unpacked out of data/qul/fonts/ by scripts/qul-import.mjs
+# so the app can serve them. 95 MB of King Fahd Complex typesetting, generated
+# from an archive that is itself not committed -- so this is regenerated, never
+# stored. A clone without it renders the Unicode text instead, and says so.
+public/fonts/
 
 # Skylos. baseline.portable.json and accepted.txt are committed: together they
 # record the findings this repo already had, so the gate blocks on new problems

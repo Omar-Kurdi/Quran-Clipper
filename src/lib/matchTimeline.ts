@@ -168,6 +168,22 @@ export async function fetchVersesByDetectedSegments(params: {
           })
         : rangedWords;
 
+    // What a caption shows is the corpus spelling, never the provider's own.
+    //
+    // Gemini is asked for `displayTextUthmani` and answers with Arabic it
+    // writes itself -- a language model's rendering of the Uthmani script, not
+    // the mushaf's -- and three places read this field and put it on screen:
+    // the canvas when no word is excluded, the inspector's edit box, the
+    // timeline block. Storing what the provider sent therefore published its
+    // spelling of the Quran, tashkeel and all. The provider's text still
+    // decides *which* words are shown, above, which is the one thing it is
+    // good for; the words themselves come from `getVerseByKey`.
+    const onScreen = segmentWords
+      ?.filter(word => !word.excluded)
+      .map(word => word.arabic)
+      .join(' ')
+      .trim();
+
     timeline.push({
       ...baseVerse,
       verseKey,
@@ -175,7 +191,7 @@ export async function fetchVersesByDetectedSegments(params: {
       endTime,
       words: segmentWords,
       matchConfidence: Math.max(0, Math.min(1, Number(segment.confidence ?? 0.65))),
-      displayTextUthmani: segmentDisplayText,
+      displayTextUthmani: onScreen || baseVerse.textUthmani,
       displayTranslation: segment.displayTranslation || ''
     });
   }

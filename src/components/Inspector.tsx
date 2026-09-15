@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { wordFace, pagesUsedBy, ensureQpcPages } from '@/lib/mushafFonts';
 import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle, SplitSquareHorizontal, Combine, Languages } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
@@ -211,6 +212,16 @@ export const Inspector: React.FC<InspectorProps> = ({
   const canSplit = longEnough && onScreen >= 2;
   const canMerge = !!verse && !!next && verse.verseKey === next.verseKey;
 
+  // The chips show the mushaf's own drawing of each word, which needs that
+  // page's font. The canvas asks for the same ones, but the inspector can be
+  // showing a word before the canvas has painted it, so it asks too --
+  // `ensureQpcPages` is idempotent and `document.fonts` is shared. Above the
+  // early return because a hook cannot be called conditionally.
+  const shownPages = pagesUsedBy(verse ? ensureWords(verse) : []).join(',');
+  useEffect(() => {
+    void ensureQpcPages(shownPages ? shownPages.split(',').map(Number) : []);
+  }, [shownPages]);
+
   if (!verse) {
     return (
       <div className="flex flex-col gap-3 p-3">
@@ -302,7 +313,7 @@ export const Inspector: React.FC<InspectorProps> = ({
           onChange={e => onText('textUthmani', e.target.value)}
           dir="rtl"
           rows={4}
-          className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-amiri leading-loose"
+          className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-quran leading-loose"
         />
       </div>
 
@@ -400,13 +411,15 @@ export const Inspector: React.FC<InspectorProps> = ({
               key={`${word.arabic}-${wi}`}
               onClick={() => onToggleWord(wi)}
               aria-pressed={!word.excluded}
-              className={`flex items-center gap-1 px-2 py-1 rounded-md border font-amiri text-sm transition-colors ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-md border font-quran text-sm transition-colors ${
                 word.excluded
                   ? 'bg-red-500/10 border-red-500/30 text-red-300 line-through'
                   : 'bg-slate-800 border-slate-700 text-parchment'
               }`}
             >
-              {word.arabic}
+              <span style={wordFace(word).family ? { fontFamily: wordFace(word).family } : undefined}>
+                {wordFace(word).text}
+              </span>
               {word.excluded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3 opacity-50" />}
             </button>
           ))}

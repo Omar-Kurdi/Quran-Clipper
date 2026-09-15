@@ -405,9 +405,14 @@ export const en = {
   },
 
   style: {
-    tabDesign: 'Layout & Text',
+    tabDesign: 'Text',
     tabBackground: 'Background',
-    tabCard: 'Card & FX',
+    tabCard: 'Card',
+    // Shown on hover, because a label short enough for a 340px column cannot
+    // also say what is inside it.
+    tabDesignHint: 'Frame size, fonts, colours and branding',
+    tabBackgroundHint: 'Background image, video and overlay',
+    tabCardHint: 'The card behind the text, its shadow and effects',
 
     headingFormat: 'Format',
     headingTypography: 'Typography',
@@ -508,11 +513,10 @@ export const en = {
 
     arabicFontLabel: 'Arabic Calligraphy Font:',
     fonts: {
-      Amiri: 'Amiri Uthmani',
-      'Scheherazade New': 'Scheherazade',
-      'Noto Naskh Arabic': 'Noto Naskh',
-      'Reem Kufi': 'Kufi Calligraphy',
-      'Aref Ruqaa': 'Aref Ruqaa'
+      'qpc-v2': 'Madani Mushaf',
+      DigitalKhatt: 'Digital Khatt',
+      DigitalKhattIndoPak: 'Digital Khatt IndoPak',
+      IndopakNastaleeq: 'Indopak Nastaleeq'
     },
     arabicFontSize: 'Arabic Font Size:',
     translationFontSize: 'Translation Font Size:',

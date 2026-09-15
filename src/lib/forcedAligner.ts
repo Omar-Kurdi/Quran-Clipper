@@ -151,6 +151,27 @@ class AlignRequestError extends Error {
   }
 }
 
+/**
+ * One whitespace-free token per word, for the reference the sidecar aligns to.
+ *
+ * The sidecar re-splits the reference on whitespace and spends one word index
+ * per token that survives normalisation (`main.py`), while the indices it
+ * returns are read against the app's own `words` array. A word written with an
+ * internal space therefore has to be closed up before it is sent, or it buys
+ * two indices and every word after it in that verse is captioned one place
+ * late. Four verses are written that way: بَعْدَ مَا in 2:181, 8:6 and 13:37,
+ * and إِلْ يَاسِينَ in 37:130, which the word list has always sent with its
+ * space in it.
+ *
+ * Closing the space up costs nothing -- normalisation drops everything that is
+ * not a letter anyway, so the target the model aligns to is the same either
+ * way -- and one token per app word makes the two counts equal by construction
+ * rather than by luck. The display text keeps its spaces; only this does not.
+ */
+export function referenceToken(word: { arabic: string }): string {
+  return word.arabic.replace(/\s+/g, '');
+}
+
 export async function runForcedAlignMatch(params: {
   serviceUrl: string;
   source: AlignSource;
@@ -179,7 +200,7 @@ export async function runForcedAlignMatch(params: {
     }
     reference = versesPerRange
       .flat()
-      .map(verse => `${verse.verseKey}\t${verse.words.map(word => word.arabic).join(' ')}`)
+      .map(verse => `${verse.verseKey}\t${verse.words.map(referenceToken).join(' ')}`)
       .join('\n');
   }
 
@@ -217,7 +238,7 @@ export async function runForcedAlignMatch(params: {
       serviceUrl: params.serviceUrl,
       source: params.source,
       reference: selected
-        .map(verse => `${verse.verseKey}\t${verse.words.map(word => word.arabic).join(' ')}`)
+        .map(verse => `${verse.verseKey}\t${verse.words.map(referenceToken).join(' ')}`)
         .join('\n')
     });
     fellBackToSelected = true;

@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, integer, boolean, jsonb } from 'drizzle-orm/pg-core';
+import { FONT_ARABIC_DEFAULT } from '@/lib/quranData';
 
 export const projects = pgTable('projects', {
   id: text('id').primaryKey(),
@@ -32,7 +33,7 @@ export const projects = pgTable('projects', {
 
   // Customization & Style Settings
   aspectRatio: text('aspect_ratio').notNull().default('9:16'), // '9:16', '16:9', '1:1', '4:5'
-  fontArabic: text('font_arabic').notNull().default('Scheherazade New'),
+  fontArabic: text('font_arabic').notNull().default(FONT_ARABIC_DEFAULT),
   fontTranslation: text('font_translation').notNull().default('Inter'),
   arabicFontSize: integer('arabic_font_size').notNull().default(45),
   /** @deprecated The studio no longer renders transliteration. Kept so existing rows load; nothing writes it. */

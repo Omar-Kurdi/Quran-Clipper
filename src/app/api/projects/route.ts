@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveArabicFont } from '@/lib/quranData';
 import { desc, eq } from 'drizzle-orm';
 import { BACKGROUND_MODES } from '@/lib/backgroundTimeline';
 import { describeDbError } from '@/lib/dbError';
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
           ? { start: body.trimWindow.start, end: body.trimWindow.end }
           : null,
       aspectRatio: body.aspectRatio || '9:16',
-      fontArabic: body.fontArabic || 'Scheherazade New',
+      fontArabic: resolveArabicFont(body.fontArabic),
       fontTranslation: body.fontTranslation || 'Inter',
       arabicFontSize: body.arabicFontSize || 38,
       translationFontSize: body.translationFontSize || 38,

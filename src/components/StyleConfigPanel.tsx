@@ -422,18 +422,32 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           scrolled sideways and the last two tabs were invisible until you
           found that out. They are all "how the frame is laid out and lettered"
           and now share one tab with headings inside it. Three fit. */}
-      <div className="grid grid-cols-3 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+      {/* Sticky, like the Ayah/Style tabs above it: this panel is long enough
+          that changing section meant scrolling back to the top to find the
+          strip. `-mx-3 -mt-3 px-3 pt-3` lets the backdrop reach the column
+          edges while the buttons keep the panel's padding. */}
+      <div
+        role="tablist"
+        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-slate-950/95 backdrop-blur
+                   grid grid-cols-3 gap-1"
+      >
         {([
-          ['design', t.style.tabDesign, Type],
-          ['background', t.style.tabBackground, ImageIcon],
-          ['card', t.style.tabCard, Sliders]
-        ] as const).map(([id, label, Icon]) => (
+          ['design', t.style.tabDesign, t.style.tabDesignHint, Type],
+          ['background', t.style.tabBackground, t.style.tabBackgroundHint, ImageIcon],
+          ['card', t.style.tabCard, t.style.tabCardHint, Sliders]
+        ] as const).map(([id, label, hint, Icon]) => (
           <button
             key={id}
+            role="tab"
+            title={hint}
             onClick={() => setActiveTab(id)}
+            aria-selected={activeTab === id}
             aria-current={activeTab === id ? 'true' : undefined}
-            className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px] font-medium transition-all min-w-0 ${
-              activeTab === id ? 'bg-amber-500 text-slate-950 font-semibold shadow' : 'text-slate-400 hover:text-slate-200'
+            className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px]
+                        font-medium transition-all min-w-0 border ${
+              activeTab === id
+                ? 'bg-amber-500 text-slate-950 font-semibold border-amber-400 shadow'
+                : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-slate-100'
             }`}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -985,7 +999,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   <span className="block font-bold text-sm text-slate-100">
                     {t.style.fonts[f.id as keyof typeof t.style.fonts] ?? f.name}
                   </span>
-                  {/* Each face previews itself. Hardcoding font-amiri here
+                  {/* Each face previews itself. Hardcoding one family here
                       showed five identical samples -- and kept every other
                       family out of the DOM, so the canvas never fetched the
                       one it was about to draw with. */}

@@ -20,9 +20,19 @@
  *   ayah-root.db, ayah-lemma.db, ayah-stem.db   verse_key -> its roots/lemmas/stems
  *   word-root.db, word-lemma.db, word-stem.db   the roots/lemmas/stems themselves
  *   phrases.json, phrase_verses.json            mutashabihat, from the zip
+ *
+ *   fonts/                                      the mushaf fonts, as QUL packs
+ *                                               them. Unpacked into
+ *                                               public/fonts/ so the app can
+ *                                               serve them, byte for byte --
+ *                                               the KFGQPC licence permits
+ *                                               distributing them but not
+ *                                               altering them, so nothing here
+ *                                               subsets or re-compresses.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 
@@ -128,6 +138,58 @@ function buildMutashabihat() {
   return { phrases: occurrences, byVerse };
 }
 
+
+/**
+ * Unpack the font archives into public/fonts/.
+ *
+ * QUL's naming is not to be trusted -- the QPC V2 pack arrives called
+ * `.woff2.bz2` and is in fact a zip -- so each archive is identified by its
+ * magic bytes rather than its extension.
+ */
+function installFonts() {
+  const dir = at('fonts');
+  if (!existsSync(dir)) return null;
+
+  const jobs = [
+    { match: /qpc.*v2/i, into: 'qcf', rename: null },
+    { match: /surah-name/i, into: 'surah-name', rename: null },
+    // KFGQPC Nastaleeq is deliberately absent: it has an empty glyph for
+    // U+06DF, so a silent letter renders as a dotted circle.
+    { match: /digitalkhatt|indopaknastaleeq|indopak/i, into: 'unicode', rename: null }
+  ];
+  let written = 0;
+  for (const file of readdirSync(dir)) {
+    const job = jobs.find(candidate => candidate.match.test(file));
+    if (!job) continue;
+    const head = readFileSync(at(path.join('fonts', file))).subarray(0, 2).toString('latin1');
+    const target = path.join(process.cwd(), 'public', 'fonts', job.into);
+    mkdirSync(target, { recursive: true });
+    if (head === 'PK') {
+      execFileSync('unzip', ['-q', '-o', at(path.join('fonts', file)), '-d', target]);
+    } else if (head === 'BZ') {
+      const out = path.join(target, file.replace(/\.bz2$/, ''));
+      writeFileSync(out, execFileSync('bunzip2', ['-kc', at(path.join('fonts', file))], { maxBuffer: 1 << 28 }));
+    } else {
+      continue;
+    }
+    written += 1;
+  }
+  // QUL ships the Indopak Nastaleeq face as a bare `font.woff2`; the @font-face
+  // rule names the file, so it cannot stay ambiguous.
+  const vague = path.join(process.cwd(), 'public', 'fonts', 'unicode', 'font.woff2');
+  if (existsSync(vague)) renameSync(vague, path.join(path.dirname(vague), 'IndopakNastaleeq.woff2'));
+
+  if (written) {
+    const pages = existsSync(path.join(process.cwd(), 'public', 'fonts', 'qcf'))
+      ? readdirSync(path.join(process.cwd(), 'public', 'fonts', 'qcf')).length
+      : 0;
+    say(`fonts: unpacked ${written} archive(s)${pages ? `, ${pages} mushaf page font(s)` : ''}`);
+  }
+  return written || null;
+}
+
+const fonts = installFonts();
+
 const morphology = buildMorphology();
 if (morphology) {
   writeFileSync(at('morphology.json'), JSON.stringify(morphology));
@@ -140,7 +202,7 @@ if (mutashabihat) {
   say(`wrote mutashabihat.json (${(JSON.stringify(mutashabihat).length / 1e6).toFixed(2)} MB)`);
 }
 
-if (!morphology && !mutashabihat) {
+if (!morphology && !mutashabihat && !fonts) {
   console.error('Nothing to import. Put the QUL exports in data/qul/ first.');
   process.exit(1);
 }

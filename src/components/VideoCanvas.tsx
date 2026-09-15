@@ -1,7 +1,10 @@
 'use client';
 
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
-import { VerseData } from '@/lib/quranData';
+import { VerseData, arabicFontFamily } from '@/lib/quranData';
+import {
+  mushafCaption, pagesUsedBy, ensureQpcPages, FALLBACK_ARABIC_FAMILY
+} from '@/lib/mushafFonts';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
 import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
@@ -477,11 +480,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     if (typeof document === 'undefined' || !document.fonts) return;
     let cancelled = false;
     const wanted: [string, string][] = [
-      [`bold 60px '${config.fontArabic}'`, ARABIC_SAMPLE],
-      [`600 60px '${config.fontArabic}'`, ARABIC_SAMPLE],
-      [`60px '${config.fontArabic}'`, ARABIC_SAMPLE],
-      // The surah badge draws in Amiri whatever the verse font is.
-      [`bold 60px 'Amiri'`, ARABIC_SAMPLE],
+      [`bold 60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
+      [`600 60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
+      [`60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
+      // The surah badge draws in the fallback face whatever the verse font is.
+      [`bold 60px '${FALLBACK_ARABIC_FAMILY}'`, ARABIC_SAMPLE],
       [`60px '${config.fontTranslation}'`, 'Ag'],
     ];
     Promise.all(
@@ -492,6 +495,34 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     });
     return () => { cancelled = true; };
   }, [config.fontArabic, config.fontTranslation]);
+
+  /**
+   * Register and fetch the mushaf page fonts this project needs.
+   *
+   * There are 604 of them, one per printed page, so they cannot sit in CSS:
+   * each is added to `document.fonts` by hand the first time a word on that
+   * page appears. Every page in the project is fetched rather than only the
+   * one on screen, because the offline encoder walks the whole timeline
+   * without pausing for a font -- a page that arrived late would export as
+   * blank glyphs, and `ctx.font` reports no error when it falls back.
+   *
+   * A missing file is not an error either: a clone that has not run
+   * `scripts/qul-import.mjs` has no fonts at all, and `mushafCaption` keeps
+   * returning glyph text regardless, so the guard is that the font simply
+   * never becomes available and the caption draws in the fallback face.
+   */
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts || typeof FontFace === 'undefined') return;
+    const pages = pagesUsedBy(sortedVerses.flatMap(verse => verse.words || []));
+    if (!pages.length) return;
+    let cancelled = false;
+    ensureQpcPages(pages).then(() => {
+      // Layouts measured before the page font landed were measured against
+      // the fallback's metrics, which are not these.
+      if (!cancelled) textLayoutCache.current.clear();
+    });
+    return () => { cancelled = true; };
+  }, [sortedVerses]);
 
   useEffect(() => {
     if (syncBackgroundVideo) return;
@@ -818,13 +849,17 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const title = config.surahBadgeText?.trim() || `سُورَةُ ${surahNameArabic} • ${surahNameEnglish} (${range})`;
         const subtitle = config.surahBadgeSubtitleText?.trim() || '';
 
+        // The badge is ordinary text -- a name, a bullet, a range -- so it
+        // draws in a Unicode face. QUL's calligraphic surah-name font could
+        // replace the Arabic half of it; see FutureIdeas.md.
+        const titleFamily = FALLBACK_ARABIC_FAMILY;
         // Shrink to fit rather than spill past the plate.
         let titleSize = 34 * scale;
         const innerWidth = badgeWidth - 44 * scale;
-        ctx.font = `bold ${titleSize}px 'Amiri', serif`;
+        ctx.font = `bold ${titleSize}px '${titleFamily}', serif`;
         while (ctx.measureText(title).width > innerWidth && titleSize > 16 * scale) {
           titleSize -= scale;
-          ctx.font = `bold ${titleSize}px 'Amiri', serif`;
+          ctx.font = `bold ${titleSize}px '${titleFamily}', serif`;
         }
         const subtitleSize = 20 * scale;
 
@@ -834,7 +869,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // measured on the default title it put the text 8px high in a 68px
         // plate and pushed the diacritics of سُورَةُ through the gold border.
         // actualBoundingBox* is where the glyphs really land.
-        const titleFont = `bold ${titleSize}px 'Amiri', serif`;
+        const titleFont = `bold ${titleSize}px '${titleFamily}', serif`;
         const subtitleFont = `600 ${subtitleSize}px 'Inter', sans-serif`;
         const inkHeight = (text: string, font: string) => {
           ctx.font = font;
@@ -915,6 +950,13 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         : config.textAlignment === 'left' ? cardX + 40 : width / 2;
 
       const displayArabic = activeVerse ? getDisplayArabic(activeVerse) : '';
+      // The mushaf draws each word as one glyph from its page's own font, so
+      // the text and the family change together or not at all. Glyphs are
+      // space-separated characters, which is why everything below -- wrapping,
+      // measuring, the shrink-to-fit search -- needs no other change.
+      const mushaf = activeVerse ? mushafCaption(activeVerse.words, config.fontArabic) : null;
+      const arabicText = mushaf ? mushaf.text : displayArabic;
+      const arabicFamily = mushaf ? mushaf.family : arabicFontFamily(config.fontArabic);
       if (activeVerse && displayArabic) {
         // One block per chosen translation, in the order they were chosen. A
         // language whose text has not arrived yet is absent rather than blank,
@@ -932,8 +974,21 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const cardPadding = 40;
         const availableHeight = cardHeight - cardPadding * 2 - belowArabic;
 
+        /**
+         * No weight is named, and that is deliberate.
+         *
+         * Every mushaf face here ships one weight -- `usWeightClass` 400,
+         * Regular, no bold sibling -- so asking for `bold` does not select a
+         * face, it makes the browser *synthesise* one by drawing the glyph
+         * again at an offset. On dense Quranic text that smears the harakat
+         * into the letters, and because the Arabic is drawn with a shadow
+         * (`rgba(0,0,0,0.9)`, blur 12, below) the shadow is smeared with it,
+         * which is the black wash that appeared over the text. The Google
+         * faces this replaced did ship a 700, so the bold was real and this
+         * never showed.
+         */
         const arabicFont = (size: number) =>
-          `bold ${size}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
+          `${size}px '${arabicFamily}', '${FALLBACK_ARABIC_FAMILY}', serif`;
         const translationFont = (size: number) =>
           `${size}px '${config.fontTranslation}', sans-serif`;
         /**
@@ -944,7 +999,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
          * room.
          */
         const rtlTranslationFont = (size: number) =>
-          `${size}px '${config.fontArabic}', 'Scheherazade New', 'Amiri', serif`;
+          // A translation is not Quran text and has no page glyphs, so this
+          // stays a Unicode face even when the ayah above it is the mushaf.
+          `${size}px '${arabicFontFamily(config.fontArabic)}', '${FALLBACK_ARABIC_FAMILY}', serif`;
         const blockLineHeight = (size: number, rtl: boolean) => size * (rtl ? 1.85 : 1.55);
         /** The breathing space between two translations, so they read as two. */
         const blockGap = (size: number) => size * 0.7;
@@ -966,7 +1023,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
         const layoutAt = (arabic: number, translation: number) => {
           ctx.font = arabicFont(arabic);
-          const arabicLines = wrapAll(displayArabic, maxTextWidth);
+          const arabicLines = wrapAll(arabicText, maxTextWidth);
           const arabicLineHeight = arabicRowPitch(ctx, arabicLines, arabic);
           let widest = 0;
           for (const line of arabicLines) widest = Math.max(widest, ctx.measureText(line).width);
@@ -1000,7 +1057,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // the configured sizes do. Font loading is in the key, so metrics
         // measured against a fallback are recomputed once the real face lands.
         const layoutKey = [
-          displayArabic,
+          arabicText,
           translationBlocks.map(block => `${block.id}:${block.text}`).join('\u0001'),
           withTranslation, cardWidth, cardHeight,
           config.fontArabic, config.fontTranslation, config.arabicFontSize,
@@ -1051,7 +1108,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.shadowColor = 'transparent';
         ctx.shadowOffsetY = 0;
 
-        ctx.font = `600 ${ayahFontSize}px '${config.fontArabic}', serif`;
+        ctx.font = `${ayahFontSize}px '${arabicFontFamily(config.fontArabic)}', serif`;
         ctx.fillStyle = goldAccent;
         // U+FD3E opens and U+FD3F closes when read right-to-left, despite their
         // Unicode names ("ornate left/right parenthesis") suggesting the reverse.

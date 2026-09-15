@@ -99,6 +99,20 @@ ALLOWED_AUDIO_HOSTS = frozenset(
     if host.strip()
 )
 
+#: The studio's own audio proxy, which is allowed to be plain http.
+#:
+#: The app hands this service a URL on itself rather than the CDN address,
+#: because ffmpeg has no way to prefer IPv4 and both recitation CDNs publish
+#: AAAA records -- on a machine with no IPv6 route ffmpeg fails outright where
+#: a Node fetch falls back and succeeds. Routing through the app puts that
+#: fetch in the middle.
+#:
+#: One exact origin, not a pattern, and http only for that origin: this is the
+#: one address whose contents are already this deployment's own, so allowing it
+#: adds no reach the app did not already have. Set it to wherever the studio is
+#: served from if that is not the default.
+AUDIO_PROXY_ORIGIN = os.getenv("ALIGN_AUDIO_PROXY_ORIGIN", "http://localhost:3000").rstrip("/")
+
 
 def check_audio_url(url: str) -> str:
     """Reject a URL this service will not fetch, with the reason.
@@ -107,7 +121,13 @@ def check_audio_url(url: str) -> str:
     for mp3quran.net: the built-in reciters are spread across server6, 7, 11
     and 12, and which server hosts whom is their business to change, not a list
     to keep chasing. Everything else is an exact hostname.
+
+    `AUDIO_PROXY_ORIGIN` passes ahead of all of it, and is the only address
+    allowed over plain http.
     """
+    if AUDIO_PROXY_ORIGIN and url.startswith(AUDIO_PROXY_ORIGIN + "/"):
+        return url
+
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
         raise AudioDecodeError(f"Audio URLs must be https, not {parsed.scheme or 'a relative path'!r}.")

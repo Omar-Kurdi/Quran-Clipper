@@ -185,11 +185,11 @@
    change because someone switched the studio's language.
    --------------------------------------------------------------------------- */
 :root[lang="ar"] {
-  --font-sans: 'IBM Plex Sans Arabic', 'Noto Naskh Arabic', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
   /* Amiri rather than a sans: `font-display` marks the wordmark and the surah
      reference, and a naskh serif is the closest Arabic answer to what Cormorant
      was doing there. */
-  --font-display: 'Amiri', 'Scheherazade New', Georgia, serif;
+  --font-display: 'Cormorant Garamond', 'IBM Plex Sans Arabic', Georgia, serif;
 }
 
 /* Timecodes, hex colours, `2:255` references and URLs are Latin-script data
@@ -207,25 +207,67 @@
   unicode-bidi: isolate;
 }
 
+
+/* The mushaf fonts, served from public/fonts/ where scripts/qul-import.mjs
+   unpacks them. Self-hosted rather than fetched: they are King Fahd Complex
+   and QUL releases, and the licence permits distributing them byte for byte
+   but not altering them, so nothing here is subset or re-compressed.
+   `font-display: swap` keeps a caption readable while a face arrives; the
+   canvas waits for the real metrics separately, in VideoCanvas. */
+@font-face {
+  font-family: 'DigitalKhatt New Madina';
+  src: url('/fonts/unicode/DigitalKhattV2.otf') format('opentype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DigitalKhatt IndoPak';
+  src: url('/fonts/unicode/DigitalKhattIndoPak.otf') format('opentype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'AlQuran IndoPak by QuranWBW';
+  src: url('/fonts/unicode/IndopakNastaleeq.woff2') format('woff2');
+  font-display: swap;
+}
+/* The surah heading face: one calligraphic glyph per surah, reached by writing
+   `surah009` -- see `surahNameText`. Declared but not drawn yet; the badge is
+   still ordinary text. A face nothing names is never fetched, so this costs
+   nothing until something uses it. See FutureIdeas.md. */
+@font-face {
+  font-family: 'surah-name-v4';
+  src: url('/fonts/surah-name/surah-name-v4.woff2') format('woff2');
+  font-display: swap;
+}
+
 @layer utilities {
   .font-display {
     font-family: var(--font-display);
     font-optical-sizing: auto;
   }
-  .font-amiri {
-    font-family: 'Amiri', 'Traditional Arabic', 'Uthmanic', serif;
+  /* Quran text anywhere outside the canvas -- the inspector's box and word
+     chips, the timeline's captions. A page glyph cannot serve here: the
+     mushaf's fonts are one per page and a word is a single glyph, which is
+     unreadable in a textarea and unsearchable everywhere. So this is the
+     Unicode face, and it is the one measured to draw both the sukun and the
+     silent-letter zero correctly -- the UI font it replaced had neither, and
+     showed them as empty rectangles. */
+  .font-quran {
+    font-family: 'DigitalKhatt New Madina', serif;
   }
-  .font-scheherazade {
-    font-family: 'Scheherazade New', 'Amiri', serif;
+  /* The mushaf face has no static preview: every page is its own font and a
+     word is a glyph, so a swatch has to load the page it wants to show. The
+     class exists for the picker to hang that on. */
+  .font-mushaf {
+    font-family: 'DigitalKhatt New Madina', serif;
   }
-  .font-naskh {
-    font-family: 'Noto Naskh Arabic', sans-serif;
+  .font-digitalkhatt {
+    font-family: 'DigitalKhatt New Madina', serif;
   }
-  .font-kufi {
-    font-family: 'Reem Kufi', sans-serif;
+  .font-digitalkhatt-indopak {
+    font-family: 'DigitalKhatt IndoPak', serif;
   }
-  .font-ruqaa {
-    font-family: 'Aref Ruqaa', serif;
+  .font-indopak-nastaleeq {
+    font-family: 'AlQuran IndoPak by QuranWBW', serif;
   }
 }
 

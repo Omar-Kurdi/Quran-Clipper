@@ -1,3 +1,5 @@
+import { QPC_V2, FALLBACK_ARABIC_FAMILY } from './mushafFonts';
+
 export interface Reciter {
   id: string;
   name: string;
@@ -33,6 +35,23 @@ export interface VerseWord {
   translation: string;
   timestamp?: number;
   excluded?: boolean;
+  /**
+   * The mushaf's own drawing of this word, and which page font draws it.
+   *
+   * The King Fahd Complex typesets each page by hand, and QUL publishes the
+   * result as one font per page in which every word is a single glyph. So a
+   * caption can show the printed page rather than a font's interpretation of
+   * the Unicode text -- the two differ visibly, most obviously in the marks
+   * over a sakin letter.
+   *
+   * `arabic` stays the text. Only pixels come from here: the aligner's
+   * reference, ground truth, the inspector's edit box and every export's
+   * metadata are all Unicode, because a private-use glyph code is not text and
+   * cannot be searched, edited or compared. Absent when the upstream did not
+   * send the glyph fields, which is why nothing may depend on it.
+   */
+  glyph?: string;
+  glyphPage?: number;
 }
 
 export interface VerseData {
@@ -563,13 +582,54 @@ export const BACKGROUND_VIDEOS = [
   }
 ];
 
+/**
+ * The Arabic faces a caption can be drawn in.
+ *
+ * Every one is a mushaf font, self-hosted out of the QUL archives rather than
+ * fetched from Google Fonts. The five Google faces that used to be here --
+ * Amiri, Scheherazade New, Noto Naskh, Reem Kufi, Aref Ruqaa -- were removed
+ * because all five draw the sukun as a closed ring, which is the ring the
+ * mushaf reserves for a letter that is not pronounced at all.
+ *
+ * `mushaf` says the face draws `word.glyph`, the printed page's own drawing,
+ * rather than composing `word.arabic` from Unicode marks. Only one face can:
+ * see `mushafFonts`.
+ */
 export const FONTS_ARABIC = [
-  { id: 'Amiri', name: 'Amiri Uthmani', className: 'font-amiri', googleFont: 'Amiri:ital,wght@0,400;0,700;1,400' },
-  { id: 'Scheherazade New', name: 'Scheherazade', className: 'font-scheherazade', googleFont: 'Scheherazade+New:wght@400;700' },
-  { id: 'Noto Naskh Arabic', name: 'Noto Naskh', className: 'font-naskh', googleFont: 'Noto+Naskh+Arabic:wght@400;700' },
-  { id: 'Reem Kufi', name: 'Kufi Calligraphy', className: 'font-kufi', googleFont: 'Reem+Kufi:wght@400;700' },
-  { id: 'Aref Ruqaa', name: 'Aref Ruqaa', className: 'font-ruqaa', googleFont: 'Aref+Ruqaa:wght@400;700' }
+  { id: QPC_V2, name: 'Madani Mushaf', className: 'font-mushaf', family: FALLBACK_ARABIC_FAMILY, mushaf: true },
+  { id: 'DigitalKhatt', name: 'Digital Khatt', className: 'font-digitalkhatt', family: 'DigitalKhatt New Madina', mushaf: false },
+  { id: 'DigitalKhattIndoPak', name: 'Digital Khatt IndoPak', className: 'font-digitalkhatt-indopak', family: 'DigitalKhatt IndoPak', mushaf: false },
+  { id: 'IndopakNastaleeq', name: 'Indopak Nastaleeq', className: 'font-indopak-nastaleeq', family: 'AlQuran IndoPak by QuranWBW', mushaf: false }
 ];
+
+/**
+ * The CSS family a font id names.
+ *
+ * The two are not the same string and cannot be: an id is stored in the
+ * database and in exported projects, so it has to stay stable, while a family
+ * is whatever the font's own name table says -- `IndopakNastaleeq` is served
+ * by a face calling itself `AlQuran IndoPak by QuranWBW`. Passing the id to
+ * `ctx.font` names nothing, and canvas answers a family it does not have by
+ * silently using the next one in the list: every Unicode face rendered as
+ * Digital Khatt, identically, which is the bug this exists to prevent.
+ */
+export function arabicFontFamily(id: string | undefined): string {
+  return FONTS_ARABIC.find(font => font.id === id)?.family || FALLBACK_ARABIC_FAMILY;
+}
+
+/**
+ * What a project saved before the Google faces were removed should render in.
+ *
+ * Their ids are still in the database and in exported project files, and a
+ * font id that names nothing leaves the canvas drawing in whatever the OS
+ * ships. Everything maps to the mushaf: it is what each of them was an
+ * imperfect attempt at.
+ */
+export const FONT_ARABIC_DEFAULT = QPC_V2;
+
+export function resolveArabicFont(id: string | undefined): string {
+  return FONTS_ARABIC.some(font => font.id === id) ? (id as string) : FONT_ARABIC_DEFAULT;
+}
 
 export const ASPECT_RATIOS = [
   { id: '9:16', name: '9:16 Vertical (Shorts / TikTok / Reels)', width: 1080, height: 1920, class: 'aspect-[9/16]' },

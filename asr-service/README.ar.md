@@ -150,6 +150,8 @@ ASR_WARM_UP=1 uvicorn app.main:app --host 127.0.0.1 --port 8000
 | `MAX_UPLOAD_MB` | `200` | حد حجم الرفع. |
 | `MAX_CHUNK_SECONDS` | `25` | أقصى طول لقطعة فك الترميز في `/transcribe`. |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | قائمة السماح لـ CORS. |
+| `ALIGN_ALLOWED_AUDIO_HOSTS` | شبكتا التوزيع | المضيفات التي يجلب منها `/align` التسجيل. وما بدأ بنقطة يطابق أي نطاق فرعي. |
+| `ALIGN_AUDIO_PROXY_ORIGIN` | `http://localhost:3000` | وسيط الصوت في الاستوديو نفسه، وإليه يوجّه التطبيق هذه الخدمة بدل شبكة التوزيع. ويُسمح به على http عاديّ لأنه عنوان هذا النشر نفسه؛ فـ ffmpeg لا يستطيع تفضيل IPv4 وكلتا الشبكتين تنشران سجلّ AAAA، فيفشل الجلب المباشر على جهاز بلا مسار IPv6 وينجح عبر جلب Node في التطبيق. |
 | `LOG_LEVEL` | `INFO` | مستوى سجلات Python. |
 
 ---

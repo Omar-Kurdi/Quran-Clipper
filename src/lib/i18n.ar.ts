@@ -398,9 +398,12 @@ export const ar: Dictionary = {
   },
 
   style: {
-    tabDesign: 'التخطيط والنص',
+    tabDesign: 'النص',
     tabBackground: 'الخلفية',
-    tabCard: 'البطاقة والمؤثرات',
+    tabCard: 'البطاقة',
+    tabDesignHint: 'مقاس الإطار والخطوط والألوان والعلامة',
+    tabBackgroundHint: 'صورة الخلفية والفيديو والطبقة',
+    tabCardHint: 'البطاقة خلف النص وظلّها ومؤثراتها',
 
     headingFormat: 'الصيغة',
     headingTypography: 'الخطوط',
@@ -495,11 +498,10 @@ export const ar: Dictionary = {
 
     arabicFontLabel: 'الخط العربي:',
     fonts: {
-      Amiri: 'أميري عثماني',
-      'Scheherazade New': 'شهرزاد',
-      'Noto Naskh Arabic': 'نوتو نسخ',
-      'Reem Kufi': 'ريم كوفي',
-      'Aref Ruqaa': 'عارف رقعة'
+      'qpc-v2': 'المصحف المدني',
+      DigitalKhatt: 'الخط الرقمي',
+      DigitalKhattIndoPak: 'الخط الرقمي الهندي',
+      IndopakNastaleeq: 'نستعليق هندي'
     },
     arabicFontSize: 'حجم الخط العربي:',
     translationFontSize: 'حجم خط الترجمة:',

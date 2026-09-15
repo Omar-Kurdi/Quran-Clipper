@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
@@ -71,6 +72,26 @@ const ZOOMS = [1, 2, 4, 8];
  * waveform of the actual audio. Dragging an edge is the timing edit. One
  * playhead is the only clock in the app.
  */
+/**
+ * A block's caption, drawn the way the canvas will draw it.
+ *
+ * The mushaf's own glyphs where the page fonts can supply them, so the
+ * timeline and the frame never disagree about what a caption looks like; the
+ * Unicode text otherwise.
+ */
+function CaptionText({ verse }: { verse: VerseData }) {
+  const drawn = mushafCaption(verse.words, QPC_V2);
+  return (
+    <span
+      className="font-quran text-[13px] truncate w-full text-parchment/90"
+      dir="rtl"
+      style={drawn ? { fontFamily: drawn.family } : undefined}
+    >
+      {drawn ? drawn.text : verse.displayTextUthmani || verse.textUthmani}
+    </span>
+  );
+}
+
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
@@ -696,9 +717,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     <span className={`font-mono text-[10px] truncate w-full ${active ? 'text-gold-bright' : 'text-slate-300'}`}>
                       {verse.verseKey}
                     </span>
-                    <span className="font-amiri text-[13px] truncate w-full text-parchment/90" dir="rtl">
-                      {verse.displayTextUthmani || verse.textUthmani}
-                    </span>
+                    <CaptionText verse={verse} />
                   </button>
 
                   {/* Grab strips. Inside the block so they can never be orphaned

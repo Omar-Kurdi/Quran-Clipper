@@ -12,14 +12,25 @@ import { trimTimeline } from './verseEdits';
 
 // One ayah, four words, so a segment can cover part of it and a restart can
 // cover an overlapping part later in the recording.
+//
+// 25:1 answers with the real thing instead, vocalised, so a test can hand the
+// matcher a provider's own spelling of it and check which one survives.
+const UTHMANI = ['تَبَارَكَ', 'ٱلَّذِى', 'نَزَّلَ', 'ٱلْفُرْقَانَ'];
+// Spelled out again below rather than referenced: `vi.mock` is hoisted above
+// every const in the file, so the factory cannot close over this one.
 vi.mock('./quranCorpus', () => ({
-  getVerseByKey: async (verseKey: string) => ({
-    verseNumber: Number(verseKey.split(':')[1]),
-    verseKey,
-    textUthmani: 'أ ب ج د',
-    translation: 'text',
-    words: ['أ', 'ب', 'ج', 'د'].map(arabic => ({ arabic, translation: '' })),
-  }),
+  getVerseByKey: async (verseKey: string) => {
+    const words = verseKey === '25:1'
+      ? ['تَبَارَكَ', 'ٱلَّذِى', 'نَزَّلَ', 'ٱلْفُرْقَانَ']
+      : ['أ', 'ب', 'ج', 'د'];
+    return {
+      verseNumber: Number(verseKey.split(':')[1]),
+      verseKey,
+      textUthmani: words.join(' '),
+      translation: 'text',
+      words: words.map(arabic => ({ arabic, translation: '' })),
+    };
+  },
 }));
 import type { VerseData } from './quranData';
 
@@ -169,6 +180,67 @@ describe('trimTimeline word times', () => {
     };
     const [trimmed] = trimTimeline([untimed], 30, 40);
     expect(trimmed.words?.[0].timestamp).toBeUndefined();
+  });
+});
+
+// Gemini is asked for `displayTextUthmani` and writes the Arabic itself, so
+// what comes back is a language model's spelling of the Uthmani script. This
+// is that, with the tashkeel flattened the way a model flattens it: bare alef
+// for ٱ, no sukun, no superscript alef. It may say which words were recited.
+// It may not say how they are spelled.
+const asTheModelWroteIt = 'تبارك الذي نزل الفرقان';
+
+describe('fetchVersesByDetectedSegments keeps the Quran text the Quran text', () => {
+  it('stores the corpus spelling, not the provider\'s, when the provider matched by text', async () => {
+    const timeline = await fetchVersesByDetectedSegments({
+      segments: [{ verseKey: '25:1', startTime: 0, endTime: 4, displayTextUthmani: asTheModelWroteIt }],
+      selectedSurah: 25,
+      audioDuration: 10,
+    });
+    expect(timeline[0].displayTextUthmani).toBe(UTHMANI.join(' '));
+    expect(timeline[0].words?.map(w => w.arabic)).toEqual(UTHMANI);
+  });
+
+  it('nor when it arrives in recitedTextUthmani instead', async () => {
+    const timeline = await fetchVersesByDetectedSegments({
+      segments: [{ verseKey: '25:1', startTime: 0, endTime: 4, recitedTextUthmani: asTheModelWroteIt }],
+      selectedSurah: 25,
+      audioDuration: 10,
+    });
+    expect(timeline[0].displayTextUthmani).toBe(UTHMANI.join(' '));
+  });
+});
+
+describe('fetchVersesByDetectedSegments still lets a provider choose the words', () => {
+  it('even when it named word indices and spelled them its own way', async () => {
+    // The two halves used to disagree with each other: the words came from the
+    // corpus and the text came from the provider, so the canvas and the
+    // inspector could show the same caption differently.
+    const timeline = await fetchVersesByDetectedSegments({
+      segments: [{
+        verseKey: '25:1',
+        startTime: 0,
+        endTime: 4,
+        startWordIndex: 0,
+        endWordIndex: 1,
+        displayTextUthmani: asTheModelWroteIt,
+      }],
+      selectedSurah: 25,
+      audioDuration: 10,
+    });
+    expect(timeline[0].displayTextUthmani).toBe('تَبَارَكَ ٱلَّذِى');
+  });
+
+  it('and when it said which words were recited only by writing them out', async () => {
+    // The text is a selector, and that much it is good for: two of the four
+    // words, in the corpus's spelling of them.
+    const timeline = await fetchVersesByDetectedSegments({
+      segments: [{ verseKey: '25:1', startTime: 0, endTime: 4, displayTextUthmani: 'نزل الفرقان' }],
+      selectedSurah: 25,
+      audioDuration: 10,
+    });
+    expect(timeline[0].words?.filter(w => !w.excluded).map(w => w.arabic)).toEqual(['نَزَّلَ', 'ٱلْفُرْقَانَ']);
+    expect(timeline[0].displayTextUthmani).toBe('نَزَّلَ ٱلْفُرْقَانَ');
   });
 });
 

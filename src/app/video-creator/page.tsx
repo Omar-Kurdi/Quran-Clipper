@@ -60,7 +60,9 @@ import {
   RECITERS,
   SAMPLE_PROJECTS,
   BACKGROUND_VIDEOS,
-  VerseData
+  VerseData,
+  FONT_ARABIC_DEFAULT,
+  resolveArabicFont
 } from '@/lib/quranData';
 import { 
   Sparkles, 
@@ -190,6 +192,41 @@ export default function VideoCreatorPage() {
    */
   const [isSampleProject, setIsSampleProject] = useState<boolean>(true);
 
+  /**
+   * Give the opening sample its words, so the mushaf has something to draw.
+   *
+   * `SAMPLE_PROJECTS` carries ayah text and timings but no word list, and the
+   * mushaf face draws per-word glyphs -- so on a first visit it had nothing to
+   * work with and fell back to the Unicode face, which is the same face the
+   * Digital Khatt option uses. Choosing between those two appeared to do
+   * nothing at all, while the other two changed as expected. Every other
+   * timeline comes from the API with its words attached; this one now does too.
+   *
+   * Times, translations and everything else are left exactly as they are: only
+   * the missing word lists are filled in, and only while the sample is still
+   * what is on screen.
+   */
+  useEffect(() => {
+    if (!isSampleProject) return;
+    let cancelled = false;
+    fetch(`/api/quran/verses?surah=1&start=1&end=7&reciter=${SAMPLE_PROJECTS[0].reciterId}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        const fetched: VerseData[] = data?.verses || [];
+        if (cancelled || !fetched.length) return;
+        const wordsFor = new Map(fetched.map(verse => [verse.verseKey, verse.words]));
+        setVerses(current =>
+          current.map(verse =>
+            verse.words?.length ? verse : { ...verse, words: wordsFor.get(verse.verseKey) || verse.words }
+          )
+        );
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // Once, for the sample. A reload of it is a reload of the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Audio Playback & Web Audio API
   // Transport, clock and Web Audio graph. Destructured to the names the rest of
   // this component already used, so only the ownership moved.
@@ -266,7 +303,7 @@ export default function VideoCreatorPage() {
   // Studio Canvas Configuration
   const [canvasConfig, setCanvasConfig] = useState<VideoCanvasConfig>({
     aspectRatio: '9:16',
-    fontArabic: 'Scheherazade New',
+    fontArabic: FONT_ARABIC_DEFAULT,
     fontTranslation: 'Inter',
     arabicFontSize: 45,
     translationFontSize: 45,
@@ -711,15 +748,25 @@ export default function VideoCreatorPage() {
   /**
    * The address the *sidecar* should fetch, given what the player is using.
    *
-   * A measured reciter timeline plays through `/api/audio/proxy`, which is a
-   * path on this app and means nothing to another process. The upstream URL is
-   * sitting in its query string.
+   * A reciter timeline plays through `/api/audio/proxy`, which is a path on
+   * this app and means nothing to another process -- so it is made absolute
+   * rather than unwrapped.
+   *
+   * Sending the sidecar the CDN address directly is what this used to do, and
+   * it is why one reciter could fail while another worked: ffmpeg takes
+   * whichever address `getaddrinfo` returns first and has no `-4` to force the
+   * matter, so a host publishing a AAAA record is unreachable from a machine
+   * with no IPv6 route. Both CDNs publish one. Going back through this app
+   * puts a Node fetch in the middle, which tries both families and falls back
+   * -- the same reason the proxy exists for the browser, in its own words.
    */
-  const upstreamAudioUrl = (url: string): string => {
+  const alignableAudioUrl = (url: string): string => {
     if (!url) return '';
-    if (/^https:\/\//.test(url)) return url;
-    const match = url.match(/[?&]url=([^&]+)/);
-    return match ? decodeURIComponent(match[1]) : '';
+    if (url.startsWith('/')) return `${window.location.origin}${url}`;
+    if (/^https:\/\//.test(url)) {
+      return `${window.location.origin}/api/audio/proxy?url=${encodeURIComponent(url)}`;
+    }
+    return url;
   };
 
   /**
@@ -891,7 +938,7 @@ export default function VideoCreatorPage() {
    * -- so offering it would fail after a long upload rather than up front.
    */
   const alignLoadedReciter = async (loaded: VerseData[], rawUrl: string, totalSeconds: number) => {
-    const url = upstreamAudioUrl(rawUrl);
+    const url = alignableAudioUrl(rawUrl);
     if (!url || loaded.length === 0) return;
 
     const { start, end } = alignWindowFor(loaded, totalSeconds);
@@ -927,7 +974,7 @@ export default function VideoCreatorPage() {
   };
 
   const handleAutoMatchReciter = () => {
-    const url = upstreamAudioUrl(audioUrl);
+    const url = alignableAudioUrl(audioUrl);
     if (!url) {
       setMatchStatus({ text: t.match.reciterNoUrl, tone: 'error' });
       return;
@@ -1624,7 +1671,8 @@ export default function VideoCreatorPage() {
     setCanvasConfig({
       ...canvasConfig,
       aspectRatio: proj.aspectRatio || '9:16',
-      fontArabic: proj.fontArabic || 'Scheherazade New',
+      // A project saved before the Google faces were removed still names one.
+      fontArabic: resolveArabicFont(proj.fontArabic),
       fontTranslation: proj.fontTranslation || 'Inter',
       arabicFontSize: proj.arabicFontSize || 38,
       translationFontSize: proj.translationFontSize || 20,
@@ -2207,7 +2255,7 @@ export default function VideoCreatorPage() {
                         <div>
                           {locale === 'ar' ? (
                             <>
-                              <span className="font-bold block text-slate-200 font-amiri text-base" dir="rtl">
+                              <span className="font-bold block text-slate-200 font-quran text-base" dir="rtl">
                                 {r.arabicName}
                               </span>
                               <span className="text-[11px] text-amber-400 block" dir="ltr">{r.name}</span>
@@ -2215,7 +2263,7 @@ export default function VideoCreatorPage() {
                           ) : (
                             <>
                               <span className="font-bold block text-slate-200">{r.name}</span>
-                              <span className="text-[11px] text-amber-400 font-amiri block" dir="rtl">{r.arabicName}</span>
+                              <span className="text-[11px] text-amber-400 font-quran block" dir="rtl">{r.arabicName}</span>
                             </>
                           )}
                         </div>
