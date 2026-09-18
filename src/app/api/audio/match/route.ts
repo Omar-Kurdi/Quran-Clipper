@@ -16,12 +16,17 @@ export const dynamic = 'force-dynamic';
 /**
  * `align` force-aligns the known text against the audio locally and is the
  * accurate path -- it cannot drop or garble a word. `gemini` is the zero-setup
- * cloud option, at the cost of estimated rather than measured timing. See
- * docs/ALIGNMENT.md.
+ * cloud option, at the cost of estimated rather than measured timing. `qul`
+ * is `align` with range detection consulting QUL's morphology and
+ * mutashabihat -- a separate option so the two can be compared on the same
+ * recording. See docs/ALIGNMENT.md.
  */
-type Provider = 'gemini' | 'align';
+type Provider = 'gemini' | 'align' | 'qul';
 
-const PROVIDERS: Provider[] = ['gemini', 'align'];
+const PROVIDERS: Provider[] = ['gemini', 'align', 'qul'];
+
+/** Both local providers run the forced aligner; they differ only in how the passage is found. */
+const isLocal = (provider: Provider) => provider === 'align' || provider === 'qul';
 
 /**
  * Whether the UI should ask the user to check the result before publishing.
@@ -43,6 +48,7 @@ function needsReview(provider: Provider, confidence: number, warned: boolean): b
     // The user asserted the range themselves and the coverage check passed, so
     // there is nothing left to flag.
     case 'align':
+    case 'qul':
       return false;
   }
 }
@@ -143,7 +149,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (hasWindow && provider !== 'align' && !(audio instanceof File)) {
+    if (hasWindow && !isLocal(provider) && !(audio instanceof File)) {
       // Only the local aligner can be pointed at a URL. Gemini needs the bytes
       // inline, and sending it two hours of chapter to match three ayahs is
       // neither affordable nor within its upload limit.
@@ -164,7 +170,7 @@ export async function POST(req: NextRequest) {
 
     let result: MatchResult;
 
-    if (provider === 'align') {
+    if (isLocal(provider)) {
       const serviceUrl = defaultAsrServiceUrl();
       try {
         // Auto-detect by default: the sidecar reads the audio and finds the
@@ -179,7 +185,8 @@ export async function POST(req: NextRequest) {
           autoDetect,
           surah: selectedSurah,
           start: selectedStart,
-          end: selectedEnd
+          end: selectedEnd,
+          assist: provider === 'qul' ? 'qul' : undefined
         });
       } catch (err) {
         const error = err as Error;
@@ -225,7 +232,7 @@ export async function POST(req: NextRequest) {
 
     const segments = result.segments;
     if (segments.length === 0) {
-      const providerLabel = provider === 'align' ? 'The forced aligner' : 'Gemini';
+      const providerLabel = isLocal(provider) ? 'The forced aligner' : 'Gemini';
       return NextResponse.json(
         { success: false, provider, error: `${providerLabel} did not return any detected ayah segments. Try a clearer/shorter audio clip or use manual matching.` },
         { status: 422 }
@@ -280,7 +287,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      method: provider === 'align' ? 'ctc_forced_alignment' : 'gemini_quran_audio_timeline_alignment',
+      method: isLocal(provider) ? 'ctc_forced_alignment' : 'gemini_quran_audio_timeline_alignment',
       provider,
       model: provider === 'gemini' ? geminiModel() : undefined,
       confidence,
@@ -318,7 +325,7 @@ export async function GET() {
   // backend failed to import. Surfacing that here means the studio can say so
   // before someone uploads a file, rather than after a failed match.
   let alignReady = true;
-  let alignError: string | null = null;
+  let alignError: string | null = null, qulAssist = false;
   try {
     // The sidecar resolves its align backend at startup so this stays a few
     // milliseconds, but allow headroom for a loaded host -- timing out here
@@ -331,6 +338,7 @@ export async function GET() {
       // Absent on an older sidecar, which is indistinguishable from healthy.
       alignReady = health?.alignReady !== false;
       alignError = health?.alignError ?? null;
+      qulAssist = Boolean(health?.qulAssist);
     }
   } catch {
     asrAvailable = false;
@@ -348,7 +356,8 @@ export async function GET() {
         canAutoDetectRange,
         alignReady,
         alignError
-      }
+      },
+      qul: { configured: asrAvailable && alignReady && qulAssist, canAutoDetectRange, qulAssist }
     },
     defaultProvider: resolveProvider(null)
   });

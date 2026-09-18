@@ -151,12 +151,19 @@ export const en = {
     matcherLocalBlurb:
       'Finds the passage in the audio, then times every word against the real Quran text, so no word can be dropped or misheard. Nothing leaves your machine.',
     matcherLocalFix: 'This needs the local helper app running. Start it, then reload this page.',
+    matcherQul: 'Local + QUL',
+    matcherQulTechnical: 'local forced alignment, with QUL morphology and mutashabihat',
+    matcherQulBlurb:
+      'The same local matcher, but it also uses QUL’s word roots and its list of repeated passages to work out which passage was recited. Try it on the same recording as Local to compare.',
+    matcherQulFix:
+      'This needs the local helper app running and the QUL morphology and mutashabihat files imported into data/qul (node scripts/qul-import.mjs).',
     matcherOnline: 'Online',
     matcherOnlineTechnical: 'Gemini cloud matching',
     matcherOnlineBlurb:
       'Works with nothing installed, but the timing is estimated rather than measured, so expect to correct it by hand. Your audio is sent to Google.',
     matcherOnlineFix: 'Add a Gemini API key to use this option.',
     matcherChecking: 'Checking…',
+    matcherQulMissing: 'QUL files missing',
     matcherReady: 'Ready',
     matcherHelperNotRunning: 'Helper not running',
     matcherHelperNeedsRestart: 'Helper needs restarting',
@@ -235,6 +242,17 @@ export const en = {
     segmentsTitle:
       'Time this passage from the reciter’s own published word timings. Measured for this recording rather than worked out from the audio, and it gives every word a start.',
     segmentsLoading: 'Reading the reciter’s published timings…',
+    qulSegments: 'QUL timings',
+    qulSegmentsTitle:
+      'Time this passage from QUL’s word timings for this reciter, and play QUL’s recording of it: the timings were measured on that recording, not on the one loaded now.',
+    qulSegmentsUnavailable: (reciter: string) =>
+      `No QUL timings for this reciter on this machine. Download its “with segments” surah-by-surah recitation from qul.tarteel.ai as JSON and unzip it into data/qul/recitations/${reciter}/.`,
+    qulSegmentsLoading: 'Reading QUL’s timings…',
+    qulSegmentsNone: 'QUL’s export has no timings for this passage. The other ways of timing it are unaffected.',
+    qulSegmentsDone: (ayahs: number, timed: number, bounds: number) =>
+      `Timed ${ayahs} ayah${ayahs === 1 ? '' : 's'} from QUL — ${timed} with word-by-word times${
+        bounds > 0 ? `, ${bounds} with the ayah’s bounds only` : ''
+      }. Now playing QUL’s recording, which those timings were measured on.`,
     segmentsUnavailable:
       'This reciter has no published timings — their recording is not one of the measured ones. Use AI Auto-match instead.',
     segmentsNone:

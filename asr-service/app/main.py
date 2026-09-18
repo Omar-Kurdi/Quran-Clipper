@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import align, asr, corpus, detect
+from . import align, asr, corpus, detect, qul
 from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, decode_url_window, duration_seconds
 from .vad import VoicedRegion, detect_voiced_regions
 
@@ -122,6 +122,28 @@ def _startup() -> None:
         asr.warm_up()
 
 
+def _assist_requested(name: str) -> bool:
+    return name.strip().lower() == "qul"
+
+
+def _assist(name: str) -> qul.Assist | None:
+    """The detection assist a request asked for, or None for the default path."""
+    if not _assist_requested(name):
+        return None
+    loaded = qul.load()
+    if loaded is None:
+        # Asked for and not here: say so rather than quietly running the
+        # default path, which would make a comparison compare nothing.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "qul_unavailable",
+                "message": f"The QUL exports are not in {qul.data_dir()} -- run scripts/qul-import.mjs.",
+            },
+        )
+    return loaded
+
+
 @app.get("/health")
 def health() -> dict:
     return {
@@ -142,6 +164,9 @@ def health() -> dict:
         # capability the caller could have planned around.
         "canAutoDetectRange": align.align_backend() == "nemo" and ALIGN_STARTUP_ERROR is None,
         "sampleRate": SAMPLE_RATE,
+        # Whether "Local + QUL" can run: the morphology and mutashabihat
+        # exports are on this machine.
+        "qulAssist": qul.available(),
     }
 
 
@@ -297,6 +322,7 @@ async def align_endpoint(
     audio_url: str = Form(""),
     window_start: float = Form(0.0),
     window_end: float = Form(0.0),
+    assist: str = Form(""),
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -312,8 +338,15 @@ async def align_endpoint(
     network to use thirty seconds of it. ffmpeg range-seeks instead. Times in
     the response are still absolute against the whole recording, because the
     seek is exact and the caller is playing the whole file.
+
+    ``assist=qul`` has range detection consult QUL's morphology and
+    mutashabihat (see `qul`). It is the studio's "Local + QUL" option, kept
+    separate so the two can be compared; it only matters when no reference is
+    sent, because a known range has nothing left to detect.
     """
     started = time.perf_counter()
+    # Resolved before any decoding, so a missing export fails in milliseconds.
+    detect_assist = _assist(assist)
 
     if audio_url:
         if not (window_end > window_start >= 0):
@@ -396,7 +429,7 @@ async def align_endpoint(
         try:
             boundaries = align.detect_boundaries(pcm)
             decoded_phrases = align.decode_phrases(pcm, boundaries)
-            detected = detect.detect_range(decoded_phrases)
+            detected = detect.detect_range(decoded_phrases, detect_assist)
         except align.AlignError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -572,6 +605,7 @@ async def align_endpoint(
         "backend": align.align_backend(),
         "model": align.align_model_name(),
         "detectedRange": detected.to_dict() if detected else None,
+        "assist": "qul" if detected is not None and detect_assist is not None else None,
         "audioDuration": round(total_duration, 3),
         # Where in the recording this alignment sits, so the caller can tell a
         # window apart from a clip that happens to start at zero.

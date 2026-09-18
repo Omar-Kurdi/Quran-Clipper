@@ -365,12 +365,13 @@ The sidecar has its own settings (backend, device, thresholds), documented in
 ## Audio matching
 
 Upload a recitation, pick a matcher, and the studio produces a timeline of segments.
-Both providers return the same shape and flow through the same timeline-building code, so
+Every provider returns the same shape and flow through the same timeline-building code, so
 they can be swapped freely and compared on the same clip.
 
 | Provider | Needs | Who picks the ayah range | Timing accuracy |
 |---|---|---|---|
 | **Local** (`align`) | sidecar | detected from audio, or you | **Exact** — cannot drop or garble a word |
+| **Local + QUL** (`qul`) | sidecar and the [QUL exports](#qul-data) | detected from audio, with QUL's help, or you | **Exact** — the same aligner |
 | **Online** (`gemini`) | API key | you | Approximate |
 
 <p align="center">
@@ -386,6 +387,20 @@ corpus search that could put a phrase in the wrong surah.
 **Online** does both jobs in one call. Zero local setup, but an LLM has no frame-level time
 grounding, so its timestamps are plausible estimates rather than measurements — expect to
 correct the boundaries by hand. Prefer `align` whenever the sidecar is available.
+
+**Local + QUL** is **Local** with one difference, in how the passage is found. When it works
+out which passage was recited, it also consults two datasets from the
+[Quranic Universal Library](https://qul.tarteel.ai):
+- the root and stem of every word, so a word the decoder heard in another form still matches
+  by its root;
+- the list of phrases the Quran repeats, so every place a repeated phrase occurs is weighed,
+  and a phrase that could belong to any of them is not taken as evidence of where the
+  recitation is.
+
+Once the passage is known, both options align it identically. The option is separate so one
+recording can be matched both ways and compared. To compare them across every ground-truth
+recording at once, run `asr-service/.venv/bin/python scripts/compare_qul_detect.py`. On the
+nine recordings measured so far, both found the same passage every time.
 
 ### Checking a match before you publish
 
@@ -460,6 +475,22 @@ acoustic sharpness, which is useful for spotting a muddy recording but does *not
 correct range from a wrong one — [docs/ALIGNMENT.md](docs/ALIGNMENT.md) has the measurements.
 
 ---
+
+### QUL data
+
+Some options read exports from the [Quranic Universal Library](https://qul.tarteel.ai) (QUL),
+which Tarteel publishes. QUL has no API; its downloads need a free QUL account. Nothing here
+ships with the repository, because `data/` is not tracked. Without the exports, the options
+that need them say so, and everything else works as before.
+
+| For | Download from QUL | Put it in |
+|---|---|---|
+| **Local + QUL** | morphology (word roots, lemmas and stems) and mutashabihat | `data/qul/`, then run `node scripts/qul-import.mjs` |
+| **QUL timings** | a reciter's surah-by-surah recitation **with segments**, as JSON | `data/qul/recitations/<reciter>/`, unzipped |
+
+`<reciter>` is the studio's id for the reciter: `sudais`, `muaiqly`, `yasser`, `shuraim`,
+`ghamdi` or `raad`. At the time of writing, QUL has segmented surah-by-surah recitations of
+Sudais, Maher al-Muaiqly and Saad al-Ghamdi.
 
 ## Translations
 
@@ -546,6 +577,8 @@ order, which is how the work actually goes.
 2. Or upload your own recitation — audio **or video**. For a video, its audio drives the timing
    and a checkbox offers the footage as the background, synced to playback.
    - **Local** detects the passage from the audio and times every word locally.
+   - **Local + QUL** does the same, and also uses QUL's word roots and repeated phrases to find
+     the passage. See [QUL data](#qul-data).
    - **Online** works with nothing installed, but the timing is estimated rather than measured.
    - Options that need something you do not have say so, and say what to do about it.
    - **Trim audio** is in the top toolbar and available at any point — before matching, after
@@ -581,6 +614,11 @@ Then save the project and export.
 
 > Built-in reciter timings are estimates. Set boundaries yourself on the timeline, or use AI
 > matching, for accuracy. AI matching applies to uploaded audio only.
+>
+> After a load, **Reciter timings** times the passage from quran.com's published word timings,
+> where it has them. **QUL timings** does the same from QUL's timings, and plays QUL's own
+> recording of the reciter, because the times were measured on that recording. Both buttons
+> can be used on the same passage to compare the two.
 
 ---
 
@@ -661,7 +699,8 @@ App routes:
 | `GET` | `/api/quran/verses?surah=&start=&end=&reciter=` | Verse data and audio URL |
 | `GET` | `/api/quran/translations` | Every translation the configured upstream publishes, grouped for the picker |
 | `GET` | `/api/quran/translation?surah=&start=&end=&ids=` | The text of up to five translations for one passage, keyed by verse |
-| `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|gemini`) |
+| `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|qul\|gemini`) |
+| `GET` | `/api/quran/qul-segments` | A built-in reciter's passage timed from QUL's export, with QUL's audio. With no `surah`, the reciters that have one |
 | `GET` | `/api/audio/match` | Which providers are configured and reachable |
 | `GET` | `/api/audio/proxy?url=` | Streams reciter audio, range requests included |
 | `GET` | `/api/background/resolve?url=` | Turns a Pexels page link into the media file link |

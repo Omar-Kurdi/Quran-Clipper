@@ -374,6 +374,30 @@ ibtidā'](https://bayanulquran-academy.com/waqf-and-ibtida/), [Riwaq Al Quran on
 rules](https://riwaqalquran.com/blog/what-are-the-rules-of-stopping-when-reading-quran/),
 [Quranica on tajweed symbols](https://quranica.com/articles/tajweed-symbols-and-stop-signs/).
 
+### Detection with QUL's text data ("Local + QUL")
+
+`detect_range` takes an optional `assist`, loaded by `asr-service/app/qul.py` from QUL's
+morphology and mutashabihat exports. Only the studio's **Local + QUL** option passes it
+(`assist=qul` on `/align`); without it, detection is unchanged. It does three things:
+
+- **Candidates by root.** Each decoded word is mapped to the root (or stem) its surface form
+  most often has in the corpus, and root trigrams vote for candidates beside the letter
+  trigrams. A candidate is scored on whichever agrees better, and a root match counts for
+  `ROOT_MATCH_WEIGHT` (0.9) of a letter match, so it can decide only where the letters could
+  not.
+- **Every occurrence of a repeated phrase.** Candidates are capped at `MAX_CANDIDATES`, and a
+  phrase like مِن دُونِ ٱللَّهِ occurs 71 times, so the right occurrence can fall outside the
+  cap. With the assist, the other occurrences of any repeated phrase the best few candidates
+  sit in are scored too, and nearness to the rest of the recitation chooses between them.
+- **Repeated phrases do not anchor.** A phrase that lies wholly inside a repeated phrase says
+  what was recited, not where, so it does not vote on which surah the recitation is in —
+  unless nothing else is left to vote.
+
+`scripts/compare_qul_detect.py` runs detection both ways on every ground-truth recording. On
+the nine measured when it was added, both found the same passage every time; the QUL option's
+match confidence was slightly higher on two. `./gauge.sh` aligns a known passage, so it does
+not exercise this at all.
+
 ---
 
 ## The wrong-passage problem

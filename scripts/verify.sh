@@ -71,6 +71,7 @@ run "unit tests" unit       npx vitest run
 
 if [[ -n "$PY" ]]; then
   run "alignment rules" alignment-rules "$PY" scripts/test_alignment_rules.py
+  run "QUL assist"      qul-assist      "$PY" scripts/test_qul_assist.py
   # The Skylos gate decides whether a change ships, so the rule it applies is
   # checked here rather than only in the gate that applies it.
   run "gate matcher" skylos-accepted "$PY" scripts/test_skylos_accepted.py
