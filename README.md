@@ -149,7 +149,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   *video* is untouched either way — the watermark, the surah badge and the translation are your
   content, not interface copy.
 - Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
-  Arabic defaults to Scheherazade New and auto-shrinks to stay inside the card. Each colour
+  Arabic defaults to the Madani mushaf's own glyphs (QUL's QPC V2 fonts, one per printed page),
+  with Digital Khatt, Digital Khatt IndoPak and Indopak Nastaleeq as alternatives, and
+  auto-shrinks to stay inside the card. Each colour
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
   picker in the last cell of the grid.
 <p align="center">
