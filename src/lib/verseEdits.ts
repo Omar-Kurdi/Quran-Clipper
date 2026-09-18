@@ -178,43 +178,88 @@ export function setTranslationText(
   return updated;
 }
 
+/**
+ * Sets a caption's own translation line.
+ *
+ * Translation only. The Arabic is never set by hand: it is the corpus's text
+ * for the verse key and nothing else, which the Quran Foundation's terms
+ * require and which is right on its own merits -- retyped Arabic was the one
+ * path by which a caption's words could disagree with the mushaf. What a
+ * caption *can* change is which of the ayah's words are on screen; see
+ * `toggleWord`.
+ */
 export function setText(
   verses: VerseData[],
   index: number,
-  field: 'textUthmani' | 'translation',
+  field: 'translation',
   value: string
 ): VerseData[] {
   const updated = [...verses];
   const current = updated[index];
-  if (!current) return verses;
-
-  if (field === 'textUthmani') {
-    // Retyping the Arabic drops any measured word times with the old words,
-    // because they described words that are no longer there. Splitting this
-    // segment afterwards falls back to dividing by pace, which is what
-    // `splitSegment` does whenever the times are missing or stale.
-    updated[index] = {
-      ...current,
-      textUthmani: value,
-      displayTextUthmani: value,
-      words: value.split(/\s+/).filter(Boolean).map(arabic => ({
-        arabic, translation: '', excluded: false
-      }))
-    };
-  } else {
-    updated[index] = { ...current, translation: value, displayTranslation: value };
-  }
+  if (!current || field !== 'translation') return verses;
+  updated[index] = { ...current, translation: value, displayTranslation: value };
   return updated;
 }
 
+/**
+ * Points a segment at a different ayah.
+ *
+ * The text goes with the old ayah: it is emptied here and filled from the
+ * corpus for the new verse key (`fillFromCorpus`), since the words and their
+ * times described the ayah that is no longer there, and nobody can retype
+ * them. Timing is kept -- the segment still sits where it sat.
+ */
 export function setVerseNumber(verses: VerseData[], index: number, value: number): VerseData[] {
   const updated = [...verses];
   const current = updated[index];
   if (!current) return verses;
   const currentSurah = current.verseKey.split(':')[0] || '1';
   const verseNumber = Math.max(1, Math.round(value || current.verseNumber));
-  updated[index] = { ...current, verseNumber, verseKey: `${currentSurah}:${verseNumber}` };
+  if (verseNumber === current.verseNumber) return verses;
+  updated[index] = {
+    ...current,
+    verseNumber,
+    verseKey: `${currentSurah}:${verseNumber}`,
+    textUthmani: '',
+    displayTextUthmani: '',
+    translation: '',
+    displayTranslation: '',
+    words: [],
+    translations: undefined,
+    displayTranslations: undefined
+  };
   return updated;
+}
+
+/**
+ * Gives every segment with no text of its own the corpus's text for its key.
+ *
+ * A segment is empty after `addVerseAfter` or `setVerseNumber`, and those are
+ * the only ways it gets that way -- the text is not editable, so the corpus is
+ * the only place it can come from. Only empty segments are touched, and the
+ * array comes back by identity when there was nothing to fill, so a caller can
+ * run this from an effect that reads the same timeline.
+ */
+export function fillFromCorpus(
+  verses: VerseData[],
+  corpus: { verseKey: string; textUthmani: string; translation: string; words?: VerseData['words'] }[]
+): VerseData[] {
+  const byKey = new Map(corpus.map(verse => [verse.verseKey, verse]));
+  let changed = false;
+  const filled = verses.map(verse => {
+    if (verse.textUthmani?.trim()) return verse;
+    const source = byKey.get(verse.verseKey);
+    if (!source?.textUthmani) return verse;
+    changed = true;
+    return {
+      ...verse,
+      textUthmani: source.textUthmani,
+      displayTextUthmani: source.textUthmani,
+      translation: verse.translation || source.translation,
+      words: (source.words || []).map(word => ({ ...word, excluded: false }))
+    };
+  });
+  return changed ? filled : verses;
 }
 
 export function toggleWord(verses: VerseData[], verseIndex: number, wordIndex: number): VerseData[] {
@@ -246,18 +291,20 @@ export function addVerseAfter(verses: VerseData[], anchorIndex: number): { verse
     nextNum = 1;
   }
 
-  const text = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ';
+  // Empty, not a placeholder: the text is the corpus's for this verse key and
+  // is filled in by `fillFromCorpus`. A stand-in ayah under the wrong key --
+  // this used to insert the basmala labelled as whichever ayah came next --
+  // cannot be put right by hand now that the Arabic is not editable.
   const startT = anchor ? anchor.endTime : 0;
   const newVerse: VerseData = {
     verseNumber: nextNum,
     verseKey: `${surahNumber}:${nextNum}`,
-    textUthmani: text,
-    translation: 'New verse translation',
+    textUthmani: '',
+    translation: '',
     startTime: startT,
     endTime: startT + 5.0,
-    words: text.split(/\s+/).map(arabic => ({ arabic, translation: '', excluded: false })),
-    displayTextUthmani: text,
-    displayTranslation: 'New verse translation'
+    words: [],
+    displayTextUthmani: ''
   };
 
   const insertAt = (verses[anchorIndex] ? anchorIndex : verses.length - 1) + 1;
@@ -489,7 +536,7 @@ export function formatTime(seconds: number): string {
  * Nothing about rebasing verse times needs the Quran corpus, but living in that
  * module meant the studio -- a client component -- imported it, and through it
  * everything the matcher reaches. That was harmless until the corpus learned to
- * read The Clear Quran off the disk, at which point `node:fs` followed the same
+ * read a locally held translation off the disk, at which point `node:fs` followed the same
  * chain into the browser bundle and the page stopped building at all.
  */
 /**

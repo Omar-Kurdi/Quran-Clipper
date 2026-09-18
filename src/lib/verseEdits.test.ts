@@ -16,6 +16,9 @@ import {
   splitSegment,
   mergeWithNext,
   setTranslationText,
+  setText,
+  setVerseNumber,
+  fillFromCorpus,
 } from './verseEdits';
 import type { VerseData } from './quranData';
 
@@ -529,8 +532,8 @@ describe('setTranslationText', () => {
   it('keeps corrections already made to other translations', () => {
     const verses = timeline();
     verses[0] = { ...verses[0], displayTranslations: { '20': 'kept' } };
-    const next = setTranslationText(verses, 0, '131', 'added');
-    expect(next[0].displayTranslations).toEqual({ '20': 'kept', '131': 'added' });
+    const next = setTranslationText(verses, 0, '85', 'added');
+    expect(next[0].displayTranslations).toEqual({ '20': 'kept', '85': 'added' });
   });
 
   it('changes nothing when the text is what is already shown', () => {
@@ -548,7 +551,7 @@ describe('setTranslationText', () => {
   it('leaves the primary translation alone', () => {
     // The first translation is the caption's own field; this only ever touches
     // the keyed map beside it.
-    const next = setTranslationText(timeline(), 0, '131', 'other');
+    const next = setTranslationText(timeline(), 0, '85', 'other');
     expect(next[0].translation).toBe('text');
   });
 });
@@ -591,5 +594,71 @@ describe('fitting a loaded passage into an uploaded recording', () => {
     const original = [verse(2520, 2566, 111)];
     expect(fitVersesToAudio(original, 0)).toBe(original);
     expect(fitVersesToAudio([], 60)).toEqual([]);
+  });
+});
+
+
+describe('the Arabic is not editable', () => {
+  it('refuses to set it, whatever is asked', () => {
+    // Narrowed in the type too; this is the runtime guard behind it, for a
+    // caller that goes around the type.
+    const verses = timeline();
+    const asked = setText(verses, 0, 'textUthmani' as 'translation', 'نص آخر');
+    expect(asked).toBe(verses);
+  });
+
+  it('still sets a caption’s own translation line', () => {
+    const next = setText(timeline(), 0, 'translation', 'mine');
+    expect(next[0].translation).toBe('mine');
+    expect(next[0].textUthmani).toBe('أ ب ج');
+  });
+
+  it('adds a segment with no text rather than a stand-in ayah', () => {
+    // It used to insert the basmala labelled as whichever ayah came next --
+    // a wrong ayah that could only be corrected by retyping it.
+    const { verses } = addVerseAfter(timeline(), 2);
+    expect(verses[3].verseKey).toBe('33:24');
+    expect(verses[3].textUthmani).toBe('');
+    expect(verses[3].words).toEqual([]);
+  });
+
+  it('empties a segment pointed at another ayah, keeping its timing', () => {
+    const next = setVerseNumber(timeline(), 0, 30);
+    expect(next[0].verseKey).toBe('33:30');
+    expect(next[0].textUthmani).toBe('');
+    expect(next[0].words).toEqual([]);
+    expect([next[0].startTime, next[0].endTime]).toEqual([0, 5]);
+  });
+
+  it('changes nothing when the ayah number is the one already there', () => {
+    const verses = timeline();
+    expect(setVerseNumber(verses, 0, 21)).toBe(verses);
+  });
+});
+
+describe('fillFromCorpus', () => {
+  const corpus = [{
+    verseKey: '33:24', textUthmani: 'لِّيَجْزِىَ ٱللَّهُ', translation: 'That Allah may reward',
+    words: [{ arabic: 'لِّيَجْزِىَ', translation: 'That may reward' }, { arabic: 'ٱللَّهُ', translation: 'Allah' }]
+  }];
+
+  it('gives an empty segment the corpus text for its key', () => {
+    const { verses } = addVerseAfter(timeline(), 2);
+    const filled = fillFromCorpus(verses, corpus);
+    expect(filled[3].textUthmani).toBe('لِّيَجْزِىَ ٱللَّهُ');
+    expect(filled[3].displayTextUthmani).toBe('لِّيَجْزِىَ ٱللَّهُ');
+    expect(filled[3].translation).toBe('That Allah may reward');
+    expect(filled[3].words?.map(word => word.excluded)).toEqual([false, false]);
+  });
+
+  it('leaves a segment that already has text alone', () => {
+    const verses = timeline();
+    expect(fillFromCorpus(verses, [{ ...corpus[0], verseKey: '33:21' }])).toBe(verses);
+  });
+
+  it('comes back by identity when the corpus has nothing for the gap', () => {
+    // The page runs this from an effect that reads the same timeline.
+    const { verses } = addVerseAfter(timeline(), 2);
+    expect(fillFromCorpus(verses, [])).toBe(verses);
   });
 });

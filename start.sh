@@ -14,8 +14,8 @@
 #   ./start.sh --prod   build once, then serve the build (faster canvas/export)
 #   ./stop.sh           stop everything this started
 #
-# It also says whether a newer copy of The Clear Quran has been published. See
-# scripts/clear-quran.mjs for what to do about it.
+# If this machine has local translation editions with a checker installed
+# (data/local-translations/check.mjs, never committed), it also reports on those.
 set -uo pipefail
 
 cd "$(dirname "$(readlink -f "$0")")"
@@ -121,49 +121,38 @@ else
   fi
 fi
 
-# --- translation ------------------------------------------------------------
-# One HEAD request against the source of The Clear Quran, which the studio
-# serves from data/quran/ because quran.com only publishes it through an API we
-# do not have live access to yet. Nothing is downloaded and nothing is changed
-# here: this only says whether a newer version exists, because accepting one
-# alters the words that go into published videos and that is not something a
-# start script should do on its own. Three-second timeout, and being offline is
-# not a failure -- the file is sitting right there either way.
-printf '[4/4] translation ... '
+# --- local translations -------------------------------------------------------
+# Only when this machine has installed a checker for its local editions -- see
+# src/lib/localTranslations.ts. It prints one status line first; anything after
+# that is advice, shown under the summary. Exit code 10 means "an update is
+# waiting". Nothing is downloaded or changed here: accepting an update alters
+# the words that go into published videos, which a start script should not do
+# on its own.
 TEXT_UPDATE=0
-if [[ -f data/quran/english.json ]]; then
-  TEXT_STATE="$(node scripts/clear-quran.mjs check 2>/dev/null)"
-  # 10 means a newer version is waiting. Read as a code rather than by matching
-  # the wording, so the two can be reworded independently.
+TEXT_ADVICE=""
+if [[ -f data/local-translations/check.mjs ]]; then
+  printf '[4/4] local translations ... '
+  TEXT_OUT="$(node data/local-translations/check.mjs 2>/dev/null)"
   [[ $? -eq 10 ]] && TEXT_UPDATE=1
+  TEXT_STATE="$(printf '%s\n' "$TEXT_OUT" | head -n1)"
+  TEXT_ADVICE="$(printf '%s\n' "$TEXT_OUT" | tail -n +2)"
   [[ -z "$TEXT_STATE" ]] && TEXT_STATE="could not be checked"
-else
-  TEXT_STATE="not installed -- captions fall back to Saheeh International"
+  echo "$TEXT_STATE"
 fi
-echo "$TEXT_STATE"
 
+LOCAL_LINE=""
+[[ "$TEXT_STATE" != "skipped" ]] && LOCAL_LINE=$'\n'"  local text   $TEXT_STATE"
 cat <<SUMMARY
 
   database     $DB_STATE
   sidecar      $ASR_STATE
-  web app      $WEB_STATE
-  translation  $TEXT_STATE
+  web app      $WEB_STATE${LOCAL_LINE}
 
   logs in $RUN_DIR/    stop with ./stop.sh
 SUMMARY
 
-# The command, on its own line, where it can be copied. Only when there is
-# something to run it for: a newer translation changes the words that go into
-# published videos, so it is offered rather than done.
-if [[ "$TEXT_UPDATE" == 1 ]]; then
-  cat <<UPDATE
-
-  A newer copy of The Clear Quran has been published. Review it with:
-
-      node scripts/clear-quran.mjs update
-
-  It audits the download first and refuses one that has lost an ayah or gained
-  a character this edition has never used. Nothing changes until it passes.
-
-UPDATE
+# The checker's advice, on its own lines, where a command can be copied. Only
+# when there is something to act on.
+if [[ "$TEXT_UPDATE" == 1 && -n "$TEXT_ADVICE" ]]; then
+  printf '\n%s\n\n' "$TEXT_ADVICE"
 fi

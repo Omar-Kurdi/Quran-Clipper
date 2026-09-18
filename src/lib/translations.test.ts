@@ -90,7 +90,7 @@ describe('what a caption shows', () => {
   });
 
   it('skips a translation that has not arrived yet rather than drawing a gap', () => {
-    expect(captionTranslations(verse, ['20', '131'])).toHaveLength(1);
+    expect(captionTranslations(verse, ['20', '85'])).toHaveLength(1);
   });
 
   it('falls back to the default when nothing is selected', () => {

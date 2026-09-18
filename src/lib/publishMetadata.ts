@@ -220,10 +220,9 @@ export function buildPublishMetadata(input: PublishInput): PublishMetadata {
     ? [`Word-by-word glosses (${WORD_BY_WORD_PROVIDER})`, ...named]
     : named;
   if (credited.length) credits.push(`Translation: ${credited.join(', ')}`);
-  // The Arabic comes from quran.com; a translation may not -- The Clear Quran
-  // is read from a local copy while the Foundation's id 131 is out of reach --
-  // so the translator is credited on its own line above rather than folded
-  // into a source that is only half right.
+  // The Arabic comes from quran.com; a translation may not -- an installation
+  // can hold an edition locally -- so the translator is credited on its own
+  // line above rather than folded into a source that is only half right.
   credits.push('Quran text via quran.com.');
 
   const head = [

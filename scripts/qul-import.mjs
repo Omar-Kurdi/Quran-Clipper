@@ -5,7 +5,7 @@
  * QUL has no API -- its downloads sit behind a signed-in account -- so the
  * exports arrive by hand as SQLite databases and a zip. Rather than teach the
  * app to read either at runtime, they are converted once into plain JSON, the
- * same way `data/quran/english.json` is simply read with `fs`. That keeps the
+ * same way `data/local-translations/` is simply read with `fs`. That keeps the
  * app free of a database driver and keeps the shapes small enough to hold in
  * memory: the morphology arrives as 6 MB across six databases and leaves as a
  * few hundred kilobytes of what is actually used.

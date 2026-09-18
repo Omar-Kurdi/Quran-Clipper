@@ -35,7 +35,7 @@ export function useTimelineEditing(initial: VerseData[]) {
   }, []);
 
   const edit = useMemo(() => ({
-    text: (field: 'textUthmani' | 'translation', value: string) =>
+    text: (field: 'translation', value: string) =>
       apply(setText(verses, selectedIndex, field, value)),
 
     translationText: (id: string, value: string) =>

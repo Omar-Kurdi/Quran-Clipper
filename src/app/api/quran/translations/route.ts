@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isRtlLanguage, displayLanguage, TranslationOption } from '@/lib/translations';
 import { quranApiJson, defaultTranslationId, quranApiSource } from '@/lib/quranApi';
-import { CLEAR_QURAN_ID, CLEAR_QURAN_NAME, clearQuranAvailable } from '@/lib/clearQuran';
+import { localEditions } from '@/lib/localTranslations';
 
 /**
  * Every translation quran.com publishes, trimmed to what the picker needs.
@@ -11,11 +11,10 @@ import { CLEAR_QURAN_ID, CLEAR_QURAN_NAME, clearQuranAvailable } from '@/lib/cle
  * here for a day instead of in every visitor's tab. The list changes about as
  * often as new translations are published.
  *
- * Which list it is depends on the upstream: the open API publishes 126
- * translations and The Clear Quran is not among them, while the Quran
- * Foundation API -- credentials permitting -- does carry it. `source` says
- * which one answered, so the studio can explain an absence rather than let it
- * look like a bug.
+ * Which list it is depends on the upstream -- the open API or the Quran
+ * Foundation's -- and `source` says which one answered, so the studio can
+ * explain an absence rather than let it look like a bug. Editions installed on
+ * this machine (`localTranslations`) are added to whichever it was.
  */
 export const revalidate = 86400;
 
@@ -36,7 +35,9 @@ export async function GET() {
       // not the list to offer: the Foundation's sandbox carries fourteen, and
       // the open API's 126 are more useful than a subset that is missing the
       // one the captions are supposed to be in.
-      body => (body.translations || []).some(item => String(item?.id) === wanted)
+      body =>
+        localEditions().some(edition => edition.id === wanted) ||
+        (body.translations || []).some(item => String(item?.id) === wanted)
     );
     if (!data) return NextResponse.json({ success: false, translations: [] }, { status: 502 });
 
@@ -56,16 +57,16 @@ export async function GET() {
         };
       });
 
-    // The Clear Quran, when this machine holds a copy. The open API's 126 do
-    // not include it, so without this the picker would show the default
-    // translation as a bare id and the caption would credit "131" rather than
-    // its translator.
-    if (clearQuranAvailable() && !translations.some(item => item.id === CLEAR_QURAN_ID)) {
+    // Editions this machine holds that the upstream does not list. Without
+    // this the picker would show one of them as a bare id, and the caption
+    // would credit a number rather than its translator.
+    for (const edition of localEditions()) {
+      if (translations.some(item => item.id === edition.id)) continue;
       translations.unshift({
-        id: CLEAR_QURAN_ID,
-        name: CLEAR_QURAN_NAME,
-        language: 'English',
-        rtl: false
+        id: edition.id,
+        name: edition.name,
+        language: displayLanguage(edition.language),
+        rtl: isRtlLanguage(edition.language)
       });
     }
 

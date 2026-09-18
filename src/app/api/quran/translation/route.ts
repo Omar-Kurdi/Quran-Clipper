@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { quranApiJson } from '@/lib/quranApi';
-import { cleanHtml } from '@/lib/quranCorpus';
-import { CLEAR_QURAN_ID, clearQuranSurah } from '@/lib/clearQuran';
+import { fetchTranslationTexts } from '@/lib/translationTexts';
 
 /**
  * The text of one or more translations, for one passage.
@@ -13,12 +11,6 @@ import { CLEAR_QURAN_ID, clearQuranSurah } from '@/lib/clearQuran';
  * captions got here, and the caller merges what comes back by verse key.
  */
 export const revalidate = 86400;
-
-interface ApiVerse {
-  verse_key?: string;
-  verse_number?: number;
-  translations?: { resource_id?: number; text?: string }[];
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -38,81 +30,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, verses: {} }, { status: 400 });
     }
 
-    /**
-     * Fills in The Clear Quran from this machine.
-     *
-     * Applied after the upstream rather than instead of it, so an upstream that
-     * does carry 131 is preferred and this becomes dead weight the moment the
-     * Foundation grants access. Written from the *local* surah's own length
-     * rather than from the response, because the response may hold no verses at
-     * all -- asking the open API for 131 alone comes back empty, which is the
-     * case this exists for.
-     */
-    const fillClearQuran = (into: Record<string, Record<string, string>>) => {
-      if (!ids.includes(CLEAR_QURAN_ID)) return into;
-      const local = clearQuranSurah(surah);
-      if (!local) return into;
-      const last = Math.min(end, local.length);
-      for (let ayah = Math.max(1, start); ayah <= last; ayah++) {
-        const text = local[ayah - 1];
-        if (!text) continue;
-        const key = `${surah}:${ayah}`;
-        const texts = into[key] || (into[key] = {});
-        if (!texts[CLEAR_QURAN_ID]) texts[CLEAR_QURAN_ID] = text;
-      }
-      return into;
-    };
-
-    // Through `quranApiJson` with an acceptance test, not a bare fetch.
-    //
-    // This asked the configured upstream and took whatever came back with a
-    // 200. The Quran Foundation's pre-live sandbox holds a couple of chapters
-    // and answers for them -- successfully, and without carrying the
-    // translation that was asked for. So a second translation silently arrived
-    // empty for exactly those chapters and worked everywhere else, which reads
-    // as "the extra translation is broken for Al-Fatihah" rather than as an
-    // upstream that should have been passed over. An answer that does not
-    // contain a single one of the requested ids is not an answer.
-    const requested = new Set(ids);
-    const { data } = await quranApiJson<{ verses?: ApiVerse[] }>(
-      `/verses/by_chapter/${surah}?translations=${ids.join(',')}&fields=verse_key&per_page=300`,
-      { next: { revalidate: 86400 } },
-      body =>
-        (body.verses || []).some(verse =>
-          (verse.translations || []).some(
-            entry => entry?.text && requested.has(String(entry.resource_id))
-          )
-        )
-    );
-
-    // A failed upstream still leaves the local translation answerable, which is
-    // the difference between a caption in one language and no caption at all.
-    if (!data) {
-      const local = fillClearQuran({});
-      return Object.keys(local).length
-        ? NextResponse.json({ success: true, verses: local })
-        : NextResponse.json({ success: false, verses: {} }, { status: 502 });
-    }
-
-    const list: ApiVerse[] = Array.isArray(data?.verses) ? data.verses : [];
-
-    const verses: Record<string, Record<string, string>> = {};
-    for (const verse of list) {
-      const key = verse.verse_key;
-      const number = verse.verse_number ?? 0;
-      if (!key || number < start || number > end) continue;
-      const texts: Record<string, string> = {};
-      for (const translation of verse.translations || []) {
-        // An id quran.com no longer serves simply does not come back; the
-        // caption then shows the translations that did, rather than a gap.
-        if (typeof translation?.resource_id !== 'number') continue;
-        const text = cleanHtml(translation.text || '');
-        if (text) texts[String(translation.resource_id)] = text;
-      }
-      if (Object.keys(texts).length) verses[key] = texts;
-    }
-
-    return NextResponse.json({ success: true, verses: fillClearQuran(verses) });
+    const verses = await fetchTranslationTexts(surah, start, end, ids);
+    return verses
+      ? NextResponse.json({ success: true, verses })
+      : NextResponse.json({ success: false, verses: {} }, { status: 502 });
   } catch {
     return NextResponse.json({ success: false, verses: {} }, { status: 502 });
   }

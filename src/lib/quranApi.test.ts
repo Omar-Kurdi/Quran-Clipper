@@ -50,10 +50,11 @@ describe('which translation the captions carry', () => {
     expect(defaultTranslationId()).toBe('20');
   });
 
-  it('is The Clear Quran once the Foundation API is configured', () => {
+  it('stays Saheeh International when the Foundation API is configured', () => {
+    // Credentials change where the text comes from, not which edition it is.
     process.env.QURAN_FOUNDATION_CLIENT_ID = 'abc';
     process.env.QURAN_FOUNDATION_CLIENT_SECRET = 'shh';
-    expect(defaultTranslationId()).toBe('131');
+    expect(defaultTranslationId()).toBe('20');
   });
 
   it('lets an explicit id win over both', () => {

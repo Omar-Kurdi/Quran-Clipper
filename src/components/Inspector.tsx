@@ -20,7 +20,7 @@ interface InspectorProps {
   verses: VerseData[];
   index: number;
   isActive: boolean;
-  onText: (field: 'textUthmani' | 'translation', value: string) => void;
+  onText: (field: 'translation', value: string) => void;
   onVerseNumber: (value: number) => void;
   onToggleWord: (wordIndex: number) => void;
   onNudge: (edge: 'startTime' | 'endTime', delta: number) => void;
@@ -297,24 +297,22 @@ export const Inspector: React.FC<InspectorProps> = ({
         />
       </div>
 
-      {/* Both boxes open at the same height -- explicitly, because `rows` counts
-          lines and the two use different type sizes, so matching row counts
-          still rendered the translation shorter than the Arabic. Both are
-          drag-resizable, and the grip is easy to miss on a dark panel, so each
-          one says so. */}
+      {/* The Arabic is shown, never edited: it is the corpus's text for this
+          verse key, and the Quran text may not be modified. Which of its words
+          are on screen is the one thing a caption chooses, through the word
+          chips further down. */}
       <div>
-        <label htmlFor="insp-arabic" className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2">
-          <span>{t.inspector.arabic}</span>
-          <span className="font-normal text-slate-400">{t.inspector.dragToResize}</span>
-        </label>
-        <textarea
-          id="insp-arabic"
-          value={verse.displayTextUthmani || verse.textUthmani}
-          onChange={e => onText('textUthmani', e.target.value)}
+        <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2">
+          <span id="insp-arabic-label">{t.inspector.arabic}</span>
+          <span className="font-normal text-slate-400">{t.inspector.arabicReadOnly}</span>
+        </div>
+        <p
+          aria-labelledby="insp-arabic-label"
           dir="rtl"
-          rows={4}
-          className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-quran leading-loose"
-        />
+          className="w-full min-h-20 bg-slate-950/60 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-quran leading-loose select-text"
+        >
+          {verse.displayTextUthmani || verse.textUthmani}
+        </p>
       </div>
 
       {/* A box for every translation on the card, resolved through the same

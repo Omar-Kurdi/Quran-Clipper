@@ -6,14 +6,13 @@
  *
  *  - `api.quran.com/api/v4`, open and keyless. It publishes 126 translations
  *    and needs no setup, which is why it is the default and always the
- *    fallback. What it does *not* carry is The Clear Quran (Dr. Mustafa
- *    Khattab, resource 131): it is absent from the resource list, and asking
- *    for its text returns HTTP 200 with the field silently omitted. That is
- *    the whole reason the studio's default drifted to Saheeh International.
+ *    fallback. Asking it for an edition it does not carry returns HTTP 200
+ *    with the field silently omitted, which is why every request here is
+ *    judged on what came back rather than on its status.
  *
- *  - The Quran Foundation content API, which is what quran.com itself reads
- *    and does carry 131. It needs a free client id and secret, exchanged for a
- *    short-lived token; set them and everything here routes through it.
+ *  - The Quran Foundation content API, which is what quran.com itself reads.
+ *    It needs a free client id and secret, exchanged for a short-lived token;
+ *    set them and everything here routes through it.
  *
  * Server-only: the secret must never reach the browser, so nothing in this
  * module may be imported from a client component.
@@ -51,10 +50,10 @@ export const quranApiSource = (): QuranApiSource => (quranApiConfigured() ? 'fou
 /**
  * The English translation a caption's own `translation` field holds.
  *
- * 131 is The Clear Quran, and it only exists on the Foundation API -- asking
- * the public one for it produces captions with no translation at all, which is
- * worse than a different translation. So the default follows the upstream, and
- * an explicit `QURAN_TRANSLATION_ID` overrides both.
+ * Saheeh International (20) unless an installation says otherwise: it is on
+ * both upstreams and its terms allow this use. `QURAN_TRANSLATION_ID`
+ * overrides it -- for another upstream edition, or for one this machine holds
+ * locally (`localTranslations`).
  *
  * `NEXT_PUBLIC_QURAN_TRANSLATION_ID` is the same value where the browser can
  * read it; the studio needs to know which id its captions already carry, and
@@ -66,8 +65,7 @@ export function defaultTranslationId(): string {
     process.env.NEXT_PUBLIC_QURAN_TRANSLATION_ID ||
     ''
   ).trim();
-  if (explicit) return explicit;
-  return quranApiConfigured() ? '131' : '20';
+  return explicit || '20';
 }
 
 interface CachedToken {
@@ -125,7 +123,7 @@ export interface QuranFetchResult {
  *
  * Saheeh International exists on both upstreams, which the configured id may
  * not: the Foundation's pre-live sandbox carries 14 translations and two
- * chapters, and The Clear Quran is in neither. Asking for both in the same
+ * chapters, and a locally held edition is on neither. Asking for both in the same
  * request costs nothing and means a caption always has *a* translation, so
  * pointing the studio at a sandbox cannot leave it worse off than the open API
  * it replaced.
@@ -160,7 +158,7 @@ export function preferredTranslation(
  * Fetches a v4 content path from whichever upstream is configured.
  *
  * `path` is everything after the version, starting with a slash --
- * `/verses/by_chapter/2?translations=131`. Any Foundation answer that is not a
+ * `/verses/by_chapter/2?translations=20`. Any Foundation answer that is not a
  * success is retried against the open API: bad credentials, a sandbox that
  * holds two chapters, an endpoint that is down. A missing translation is
  * recoverable; a studio that cannot load an ayah is not.

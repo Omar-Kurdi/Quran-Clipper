@@ -9,7 +9,7 @@
 import { VerseWord } from '@/lib/quranData';
 import { quranApiJson, translationIdsToRequest, preferredTranslation } from './quranApi';
 import { pairVerseWords } from './verseSpelling';
-import { primaryTranslation } from './clearQuran';
+import { primaryTranslation } from './localTranslations';
 
 type QuranApiWord = {
   char_type_name?: string;
@@ -106,8 +106,8 @@ async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
       verseKey: verse.verse_key,
       textUthmani: verse.text_uthmani,
       // Through `primaryTranslation`, not `preferredTranslation`: this is the
-      // path an AI match builds its captions from, and the upstream cannot
-      // serve The Clear Quran.
+      // path an AI match builds its captions from, and the configured edition
+      // may be one only this machine holds.
       translation: primaryTranslation({
         surah: surahNumber,
         ayah: verse.verse_number,
@@ -120,15 +120,30 @@ async function loadChapter(surahNumber: number): Promise<CorpusVerse[]> {
   });
 }
 
+/**
+ * How long a chapter is kept in this process before it is asked for again.
+ *
+ * A day, matching the fetch cache underneath it. It used to be kept for the
+ * life of the process, which on a long-running server is longer than the seven
+ * days the Quran Foundation allows stored content to go unchecked -- and it is
+ * what the content sync reads, so a stale copy here would make a sync that
+ * checked nothing look like one that had.
+ */
+const CHAPTER_TTL_MS = 24 * 60 * 60 * 1000;
+const chapterLoadedAt = new Map<number, number>();
+
 export function getChapter(surahNumber: number): Promise<CorpusVerse[]> {
   const cached = chapterCache.get(surahNumber);
-  if (cached) return cached;
+  const loadedAt = chapterLoadedAt.get(surahNumber) ?? 0;
+  if (cached && Date.now() - loadedAt < CHAPTER_TTL_MS) return cached;
 
   const pending = loadChapter(surahNumber).catch(err => {
     chapterCache.delete(surahNumber);
+    chapterLoadedAt.delete(surahNumber);
     throw err;
   });
   chapterCache.set(surahNumber, pending);
+  chapterLoadedAt.set(surahNumber, Date.now());
   return pending;
 }
 

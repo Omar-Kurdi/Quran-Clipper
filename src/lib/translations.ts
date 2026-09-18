@@ -17,10 +17,9 @@
 /**
  * The id that a caption's own `translation` field already holds.
  *
- * Saheeh International (20) on the open API, because that is what the open API
- * has; The Clear Quran (131) needs Quran Foundation credentials, and the
- * server picks it automatically once they are set -- see `quranApi.ts`. The
- * browser cannot read those, so the same value is published here as
+ * Saheeh International (20) unless the installation sets another -- see
+ * `defaultTranslationId` in `quranApi.ts`. The browser cannot read the
+ * server's setting, so the same value is published here as
  * `NEXT_PUBLIC_QURAN_TRANSLATION_ID`, and the two are meant to be set
  * together. Get it wrong and nothing breaks: the id simply becomes one more
  * translation to fetch by id, like any other.
@@ -103,12 +102,11 @@ export function toggleTranslation(
  * it failed silently: the chip named one translation while the card underneath
  * drew another. Keyed by id, so it is wrong for nobody.
  *
- * Only the two the studio ships a default for. Anything else is named by the
+ * Only the one the studio ships as its default. Anything else is named by the
  * catalogue or shown as its own id, which is at least not a claim.
  */
 const KNOWN_NAMES: Record<string, string> = {
-  '20': 'Saheeh International',
-  '131': 'Dr. Mustafa Khattab, the Clear Quran'
+  '20': 'Saheeh International'
 };
 
 /** A name for `id` without the catalogue: a known one, else the id itself. */
@@ -173,8 +171,8 @@ export function searchTranslations(catalogue: TranslationOption[], query: string
  * `author_name: "Unknown"` in their own catalogue -- and it is a separate work
  * from every prose translation in the picker. Naming a chosen translator over
  * it puts their name to words that are not theirs, which is what the panel was
- * doing: it labelled a box "Dr. Mustafa Khattab, the Clear Quran" and drew
- * "Miserly towards you", a phrase that appears nowhere in that translation.
+ * doing: it labelled a box with a translator's name and drew "Miserly towards
+ * you", a phrase that appears nowhere in that translator's work.
  *
  * The language is English because both fetch paths ask for it -- see
  * `language=en` in `quranCorpus.ts` and `/api/quran/verses`. If that ever

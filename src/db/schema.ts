@@ -52,7 +52,7 @@ export const projects = pgTable('projects', {
    * Which translations the card carries, in the order they are stacked.
    *
    * Stored because the choice is part of the project: reopening one that was
-   * built in The Clear Quran and getting whatever the studio currently defaults
+   * built in one translation and getting whatever the studio currently defaults
    * to is a different video. Empty means "whatever the default is", which is
    * what every row written before this column existed means.
    */
@@ -90,6 +90,14 @@ export const projects = pgTable('projects', {
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  /**
+   * When this row's Quran content was last checked against the upstream, or
+   * null if it never has been. Stored Quran text may be kept only while it is
+   * re-checked at least every seven days; `contentSync.ts` does the checking,
+   * and saving a project leaves this alone -- a save writes what the studio
+   * held, which is not a check.
+   */
+  syncedAt: timestamp('synced_at'),
 });
 
 export const exports = pgTable('exports', {

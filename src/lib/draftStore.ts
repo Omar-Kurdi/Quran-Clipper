@@ -53,6 +53,12 @@ export interface ProjectDraft {
   config: Record<string, unknown>;
   /** Backgrounds that were uploads, and so could not be written down. */
   droppedBackgrounds: number;
+  /**
+   * When the Quran content in `verses` was last checked against the upstream,
+   * if it ever was. Absent means "as fresh as `savedAt`": the draft was
+   * written from what the studio held, which came from the upstream.
+   */
+  syncedAt?: number;
 }
 
 export interface DraftInput {
@@ -165,7 +171,8 @@ export function readDraft(): ProjectDraft | null {
       verses: parsed.verses as VerseData[],
       config: parsed.config as Record<string, unknown>,
       droppedBackgrounds:
-        typeof parsed.droppedBackgrounds === 'number' ? parsed.droppedBackgrounds : 0
+        typeof parsed.droppedBackgrounds === 'number' ? parsed.droppedBackgrounds : 0,
+      ...(typeof parsed.syncedAt === 'number' ? { syncedAt: parsed.syncedAt } : {})
     };
   } catch {
     return null;
@@ -209,6 +216,20 @@ export function recoverableDraft(): ProjectDraft | null {
 /** The server has no storage, so it renders as though there were no draft. */
 export function serverRecoverableDraft(): ProjectDraft | null {
   return null;
+}
+
+/**
+ * Writes a draft whose content was brought up to date, and offers that one.
+ *
+ * Only while the same draft is still on offer -- if it was restored or
+ * discarded in the meantime, the check's answer is about work that is no
+ * longer waiting, and writing it would bring a discarded draft back.
+ */
+export function replaceRecoverableDraft(previous: ProjectDraft, next: ProjectDraft): void {
+  if (recoverable !== previous) return;
+  if (saveDraft(next) !== 'saved') return;
+  recoverable = next;
+  listeners.forEach(listener => listener());
 }
 
 /**

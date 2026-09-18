@@ -315,10 +315,10 @@ an optional capability, and the app degrades cleanly without it.
 | `GEMINI_API_KEY` | the `gemini` provider | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
 | `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |
 | `GEMINI_TIMEOUT_MS` | — | `180000` | Ceiling on a single Gemini request. |
-| `QURAN_FOUNDATION_CLIENT_ID` | The Clear Quran | — | Free client from [api-docs.quran.foundation](https://api-docs.quran.foundation). Both halves have to be set for either to count. |
-| `QURAN_FOUNDATION_CLIENT_SECRET` | The Clear Quran | — | Read on the server only; it never reaches the browser. |
+| `QURAN_FOUNDATION_CLIENT_ID` | the Quran Foundation API | — | Free client from [api-docs.quran.foundation](https://api-docs.quran.foundation). Both halves have to be set for either to count. |
+| `QURAN_FOUNDATION_CLIENT_SECRET` | the Quran Foundation API | — | Read on the server only; it never reaches the browser. |
 | `QURAN_FOUNDATION_ENV` | — | `live` | `prelive` is the Foundation's sandbox, which issues its own separate credentials. |
-| `QURAN_TRANSLATION_ID` | — | `131` with credentials, `20` without | Which translation a caption's own text is. |
+| `QURAN_TRANSLATION_ID` | — | `20` | Which translation a caption's own text is. May name an edition installed locally — see [Translations](#translations). |
 | `NEXT_PUBLIC_QURAN_TRANSLATION_ID` | — | as above | The browser's copy of the line above. Set the two together; they are meant to agree. |
 | `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
 | `PEXELS_API_KEY` | pasting Pexels *page* links | — | Without it, copy the file link from Pexels instead. |
@@ -339,12 +339,11 @@ an optional capability, and the app degrades cleanly without it.
 > element's own request because it is same-origin (verified — the proxy answers 401 without the
 > token and 206 with it, and the player loads through it either way once the cookie is set).
 
-> **The Quran Foundation credentials are optional and change the default translation.** With
-> them set, every Quran fetch goes through that API and the default becomes The Clear Quran;
-> without them the app uses the open `api.quran.com` exactly as before. Read the
-> [developer terms](https://api-docs.quran.foundation/legal/developer-terms/) first — content
-> may not be stored beyond seven days, and the Quran text may not be modified. See
-> [Translations](#translations).
+> **The Quran Foundation credentials are optional.** With them set, every Quran fetch goes
+> through that API; without them the app uses the open `api.quran.com` exactly as before. Either
+> way, read the [developer terms](https://api-docs.quran.foundation/legal/developer-terms/) and
+> see [Quran content terms](#quran-content-terms) for what the Foundation has confirmed for this
+> studio.
 
 > **Gemini model IDs are retired regularly.** `gemini-2.0-flash` and `gemini-2.5-flash` no
 > longer exist and return HTTP 404. Check the
@@ -485,28 +484,51 @@ will hand back on request.
 
 ### Which translation is the default
 
-| Configured | Default | Where it is read from |
-|---|---|---|
-| nothing | Saheeh International (`20`) | `api.quran.com` — open, keyless, 126 translations |
-| Quran Foundation credentials | The Clear Quran, Dr. Mustafa Khattab (`131`) | the Quran Foundation content API |
-
-**The Clear Quran is not in the open API's list.** Asking `api.quran.com` for resource `131`
-returns HTTP 200 with the translation silently absent — which is why the default had fallen
-back to Saheeh International, and why the picker could not offer it either. quran.com's own
-site reads it from the Quran Foundation content API, which is free but wants a client id and
-secret.
+Saheeh International (`20`), which both upstreams carry. `QURAN_TRANSLATION_ID` and
+`NEXT_PUBLIC_QURAN_TRANSLATION_ID` set another; the server reads the first and the browser the
+second, and they are meant to agree.
 
 Which upstream answers is decided on the *answer* rather than on the status code. A response
 that comes back without a usable translation — a chapter the configured API does not hold, a
 sandbox that returns ayahs with empty captions — is asked for again from the open API, and
 every text request carries Saheeh International alongside the configured id. Configuring the
-Foundation API can therefore add The Clear Quran, but cannot leave the studio worse off than it
-was without it.
+Foundation API cannot leave the studio worse off than it was without it.
 
-> Credentials are per-application and the Foundation decides what each one may read. Its
-> **prelive** sandbox holds two chapters and fourteen translations and does *not* include The
-> Clear Quran, so it is not a smaller copy of the live API — it is a different, much smaller
-> corpus. Production credentials are what carry `131`.
+### Editions installed locally
+
+An installation can hold translation editions of its own, served from disk rather than
+fetched: one JSON file per edition under `data/local-translations/`, listed in a
+`manifest.json` beside them (`src/lib/localTranslations.ts` documents the shape). None ship
+with the repository — `data/` is ignored — so a fresh clone has none and behaves exactly as
+above. An installed edition appears in the picker, fills its own slot on the card, and can be
+made the default through `QURAN_TRANSLATION_ID`. Installing one is your responsibility, and so
+are the terms it comes under.
+
+### Quran content terms
+
+The Quran Foundation has confirmed two things for this studio:
+
+- **Publishing exported videos** on YouTube Shorts, TikTok and similar platforms is permitted
+  use, not redistribution. Redistribution, in their sense, is making the data available to
+  others through your own API or as a dataset.
+- **Saved projects may keep verse and translation text indefinitely**, provided the stored copy
+  is checked against the upstream, and updates, deletions and invalidations applied, at least
+  once every seven days. The studio does this — see
+  [Keeping stored Quran content current](#keeping-stored-quran-content-current).
+
+The Quran text itself is never editable in the studio. A caption chooses *which* of an ayah's
+words are on screen; it cannot change them.
+
+### Keeping stored Quran content current
+
+Every saved project records when its Quran content was last checked (`synced_at`). Whenever the
+saved-projects list is read — which is also how a project is opened — any project not checked
+in the last seven days is brought up to date first: the Arabic, the word list and its mushaf
+glyphs, and each chosen translation are fetched again by verse key and written over the stored
+copy. Timings, which words are hidden, and your own corrections to a translation are yours and
+are left alone. A translation the upstream no longer serves is removed from the project, and
+if that leaves none, the default takes its place. The auto-saved draft is checked the same way
+when it is older than seven days.
 
 ---
 
@@ -514,8 +536,8 @@ was without it.
 
 The studio is one screen: **Source** on the left, the **preview** in the middle, the
 **inspector** on the right, and the **timeline** running the full width beneath them. Nothing is
-hidden behind a step — you can change the text, the timing and the styling in any order, which is
-how the work actually goes.
+hidden behind a step — you can change which words are shown, the timing and the styling in any
+order, which is how the work actually goes.
 
 **Source — what you are making**
 1. Choose a reciter, surah and ayah range, then **Load ayahs & audio**.
@@ -537,8 +559,9 @@ how the work actually goes.
 6. Click a block to select it. Zoom in when a boundary needs to land between two words.
 
 **Inspector — what each ayah says**
-7. **Ayah** holds the text, the translation, the ayah number, and a chip per word — tap a word to
-   hide it from the video. Fine timing nudges (±0.2 s) are here too.
+7. **Ayah** shows the Arabic (read-only — it is always the corpus's text for that ayah), the
+   translation, the ayah number, and a chip per word — tap a word to hide it from the video.
+   Fine timing nudges (±0.2 s) are here too.
 8. **Style** holds the aspect ratio, background, typography, card and watermark, and the
    [translations](#translations) that appear under the Arabic.
 

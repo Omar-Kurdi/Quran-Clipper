@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveArabicFont } from '@/lib/quranData';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, isNull, lt, or } from 'drizzle-orm';
 import { BACKGROUND_MODES } from '@/lib/backgroundTimeline';
 import { describeDbError } from '@/lib/dbError';
+import { needsContentSync, syncProjectContent, CONTENT_SYNC_MAX_AGE_MS } from '@/lib/contentSync';
 
 const memoryProjects: any[] = [];
 
@@ -15,14 +16,75 @@ async function getDbBindings() {
   return { db, projects };
 }
 
+/**
+ * Brings one saved project's Quran content up to date if it is due.
+ *
+ * Returns the row as it should be shown -- updated, or untouched when it was
+ * not due or could not be checked. A check that could not finish (an upstream
+ * that did not answer) records nothing, so the project is due again next time
+ * rather than counted as current. `write` persists the change; only content
+ * and `syncedAt` are written, never `updatedAt`, because nobody edited it.
+ *
+ * `syncRemovedIds` rides along on the returned row, and only on it: it tells
+ * the studio, when this project is opened, that an edition it used is no
+ * longer served and was taken out.
+ */
+async function syncIfDue(
+  row: any,
+  write: (changes: { versesJson: unknown; translationIds: string[]; syncedAt: Date }) => Promise<void>
+): Promise<any> {
+  if (!needsContentSync(row.syncedAt)) return row;
+  const verses = Array.isArray(row.versesJson) ? row.versesJson : [];
+  if (!verses.length) return row;
+  try {
+    const result = await syncProjectContent(verses, Array.isArray(row.translationIds) ? row.translationIds : []);
+    if (!result?.complete) return row;
+    const changes = { versesJson: result.verses, translationIds: result.translationIds, syncedAt: new Date() };
+    await write(changes);
+    return { ...row, ...changes, ...(result.removedIds.length ? { syncRemovedIds: result.removedIds } : {}) };
+  } catch {
+    return row;
+  }
+}
+
+/**
+ * The saved projects, newest first.
+ *
+ * Also where stored Quran content is kept current: any project not checked in
+ * the last seven days is checked before it is listed, and this list is the only
+ * way a project is opened -- so nothing reaches the studio stale. Checks run
+ * together; two projects in the same surah share one chapter request, because
+ * `quranCorpus` caches the request itself, not only its answer.
+ */
 export async function GET() {
   try {
     const bindings = await getDbBindings();
     if (!bindings) {
-      return NextResponse.json({ success: true, source: 'memory', projects: memoryProjects.slice().sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 20) });
+      const synced = await Promise.all(memoryProjects.slice().map(row => syncIfDue(row, async changes => {
+        const idx = memoryProjects.findIndex(p => p.id === row.id);
+        if (idx >= 0) memoryProjects[idx] = { ...memoryProjects[idx], ...changes };
+      })));
+      const list = synced
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 20);
+      return NextResponse.json({ success: true, source: 'memory', projects: list });
     }
-    const list = await bindings.db.select().from(bindings.projects).orderBy(desc(bindings.projects.updatedAt)).limit(20);
-    return NextResponse.json({ success: true, source: 'database', projects: list });
+    const { db, projects } = bindings;
+    // Every row that is due, not only the twenty about to be listed: a project
+    // older than the list is still stored, and the allowance is about what is
+    // stored, not what is on screen.
+    const cutoff = new Date(Date.now() - CONTENT_SYNC_MAX_AGE_MS);
+    const due = await db.select().from(projects)
+      .where(or(isNull(projects.syncedAt), lt(projects.syncedAt, cutoff)));
+    const synced = await Promise.all(due.map(row => syncIfDue(row, async changes => {
+      await db.update(projects).set(changes).where(eq(projects.id, row.id));
+    })));
+    const notes = new Map<string, string[]>(
+      synced.filter(row => row.syncRemovedIds).map(row => [row.id, row.syncRemovedIds])
+    );
+    const list = await db.select().from(projects).orderBy(desc(projects.updatedAt)).limit(20);
+    const rows = list.map(row => (notes.has(row.id) ? { ...row, syncRemovedIds: notes.get(row.id) } : row));
+    return NextResponse.json({ success: true, source: 'database', projects: rows });
   } catch (err: unknown) {
     return NextResponse.json({ success: false, error: describeDbError(err) }, { status: 500 });
   }

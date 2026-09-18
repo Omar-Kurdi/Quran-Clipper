@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cleanHtml, verseWords } from '@/lib/quranCorpus';
 import { quranApiJson, translationIdsToRequest, preferredTranslation } from '@/lib/quranApi';
-import { primaryTranslation } from '@/lib/clearQuran';
+import { primaryTranslation } from '@/lib/localTranslations';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 

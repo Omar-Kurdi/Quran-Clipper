@@ -13,7 +13,7 @@
  *
  * Deliberately NOT in here:
  *   - Anything the exported video contains. The watermark, the surah badge and
- *     the Clear Quran translation are the user's content, and flipping the
+ *     translations are the user's content, and flipping the
  *     interface to Arabic must not rewrite the thing being made.
  *   - Raw upstream error text -- HTTP status lines, decoder failures, the
  *     alignment engine's own diagnostics. Those are passed through verbatim so
@@ -127,7 +127,7 @@ export const en = {
     step3After: 'at the end of each ayah to set its boundary.',
     step4Strong: 'Drag the edge',
     step4: 'of any block on the timeline to fine-tune it.',
-    step5: 'Click a block to edit its text and words in the panel on the right.',
+    step5: 'Click a block to choose its words and edit its translation in the panel on the right.',
     step6Before: 'Switch that panel to',
     step6Strong: 'Style',
     step6After: ', then export.',
@@ -216,6 +216,8 @@ export const en = {
       'Recitation restored, cut to the same stretch this project was saved with — the timeline below already matches it.',
     awaitingAudio: (name: string) =>
       `This project was made from ${name}, and this browser no longer has its copy. Choose that file again and it will be cut to match the timeline.`,
+    translationsRemoved: (ids: string) =>
+      `A translation this project used (${ids}) is no longer published, so it was taken out. The card now shows the translations that remain, or the default if none do.`,
     trimmed: (length: string) =>
       `Trimmed to ${length}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`,
     trimmingRange: 'Trimming the audio to the clip you marked…',
@@ -363,7 +365,7 @@ export const en = {
   inspector: {
     tabAyah: 'Ayah',
     tabStyle: 'Style',
-    empty: 'Select an ayah on the timeline to edit its text, translation and words.',
+    empty: 'Select an ayah on the timeline to choose its words and edit its translation.',
     matchConfidence: (percent: number) => `Match ${percent}%`,
     starts: (time: string) => `Starts ${time}`,
     ends: (time: string) => `Ends ${time}`,
@@ -375,6 +377,7 @@ export const en = {
     moveEndLater: 'Move end later',
     ayahNumber: 'Ayah number',
     arabic: 'Arabic',
+    arabicReadOnly: 'read-only — pick the words on screen below',
     translation: 'Translation',
     dragToResize: 'drag the corner to resize',
     alsoAppears: (verseKey: string, count: number, examples: string) =>

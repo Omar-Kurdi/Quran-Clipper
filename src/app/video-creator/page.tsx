@@ -30,7 +30,7 @@ import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
 import { Inspector } from '@/components/Inspector';
-import { segmentAt, trimTimeline, fitVersesToAudio } from '@/lib/verseEdits';
+import { segmentAt, trimTimeline, fitVersesToAudio, fillFromCorpus } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import {
   backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName,
@@ -47,7 +47,7 @@ import { useTransportKeys } from '@/hooks/useTransportKeys';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { buildProjectPayload, projectTitle } from '@/lib/projectPayload';
 import {
-  buildDraft, clearDraft, forgetRecoverableDraft, recoverableDraft, serverRecoverableDraft, subscribeToDraft
+  buildDraft, clearDraft, forgetRecoverableDraft, recoverableDraft, replaceRecoverableDraft, serverRecoverableDraft, subscribeToDraft
 } from '@/lib/draftStore';
 import { useAutoSaveDraft } from '@/hooks/useAutoSaveDraft';
 import { useTimelineEditing } from '@/hooks/useTimelineEditing';
@@ -65,6 +65,9 @@ import {
   resolveArabicFont
 } from '@/lib/quranData';
 import { canDrawAsMushaf, withGlyphs } from '@/lib/mushafFonts';
+import { needsContentSync } from '@/lib/contentSyncAge';
+import { applyContentSync } from '@/lib/contentSyncCore';
+import type { CorpusVerse } from '@/lib/quranCorpus';
 import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
 import { 
   Sparkles, 
@@ -195,58 +198,70 @@ export default function VideoCreatorPage() {
   const [isSampleProject, setIsSampleProject] = useState<boolean>(true);
 
   /**
-   * Which ayahs have already been asked for their page glyphs.
+   * What the corpus said for each ayah this session has asked about, by key.
    *
-   * The fetch below writes to the timeline it reads, so without this it would
-   * ask again on the render its own answer caused. Keyed per ayah rather than
-   * per range: a segment whose word list is a subset -- what an AI match or a
-   * split repeat produces -- can never be paired, so it stays in the gap list
-   * for good, and a range key would ask again every time an edit moved the
-   * range's ends. One ayah, one request, however the timeline is rearranged.
+   * Kept so an ayah is fetched once however often the timeline is rearranged:
+   * adding a segment or changing an ayah number usually lands on an ayah that
+   * is already here, and the text is filled from this without a request.
+   * `corpusRequested` covers the other half -- an ayah that was asked for and
+   * came back unusable is not asked for again on the render its absence
+   * causes.
    */
-  const glyphsRequested = useRef<Set<string>>(new Set());
+  const corpusCache = useRef<Map<string, VerseData>>(new Map());
+  const corpusRequested = useRef<Set<string>>(new Set());
 
   /**
-   * Give the timeline the page glyphs the mushaf needs to draw it.
+   * Give the timeline the text and page glyphs the corpus has for it.
    *
-   * Two timelines arrive without them. `SAMPLE_PROJECTS` carries ayah text and
-   * timings but no word list at all, and a project saved before the page fonts
-   * existed carries words with no `glyph`. In both the mushaf face had nothing
-   * to work with and fell back to the Unicode face -- the same face the Digital
-   * Khatt option uses -- so choosing between those two appeared to do nothing,
-   * and the caption was drawn by that font's rules rather than the printed
-   * page's. The waqf marks are where that shows most: the mushaf gives each one
-   * its own glyph, placed; a Unicode face has to hang a combining mark on the
-   * space in front of it, and each face hangs it somewhere different.
+   * Three things arrive without them. `SAMPLE_PROJECTS` carries ayah text and
+   * timings but no word list; a project saved before the page fonts existed
+   * carries words with no `glyph`; and a segment added, or pointed at another
+   * ayah, is empty on purpose -- the Arabic is not editable, so the corpus is
+   * the only place its text can come from (`fillFromCorpus`). Without glyphs
+   * the mushaf face falls back to the Unicode one, which is also what the
+   * Digital Khatt option uses, so choosing between the two appeared to do
+   * nothing.
    *
    * Only what is missing is filled in. Timings, translations, exclusions and
-   * the saved spelling are left exactly as they were.
+   * the spelling a segment already has are left exactly as they were.
    */
   useEffect(() => {
-    const gaps = verses.filter(verse =>
-      verse.verseKey && !canDrawAsMushaf(verse.words) && !glyphsRequested.current.has(verse.verseKey)
+    const needs = (verse: VerseData) =>
+      Boolean(verse.verseKey) && (!verse.textUthmani?.trim() || !canDrawAsMushaf(verse.words));
+    if (!verses.some(needs)) return;
+
+    // What is already known applies at once. Both functions hand the array
+    // back by identity when they change nothing, so this cannot loop.
+    const known = [...corpusCache.current.values()];
+    if (known.length) setVerses(current => withGlyphs(fillFromCorpus(current, known), known));
+
+    const asking = verses.filter(
+      verse => needs(verse) && !corpusCache.current.has(verse.verseKey) && !corpusRequested.current.has(verse.verseKey)
     );
-    if (!gaps.length) return;
-    // One surah per pass, which is all a timeline has ever held. Anything
-    // else is left for the next one rather than marked as asked about.
-    const surah = Number(gaps[0].verseKey.split(':')[0]);
-    const asking = gaps.filter(verse => verse.verseKey.startsWith(`${surah}:`));
-    const numbers = asking.map(verse => Number(verse.verseKey.split(':')[1])).filter(Number.isFinite);
+    if (!asking.length) return;
+    // One surah per request, which is all a timeline has ever held. Anything
+    // else is left for the next pass rather than marked as asked about.
+    const surah = Number(asking[0].verseKey.split(':')[0]);
+    const sameSurah = asking.filter(verse => verse.verseKey.startsWith(`${surah}:`));
+    const numbers = sameSurah.map(verse => Number(verse.verseKey.split(':')[1])).filter(Number.isFinite);
     if (!numbers.length) return;
-    asking.forEach(verse => glyphsRequested.current.add(verse.verseKey));
+    sameSurah.forEach(verse => corpusRequested.current.add(verse.verseKey));
     const start = Math.min(...numbers);
     const end = Math.max(...numbers);
 
-    let cancelled = false;
+    // Not cancelled when the timeline changes underneath it, deliberately: the
+    // effect re-runs on every edit, and the ayahs are already marked as asked
+    // about, so an answer thrown away here would never be asked for again.
+    // Applying it to whatever the timeline is by then is safe -- both
+    // functions fill only what is still missing.
     fetch(`/api/quran/verses?surah=${surah}&start=${start}&end=${end}`)
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         const fetched: VerseData[] = data?.verses || [];
-        if (cancelled || !fetched.length) return;
-        setVerses(current => withGlyphs(current, fetched));
+        fetched.forEach(verse => corpusCache.current.set(verse.verseKey, verse));
+        if (fetched.length) setVerses(current => withGlyphs(fillFromCorpus(current, fetched), fetched));
       })
       .catch(() => {});
-    return () => { cancelled = true; };
   }, [verses, setVerses]);
 
   // Audio Playback & Web Audio API
@@ -431,6 +446,54 @@ export default function VideoCreatorPage() {
     recoverableDraft,
     serverRecoverableDraft
   );
+
+  /**
+   * Keeps the waiting draft's Quran content current.
+   *
+   * The draft is a stored copy like any saved project, and the same rule
+   * applies: checked against the upstream at least every seven days, or not
+   * kept. The server checks saved projects itself; it never sees this one, so
+   * the studio sends it. Once per draft offered, and nothing is applied to the
+   * timeline -- only the stored copy is refreshed.
+   */
+  useEffect(() => {
+    const draft = pendingDraft;
+    if (!draft || !needsContentSync(draft.syncedAt ?? draft.savedAt)) return;
+    const translationIds = Array.isArray(draft.config?.translationIds)
+      ? (draft.config.translationIds as string[])
+      : [];
+    // Ranges rather than every key, to keep the request small: one per surah.
+    const bySurah = new Map<number, number[]>();
+    for (const verse of draft.verses) {
+      const [surah, ayah] = verse.verseKey.split(':').map(Number);
+      if (Number.isFinite(surah) && Number.isFinite(ayah)) bySurah.set(surah, [...(bySurah.get(surah) || []), ayah]);
+    }
+    const ranges = [...bySurah].map(([surah, ayahs]) => `${surah}:${Math.min(...ayahs)}-${Math.max(...ayahs)}`);
+    const keyed = [...new Set(draft.verses.flatMap(verse => Object.keys(verse.translations || {})))];
+    if (!ranges.length) return;
+    fetch(`/api/content/current?ranges=${ranges.join(',')}&ids=${keyed.join(',')}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(sources => {
+        if (!sources?.success) return;
+        const result = applyContentSync({
+          verses: draft.verses,
+          translationIds,
+          corpus: new Map((sources.corpus as CorpusVerse[]).map(verse => [verse.verseKey, verse])),
+          texts: sources.texts,
+          available: new Set(sources.available as string[]),
+          defaultId: sources.defaultId
+        });
+        // A check that could not cover every ayah is not recorded as one.
+        if (!result.complete) return;
+        replaceRecoverableDraft(draft, {
+          ...draft,
+          verses: result.verses,
+          config: { ...draft.config, translationIds: result.translationIds },
+          syncedAt: Date.now()
+        });
+      })
+      .catch(() => {});
+  }, [pendingDraft]);
 
   const handleRestoreDraft = () => {
     const found = pendingDraft;
@@ -1700,6 +1763,12 @@ export default function VideoCreatorPage() {
     // `proj.audioUrl` is that upload's `blob:` url, which died with the tab
     // that made it.
     void restoreProjectAudio(proj);
+    // The list checked this project's content on the way here and took out an
+    // edition nobody serves any more. Said once, now, since it changes what
+    // the card shows.
+    if (Array.isArray(proj.syncRemovedIds) && proj.syncRemovedIds.length) {
+      setMatchStatus({ text: t.match.translationsRemoved(proj.syncRemovedIds.join(', ')), tone: 'info' });
+    }
 
     // Before the config is set, not after: an unresolved reference reaching
     // the canvas would be a url it cannot play.

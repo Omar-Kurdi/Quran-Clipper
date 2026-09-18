@@ -181,7 +181,7 @@ describe('publish metadata', () => {
     // have replaced it, so the caller hands over nothing to credit.
     const meta = buildPublishMetadata({ ...base, translationNames: [], wordByWord: true });
     expect(meta.description).toContain('Word-by-word glosses (quran.com)');
-    expect(meta.description).not.toContain('Khattab');
+    expect(meta.description).not.toContain('Saheeh International');
   });
 
   it('credits a translator whose own words are still on the card beside them', () => {
