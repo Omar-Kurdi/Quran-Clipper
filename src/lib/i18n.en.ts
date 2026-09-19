@@ -335,6 +335,22 @@ export const en = {
     remove: 'Remove from queue',
     keepOpen: 'The queue runs in this tab. Keep it open until every render is done.'
   },
+  serverRender: {
+    label: 'Background renders',
+    heading: (count: number) => `Background renders · ${count}`,
+    add: 'Render in the background',
+    addTitle: "Rendered by the studio's own server. You can close this tab and come back for the file later.",
+    sending: 'Sending to the server…',
+    note: 'These keep rendering after this tab is closed.',
+    queued: 'Waiting',
+    rendering: (percent: number) => `Rendering · ${percent}%`,
+    finishing: 'Adding the recitation…',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    cancel: 'Cancel this render',
+    remove: 'Remove from the list',
+    sendFailed: (reason: string) => `Could not send the render: ${reason}`
+  },
   presets: {
     heading: 'Presets',
     help: 'A whole look in one click: font, colours, card and background. Your translations, badge, watermark and aspect ratio stay as they are.',

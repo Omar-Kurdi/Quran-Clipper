@@ -75,6 +75,9 @@ import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
 import { tourSeen, rememberTourSeen } from '@/lib/tourSeen';
 import { BatchMatchDialog } from '@/components/BatchMatchDialog';
 import type { BatchResult } from '@/lib/batchMatch';
+import { buildRenderForm } from '@/lib/serverRenderForm';
+import { exportFileName } from '@/lib/exportName';
+import { withAspect } from '@/lib/exportQueue';
 
 import { 
   Sparkles, 
@@ -1774,6 +1777,28 @@ export default function VideoCreatorPage() {
     startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, plan, onComplete);
   };
 
+  /** What the export dialog would render here, as a job for the server. See `lib/serverRender.ts`. */
+  const buildServerRender = (plan: ExportPlan) => {
+    const audio = audioElementRef.current;
+    const fileName = exportFileName(surahNameEnglish, clipPassage.surahNumber, clipPassage.start, clipPassage.end, 'mp4');
+    return buildRenderForm({
+      config: { ...canvasConfig, aspectRatio: plan.aspectRatio },
+      verses,
+      surahNameArabic,
+      surahNameEnglish,
+      reciterName: selectedReciterMeta?.name,
+      surahNumber: selectedSurah,
+      ayahStart,
+      ayahEnd,
+      syncBackgroundVideo: uploadIsVideo && useVideoAsBackground && canvasConfig.bgUrl === videoBgUrl,
+      backgroundTimeOffset: videoBgOffset,
+      range: { start: exportRange.start, end: exportRange.end },
+      plan: { width: plan.width, height: plan.height, fps: plan.fps, bitrate: plan.bitrate },
+      fileName: withAspect(fileName, plan.aspectRatio),
+      title: `${surahNameEnglish} GPU Clip`,
+    }, audio?.currentSrc || audio?.src || '');
+  };
+
   /** The frame the finished file has, whichever path produced it. */
   const renderedResolution = () => {
     const made = exportOutput.current;
@@ -2843,6 +2868,7 @@ export default function VideoCreatorPage() {
         }
         isPreviewing={previewing}
         previewProgress={previewProgress}
+        buildServerRender={buildServerRender}
       />
 
       {/* Saved Projects Drawer */}

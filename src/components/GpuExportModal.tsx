@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { exportFileName } from '@/lib/exportName';
 import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
-import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Eye } from 'lucide-react';
+import { Cpu, Film, Download, CheckCircle, AlertTriangle, X, Sparkles, Loader2, Eye, Server } from 'lucide-react';
 import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
 import {
   EXPORT_PRESETS, QUALITY_TIERS, QualityTier, ExportPlan,
@@ -19,6 +19,8 @@ import { useT } from './LocaleProvider';
 import { FrameSkeleton } from './Skeleton';
 import { ExportQueuePanel } from './ExportQueuePanel';
 import { useExportQueue } from '@/hooks/useExportQueue';
+import { ServerRendersPanel } from './ServerRendersPanel';
+import { useServerRenders } from '@/hooks/useServerRenders';
 
 // Re-exported so existing importers of this module keep working; the function
 // itself lives in `lib` now so it can be tested without mounting React.
@@ -82,6 +84,11 @@ interface GpuExportModalProps {
   onRenderPreview: (output: { width: number; height: number; fps: number; bitrate: number }) => Promise<Blob | null>;
   isPreviewing: boolean;
   previewProgress: number;
+  /**
+   * Everything a server render needs, gathered from the studio: the project,
+   * the recording and any uploaded backgrounds. See `lib/serverRender.ts`.
+   */
+  buildServerRender: (plan: ExportPlan) => Promise<FormData>;
 }
 
 
@@ -106,7 +113,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   onRenderPreview,
   isPreviewing,
   previewProgress,
-  exportSeconds
+  exportSeconds,
+  buildServerRender
 }) => {
   const t = useT();
   // Report what this machine actually has rather than a hardcoded model name.
@@ -268,6 +276,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd, blob.type.includes('mp4') ? 'mp4' : 'webm'),
     onSaveExportRecord
   });
+  const server = useServerRenders(isOpen);
   const describeJob = (job: { presetId: string; tier: QualityTier; fps: number }) =>
     `${t.exportModal.presets[job.presetId as keyof typeof t.exportModal.presets] ?? job.presetId} · ` +
     `${t.exportModal.qualityNames[job.tier]} · ${job.fps}fps`;
@@ -541,6 +550,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               </ul>
             )}
 
+            <ServerRendersPanel jobs={server.jobs} onDiscard={id => void server.discard(id)} />
+
             <ExportQueuePanel
               jobs={queue.jobs}
               running={queue.running}
@@ -679,6 +690,20 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               >
                 {t.exportQueue.add(describeJob({ presetId, tier, fps: selectedFps }))}
               </button>
+              {server.available && fastPath && (
+                <button
+                  onClick={() => void server.send(() => buildServerRender(plan))}
+                  disabled={server.sending}
+                  title={t.serverRender.addTitle}
+                  className="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-100 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Server className="w-3.5 h-3.5 text-amber-400" />
+                  {server.sending ? t.serverRender.sending : t.serverRender.add}
+                </button>
+              )}
+              {server.error && (
+                <p role="alert" className="mt-1.5 text-[11px] text-red-300">{t.serverRender.sendFailed(server.error)}</p>
+              )}
               </>
             )}
           </div>

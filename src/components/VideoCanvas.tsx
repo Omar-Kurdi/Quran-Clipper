@@ -150,6 +150,13 @@ export interface VideoCanvasRef {
    * does not have.
    */
   captureSize: () => { width: number; height: number };
+  /**
+   * Whether every still background has loaded. The frame-by-frame path draws
+   * stills from the preview's own elements, so a render that starts before
+   * they arrive paints its first frames without one. Clips are decoded by the
+   * render itself and need no wait.
+   */
+  backgroundsReady: () => boolean;
 }
 
 interface VideoCanvasProps {
@@ -1243,6 +1250,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     canExportOffline: () => canEncodeOffline(config),
 
     captureSize: () => dimensions,
+
+    backgroundsReady: () =>
+      Array.from(mediaPoolRef.current.values()).every(media => isClip(media) || mediaReady(media)),
 
     exportVideoOffline: async (range, audio, targetFps, onProgress, output) => {
       if (!canEncodeOffline(config)) return null;

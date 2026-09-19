@@ -346,6 +346,10 @@ an optional capability, and the app degrades cleanly without it.
 | `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
 | `PEXELS_API_KEY` | pasting Pexels *page* links | — | Without it, copy the file link from Pexels instead. |
 | `STUDIO_TOKEN` | serving this beyond localhost | — | Shared secret in front of the whole studio. Unset means no authentication at all. See below. |
+| `RENDER_CHROME` | [background renders](#rendering-in-the-background) | found | The browser that renders. Otherwise Chrome/Chromium on the `PATH`, then Playwright's Chromium. |
+| `RENDER_CHROME_FLAGS` | — | — | Extra flags for it, e.g. `--use-angle=vulkan --enable-features=Vulkan` for a GPU. |
+| `RENDER_FFMPEG` | background renders | `ffmpeg` on the `PATH` | Adds the recitation to the rendered picture. |
+| `RENDER_ENABLED` | background renders in production | — | `1` to allow them under `next start`; development always allows them. |
 
 > **Do not leave `DATABASE_URL` set to a placeholder.** The app checks whether the variable is
 > set, not whether it works — so `postgres://USER:PASSWORD@HOST:PORT/DATABASE` skips the
@@ -631,6 +635,23 @@ shape (`…_9x16.mp4`, `…_1x1.mp4`) so they do not overwrite each other. Waiti
 reordered or removed, and stopping the queue stops the one rendering. Like a single render it
 runs in the open tab.
 
+### Rendering in the background
+
+*Render in the background* hands the render to the studio's own server instead, so it carries on
+after the tab is closed — or the laptop lid, or the phone screen. The studio sends the project, the
+recording and any uploaded backgrounds; the server opens its own headless Chrome on a hidden render
+page, which draws the clip with the same canvas code and the same frame-by-frame encoder as the
+tab, so the file matches the preview. ffmpeg then puts the original recording back under the
+picture as AAC (a headless Chrome can encode H.264 but not AAC). Renders run one at a time, are
+listed in the export dialog with their progress, and wait there to download the next time it is
+opened. A render the server was in the middle of when it stopped is run again when it comes back.
+
+It needs Chrome or Chromium and ffmpeg on the machine the studio runs on; the button only appears
+when both are found. It is **off in production** unless `RENDER_ENABLED=1`, because each render
+occupies the machine for its length. Jobs and their files are kept under `data/renders/`
+(gitignored); removing one from the list deletes its folder. Measured on the development machine:
+36 s of 1080×1920 at 60 fps in 12–13 s.
+
 ### Where the clip is going
 
 A preset sets the frame shape, the resolution and the bitrate together. Resolution used to be
@@ -699,6 +720,8 @@ App routes:
 | `DELETE` | `/api/projects?id=` | Delete one saved project (`404` if it is already gone) |
 | `GET` `POST` | `/api/exports` | List / save export records |
 | `GET` | `/api/gpu` | Encoder capability reference |
+| `GET` `POST` `DELETE` | `/api/render` | Background renders: list (and whether this server can), send one, cancel or remove; `?id=` downloads the file |
+| `GET` `PATCH` `PUT` | `/api/render/worker` | The headless render page's own traffic, behind each job's key |
 | `GET` | `/api/health` | App, database and sidecar in one answer — the one route `STUDIO_TOKEN` leaves open |
 
 Sidecar routes (default `http://127.0.0.1:8000`) are documented in
@@ -755,6 +778,9 @@ src/lib/
   stylePresets.ts            The Style tab's whole-look presets
   batchMatch.ts              Matching several recordings, one after another
   glBlur.ts                  The background blur in WebGL, used where it is the faster one
+  serverRender.ts            Background renders: the job, what travels with it, the ffmpeg step
+  renderJobs.ts              Background render jobs on disk, under data/renders/
+  renderRunner.ts            Runs them one at a time: headless Chrome draws, ffmpeg finishes
   offlineExport.ts           The frame-by-frame WebCodecs render
   videoFrames.ts             In-order demux/decode of a video background
   exportName.ts              The suggested file name, read off the timeline
