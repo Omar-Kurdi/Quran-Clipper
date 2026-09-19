@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRange } from '@/lib/quranCorpus';
 import { versesFromReciterSegments } from '@/lib/reciterSegments';
 import { qulReciters, qulSurah } from '@/lib/qulRecitations';
+import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
 /**
  * A timeline from QUL's word timings for a built-in reciter, with QUL's audio.
@@ -46,7 +47,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       verses: built.verses,
-      audioUrl: held.audioUrl,
+      // Through the app like every other recording: QUL's CDNs publish AAAA
+      // records too, and the export and waveform read the audio with fetch.
+      audioUrl: proxiedAudioUrl(held.audioUrl),
       totalSeconds: held.lastMs / 1000,
       coverage: { timedWords: built.timedWords, boundsOnly: built.boundsOnly, missing: built.missing }
     });

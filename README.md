@@ -511,14 +511,14 @@ that need them say so, and everything else works as before.
 | For | Download from QUL | Put it in |
 |---|---|---|
 | **Local + QUL** | morphology (word roots, lemmas and stems) and mutashabihat | `data/qul/`, then run `node scripts/qul-import.mjs` |
-| **QUL timings** | a reciter's surah-by-surah recitation **with segments**, as JSON | `data/qul/recitations/<reciter>/`, unzipped |
+| **QUL timings** | a reciter's surah-by-surah recitation **with segments**, as JSON or SQLite | `data/qul/` as downloaded, then run `node scripts/qul-import.mjs` |
 
 The two are independent. **Local + QUL** works on any recording, uploads included, and needs
 nothing beyond its two files. **QUL timings** is only for the built-in reciters and never for an
 upload: it times a passage from QUL's measurements of QUL's own recording of that reciter.
 
-For **QUL timings**, take the **Surah by Surah** entry marked **With segments** and download it
-as **JSON** — not *Ayah by Ayah*, which is a separate audio file per ayah, where the studio times
+For **QUL timings**, take the **Surah by Surah** entry marked **With segments** — JSON or
+SQLite, the importer reads either — not *Ayah by Ayah*, which is a separate audio file per ayah, where the studio times
 one recording of the whole surah. Each download covers all 114 surahs for one reciter:
 
 | Studio reciter | QUL entry (Surah by Surah, With segments) | Folder |
@@ -530,8 +530,14 @@ one recording of the whole surah. Each download covers all 114 surahs for one re
 | Saud Al-Shuraim | [Sa`ud ash-Shuraym, 317](https://qul.tarteel.ai/resources/recitation/317) — not 402, the older recitation | `shuraim` |
 
 Muaiqly and Ghamdi are the two that matter most: quran.com publishes no timings for them, so QUL
-is their only source. The other three already have quran.com's timings, and QUL's are a second
-opinion. QUL has no segmented recitation of Raad Al-Kurdi.
+is their only source. With their exports imported, **Load ayahs & audio** times them from QUL and
+plays QUL's recording, and the reciter list marks them *timed*. The other three already have
+quran.com's timings, which a load keeps using; QUL's are a second opinion behind the **QUL
+timings** button. QUL has no segmented recitation of Raad Al-Kurdi.
+
+The importer keeps one row per ayah (QUL's SQLite lists each twice) and, where a surah is listed
+under two addresses, the one QUL's CDN actually serves. Restart the studio after importing: each
+reciter's export is read once per process.
 
 ## Translations
 

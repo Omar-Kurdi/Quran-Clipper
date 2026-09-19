@@ -21,6 +21,13 @@
  *   word-root.db, word-lemma.db, word-stem.db   the roots/lemmas/stems themselves
  *   phrases.json, phrase_verses.json            mutashabihat, from the zip
  *
+ *   surah-recitation-<reciter>*.zip             a reciter's Surah by Surah
+ *                                               recitation "with segments",
+ *                                               as QUL's JSON or its SQLite --
+ *                                               both are accepted. Written to
+ *                                               data/qul/recitations/<id>/ as
+ *                                               surah.json and segments.json.
+ *
  *   fonts/                                      the mushaf fonts, as QUL packs
  *                                               them. Unpacked into
  *                                               public/fonts/ so the app can
@@ -202,7 +209,139 @@ if (mutashabihat) {
   say(`wrote mutashabihat.json (${(JSON.stringify(mutashabihat).length / 1e6).toFixed(2)} MB)`);
 }
 
-if (!morphology && !mutashabihat && !fonts) {
+// --- recitations -------------------------------------------------------------
+//
+// QUL's word timings for a reciter, for "QUL timings" and for loading a
+// reciter quran.com has not timed. QUL offers the same export as JSON or as
+// SQLite, and either may be what arrives, so both are turned into the JSON the
+// studio reads. The SQLite exports seen so far list every ayah twice, with
+// identical timings, and every surah under two addresses of which only one
+// answers -- so the first row per ayah is kept, and the address is chosen by
+// asking the CDN, falling back to the later one, which is the one that worked
+// every time it was checked.
+
+/** Which studio reciter a download is for, read from its file name. */
+const RECITER_NAMES = [
+  [/sudais/i, 'sudais'], [/mu'?aiqly|muaiqli/i, 'muaiqly'], [/ghamadi|ghamdi/i, 'ghamdi'],
+  [/shuraim|shuraym/i, 'shuraim'], [/dosari|dussary/i, 'yasser'], [/kurdi/i, 'raad']
+];
+
+/** `{ surah: [address, ...] }` and `{ "s:a": {...} }` from either export. */
+function readRecitation(zip) {
+  const tmp = path.join(DIR, `.unpack-${process.pid}-${zip.replace(/[^\w.-]/g, '_')}`);
+  mkdirSync(tmp, { recursive: true });
+  try {
+    execFileSync('unzip', ['-q', '-o', at(zip), '-d', tmp]);
+    const files = execFileSync('find', [tmp, '-type', 'f'], { encoding: 'utf8' }).trim().split('\n');
+    const json = name => files.find(file => path.basename(file) === name);
+    const addresses = {};
+    const segments = {};
+    if (json('surah.json') && json('segments.json')) {
+      for (const [key, row] of Object.entries(JSON.parse(readFileSync(json('surah.json'), 'utf8')))) {
+        const surah = Number(row.surah_number ?? key);
+        if (row.audio_url && surah >= 1 && surah <= 114) (addresses[surah] ??= []).push(row.audio_url);
+      }
+      Object.assign(segments, JSON.parse(readFileSync(json('segments.json'), 'utf8')));
+      return { addresses, segments };
+    }
+    const dbFile = files.find(file => file.endsWith('.db'));
+    if (!dbFile) return null;
+    const db = new DatabaseSync(dbFile, { readOnly: true });
+    try {
+      for (const row of db.prepare('SELECT surah_number, audio_url FROM surah_list ORDER BY rowid').all()) {
+        const surah = Number(row.surah_number);
+        if (row.audio_url && surah >= 1 && surah <= 114) (addresses[surah] ??= []).push(row.audio_url);
+      }
+      const sql = 'SELECT surah_number, ayah_number, timestamp_from, timestamp_to, segments FROM segments ORDER BY rowid';
+      for (const row of db.prepare(sql).all()) {
+        const key = `${row.surah_number}:${row.ayah_number}`;
+        if (segments[key]) continue;
+        segments[key] = {
+          segments: JSON.parse(row.segments || '[]'),
+          timestamp_from: row.timestamp_from,
+          timestamp_to: row.timestamp_to
+        };
+      }
+    } finally {
+      db.close();
+    }
+    return { addresses, segments };
+  } finally {
+    execFileSync('rm', ['-rf', tmp]);
+  }
+}
+
+/**
+ * The audio hosts QUL's exports point at, each asked with its own name written
+ * in -- an address from a downloaded file is never fetched as given, only
+ * checked on a host this list already trusts.
+ */
+const PROBES = {
+  'audio-cdn.tarteel.ai': (pathname, init) => fetch(`https://audio-cdn.tarteel.ai/${pathname.slice(1)}`, init),
+  'download.quranicaudio.com': (pathname, init) => fetch(`https://download.quranicaudio.com/${pathname.slice(1)}`, init)
+};
+
+/** Whether the CDN serves this address; `null` when it could not be asked. */
+async function answers(url) {
+  try {
+    const { hostname, pathname } = new URL(url);
+    const probe = PROBES[hostname];
+    if (!probe) return null;
+    const res = await probe(pathname, { method: 'HEAD', signal: AbortSignal.timeout(10000) });
+    return res.ok;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One address per surah. Addresses in the same folder stand or fall together,
+ * so each folder is asked once, about its first surah.
+ */
+async function chooseAddresses(addresses) {
+  const all = Object.values(addresses).flat();
+  const folderOf = url => url.slice(0, url.lastIndexOf('/'));
+  const folders = [...new Set(all.map(folderOf))];
+  const answered = await Promise.all(folders.map(folder => answers(all.find(url => folderOf(url) === folder))));
+  const verdicts = new Map(folders.map((folder, i) => [folder, answered[i]]));
+  const out = {};
+  for (const [surah, urls] of Object.entries(addresses)) {
+    const url = urls.find(candidate => verdicts.get(folderOf(candidate)) === true)
+      ?? urls.findLast(candidate => verdicts.get(folderOf(candidate)) !== false)
+      ?? urls.at(-1);
+    out[surah] = { surah_number: Number(surah), audio_url: url };
+  }
+  return { surahs: out, verdicts };
+}
+
+/** Imports one download; the line to print, or null when it was not one. */
+async function installRecitation(zip) {
+  const reciter = RECITER_NAMES.find(([pattern]) => pattern.test(zip))?.[1];
+  if (!reciter) return `${zip}: no studio reciter by that name, skipped`;
+  const read = readRecitation(zip);
+  if (!read || !Object.keys(read.segments).length) return `${zip}: no surah list and segments inside, skipped`;
+  const { surahs, verdicts } = await chooseAddresses(read.addresses);
+  const target = path.join(DIR, 'recitations', reciter);
+  mkdirSync(target, { recursive: true });
+  writeFileSync(path.join(target, 'surah.json'), JSON.stringify(surahs));
+  writeFileSync(path.join(target, 'segments.json'), JSON.stringify(read.segments));
+  const dead = [...verdicts.values()].filter(v => v === false).length;
+  const unasked = [...verdicts.values()].filter(v => v === null).length;
+  return `${reciter}: ${Object.keys(surahs).length} surahs, ${Object.keys(read.segments).length} ayahs` +
+    (dead ? `, skipped ${dead} audio folder(s) that do not answer` : '') +
+    (unasked ? `, could not check ${unasked} audio folder(s) -- offline, or a host not in PROBES?` : '');
+}
+
+async function installRecitations() {
+  const zips = readdirSync(DIR).filter(name => /^surah-recitation-.*\.zip$/i.test(name));
+  const lines = await Promise.all(zips.map(installRecitation));
+  lines.forEach(line => say(line));
+  return lines.filter(line => !line.endsWith('skipped')).length || null;
+}
+
+const recitations = await installRecitations();
+
+if (!morphology && !mutashabihat && !fonts && !recitations) {
   console.error('Nothing to import. Put the QUL exports in data/qul/ first.');
   process.exit(1);
 }

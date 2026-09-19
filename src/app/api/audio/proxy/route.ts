@@ -18,7 +18,10 @@ import { NextRequest, NextResponse } from 'next/server';
 const ALLOWED_HOSTS = new Set([
   'download.quranicaudio.com',
   'audio.qurancdn.com',
-  'verses.quran.com'
+  'verses.quran.com',
+  // QUL's recordings, which its timings for Sudais, Ghamdi, Shuraim and
+  // Dosari were measured on. See `lib/qulRecitations.ts`.
+  'audio-cdn.tarteel.ai'
 ]);
 
 /**

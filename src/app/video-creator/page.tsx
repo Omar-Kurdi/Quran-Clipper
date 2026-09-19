@@ -2636,7 +2636,8 @@ export default function VideoCreatorPage() {
                             or one you have to set by hand, so it belongs on the
                             choice rather than in a note underneath it. */}
                         <span className="flex items-center gap-1.5">
-                          {r.quranApiId > 0 && (
+                          {/* Timed by quran.com, or by a QUL export on this machine. */}
+                          {(r.quranApiId > 0 || qulTimedReciters.includes(r.id)) && (
                             <span
                               title={t.source.reciterTimedTitle}
                               className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"

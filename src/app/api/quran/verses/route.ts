@@ -4,6 +4,8 @@ import { quranApiJson, translationIdsToRequest, preferredTranslation } from '@/l
 import { primaryTranslation } from '@/lib/localTranslations';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
+import { qulSurah } from '@/lib/qulRecitations';
+import { chooseReciterTiming } from '@/lib/reciterTimingChoice';
 
 function getReciterAudioUrl(reciterId: string, surahNumber: number) {
   const reciter = RECITERS.find(r => r.id === reciterId) || RECITERS[0];
@@ -165,17 +167,19 @@ export async function GET(req: NextRequest) {
         // Filter requested range
         const filtered = allVerses.filter(v => v.verse_number >= start && v.verse_number <= end);
 
-        const measured = await fetchReciterTimings(reciterMeta.quranApiId, surahNumber);
-        // All measured or none of them. A half-timed range would mix absolute
-        // timestamps with offsets counted from zero, which is worse than either.
-        const useMeasured =
-          !!measured && filtered.every(v => measured.timings.has(v.verse_key));
+        // quran.com first, so a reciter it covers loads as before; QUL's export,
+        // where this machine has one, for a reciter quran.com has not timed.
+        const choice = chooseReciterTiming(
+          filtered.map(v => v.verse_key),
+          await fetchReciterTimings(reciterMeta.quranApiId, surahNumber),
+          qulSurah(reciter, surahNumber)
+        );
 
         let currentOffset = 0;
         const mappedVerses = filtered.map(v => {
           const words = verseWords(v);
 
-          const timing = useMeasured ? measured!.timings.get(v.verse_key)! : null;
+          const timing = choice.boundsFor(v.verse_key);
           let verseStart: number;
           let verseEnd: number;
           if (timing) {
@@ -206,7 +210,7 @@ export async function GET(req: NextRequest) {
           };
         });
 
-        const totalSeconds = useMeasured ? measured!.totalSeconds || currentOffset : currentOffset;
+        const totalSeconds = choice.totalSeconds || currentOffset;
 
         return NextResponse.json({
           success: true,
@@ -219,10 +223,12 @@ export async function GET(req: NextRequest) {
           // served straight from mp3quran.net, which publishes an AAAA record --
           // so on a machine with no IPv6 route that one reciter failed while the
           // timed ones worked.
-          audioUrl: proxiedAudioUrl(useMeasured ? measured!.audioUrl : getReciterAudioUrl(reciter, surahNumber)),
+          audioUrl: proxiedAudioUrl(choice.audioUrl ?? getReciterAudioUrl(reciter, surahNumber)),
           audioDuration: `${Math.floor(totalSeconds / 60)}:${Math.floor(totalSeconds % 60).toString().padStart(2, '0')}`,
           /** 'measured' means the boundaries came from the recording; 'estimated' means they were guessed from text length. */
-          timingSource: useMeasured ? 'measured' : 'estimated',
+          timingSource: choice.provider ? 'measured' : 'estimated',
+          /** Whose measurements: quran.com's, or QUL's for a reciter quran.com has not timed. */
+          timingProvider: choice.provider,
           verses: mappedVerses
         });
       }
