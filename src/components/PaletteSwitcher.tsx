@@ -24,7 +24,7 @@ export const PALETTES = [
 ] as const;
 
 const STORAGE_KEY = 'qc-palette';
-const DEFAULT_PALETTE = 'nocturne';
+const DEFAULT_PALETTE = 'slate';
 
 export const PaletteSwitcher: React.FC = () => {
   const t = useT();

@@ -1556,21 +1556,22 @@ export default function VideoCreatorPage() {
   const [mobileSurface, setMobileSurface] = useState<'source' | 'preview' | 'inspect'>('preview');
 
   /**
-   * The first-visit walkthrough. Offered once, on its own, the first time the
-   * studio opens in this browser; after that only when asked for, from "How
+   * The first-visit walkthrough. Offered once per interface language, on its
+   * own, the first time the studio opens in this browser -- and again the first
+   * time it is switched to Arabic; after that only when asked for, from "How
    * it works" or the menu. The flag is a per-browser convenience, so storage
    * that is blocked simply means the tour is offered again.
    */
   const [isTourOpen, setIsTourOpen] = useState(false);
   useEffect(() => {
-    if (tourSeen()) return;
+    if (tourSeen(locale)) return;
     // After the studio has painted, so the steps have something to point at.
     const timer = window.setTimeout(() => setIsTourOpen(true), 800);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [locale]);
   const closeTour = () => {
     setIsTourOpen(false);
-    rememberTourSeen();
+    rememberTourSeen(locale);
   };
   const tourSteps: TourStep[] = [
     { target: 'source', title: t.tour.sourceTitle, body: t.tour.sourceBody },

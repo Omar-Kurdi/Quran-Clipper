@@ -8,10 +8,9 @@
    chosen by `data-palette` on <html>, written by the picker in the studio
    header and restored before first paint by the inline script in layout.tsx.
 
-   Nocturne is the default and is bound to bare `:root` as well, so the app
-   still paints correctly if the attribute is ever missing.
+   Slate & Amber is the default and is bound to bare `:root` as well, so the
+   app still paints correctly if the attribute is ever missing.
    --------------------------------------------------------------------------- */
-:root,
 [data-palette="nocturne"] {
   --p-bg: #0a0f1a;
   --p-surface: #121a2a;
@@ -26,6 +25,7 @@
   --p-error: #e06c75;
 }
 
+:root,
 [data-palette="slate"] {
   --p-bg: #020617;
   --p-surface: #0f172a;
@@ -185,11 +185,11 @@
    change because someone switched the studio's language.
    --------------------------------------------------------------------------- */
 :root[lang="ar"] {
-  --font-sans: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans Arabic', 'Noto Naskh Arabic', ui-sans-serif, system-ui, sans-serif;
   /* Amiri rather than a sans: `font-display` marks the wordmark and the surah
      reference, and a naskh serif is the closest Arabic answer to what Cormorant
-     was doing there. */
-  --font-display: 'Cormorant Garamond', 'IBM Plex Sans Arabic', Georgia, serif;
+     was doing there. Neither is Quran text, so neither takes a mushaf face. */
+  --font-display: 'Amiri', Georgia, serif;
 }
 
 /* Timecodes, hex colours, `2:255` references and URLs are Latin-script data

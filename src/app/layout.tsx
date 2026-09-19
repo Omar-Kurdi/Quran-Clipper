@@ -36,7 +36,7 @@ export default async function RootLayout({
   return (
     /* `suppressHydrationWarning` covers exactly one element, and this is the
        one that needs it: the inline script below rewrites `data-palette`
-       before React hydrates, so the server's "nocturne" and the client's
+       before React hydrates, so the server's "slate" and the client's
        restored value legitimately differ.
 
        `lang` and `dir` do *not* need it -- they come from the cookie the server
@@ -45,12 +45,12 @@ export default async function RootLayout({
       lang={locale}
       dir={directionFor(locale)}
       className="dark"
-      data-palette="nocturne"
+      data-palette="slate"
       suppressHydrationWarning
     >
       <head>
         {/* Restore the saved palette before first paint. Doing this in an
-            effect would flash Nocturne for a frame on every load for anyone
+            effect would flash Slate & Amber for a frame on every load for anyone
             who picked something else. */}
         <script
           dangerouslySetInnerHTML={{
@@ -65,7 +65,7 @@ export default async function RootLayout({
             The Quran faces below it are for the canvas and are loaded for both
             languages. */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap"
           rel="stylesheet"
         />
       </head>

@@ -203,10 +203,18 @@ describe('wrapCaption', () => {
     // `ۖ` is a combining mark with no width. Broken onto the next line it
     // would be drawn over that line's first word, marking a stop the mushaf
     // does not mark. It stays with the word it was written after, however
-    // far that puts the line over the limit.
+    // far that puts the line over the limit -- attached to it, since a mark
+    // drawn on a space is placed by guesswork in every Unicode face.
     const lines = wrapCaption('وَأُخَرُ مُتَشَـٰبِهَـٰتٌ ۖ فَأَمَّا', 20, perChar);
     expect(lines.every(line => !/^[\u06D6-\u06DC]/.test(line))).toBe(true);
-    expect(lines.find(line => line.includes('\u06D6'))).toMatch(/مُتَشَـٰبِهَـٰتٌ ۖ$/);
+    expect(lines.find(line => line.includes('\u06D6'))).toMatch(/مُتَشَـٰبِهَـٰتٌۖ$/);
+  });
+
+  it('removes only the space before a waqf mark, never a character of the text', () => {
+    const text = 'مِّنَ ٱلسَّمَآءِ رِزْقًا ۚ وَمَا يَتَذَكَّرُ إِلَّا مَن يُنِيبُ';
+    const lines = wrapCaption(text, 18, perChar);
+    expect(lines.join(' ')).toBe(text.replace(' \u06DA', '\u06DA'));
+    expect(lines.join('').replace(/\s/g, '')).toBe(text.replace(/\s/g, ''));
   });
 
   it('wraps a mushaf caption on every glyph, marks included', () => {

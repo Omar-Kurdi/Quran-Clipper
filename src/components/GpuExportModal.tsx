@@ -126,7 +126,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const gpuName = renderer ?? t.exportModal.gpuNotReported;
   const encoderName = useMemo(() => describeEncoder(fastPath), [fastPath]);
 
-  const [selectedFps, setSelectedFps] = useState<number>(60);
+  // The platform's own frame rate, as choosing it would set: opening on Shorts
+  // with 60 fps selected was not what clicking Shorts gives.
+  const [selectedFps, setSelectedFps] = useState<number>(() => presetForAspect(aspectRatio).fps);
   /**
    * Which platform this render is for, and how much of the frame to spend on
    * it. Kept here rather than in the project: the same timeline is exported for
@@ -228,7 +230,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       setPreviewFailed(false);
       // Open on the platform that matches the shape the studio is already set
       // to, so the frame in the preview is the frame being offered.
-      setPresetId(presetForAspect(aspectRatio).id);
+      const preset = presetForAspect(aspectRatio);
+      setPresetId(preset.id);
+      setSelectedFps(preset.fps);
+      setTier('standard');
     }
   }
 

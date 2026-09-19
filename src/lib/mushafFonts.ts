@@ -248,6 +248,14 @@ export function withGlyphs<W extends Glyphable, V extends { verseKey: string; wo
  * in that space would carry the mark to the next line and draw it over that
  * line's first word, saying "you may stop here" where the mushaf does not.
  *
+ * Nor is it drawn after that space. A mark on a space has no letter to sit on,
+ * no Unicode face carries anchors for it, and each guesses: Digital Khatt set
+ * ۚ on the baseline as if it were a letter, and the Nastaleeq face threw it
+ * clear of the word and above the line. Joined to the word before it, each
+ * face places it the way the mushaf prints it -- raised, just past the end of
+ * that word. Only the space goes, and only in what is drawn: the characters
+ * are the upstream's, and the word list keeps its spelling.
+ *
  * Only Unicode text can produce such a token. A page glyph is a private-use
  * character, so a mushaf caption never matches and wraps exactly as before.
  *
@@ -271,8 +279,9 @@ export function wrapCaption(
   const lines: string[] = [];
   let line = '';
   for (const token of text.split(/\s+/).filter(Boolean)) {
-    const test = line ? `${line} ${token}` : token;
-    if (line && !MARK_ONLY.test(token) && measure(test) > limit) {
+    const mark = MARK_ONLY.test(token);
+    const test = line ? `${line}${mark ? '' : ' '}${token}` : token;
+    if (line && !mark && measure(test) > limit) {
       lines.push(line);
       line = token;
     } else {

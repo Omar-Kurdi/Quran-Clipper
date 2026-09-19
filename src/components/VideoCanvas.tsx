@@ -193,6 +193,13 @@ interface VideoCanvasProps {
 //: Floors for the verse-card shrink-to-fit. Reached only by a segment far
 //: longer than the card was designed for; below these the frame is unreadable
 //: anyway, and overflowing is the better failure than dropping recited words.
+/**
+ * Arabic that is not Quran text -- the surah badge, the ayah numeral, a
+ * translation in Urdu or Persian -- draws in the face the studio has always
+ * used for it. The mushaf faces are for the Quran alone.
+ */
+const LABEL_FAMILY = 'Amiri';
+
 const MIN_ARABIC_PX = 16;
 const MIN_TRANSLATION_PX = 10;
 
@@ -507,8 +514,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       [`bold 60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
       [`600 60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
       [`60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
-      // The surah badge draws in the fallback face whatever the verse font is.
-      [`bold 60px '${FALLBACK_ARABIC_FAMILY}'`, ARABIC_SAMPLE],
+      // The badge, the ayah numeral and right-to-left translations are not
+      // Quran text, so they draw in the studio's own face whatever the verse font is.
+      [`bold 60px '${LABEL_FAMILY}'`, ARABIC_SAMPLE],
+      [`600 60px '${LABEL_FAMILY}'`, '0123456789'],
       [`60px '${config.fontTranslation}'`, 'Ag'],
     ];
     Promise.all(
@@ -887,9 +896,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const subtitle = config.surahBadgeSubtitleText?.trim() || '';
 
         // The badge is ordinary text -- a name, a bullet, a range -- so it
-        // draws in a Unicode face. QUL's calligraphic surah-name font could
-        // replace the Arabic half of it; see FutureIdeas.md.
-        const titleFamily = FALLBACK_ARABIC_FAMILY;
+        // draws in the studio's label face, not a Quran one: the mushaf faces
+        // carry no Latin, and "Ghafir (40:13)" fell through to the browser's
+        // default serif. QUL's calligraphic surah-name font could replace the
+        // Arabic half of it; see FutureIdeas.md.
+        const titleFamily = LABEL_FAMILY;
         // Shrink to fit rather than spill past the plate.
         let titleSize = 34 * scale;
         const innerWidth = badgeWidth - 44 * scale;
@@ -1036,14 +1047,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         /**
          * Urdu, Persian and the rest are in the Arabic script, and the
          * translation face is a Latin one -- naming it for them draws tofu or
-         * unjoined letters. They borrow the verse face, which is already
-         * loaded for the ayah above them, on a looser line so the harakat have
-         * room.
+         * unjoined letters. A translation is not Quran text, so they take the
+         * label face rather than a mushaf one, with Noto Naskh behind it for
+         * the letters Amiri lacks, on a looser line so the harakat have room.
          */
         const rtlTranslationFont = (size: number) =>
-          // A translation is not Quran text and has no page glyphs, so this
-          // stays a Unicode face even when the ayah above it is the mushaf.
-          `${size}px '${arabicFontFamily(config.fontArabic)}', '${FALLBACK_ARABIC_FAMILY}', serif`;
+          `${size}px '${LABEL_FAMILY}', 'Noto Naskh Arabic', serif`;
         const blockLineHeight = (size: number, rtl: boolean) => size * (rtl ? 1.85 : 1.55);
         /** The breathing space between two translations, so they read as two. */
         const blockGap = (size: number) => size * 0.7;
@@ -1146,7 +1155,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.shadowColor = 'transparent';
         ctx.shadowOffsetY = 0;
 
-        ctx.font = `${ayahFontSize}px '${arabicFontFamily(config.fontArabic)}', serif`;
+        // The numeral is a label too. The mushaf faces have no Latin digits, so
+        // it was drawn in whatever serif the browser falls back to.
+        ctx.font = `600 ${ayahFontSize}px '${LABEL_FAMILY}', serif`;
         ctx.fillStyle = goldAccent;
         // U+FD3E opens and U+FD3F closes when read right-to-left, despite their
         // Unicode names ("ornate left/right parenthesis") suggesting the reverse.
