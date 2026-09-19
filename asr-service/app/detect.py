@@ -16,8 +16,12 @@ import difflib
 import logging
 from collections import Counter
 from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
 
 from . import corpus
+
+if TYPE_CHECKING:
+    from .qul import Assist
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +50,16 @@ MIN_PHRASES_PER_SURAH = 2
 #: surahs into the reference that were never recited. Short phrases are still
 #: matched, but only against surahs the substantial phrases established.
 MIN_ANCHOR_WORDS = 3
+
+#: With the QUL assist, how much a match on roots alone is worth against the
+#: same match on the letters. Below one so that where both agree nothing
+#: changes, and a root match only decides where the letters could not.
+ROOT_MATCH_WEIGHT = 0.9
+
+#: With the QUL assist, how many of the best candidates have their textual
+#: twins added. The best few are where the right answer is; twins of the
+#: fortieth candidate are noise with extra steps.
+TWIN_SOURCES = 5
 
 
 @dataclass
@@ -100,6 +114,7 @@ def locate_phrase(
     index: dict,
     allowed: set[int] | None = None,
     near: int | None = None,
+    assist: Assist | None = None,
 ) -> tuple[int, int, float] | None:
     """Best (start, end, score) span in the Quran for one decoded phrase.
 
@@ -114,6 +129,13 @@ def locate_phrase(
     clustered away as a stray, and left out of the reference entirely -- so its
     audio matched nothing and produced no segments at all. Being adjacent to
     the rest of the passage is the evidence that separates them.
+
+    ``assist`` is QUL's text data, and only the studio's "Local + QUL" option
+    passes it. It adds two things and changes nothing when absent: candidates
+    found by the words' roots as well as their letters, scored on whichever
+    agrees better (roots at a discount); and every other occurrence of a
+    repeated phrase the best candidates fall in, so the right one is scored
+    even when the phrase occurs in more places than `MAX_CANDIDATES`.
     """
     tokens = [corpus.skeleton(token) for token in decoded.split()]
     tokens = [token for token in tokens if token]
@@ -136,17 +158,31 @@ def locate_phrase(
             for position, corpus_token in enumerate(skeletons):
                 if corpus_token == token:
                     votes[position - i] += 1
-        if not votes:
-            return None
+    if assist is not None:
+        morph = [assist.morph_key(token) for token in tokens]
+        votes.update(
+            position - i
+            for i in range(max(1, len(morph) - corpus.NGRAM + 1))
+            for position in assist.morph_index.get(tuple(morph[i : i + corpus.NGRAM]), ())
+        )
+
+    if not votes:
+        return None
 
     best: tuple[int, int, float] | None = None
     best_score = 0.0
     ranked = [candidate for candidate in votes.most_common() if allowed is None or candidate[0] in allowed]
-    for start, _ in ranked[:MAX_CANDIDATES]:
+    starts = [start for start, _ in ranked[:MAX_CANDIDATES]]
+    if assist is not None:
+        starts = _with_twins(starts, len(tokens), len(skeletons), assist, allowed)
+    for start in starts:
         if start < 0 or start >= len(skeletons):
             continue
         end = min(len(skeletons), start + len(tokens))
         ratio = difflib.SequenceMatcher(None, tokens, skeletons[start:end]).ratio()
+        if assist is not None:
+            by_root = difflib.SequenceMatcher(None, morph, assist.morph_keys[start:end]).ratio()
+            ratio = max(ratio, ROOT_MATCH_WEIGHT * by_root)
         # Small enough that it only ever separates near-equal matches -- a
         # genuinely better match somewhere far away still wins.
         score = ratio
@@ -155,6 +191,22 @@ def locate_phrase(
         if best is None or score > best_score:
             best, best_score = (start, end - 1, ratio), score
     return best
+
+
+def _with_twins(
+    starts: list[int], length: int, corpus_length: int, assist: Assist, allowed: set[int] | None
+) -> list[int]:
+    """``starts`` plus the other occurrences of any repeated phrase the best of them sit in."""
+    seen = set(starts)
+    extended = list(starts)
+    for start in starts[:TWIN_SOURCES]:
+        if not 0 <= start < corpus_length:
+            continue
+        for twin in assist.twins(start, min(corpus_length, start + length) - 1):
+            if twin not in seen and (allowed is None or twin in allowed):
+                seen.add(twin)
+                extended.append(twin)
+    return extended
 
 
 #: Unsupported ayahs tolerated inside one passage before it is treated as two
@@ -204,13 +256,17 @@ def _dominant_span(ayahs: list[int]) -> dict[str, int]:
     return {"start_ayah": best[0], "end_ayah": best[-1]}
 
 
-def detect_range(decoded_phrases: list[str]) -> DetectedRange | None:
+def detect_range(decoded_phrases: list[str], assist: Assist | None = None) -> DetectedRange | None:
     """Work out the surah and ayah range covering the recited phrases.
 
     Each phrase is located independently and the results are pooled, rather
     than matching the whole transcript as one contiguous block. That is what
     makes repeats harmless: a phrase recited twice simply lands on the same
     corpus position twice, instead of derailing a single-span match.
+
+    ``assist`` is QUL's text data (see `locate_phrase`). It also keeps a phrase
+    that falls wholly inside one of the Quran's repeated phrases from
+    anchoring a surah: its match says what was recited, not where.
     """
     words = corpus.load_words()
     skeletons = corpus.corpus_skeletons()
@@ -224,9 +280,17 @@ def detect_range(decoded_phrases: list[str]) -> DetectedRange | None:
     for decoded in decoded_phrases:
         if len(decoded.split()) < MIN_ANCHOR_WORDS:
             continue
-        located = locate_phrase(decoded, skeletons, index)
+        located = locate_phrase(decoded, skeletons, index, assist=assist)
         if located and located[2] >= MIN_PHRASE_MATCH:
             anchors.append(located)
+
+    if assist is not None:
+        # Only when something else is left to anchor on: a recitation of one
+        # repeated phrase is still a recitation of that phrase.
+        distinctive = [anchor for anchor in anchors if not assist.is_repeated(anchor[0], anchor[1])]
+        if distinctive and len(distinctive) < len(anchors):
+            log.info("QUL: %d anchor(s) sit wholly in a repeated phrase and do not vote", len(anchors) - len(distinctive))
+            anchors = distinctive
 
     anchor_surahs: Counter[int] = Counter()
     for start, end, _ in anchors:
@@ -254,7 +318,7 @@ def detect_range(decoded_phrases: list[str]) -> DetectedRange | None:
     # Pass 2 -- place every phrase, including short ones, inside those surahs.
     hits: list[tuple[int, int, float]] = []
     for decoded in decoded_phrases:
-        located = locate_phrase(decoded, skeletons, index, allowed, near=centre)
+        located = locate_phrase(decoded, skeletons, index, allowed, near=centre, assist=assist)
         if located and located[2] >= MIN_PHRASE_MATCH:
             hits.append(located)
             log.info("phrase located at %s (%.2f): %r", words[located[0]][0], located[2], decoded[:48])

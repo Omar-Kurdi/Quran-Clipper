@@ -90,6 +90,7 @@ import {
   BookOpen, 
   Layers,
   Languages,
+  Library,
   Check, 
   Video,
   Server,
@@ -184,7 +185,9 @@ export default function VideoCreatorPage() {
    */
   const [matchStatus, setMatchStatus] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
-  const [matchProvider, setMatchProvider] = useState<'gemini' | 'align'>('align');
+  const [matchProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul'>('align');
+  /** Built-in reciters with a QUL timing export on this machine. */
+  const [qulTimedReciters, setQulTimedReciters] = useState<string[]>([]);
   const [providerStatus, setProviderStatus] = useState<{
     gemini: { configured: boolean };
     align: {
@@ -194,6 +197,8 @@ export default function VideoCreatorPage() {
       alignReady?: boolean;
       alignError?: string | null;
     };
+    /** Absent from an older server, which is the same as not available. */
+    qul?: { configured: boolean; canAutoDetectRange?: boolean; qulAssist?: boolean };
   } | null>(null);
 
   // Loaded Surah / Verse Data
@@ -895,7 +900,7 @@ export default function VideoCreatorPage() {
   ) => {
     setIsMatching(true);
     setMatchStatus({
-      text: matchProvider === 'align' ? t.match.aligning : t.match.sendingToGemini,
+      text: matchProvider === 'gemini' ? t.match.sendingToGemini : t.match.aligning,
       tone: 'info'
     });
 
@@ -959,7 +964,8 @@ export default function VideoCreatorPage() {
       if (typeof data.audioDuration === 'number') setAudioDuration(data.audioDuration);
       setVerses(data.verses || verses);
       setIsSampleProject(false);
-      const providerLabel = data.provider === 'align' ? 'Forced alignment' : 'Gemini';
+      const providerLabel =
+        data.provider === 'qul' ? 'Forced alignment + QUL' : data.provider === 'align' ? 'Forced alignment' : 'Gemini';
       // Kept user-facing and short: what was found, and what to do next. The
       // provider name, model, phrase counts and acoustic scores are diagnostics
       // -- they go to the console, not to someone making a video.
@@ -970,7 +976,7 @@ export default function VideoCreatorPage() {
       // range is right -- the acoustic score can't tell those apart (see
       // README.md). So when the range wasn't the user's own choice, ask them to
       // check it explicitly rather than implying the match verified itself.
-      const confirmRange = data.provider === 'align';
+      const confirmRange = data.provider === 'align' || data.provider === 'qul';
       setMatchStatus({
         text:
           (data.warning ? `⚠ ${data.warning} ` : '') +
@@ -1201,12 +1207,65 @@ export default function VideoCreatorPage() {
     return Boolean(res?.ok);
   };
 
+  /**
+   * Times the passage from QUL's word timings, with QUL's recording.
+   *
+   * The QUL counterpart of `handleReciterSegments`, and a button of its own so
+   * the two can be tried on the same passage and compared. It changes the audio
+   * as well as the timeline, because QUL measured its own recording of the
+   * reciter -- its times are wrong against the mp3quran file played otherwise.
+   */
+  const handleQulSegments = async () => {
+    if (!qulTimedReciters.includes(selectedReciter)) {
+      setMatchStatus({ text: t.match.qulSegmentsUnavailable(selectedReciter), tone: 'error' });
+      return;
+    }
+    setIsMatching(true);
+    setMatchStatus({ text: t.match.qulSegmentsLoading, tone: 'info' });
+    try {
+      const res = await fetch(
+        `/api/quran/qul-segments?surah=${selectedSurah}&start=${ayahStart}&end=${ayahEnd}&reciter=${encodeURIComponent(selectedReciter)}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.success || !Array.isArray(data.verses) || !data.verses.length || !data.audioUrl) {
+        setMatchStatus({ text: t.match.qulSegmentsNone, tone: 'error' });
+        return;
+      }
+      setVerses(data.verses);
+      setSelectedIndex(0);
+      setAudioUrl(data.audioUrl);
+      if (data.totalSeconds > 0) setAudioDuration(data.totalSeconds);
+      const firstStart = data.verses[0]?.startTime ?? 0;
+      if (firstStart > 0) queueSeek(data.audioUrl, firstStart);
+      const { timedWords = 0, boundsOnly = 0 } = data.coverage || {};
+      setMatchStatus({ text: t.match.qulSegmentsDone(data.verses.length, timedWords, boundsOnly), tone: 'info' });
+    } catch {
+      setMatchStatus({ text: t.match.qulSegmentsNone, tone: 'error' });
+    } finally {
+      setIsMatching(false);
+    }
+  };
+
   const handleManualMatchUploadedAudio = () => {
     setMatchStatus({ text: t.match.manualMode, tone: 'info' });
     setMobileSurface('preview');
   };
 
   // Audio Play / Pause Sync with Web Audio API Analyser
+
+  // Which built-in reciters have a QUL timing export on this machine.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/quran/qul-segments')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && Array.isArray(data?.reciters)) setQulTimedReciters(data.reciters);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Check which audio-match providers are actually usable (API key set / ASR sidecar reachable).
   useEffect(() => {
@@ -1529,6 +1588,24 @@ export default function VideoCreatorPage() {
           : t.source.matcherHelperNotRunning,
       blurb: t.source.matcherLocalBlurb,
       fix: t.source.matcherLocalFix
+    },
+    {
+      // Its own option rather than a switch on Local, so one recording can be
+      // matched both ways and the results compared.
+      id: 'qul' as const,
+      label: t.source.matcherQul,
+      technical: t.source.matcherQulTechnical,
+      Icon: Library,
+      ready: !!providerStatus?.qul?.configured,
+      status: !providerStatus
+        ? t.source.matcherChecking
+        : providerStatus.qul?.configured
+          ? t.source.matcherReady
+          : providerStatus.align.configured
+            ? t.source.matcherQulMissing
+            : t.source.matcherHelperNotRunning,
+      blurb: t.source.matcherQulBlurb,
+      fix: t.source.matcherQulFix
     },
     {
       id: 'gemini' as const,
@@ -2319,14 +2396,14 @@ export default function VideoCreatorPage() {
                     )}
                     {/* Kept because they are diagnostics with a fix, not descriptions:
                         the blurb above already says what the option does. */}
-                    {matchProvider === 'align' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
+                    {matchProvider !== 'gemini' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
                       <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
                         {t.source.matcherDetectionOffBefore}{' '}
                         <code className="font-mono">ASR_ALIGN_BACKEND</code>{' '}
                         {t.source.matcherDetectionOffAfter}
                       </p>
                     )}
-                    {matchProvider === 'align' && providerStatus?.align.alignReady === false && (
+                    {matchProvider !== 'gemini' && providerStatus?.align.alignReady === false && (
                       <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
                         <p className="font-semibold">{t.source.matcherEngineFailedTitle}</p>
                         <p>{t.source.matcherEngineFailedBody}</p>
@@ -2645,6 +2722,21 @@ export default function VideoCreatorPage() {
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
                           <span>{t.match.segments}</span>
+                        </button>
+                        {/* QUL's timings, beside quran.com's rather than instead
+                            of them, so one passage can be timed both ways. */}
+                        <button
+                          onClick={handleQulSegments}
+                          disabled={isMatching || !qulTimedReciters.includes(selectedReciter)}
+                          title={
+                            qulTimedReciters.includes(selectedReciter)
+                              ? t.match.qulSegmentsTitle
+                              : t.match.qulSegmentsUnavailable(selectedReciter)
+                          }
+                          className="col-span-2 py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <Library className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{t.match.qulSegments}</span>
                         </button>
                       </div>
                     )}

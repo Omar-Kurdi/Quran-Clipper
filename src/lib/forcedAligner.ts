@@ -80,6 +80,8 @@ type AlignResponse = {
   } | null;
   /** Set when the alignment fit the text but the acoustics don't support it. */
   warning: string | null;
+  /** `qul` when detection ran with QUL's text data; absent on the default path. */
+  assist?: AlignAssist | null;
 };
 
 /**
@@ -99,6 +101,7 @@ async function requestAlignment(params: {
   serviceUrl: string;
   source: AlignSource;
   reference: string;
+  assist?: AlignAssist;
 }): Promise<AlignResponse> {
   const formData = new FormData();
   if (params.source.kind === 'file') {
@@ -109,6 +112,7 @@ async function requestAlignment(params: {
     formData.append('window_end', String(params.source.windowEnd));
   }
   formData.append('reference', params.reference);
+  if (params.assist) formData.append('assist', params.assist);
 
   const base = params.serviceUrl.replace(/\/$/, '');
   let res: Response;
@@ -172,6 +176,9 @@ export function referenceToken(word: { arabic: string }): string {
   return word.arabic.replace(/\s+/g, '');
 }
 
+/** A detection assist the sidecar can be asked for. */
+export type AlignAssist = 'qul';
+
 export async function runForcedAlignMatch(params: {
   serviceUrl: string;
   source: AlignSource;
@@ -180,6 +187,12 @@ export async function runForcedAlignMatch(params: {
   start?: number;
   end?: number;
   autoDetect?: boolean;
+  /**
+   * `qul` has the sidecar's range detection consult QUL's morphology and
+   * mutashabihat -- the studio's "Local + QUL" option. Only detection reads
+   * it, so it makes no difference when a range is given.
+   */
+  assist?: AlignAssist;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
   /** Set when auto-detect was asked for but the sidecar couldn't do it. */
@@ -209,7 +222,8 @@ export async function runForcedAlignMatch(params: {
     result = await requestAlignment({
       serviceUrl: params.serviceUrl,
       source: params.source,
-      reference
+      reference,
+      assist: params.assist
     });
   } catch (err) {
     // Retry with the user's range only when the sidecar said auto-detection is
@@ -239,7 +253,8 @@ export async function runForcedAlignMatch(params: {
       source: params.source,
       reference: selected
         .map(verse => `${verse.verseKey}\t${verse.words.map(referenceToken).join(' ')}`)
-        .join('\n')
+        .join('\n'),
+      assist: params.assist
     });
     fellBackToSelected = true;
   }
@@ -365,7 +380,7 @@ export async function runForcedAlignMatch(params: {
     notes:
       (result.warning ? `⚠ ${result.warning} ` : '') +
       (detected
-        ? `Detected ${rangeLabel} from the audio itself (${Math.round(detected.confidence * 100)}% match on ` +
+        ? `Detected ${rangeLabel} from the audio itself${result.assist === 'qul' ? ' with QUL\'s morphology and mutashabihat' : ''} (${Math.round(detected.confidence * 100)}% match on ` +
           `${detected.matched_phrases}/${detected.total_phrases} phrases) and force-aligned it`
         : fellBackToSelected
           ? `This sidecar can't detect the range from audio, so the selected range ${rangeLabel} was force-aligned instead — confirm it matches the recording`

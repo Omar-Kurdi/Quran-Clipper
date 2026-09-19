@@ -70,3 +70,17 @@ asr-service/app/align.py  SKY-D260  1
 # The helper exists because the allowlist has to be applied in both places and
 # a security check duplicated is a security check that drifts.
 src/app/api/audio/proxy/route.ts  SKY-U001  1
+
+# SKY-D280 on the four mutating handlers of the background renderer
+# (src/app/api/render/route.ts POST and DELETE, src/app/api/render/worker/route.ts
+# PATCH and PUT). Not allowed here -- they are in baseline.portable.json, beside
+# the six routes that already carried this finding -- but the reason has no
+# other home, so it is written down here.
+#
+# The rule accepts only next-auth or Clerk as a route-local guard. This studio
+# authenticates in middleware (`STUDIO_TOKEN`, in front of every route, which
+# the render routes need as much as any), and the worker routes additionally
+# refuse anything without the job's own per-run key and a job that is rendering
+# now. The renderer is also off in production unless RENDER_ENABLED=1. Adding
+# an auth library to satisfy the scanner would protect nothing more. Accepted by
+# the project owner on 2026-09-19.

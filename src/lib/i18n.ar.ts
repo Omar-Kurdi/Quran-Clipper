@@ -150,11 +150,18 @@ export const ar: Dictionary = {
     matcherLocalBlurb:
       'يعثر على المقطع داخل التسجيل، ثم يوقّت كل كلمة على نص القرآن الثابت، فلا يمكن أن تسقط كلمة أو تُسمع خطأً. ولا يغادر شيء جهازك.',
     matcherLocalFix: 'يتطلب هذا تشغيل التطبيق المساعد المحلي. شغّله ثم أعد تحميل الصفحة.',
+    matcherQul: 'محلي + QUL',
+    matcherQulTechnical: 'المحاذاة القسرية المحلية مع صرف QUL ومتشابهاته',
+    matcherQulBlurb:
+      'المطابِق المحلي نفسه، لكنه يستعين كذلك بجذور الكلمات من QUL وبقائمة المقاطع المتشابهة ليحدّد أيّ مقطع قُرئ. جرّبه على التسجيل نفسه مع «محلي» للمقارنة.',
+    matcherQulFix:
+      'يتطلب هذا تشغيل التطبيق المساعد المحلي واستيراد ملفّي الصرف والمتشابهات من QUL إلى data/qul (node scripts/qul-import.mjs).',
     matcherOnline: 'عبر الإنترنت',
     matcherOnlineTechnical: 'مطابقة Gemini السحابية',
     matcherOnlineBlurb:
       'يعمل دون تثبيت أي شيء، لكن التوقيت مُقدَّر لا مقاس، فتوقّع تصحيحه يدويًا. ويُرسَل الصوت إلى Google.',
     matcherOnlineFix: 'أضف مفتاح Gemini API لاستخدام هذا الخيار.',
+    matcherQulMissing: 'ملفات QUL غير موجودة',
     matcherChecking: 'جارٍ الفحص…',
     matcherReady: 'جاهز',
     matcherHelperNotRunning: 'التطبيق المساعد لا يعمل',
@@ -231,6 +238,17 @@ export const ar: Dictionary = {
     segmentsTitle:
       'وقّت هذا المقطع من توقيتات الكلمات المنشورة للقارئ نفسه. مقيسة لهذا التسجيل لا مستنبطة من الصوت، وتعطي كل كلمة بدايتها.',
     segmentsLoading: 'قراءة التوقيتات المنشورة للقارئ…',
+    qulSegments: 'توقيتات QUL',
+    qulSegmentsTitle:
+      'وقّت هذا المقطع من توقيتات الكلمات في QUL لهذا القارئ، وشغّل تسجيل QUL له: فالتوقيتات مقيسة على ذلك التسجيل لا على المحمَّل الآن.',
+    qulSegmentsUnavailable: reciter =>
+      `لا توقيتات QUL لهذا القارئ على هذا الجهاز. نزّل تلاوته سورةً سورةً «مع المقاطع» من qul.tarteel.ai بصيغة JSON وفكّ ضغطها في data/qul/recitations/${reciter}/.`,
+    qulSegmentsLoading: 'قراءة توقيتات QUL…',
+    qulSegmentsNone: 'لا توقيتات لهذا المقطع في ملف QUL. والطرق الأخرى لتوقيته لم تتأثر.',
+    qulSegmentsDone: (ayahs, timed, bounds) =>
+      `وُقّتت ${ayahs} آية من QUL — ${timed} كلمةً كلمة${
+        bounds > 0 ? `، و${bounds} بحدود الآية فقط` : ''
+      }. ويُشغَّل الآن تسجيل QUL الذي قيست عليه هذه التوقيتات.`,
     segmentsUnavailable:
       'لا توقيتات منشورة لهذا القارئ — فتسجيله ليس من التسجيلات المقيسة. استعمل المطابقة الذكية بدلًا من ذلك.',
     segmentsNone:
