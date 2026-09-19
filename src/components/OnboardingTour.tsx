@@ -7,8 +7,16 @@ import { useT } from './LocaleProvider';
 export interface TourStep {
   /** A `data-tour` value on the element this step points at. */
   target: string;
+  /**
+   * On a phone, the `data-tour` value of the bottom tab that shows `target`.
+   * There the target is a whole surface filling the screen, so spotlighting it
+   * picked out nothing; the tab is what someone new needs to find again.
+   */
+  tab?: string;
   title: string;
   body: string;
+  /** Said instead of `body` in the phone layout, where the keyboard and the three columns it describes are not there. */
+  compactBody?: string;
 }
 
 interface OnboardingTourProps {
@@ -23,6 +31,9 @@ interface OnboardingTourProps {
    */
   onStep?: (index: number) => void;
 }
+
+/** The studio's phone layout: one surface at a time, switched by the bottom tabs. Below Tailwind's `lg`. */
+const COMPACT_LAYOUT = '(max-width: 1023.98px)';
 
 /** Room around the highlighted element, so its border is not flush with the cut-out. */
 const HALO = 6;
@@ -48,7 +59,10 @@ type Rect = { top: number; left: number; width: number; height: number };
 export const OnboardingTour: React.FC<OnboardingTourProps> = ({ steps, isOpen, onClose, onStep }) => {
   const [index, setIndex] = useState(0);
   const step = steps[index];
-  const rect = useTargetRect(isOpen ? step?.target : undefined);
+  const targetRect = useTargetRect(isOpen ? step?.target : undefined);
+  // The tabs are only laid out below `lg`, so this measures nothing on a wide screen.
+  const tabRect = useTargetRect(isOpen ? step?.tab : undefined);
+  const rect = tabRect ?? targetRect;
 
   useEffect(() => {
     if (isOpen) onStep?.(index);
@@ -69,9 +83,10 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({ steps, isOpen, o
 
   return createPortal(
     <div className="fixed inset-0 z-[80]" onKeyDown={tourKeys({ finish, next, back })}>
-      <Spotlight rect={rect} />
+      <Spotlight rect={rect} onTab={Boolean(tabRect)} />
       <TourCard
         rect={rect}
+        docked={Boolean(tabRect)}
         step={step}
         index={index}
         total={steps.length}
@@ -126,8 +141,11 @@ function tourKeys(actions: { finish: () => void; next: () => void; back: () => v
   };
 }
 
-/** The dimming, with the target cut out of it by an outsized shadow. */
-function Spotlight({ rect }: { rect: Rect | null }) {
+/**
+ * The dimming, with the target cut out of it by an outsized shadow. Lighter
+ * when the target is a tab, so the surface it opens stays readable above it.
+ */
+function Spotlight({ rect, onTab }: { rect: Rect | null; onTab: boolean }) {
   if (!rect) return <div aria-hidden className="absolute inset-0 bg-slate-950/72" />;
   return (
     <div
@@ -138,16 +156,18 @@ function Spotlight({ rect }: { rect: Rect | null }) {
         left: rect.left - HALO,
         width: rect.width + HALO * 2,
         height: rect.height + HALO * 2,
-        boxShadow: '0 0 0 9999px rgba(2, 6, 23, 0.72)'
+        boxShadow: `0 0 0 9999px rgba(2, 6, 23, ${onTab ? 0.4 : 0.72})`
       }}
     />
   );
 }
 
 function TourCard({
-  rect, step, index, total, onSkip, onBack, onNext
+  rect, docked, step, index, total, onSkip, onBack, onNext
 }: {
   rect: Rect | null;
+  /** Pointing at a bottom tab: sit just above the tab bar, full width. */
+  docked: boolean;
   step: TourStep;
   index: number;
   total: number;
@@ -167,11 +187,11 @@ function TourCard({
       aria-labelledby="tour-title"
       aria-describedby="tour-body"
       className="absolute rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl p-4"
-      style={{ width: CARD_WIDTH, ...cardPosition(rect) }}
+      style={{ width: CARD_WIDTH, ...(docked && rect ? dockedPosition(rect) : cardPosition(rect)) }}
     >
       <p className="text-[11px] font-mono text-amber-400">{t.tour.progress(index + 1, total)}</p>
       <h2 id="tour-title" className="mt-1 text-sm font-bold">{step.title}</h2>
-      <p id="tour-body" className="mt-1.5 text-xs text-slate-300 leading-relaxed">{step.body}</p>
+      <p id="tour-body" className="mt-1.5 text-xs text-slate-300 leading-relaxed">{stepBody(step)}</p>
       <div className="mt-3 flex items-center gap-2">
         <button onClick={onSkip} className="me-auto text-[11px] text-slate-400 hover:text-slate-200 px-1 py-1">
           {t.tour.skip}
@@ -206,6 +226,18 @@ function trapFocus(event: React.KeyboardEvent, container: HTMLElement | null) {
     event.preventDefault();
     first.focus();
   }
+}
+
+/** What the step says here: its phone wording, where it has one and this is the phone layout. */
+function stepBody(step: TourStep): string {
+  return step.compactBody && window.matchMedia(COMPACT_LAYOUT).matches ? step.compactBody : step.body;
+}
+
+/** Just above the bottom tab bar, across the screen, so the surface above the card stays in view. */
+function dockedPosition(rect: Rect): React.CSSProperties {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  return { bottom: vh - rect.top + HALO + 10, left: 12, width: vw - 24 };
 }
 
 /**

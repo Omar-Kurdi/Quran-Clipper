@@ -1632,9 +1632,10 @@ export default function VideoCreatorPage() {
    * On a phone the panel and the preview each got half the height, which
    * served neither: the panel was too short to work in and the preview -- a
    * 9:16 video, on the one device shaped for it -- overflowed its pane by
-   * about 180px. Below `md` one surface is shown at a time instead.
+   * about 180px. Below `md` one surface is shown at a time instead. It opens
+   * on Source, where making a clip starts.
    */
-  const [mobileSurface, setMobileSurface] = useState<'source' | 'preview' | 'inspect'>('preview');
+  const [mobileSurface, setMobileSurface] = useState<'source' | 'preview' | 'inspect'>('source');
 
   /**
    * The first-visit walkthrough. Offered once per interface language, on its
@@ -1653,11 +1654,14 @@ export default function VideoCreatorPage() {
   const closeTour = () => {
     setIsTourOpen(false);
     rememberTourSeen(locale);
+    // Finished or skipped, a phone is left where the first step said to start,
+    // not on whichever surface the tour last showed.
+    setMobileSurface('source');
   };
   const tourSteps: TourStep[] = [
-    { target: 'source', title: t.tour.sourceTitle, body: t.tour.sourceBody },
-    { target: 'timeline', title: t.tour.timelineTitle, body: t.tour.timelineBody },
-    { target: 'style', title: t.tour.styleTitle, body: t.tour.styleBody }
+    { target: 'source', tab: 'tab-source', title: t.tour.sourceTitle, body: t.tour.sourceBody, compactBody: t.tour.sourceBodyCompact },
+    { target: 'timeline', title: t.tour.timelineTitle, body: t.tour.timelineBody, compactBody: t.tour.timelineBodyCompact },
+    { target: 'style', tab: 'tab-inspect', title: t.tour.styleTitle, body: t.tour.styleBody }
   ];
   /** On a phone one surface shows at a time: bring each step's into view. */
   const showTourStep = (index: number) => {
@@ -2924,6 +2928,7 @@ export default function VideoCreatorPage() {
           return (
             <button
               key={id}
+              data-tour={`tab-${id}`}
               onClick={() => setMobileSurface(id)}
               aria-pressed={active}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
