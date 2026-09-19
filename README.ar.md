@@ -462,9 +462,24 @@ Tarteel. وليس لـ QUL واجهة برمجية، وتنزيلاتها تحت
 | **المحلية + QUL** | الصرف (جذور الكلمات ولِمّاتها وسيقانها) والمتشابهات | `data/qul/`، ثم شغّل `node scripts/qul-import.mjs` |
 | **توقيتات QUL** | تلاوة القارئ سورةً سورةً **مع المقاطع**، بصيغة JSON | `data/qul/recitations/<reciter>/`، بعد فك الضغط |
 
-و`<reciter>` هو معرّف القارئ في الاستوديو: `sudais` أو `muaiqly` أو `yasser` أو `shuraim` أو
-`ghamdi` أو `raad`. ووقت كتابة هذا، في QUL تلاوات مقسّمة سورةً سورةً للسديس وماهر المعيقلي وسعد
-الغامدي.
+والاثنان مستقلان. يعمل **المحلية + QUL** على أي تسجيل، ومنه المرفوع، ولا يحتاج إلا ملفّيه. أما
+**توقيتات QUL** فللقرّاء المدمجين وحدهم ولا تخص أي تسجيل مرفوع: إذ توقّت المقطع من قياسات QUL لتسجيل
+QUL نفسه لذلك القارئ.
+
+ولـ**توقيتات QUL** خذ مدخل **Surah by Surah** الموسوم **With segments** ونزّله بصيغة **JSON** — لا
+*Ayah by Ayah*، ففيه ملف صوتي مستقل لكل آية، بينما يوقّت الاستوديو تسجيلًا واحدًا للسورة كلها. وكل تنزيل
+يغطي السور الـ114 كلها لقارئ واحد:
+
+| قارئ الاستوديو | مدخل QUL (Surah by Surah، With segments) | المجلد |
+|---|---|---|
+| ماهر المعيقلي | [Maher al-Muaiqly، 405](https://qul.tarteel.ai/resources/recitation/405) — لا 562، فليس فيه مقاطع | `muaiqly` |
+| سعد الغامدي | [Saad al-Ghamdi، 335](https://qul.tarteel.ai/resources/recitation/335) | `ghamdi` |
+| عبد الرحمن السديس | [Abdur-Rahman as-Sudais، 407](https://qul.tarteel.ai/resources/recitation/407) | `sudais` |
+| ياسر الدوسري | [Yasser ad-Dussary، 422](https://qul.tarteel.ai/resources/recitation/422) | `yasser` |
+| سعود الشريم | [Sa`ud ash-Shuraym، 317](https://qul.tarteel.ai/resources/recitation/317) — لا 402، التلاوة الأقدم | `shuraim` |
+
+والمعيقلي والغامدي هما الأهم: فلا ينشر quran.com توقيتات لهما، فـQUL مصدرهما الوحيد. وللثلاثة الآخرين
+توقيتات quran.com أصلًا، وتوقيتات QUL رأي ثانٍ. وليس في QUL تلاوة مقسّمة لرعد الكردي.
 
 ## الترجمات
 

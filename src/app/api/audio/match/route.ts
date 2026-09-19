@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sidecarStatus } from '@/lib/sidecarHealth';
 import { SURAHS_LIST } from '@/lib/quranData';
 import { runGeminiMatch } from '@/lib/geminiMatcher';
 import { runForcedAlignMatch } from '@/lib/forcedAligner';
@@ -315,34 +316,19 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
   const asrServiceUrl = defaultAsrServiceUrl();
-
-  let asrAvailable = false;
-  // Whether the sidecar can work the ayah range out from the audio on its own.
-  // False on a CPU-only host, where the align backend is the character model
-  // rather than NeMo -- `align` then aligns the UI's selected range instead.
-  let canAutoDetectRange = false;
-  // A sidecar can be reachable and still be unable to align at all, if its
-  // backend failed to import. Surfacing that here means the studio can say so
-  // before someone uploads a file, rather than after a failed match.
-  let alignReady = true;
-  let alignError: string | null = null, qulAssist = false;
+  let reachable = false;
+  let health: unknown = null;
   try {
     // The sidecar resolves its align backend at startup so this stays a few
     // milliseconds, but allow headroom for a loaded host -- timing out here
     // greys out every local provider in the UI on a service that is actually up.
     const res = await fetch(`${asrServiceUrl.replace(/\/$/, '')}/health`, { signal: AbortSignal.timeout(4000) });
-    asrAvailable = res.ok;
-    if (res.ok) {
-      const health = await res.json().catch(() => null);
-      canAutoDetectRange = Boolean(health?.canAutoDetectRange);
-      // Absent on an older sidecar, which is indistinguishable from healthy.
-      alignReady = health?.alignReady !== false;
-      alignError = health?.alignError ?? null;
-      qulAssist = Boolean(health?.qulAssist);
-    }
+    reachable = res.ok;
+    if (res.ok) health = await res.json().catch(() => null);
   } catch {
-    asrAvailable = false;
+    reachable = false;
   }
+  const sidecar = sidecarStatus(reachable, health);
 
   return NextResponse.json({
     providers: {
@@ -351,13 +337,18 @@ export async function GET() {
       // align backend won't load is reported as not configured rather than as
       // online-but-failing.
       align: {
-        configured: asrAvailable && alignReady,
+        configured: sidecar.asrAvailable && sidecar.alignReady,
         serviceUrl: asrServiceUrl,
-        canAutoDetectRange,
-        alignReady,
-        alignError
+        canAutoDetectRange: sidecar.canAutoDetectRange,
+        alignReady: sidecar.alignReady,
+        alignError: sidecar.alignError
       },
-      qul: { configured: asrAvailable && alignReady && qulAssist, canAutoDetectRange, qulAssist }
+      qul: {
+        configured: sidecar.asrAvailable && sidecar.alignReady && sidecar.qulAssist,
+        canAutoDetectRange: sidecar.canAutoDetectRange,
+        qulAssist: sidecar.qulAssist,
+        qulSupported: sidecar.qulSupported
+      }
     },
     defaultProvider: resolveProvider(null)
   });

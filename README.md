@@ -513,9 +513,25 @@ that need them say so, and everything else works as before.
 | **Local + QUL** | morphology (word roots, lemmas and stems) and mutashabihat | `data/qul/`, then run `node scripts/qul-import.mjs` |
 | **QUL timings** | a reciter's surah-by-surah recitation **with segments**, as JSON | `data/qul/recitations/<reciter>/`, unzipped |
 
-`<reciter>` is the studio's id for the reciter: `sudais`, `muaiqly`, `yasser`, `shuraim`,
-`ghamdi` or `raad`. At the time of writing, QUL has segmented surah-by-surah recitations of
-Sudais, Maher al-Muaiqly and Saad al-Ghamdi.
+The two are independent. **Local + QUL** works on any recording, uploads included, and needs
+nothing beyond its two files. **QUL timings** is only for the built-in reciters and never for an
+upload: it times a passage from QUL's measurements of QUL's own recording of that reciter.
+
+For **QUL timings**, take the **Surah by Surah** entry marked **With segments** and download it
+as **JSON** — not *Ayah by Ayah*, which is a separate audio file per ayah, where the studio times
+one recording of the whole surah. Each download covers all 114 surahs for one reciter:
+
+| Studio reciter | QUL entry (Surah by Surah, With segments) | Folder |
+|---|---|---|
+| Maher Al-Muaiqly | [Maher al-Muaiqly, 405](https://qul.tarteel.ai/resources/recitation/405) — not 562, which has no segments | `muaiqly` |
+| Saad Al-Ghamdi | [Saad al-Ghamdi, 335](https://qul.tarteel.ai/resources/recitation/335) | `ghamdi` |
+| Abdul Rahman Al-Sudais | [Abdur-Rahman as-Sudais, 407](https://qul.tarteel.ai/resources/recitation/407) | `sudais` |
+| Yasser Al-Dosari | [Yasser ad-Dussary, 422](https://qul.tarteel.ai/resources/recitation/422) | `yasser` |
+| Saud Al-Shuraim | [Sa`ud ash-Shuraym, 317](https://qul.tarteel.ai/resources/recitation/317) — not 402, the older recitation | `shuraim` |
+
+Muaiqly and Ghamdi are the two that matter most: quran.com publishes no timings for them, so QUL
+is their only source. The other three already have quran.com's timings, and QUL's are a second
+opinion. QUL has no segmented recitation of Raad Al-Kurdi.
 
 ## Translations
 

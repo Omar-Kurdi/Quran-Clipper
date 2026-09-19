@@ -3,9 +3,10 @@
  *
  * The studio's other source is quran.com's qdc API, which has segmented only
  * some of these reciters. The Quranic Universal Library (qul.tarteel.ai)
- * publishes surah-by-surah recitations "with segments" for more of them --
- * Sudais (resource 407), Maher al-Muaiqly (405) and Saad al-Ghamdi (335) among
- * them -- as a download rather than an API.
+ * publishes surah-by-surah recitations "with segments" for five of the six --
+ * Sudais (resource 407), Maher al-Muaiqly (405), Yasser ad-Dussary (422), Saud
+ * ash-Shuraym (317) and Saad al-Ghamdi (335); none for Raad al-Kurdi -- as a
+ * download rather than an API. The README lists which entry is which.
  *
  * **The timings belong to QUL's recording, not to the studio's.** The studio
  * plays these reciters from mp3quran.net, and a start time measured on one

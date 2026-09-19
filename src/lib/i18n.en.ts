@@ -164,6 +164,9 @@ export const en = {
     matcherOnlineFix: 'Add a Gemini API key to use this option.',
     matcherChecking: 'Checking…',
     matcherQulMissing: 'QUL files missing',
+    matcherQulRestart: 'Restart the helper',
+    matcherQulRestartFix:
+      'The local helper app is running code from before QUL support was added. Stop it and start it again, and this option will be ready -- the QUL files are already in place.',
     matcherReady: 'Ready',
     matcherHelperNotRunning: 'Helper not running',
     matcherHelperNeedsRestart: 'Helper needs restarting',

@@ -162,6 +162,9 @@ export const ar: Dictionary = {
       'يعمل دون تثبيت أي شيء، لكن التوقيت مُقدَّر لا مقاس، فتوقّع تصحيحه يدويًا. ويُرسَل الصوت إلى Google.',
     matcherOnlineFix: 'أضف مفتاح Gemini API لاستخدام هذا الخيار.',
     matcherQulMissing: 'ملفات QUL غير موجودة',
+    matcherQulRestart: 'أعد تشغيل التطبيق المساعد',
+    matcherQulRestartFix:
+      'التطبيق المساعد المحلي يعمل بنسخة أقدم من دعم QUL. أوقفه ثم شغّله من جديد وسيصبح هذا الخيار جاهزًا — فملفات QUL موجودة أصلًا.',
     matcherChecking: 'جارٍ الفحص…',
     matcherReady: 'جاهز',
     matcherHelperNotRunning: 'التطبيق المساعد لا يعمل',

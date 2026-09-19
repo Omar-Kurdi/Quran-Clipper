@@ -198,7 +198,7 @@ export default function VideoCreatorPage() {
       alignError?: string | null;
     };
     /** Absent from an older server, which is the same as not available. */
-    qul?: { configured: boolean; canAutoDetectRange?: boolean; qulAssist?: boolean };
+    qul?: { configured: boolean; canAutoDetectRange?: boolean; qulAssist?: boolean; qulSupported?: boolean };
   } | null>(null);
 
   // Loaded Surah / Verse Data
@@ -1601,11 +1601,15 @@ export default function VideoCreatorPage() {
         ? t.source.matcherChecking
         : providerStatus.qul?.configured
           ? t.source.matcherReady
-          : providerStatus.align.configured
-            ? t.source.matcherQulMissing
-            : t.source.matcherHelperNotRunning,
+          : !providerStatus.align.configured
+            ? t.source.matcherHelperNotRunning
+            : providerStatus.qul?.qulSupported
+              ? t.source.matcherQulMissing
+              : t.source.matcherQulRestart,
       blurb: t.source.matcherQulBlurb,
-      fix: t.source.matcherQulFix
+      fix: providerStatus?.align.configured && !providerStatus.qul?.qulSupported
+        ? t.source.matcherQulRestartFix
+        : t.source.matcherQulFix
     },
     {
       id: 'gemini' as const,
