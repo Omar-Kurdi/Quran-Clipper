@@ -72,6 +72,8 @@ import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '
 import { InspectorSkeleton } from '@/components/Skeleton';
 import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
 import { tourSeen, rememberTourSeen } from '@/lib/tourSeen';
+import { BatchMatchDialog } from '@/components/BatchMatchDialog';
+import type { BatchResult } from '@/lib/batchMatch';
 
 import { 
   Sparkles, 
@@ -82,6 +84,7 @@ import {
   Upload, 
   Music, 
   BookOpen, 
+  Layers,
   Check, 
   Video,
   Server,
@@ -1124,6 +1127,73 @@ export default function VideoCreatorPage() {
     } finally {
       setIsMatching(false);
     }
+  };
+
+  /** "Match several recordings": the batch dialog, and what it hands back. */
+  const [isBatchOpen, setIsBatchOpen] = useState(false);
+  const measureFileDuration = async (file: File) => {
+    const url = URL.createObjectURL(file);
+    try {
+      return await measureAudioDuration(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  /** Loads one batch result as if that file had been uploaded and matched here. */
+  const openBatchResult = async (file: File, result: BatchResult) => {
+    setIsBatchOpen(false);
+    await acceptRecitationFile(file);
+    setSurahNameArabic(result.surahNameArabic || surahNameArabic);
+    setSurahNameEnglish(result.surahNameEnglish || surahNameEnglish);
+    setSelectedSurah(result.surahNumber);
+    setAyahStart(result.ayahStart);
+    setAyahStartInput(String(result.ayahStart));
+    setAyahEnd(result.ayahEnd);
+    setAyahEndInput(String(result.ayahEnd));
+    if (result.audioDuration > 0) setAudioDuration(result.audioDuration);
+    setVerses(result.verses);
+    setSelectedIndex(0);
+    setIsSampleProject(false);
+    setMatchStatus({
+      text: (result.warning ? `⚠ ${result.warning} ` : '') +
+        t.match.detected(result.title, result.verses.length) + t.match.confirmRange,
+      tone: 'info'
+    });
+    setMobileSurface('preview');
+  };
+
+  /**
+   * Saves one batch result as a project, styled as the studio is now. The
+   * recording is stored in this browser first, as a single save does, so the
+   * project can find it again when opened.
+   */
+  const saveBatchResult = async (file: File, result: BatchResult): Promise<boolean> => {
+    const key = newAudioKey();
+    const stored = await storeProjectAudio(key, file);
+    const payload = buildProjectPayload({
+      surahNumber: result.surahNumber,
+      surahNameArabic: result.surahNameArabic,
+      surahNameEnglish: result.surahNameEnglish,
+      ayahStart: result.ayahStart,
+      ayahEnd: result.ayahEnd,
+      reciterId: selectedReciter,
+      reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || '',
+      // An upload's address is a blob url that dies with this tab; the stored copy is what counts.
+      audioUrl: '',
+      audioDurationSeconds: result.audioDuration,
+      audioFileName: file.name,
+      audioKey: stored ? key : '',
+      trimWindow: null,
+      verses: result.verses,
+      config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
+    });
+    const res = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => null);
+    return Boolean(res?.ok);
   };
 
   const handleManualMatchUploadedAudio = () => {
@@ -2251,6 +2321,13 @@ export default function VideoCreatorPage() {
                       </span>
                     </div>
                   </div>
+                  <button
+                    onClick={() => setIsBatchOpen(true)}
+                    className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 hover:text-amber-200"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    {t.batch.button}
+                  </button>
 
                   {uploadIsVideo && videoBgUrl && (
                     <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
@@ -2755,6 +2832,16 @@ export default function VideoCreatorPage() {
       {/* Saved Projects Drawer */}
       <ShortcutsDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
       <OnboardingTour steps={tourSteps} isOpen={isTourOpen} onClose={closeTour} onStep={showTourStep} />
+      <BatchMatchDialog
+        isOpen={isBatchOpen}
+        onClose={() => setIsBatchOpen(false)}
+        provider="align"
+        providerLabel={t.source.matcherLocal}
+        providerReady={!!providerStatus?.align.configured && providerStatus.align.alignReady !== false}
+        measureDuration={measureFileDuration}
+        onOpen={openBatchResult}
+        onSave={saveBatchResult}
+      />
 
       <SavedProjectsDrawer
         isOpen={isProjectsDrawerOpen}

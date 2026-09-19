@@ -17,6 +17,8 @@ import { creditedTranslationNames } from '@/lib/translations';
 import { loadTranslationCatalogue } from '@/lib/translationCatalogue';
 import { useT } from './LocaleProvider';
 import { FrameSkeleton } from './Skeleton';
+import { ExportQueuePanel } from './ExportQueuePanel';
+import { useExportQueue } from '@/hooks/useExportQueue';
 
 // Re-exported so existing importers of this module keep working; the function
 // itself lives in `lib` now so it can be tested without mounting React.
@@ -250,9 +252,30 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   };
 
 
+  /**
+   * Several renders in a row -- one per platform, usually. Runs through the
+   * same `onStartExport` as a single render; see `useExportQueue`.
+   */
+  const queue = useExportQueue({
+    aspectRatio,
+    onAspectRatio,
+    onStartExport,
+    onCancelExport,
+    isExporting,
+    exportProgress,
+    exportSeconds,
+    fileNameFor: blob =>
+      exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd, blob.type.includes('mp4') ? 'mp4' : 'webm'),
+    onSaveExportRecord
+  });
+  const describeJob = (job: { presetId: string; tier: QualityTier; fps: number }) =>
+    `${t.exportModal.presets[job.presetId as keyof typeof t.exportModal.presets] ?? job.presetId} · ` +
+    `${t.exportModal.qualityNames[job.tier]} · ${job.fps}fps`;
+
   /** Closing mid-render means stopping it, not leaving it running unseen. */
   const handleClose = () => {
-    if (isExporting) onCancelExport();
+    if (queue.running) queue.cancel();
+    else if (isExporting) onCancelExport();
     onClose();
   };
 
@@ -518,8 +541,19 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               </ul>
             )}
 
-            {/* Render Progress Bar */}
-            {isExporting ? (
+            <ExportQueuePanel
+              jobs={queue.jobs}
+              running={queue.running}
+              describe={describeJob}
+              onRun={queue.run}
+              onCancel={queue.cancel}
+              onRemove={queue.remove}
+              onMove={queue.move}
+              onClearFinished={queue.clearFinished}
+            />
+
+            {/* Render Progress Bar. A running queue shows its own, per job. */}
+            {queue.running ? null : isExporting ? (
               <div className="p-4 bg-slate-950 rounded-xl border border-amber-500/30 flex flex-col gap-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-300 font-semibold flex items-center gap-1.5">
@@ -637,6 +671,13 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               >
                 <Sparkles className="w-5 h-5 text-slate-950 fill-current" />
                 <span>{t.exportModal.startRender(selectedFps)}</span>
+              </button>
+              <button
+                onClick={() => queue.add({ presetId, tier, fps: selectedFps })}
+                title={t.exportQueue.addTitle}
+                className="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold rounded-lg border border-slate-700 transition-colors"
+              >
+                {t.exportQueue.add(describeJob({ presetId, tier, fps: selectedFps }))}
               </button>
               </>
             )}

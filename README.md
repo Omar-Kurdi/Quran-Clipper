@@ -68,6 +68,10 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 **Timing your own audio**
 - Two interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).
 - Forced alignment runs locally, on GPU or CPU, and never sends your audio anywhere.
+- **Match several recordings at once.** *Match several recordings…* under the upload takes a
+  set of files, matches each in turn with the local matcher (which finds the passage by itself),
+  and lists what it found. Open any result in the studio, or save them all as projects styled as
+  the studio is now. It runs in the open tab, one file at a time.
 - Repeated phrases are detected acoustically and get their own segments.
 - Phrase-level display: each segment carries only the words actually spoken, so a repeated
   half-ayah shows exactly those words rather than the whole verse.
@@ -609,6 +613,15 @@ attached rather than quietly producing something smaller than was asked for.
   <img src="docs/screenshots/QuranClipper_Export.png" alt="The export dialog: the detected GPU and codecs, the seven platform presets, frame rate and quality tiers, and the resulting resolution, bitrate and estimated file size." width="52%">
 </p>
 
+### Several renders in a row
+
+*Add to queue* keeps the current choice (platform, quality, frame rate) and lets you choose
+another; *Render queue* then runs them one after another, switching the studio to each one's
+shape and back to yours at the end. Finished files stay in the list to download, named with their
+shape (`…_9x16.mp4`, `…_1x1.mp4`) so they do not overwrite each other. Waiting renders can be
+reordered or removed, and stopping the queue stops the one rendering. Like a single render it
+runs in the open tab.
+
 ### Where the clip is going
 
 A preset sets the frame shape, the resolution and the bitrate together. Resolution used to be
@@ -729,7 +742,9 @@ src/lib/
   backgroundLibrary.ts       Backgrounds you added, uploads held in IndexedDB
   mediaDuration.ts           Clip lengths, and how many times one repeats in a block
   exportPresets.ts           Platform, tier and frame rate -> one export plan
+  exportQueue.ts             Several renders in a row: order, cancel, per-shape file names
   stylePresets.ts            The Style tab's whole-look presets
+  batchMatch.ts              Matching several recordings, one after another
   offlineExport.ts           The frame-by-frame WebCodecs render
   videoFrames.ts             In-order demux/decode of a video background
   exportName.ts              The suggested file name, read off the timeline

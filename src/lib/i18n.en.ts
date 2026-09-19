@@ -305,6 +305,36 @@ export const en = {
     choose: 'Choose translations'
   },
 
+  batch: {
+    open: 'Open',
+    title: 'Match several recordings',
+    button: 'Match several recordings…',
+    help: (matcher: string) =>
+      `Choose recitations, audio or video, and each is matched in turn with the ${matcher} matcher, which finds the passage by itself. Open any result in the studio, or save them all as projects with the current look.`,
+    choose: 'Choose recordings',
+    start: (count: number) => `Match ${count} recording${count === 1 ? '' : 's'}`,
+    stop: 'Stop after this one',
+    saveAll: 'Save all as projects',
+    saved: 'saved',
+    remove: 'Remove from the list',
+    found: (title: string, captions: number) => `${title} · ${captions} caption${captions === 1 ? '' : 's'}`,
+    notReady: 'The local matcher is not running. Start the helper app, then try again.',
+    keepOpen: 'Matching runs in this tab. Keep it open until the list is done.'
+  },
+  exportQueue: {
+    label: 'Export queue',
+    heading: (count: number) => `Queue · ${count} render${count === 1 ? '' : 's'}`,
+    add: (what: string) => `Add to queue: ${what}`,
+    addTitle: 'Queue this render and choose another. Handy for one clip in several shapes: each render switches the studio to its shape and back again at the end.',
+    run: (count: number) => `Render queue (${count})`,
+    cancel: 'Stop the queue',
+    clear: 'Clear finished',
+    cancelled: 'Stopped',
+    moveUp: 'Earlier',
+    moveDown: 'Later',
+    remove: 'Remove from queue',
+    keepOpen: 'The queue runs in this tab. Keep it open until every render is done.'
+  },
   presets: {
     heading: 'Presets',
     help: 'A whole look in one click: font, colours, card and background. Your translations, badge, watermark and aspect ratio stay as they are.',
