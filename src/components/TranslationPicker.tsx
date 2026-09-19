@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Check, Languages, Search, X, Loader2 } from 'lucide-react';
+import { Check, Languages, Search, X } from 'lucide-react';
+import { ListSkeleton } from './Skeleton';
 import { Dialog } from './Dialog';
 import { Button } from './Button';
 import { useT } from './LocaleProvider';
@@ -96,10 +97,10 @@ export const TranslationPicker: React.FC<TranslationPickerProps> = ({ isOpen, on
 
         <div className="flex-1 overflow-y-auto p-3">
           {loading && (
-            <p className="flex items-center gap-2 text-[11px] text-slate-400 p-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              {t.translations.loading}
-            </p>
+            <div>
+              <span role="status" className="sr-only">{t.translations.loading}</span>
+              <ListSkeleton rows={5} className="gap-2" />
+            </div>
           )}
           {failed && (
             <p className="text-[11px] text-red-300 bg-red-500/10 border border-red-500/25 rounded-lg p-2">

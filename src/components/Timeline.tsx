@@ -10,6 +10,7 @@ import { BackgroundSegment, backgroundLabel, moveSegmentTo, resizeSegment } from
 import { formatClipLength, repeatCount } from '@/lib/mediaDuration';
 import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { useT } from './LocaleProvider';
+import { TimelineSkeleton } from './Skeleton';
 
 interface TimelineProps {
   verses: VerseData[];
@@ -56,6 +57,11 @@ interface TimelineProps {
   /** Selecting a block, so the panel can act on the same one the eye is on. */
   selectedBackground?: number | null;
   onSelectBackground?: (index: number | null) => void;
+  /**
+   * The passage is loading or being matched. The ayah blocks give way to a
+   * skeleton of themselves until the new timeline arrives.
+   */
+  loading?: boolean;
 }
 
 const ZOOMS = [1, 2, 4, 8];
@@ -97,7 +103,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
   onTrim, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
-  selectedBackground = null, onSelectBackground
+  selectedBackground = null, onSelectBackground, loading = false
 }) => {
   const t = useT();
   /** Named once here so every block, handle and tooltip agrees on what a clip is called. */
@@ -354,7 +360,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   const clipIsWhole = clipRange.start <= 0.05 && clipRange.end >= duration - 0.05;
 
   return (
-    <section aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
+    <section data-tour="timeline" aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
       {/* Transport. Everything that controls time is on this bar, so there is
           one clock rather than a scrubber here and nudge buttons elsewhere. */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800/70">
@@ -695,7 +701,16 @@ export const Timeline: React.FC<TimelineProps> = ({
           >
             <Waveform peaks={peaks} zoom={zoom} />
 
-            {verses.map((verse, i) => {
+            {loading && (
+              <TimelineSkeleton
+                spans={verses.map(verse => ({
+                  left: pct(verse.startTime),
+                  width: Math.max(0.4, pct(verse.endTime) - pct(verse.startTime))
+                }))}
+              />
+            )}
+
+            {!loading && verses.map((verse, i) => {
               const left = pct(verse.startTime);
               const width = Math.max(0.4, pct(verse.endTime) - left);
               const active = i === selectedIndex;
@@ -761,7 +776,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         </div>
       </div>
 
-      {verses.length === 0 && (
+      {verses.length === 0 && !loading && (
         <p className="px-3 py-4 text-[11px] text-slate-400 text-center">{t.timeline.empty}</p>
       )}
     </section>

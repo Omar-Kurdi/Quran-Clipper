@@ -142,6 +142,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   files cannot survive a reload, so their names are kept instead, which at least says what to
   pick again.
 - **<kbd>?</kbd> lists every keyboard shortcut.**
+- **A three-step tour** on the first visit points at the source panel, the timeline and the Style
+  tab in turn. It is offered once; *Take the tour* under *How it works*, or in the menu, brings it
+  back.
 - **The interface in English or Arabic**, switched from the header. The choice is a cookie, so
   the server renders the page in the right language and direction from the first paint rather
   than flashing English and correcting itself. Arabic gets a real RTL layout and its own

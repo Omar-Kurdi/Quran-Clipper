@@ -305,6 +305,23 @@ export const en = {
     choose: 'Choose translations'
   },
 
+  tour: {
+    open: 'Take the tour',
+    progress: (step: number, total: number) => `Step ${step} of ${total}`,
+    skip: 'Skip',
+    back: 'Back',
+    next: 'Next',
+    done: 'Start creating',
+    sourceTitle: 'Choose what to make',
+    sourceBody:
+      'Pick a reciter, a surah and the ayahs, then Load ayahs & audio. Or upload your own recitation, audio or video, and let the matcher find the passage and time every word.',
+    timelineTitle: 'Tap to sync',
+    timelineBody:
+      'Each ayah is a block on the timeline, as long as it is recited. Press Space to play and B at the end of each ayah to set its boundary, or drag a block’s edges.',
+    styleTitle: 'Style it, then export',
+    styleBody:
+      'The Style tab holds the look: aspect ratio, presets, fonts, colours, background and card. When it looks right, Export at the top renders the video.'
+  },
   shortcuts: {
     open: 'Shortcuts',
     openTitle: 'Every keyboard shortcut (?)',

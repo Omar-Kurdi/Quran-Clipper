@@ -16,6 +16,7 @@ import { buildPublishMetadata, captionFileText, PublishInput } from '@/lib/publi
 import { creditedTranslationNames } from '@/lib/translations';
 import { loadTranslationCatalogue } from '@/lib/translationCatalogue';
 import { useT } from './LocaleProvider';
+import { FrameSkeleton } from './Skeleton';
 
 // Re-exported so existing importers of this module keep working; the function
 // itself lives in `lib` now so it can be tested without mounting React.
@@ -586,7 +587,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   so watching the clip and previewing it cost the same. */}
               {fastPath && (
                 <div className="mb-2">
-                  {previewUrl ? (
+                  {isPreviewing ? (
+                    <FrameSkeleton aspect={plan.aspectRatio} label={t.exportModal.previewRendering(previewProgress)} />
+                  ) : previewUrl ? (
                     <div className="rounded-lg border border-slate-700 bg-slate-950 p-2">
                       <StudioVideo
                         src={previewUrl}

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, FolderOpen, Play, Trash2, Loader2 } from 'lucide-react';
+import { ListSkeleton } from './Skeleton';
 import { Dialog } from './Dialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useT } from './LocaleProvider';
@@ -180,9 +181,9 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
         {/* List Content */}
         <div className="flex-1 overflow-y-auto pe-1 flex flex-col gap-3">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
-              <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
-              <span className="text-xs">{t.projects.loading}</span>
+            <div>
+              <span role="status" className="sr-only">{t.projects.loading}</span>
+              <ListSkeleton rows={4} />
             </div>
           ) : activeTab === 'projects' ? (
             projectsList.length === 0 ? (

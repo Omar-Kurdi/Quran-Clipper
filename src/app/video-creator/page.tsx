@@ -69,6 +69,10 @@ import { needsContentSync } from '@/lib/contentSyncAge';
 import { applyContentSync } from '@/lib/contentSyncCore';
 import type { CorpusVerse } from '@/lib/quranCorpus';
 import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
+import { InspectorSkeleton } from '@/components/Skeleton';
+import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
+import { tourSeen, rememberTourSeen } from '@/lib/tourSeen';
+
 import { 
   Sparkles, 
   Save, 
@@ -1467,6 +1471,38 @@ export default function VideoCreatorPage() {
    */
   const [mobileSurface, setMobileSurface] = useState<'source' | 'preview' | 'inspect'>('preview');
 
+  /**
+   * The first-visit walkthrough. Offered once, on its own, the first time the
+   * studio opens in this browser; after that only when asked for, from "How
+   * it works" or the menu. The flag is a per-browser convenience, so storage
+   * that is blocked simply means the tour is offered again.
+   */
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  useEffect(() => {
+    if (tourSeen()) return;
+    // After the studio has painted, so the steps have something to point at.
+    const timer = window.setTimeout(() => setIsTourOpen(true), 800);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const closeTour = () => {
+    setIsTourOpen(false);
+    rememberTourSeen();
+  };
+  const tourSteps: TourStep[] = [
+    { target: 'source', title: t.tour.sourceTitle, body: t.tour.sourceBody },
+    { target: 'timeline', title: t.tour.timelineTitle, body: t.tour.timelineBody },
+    { target: 'style', title: t.tour.styleTitle, body: t.tour.styleBody }
+  ];
+  /** On a phone one surface shows at a time: bring each step's into view. */
+  const showTourStep = (index: number) => {
+    if (index === 0) setMobileSurface('source');
+    if (index === 1) setMobileSurface('preview');
+    if (index === 2) {
+      setMobileSurface('inspect');
+      setInspectorTab('style');
+    }
+  };
+
   const headerOverflowItems: OverflowItem[] = [
     {
       key: 'saved',
@@ -1483,6 +1519,12 @@ export default function VideoCreatorPage() {
           onSelect: () => setShowTrimModal(true)
         }]
       : []),
+    {
+      key: 'tour',
+      label: t.tour.open,
+      icon: <BookOpen className="w-4 h-4" />,
+      onSelect: () => setIsTourOpen(true)
+    },
     {
       key: 'shortcuts',
       label: t.shortcuts.open,
@@ -1998,6 +2040,7 @@ export default function VideoCreatorPage() {
 
           {/* Source */}
           <aside
+            data-tour="source"
             aria-label={t.surfaces.source}
             className={`w-full lg:w-[340px] shrink-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
               mobileSurface === 'source' ? 'flex' : 'hidden'
@@ -2095,6 +2138,12 @@ export default function VideoCreatorPage() {
                     {t.source.howItWorksNoteMiddle} <strong>{t.source.howItWorksNoteUploaded}</strong>{' '}
                     {t.source.howItWorksNoteEnd}
                   </p>
+                  <button
+                    onClick={() => setIsTourOpen(true)}
+                    className="mt-2 text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2"
+                  >
+                    {t.tour.open}
+                  </button>
                 </details>
 
                 {/* Upload first.
@@ -2531,6 +2580,7 @@ export default function VideoCreatorPage() {
 
           {/* Inspector */}
           <aside
+            data-tour="style"
             aria-label={t.surfaces.inspector}
             className={`w-full lg:w-[340px] shrink-0 border-s border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
               mobileSurface === 'inspect' ? 'flex' : 'hidden'
@@ -2552,7 +2602,9 @@ export default function VideoCreatorPage() {
               ))}
             </div>
             <div className="flex-1 overflow-y-auto">
-              {inspectorTab === 'ayah' ? (
+              {inspectorTab === 'ayah' && isLoadingVerses ? (
+                <InspectorSkeleton />
+              ) : inspectorTab === 'ayah' ? (
                 <Inspector
                   verses={verses}
                   index={selectedIndex}
@@ -2599,6 +2651,7 @@ export default function VideoCreatorPage() {
           onSelect={setSelectedIndex}
           onSeek={handleSeek}
           onPlayPause={togglePlayPause}
+          loading={isLoadingVerses || isMatching}
           backgroundSegments={bgSegments}
           selectedBackground={activeBackground}
           onSelectBackground={setSelectedBackground}
@@ -2691,6 +2744,7 @@ export default function VideoCreatorPage() {
 
       {/* Saved Projects Drawer */}
       <ShortcutsDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+      <OnboardingTour steps={tourSteps} isOpen={isTourOpen} onClose={closeTour} onStep={showTourStep} />
 
       <SavedProjectsDrawer
         isOpen={isProjectsDrawerOpen}
