@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   surahNameText, pagesUsedBy, canDrawAsMushaf, qpcPageFamily, qpcPageUrl, mushafCaption,
-  QPC_V2, SURAH_NAME_FAMILY, withGlyphs, wrapCaption
+  QPC_V2, SURAH_NAME_FAMILY, withGlyphs, wrapCaption, mushafRows
 } from './mushafFonts';
 
 describe('surahNameText', () => {
@@ -216,5 +216,55 @@ describe('wrapCaption', () => {
     // above would have forbidden had a glyph ever matched it.
     expect(wrapCaption('\uFC91 \uFC92 \uFC93\uFC94 \uFC95', 3, perChar))
       .toEqual(['\uFC91 \uFC92', '\uFC93\uFC94', '\uFC95']);
+  });
+});
+
+describe('mushafRows', () => {
+  /** A word printed on `page`, line `line`, as the glyph `g`. */
+  const at = (g: string, page: number, line: number, excluded = false) =>
+    ({ glyph: g, glyphPage: page, glyphLine: line, excluded });
+
+  it('breaks the caption where the printed page breaks it', () => {
+    // Al-Baqarah 2:2 as quran.com sends it: six words on line 3, one on line 4.
+    const words = [at('a', 2, 3), at('b', 2, 3), at('c', 2, 3), at('d', 2, 4)];
+    expect(mushafRows(words, QPC_V2)).toEqual([
+      { text: 'a b c', family: qpcPageFamily(2) },
+      { text: 'd', family: qpcPageFamily(2) }
+    ]);
+  });
+
+  it('draws a caption across a page break, one page per row', () => {
+    // The case `mushafCaption` has to refuse: one family cannot draw both.
+    const words = [at('x', 49, 15), at('y', 50, 1)];
+    expect(mushafCaption(words, QPC_V2)).toBeNull();
+    expect(mushafRows(words, QPC_V2)?.map(row => row.family)).toEqual([qpcPageFamily(49), qpcPageFamily(50)]);
+  });
+
+  it('leaves hidden words out, joining what is left of a line', () => {
+    const words = [at('a', 2, 3), at('b', 2, 3, true), at('c', 2, 3)];
+    expect(mushafRows(words, QPC_V2)?.map(row => row.text)).toEqual(['a c']);
+  });
+
+  it('declines when a word lacks its line, or another face is chosen', () => {
+    expect(mushafRows([at('a', 2, 3), { glyph: 'b', glyphPage: 2 }], QPC_V2)).toBeNull();
+    expect(mushafRows([at('a', 2, 3)], 'DigitalKhatt')).toBeNull();
+  });
+});
+
+describe('withGlyphs, for the printed line', () => {
+  it('fills in the line that a saved project stored its words without', () => {
+    type Word = { glyph?: string; glyphPage?: number; glyphLine?: number };
+    const saved: { verseKey: string; words: Word[] }[] = [
+      { verseKey: '2:2', words: [{ glyph: 'a', glyphPage: 2 }, { glyph: 'b', glyphPage: 2 }] }
+    ];
+    const fetched: { verseKey: string; words: Word[] }[] = [
+      { verseKey: '2:2', words: [{ glyph: 'a', glyphPage: 2, glyphLine: 3 }, { glyph: 'b', glyphPage: 2, glyphLine: 4 }] }
+    ];
+    expect(withGlyphs(saved, fetched)[0].words?.map(word => word.glyphLine)).toEqual([3, 4]);
+  });
+
+  it('comes back by identity once every word has its line', () => {
+    const complete = [{ verseKey: '2:2', words: [{ glyph: 'a', glyphPage: 2, glyphLine: 3 }] }];
+    expect(withGlyphs(complete, complete)).toBe(complete);
   });
 });

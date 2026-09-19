@@ -131,6 +131,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   background automatically instead of discarding it.
 
 **Styling and export**
+- **Presets**: six complete looks (font, colours, card, background and its dimming) at the top of
+  the Style tab, each shown as a miniature of the frame it makes. A preset never changes the
+  aspect ratio, the translations, the badge or the watermark, and applying one is a single undo.
 - Aspect ratios 9:16, 16:9, 1:1, 4:5.
 - 11 Pexels video backgrounds, plus any video or image you paste a link to or upload — stills
   render exactly like footage.
@@ -154,7 +157,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - Configurable fonts, sizes, colours, shadows, card opacity, surah badge, and watermark.
   Arabic defaults to the Madani mushaf's own glyphs (QUL's QPC V2 fonts, one per printed page),
   with Digital Khatt, Digital Khatt IndoPak and Indopak Nastaleeq as alternatives, and
-  auto-shrinks to stay inside the card. Each colour
+  auto-shrinks to stay inside the card. With the mushaf face, **Follow the mushaf's lines** breaks
+  the Arabic where the printed page does rather than where the card runs out of room; it is off by
+  default, since a full printed line needs smaller type on a portrait card, and it also draws a caption that runs across a page break. Each colour
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
   picker in the last cell of the grid.
 <p align="center">
@@ -724,6 +729,7 @@ src/lib/
   backgroundLibrary.ts       Backgrounds you added, uploads held in IndexedDB
   mediaDuration.ts           Clip lengths, and how many times one repeats in a block
   exportPresets.ts           Platform, tier and frame rate -> one export plan
+  stylePresets.ts            The Style tab's whole-look presets
   offlineExport.ts           The frame-by-frame WebCodecs render
   videoFrames.ts             In-order demux/decode of a video background
   exportName.ts              The suggested file name, read off the timeline

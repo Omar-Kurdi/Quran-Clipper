@@ -41,6 +41,8 @@ import {
   ChevronRight,
   GripVertical
 } from 'lucide-react';
+import { PresetGallery } from './PresetGallery';
+import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 
 interface StyleConfigPanelProps {
   config: VideoCanvasConfig;
@@ -455,6 +457,15 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           </button>
         ))}
       </div>
+
+      {/* Whole looks first: the quickest way to a finished frame, and the
+          fields they set are all edited further down this tab. */}
+      {activeTab === 'design' && (
+        <PresetGallery
+          current={matchingPreset(config)}
+          onApply={preset => onChangeConfig(applyStylePreset(config, preset))}
+        />
+      )}
 
       {/* Layout & Text, section 1: format */}
       {activeTab === 'design' && (
@@ -1009,6 +1020,21 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 </button>
               ))}
             </div>
+            {/* Only the mushaf face knows where the printed lines break. */}
+            {FONTS_ARABIC.find(f => f.id === config.fontArabic)?.mushaf && (
+              <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!config.mushafLines}
+                  onChange={e => updateConfig('mushafLines', e.target.checked)}
+                  className="mt-0.5 accent-amber-500"
+                />
+                <span>
+                  <span className="font-semibold text-slate-200">{t.style.mushafLines}</span>
+                  <span className="block text-slate-400">{t.style.mushafLinesHint}</span>
+                </span>
+              </label>
+            )}
           </div>
 
           {/* Font Sizes */}

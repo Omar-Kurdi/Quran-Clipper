@@ -59,6 +59,8 @@ export const projects = pgTable('projects', {
   translationIds: jsonb('translation_ids').$type<string[]>().default([]),
   /** Whether the card's English follows the word mask rather than the ayah. */
   translationFollowsWords: boolean('translation_follows_words').notNull().default(false),
+  /** Whether the Arabic breaks where the printed mushaf does. Off for every row written before it existed. */
+  mushafLines: boolean('mushaf_lines').notNull().default(false),
   showWaveform: boolean('show_waveform').notNull().default(true),
   showSurahBadge: boolean('show_surah_badge').notNull().default(true),
   surahBadgeText: text('surah_badge_text').default(''),

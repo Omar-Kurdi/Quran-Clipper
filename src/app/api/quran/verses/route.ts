@@ -38,6 +38,7 @@ interface ApiVerse {
     text_uthmani?: string;
     code_v2?: string;
     v2_page?: number;
+    line_v2?: number;
     translation?: { text?: string };
   }[];
 }
@@ -151,7 +152,7 @@ export async function GET(req: NextRequest) {
         });
       const { data: quranData } = await quranApiJson<{ verses?: ApiVerse[] }>(
         `/verses/by_chapter/${surahNumber}?language=en&words=true&translations=${wantedTranslations.join(',')}` +
-          `&fields=text_uthmani&word_fields=text_uthmani,translation,code_v2,v2_page&per_page=300`,
+          `&fields=text_uthmani&word_fields=text_uthmani,translation,code_v2,v2_page,line_v2&per_page=300`,
         { next: { revalidate: 86400 } },
         // A chapter the configured upstream does not carry, or carries without
         // the translation, is not usable however cleanly it answered.

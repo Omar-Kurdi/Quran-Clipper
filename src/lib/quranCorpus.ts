@@ -17,6 +17,8 @@ type QuranApiWord = {
   /** The mushaf page glyph for this word, and the page whose font draws it. */
   code_v2?: string;
   v2_page?: number;
+  /** The line of that page the word is printed on. */
+  line_v2?: number;
   translation?: { text?: string };
 };
 
@@ -54,7 +56,7 @@ export function cleanHtml(input = '') {
 const CHAPTER_PATH = (surah: number) =>
   `/verses/by_chapter/${surah}` +
   `?language=en&words=true&translations=${translationIdsToRequest().join(',')}&fields=text_uthmani` +
-  `&word_fields=text_uthmani,translation,code_v2,v2_page&per_page=300`;
+  `&word_fields=text_uthmani,translation,code_v2,v2_page,line_v2&per_page=300`;
 
 /**
  * The words of one verse, spelled as the verse spells them.
@@ -80,7 +82,8 @@ export function verseWords(verse: {
       arabic: spelling?.[index] ?? word.text_uthmani ?? '',
       translation: cleanHtml(word.translation?.text || ''),
       excluded: false,
-      ...(word.code_v2 && word.v2_page ? { glyph: word.code_v2, glyphPage: word.v2_page } : {})
+      ...(word.code_v2 && word.v2_page ? { glyph: word.code_v2, glyphPage: word.v2_page } : {}),
+      ...(word.code_v2 && word.v2_page && word.line_v2 ? { glyphLine: word.line_v2 } : {})
     }))
     .filter(word => word.arabic);
 }

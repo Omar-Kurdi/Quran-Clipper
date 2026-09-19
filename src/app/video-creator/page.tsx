@@ -231,7 +231,13 @@ export default function VideoCreatorPage() {
    */
   useEffect(() => {
     const needs = (verse: VerseData) =>
-      Boolean(verse.verseKey) && (!verse.textUthmani?.trim() || !canDrawAsMushaf(verse.words));
+      Boolean(verse.verseKey) && (
+        !verse.textUthmani?.trim() ||
+        !canDrawAsMushaf(verse.words) ||
+        // Saved before the printed lines were carried: fetched once so the
+        // caption can follow the mushaf's breaks.
+        !(verse.words || []).every(word => word.glyphLine)
+      );
     if (!verses.some(needs)) return;
 
     // What is already known applies at once. Both functions hand the array
@@ -360,6 +366,9 @@ export default function VideoCreatorPage() {
     translationIds: [DEFAULT_TRANSLATION_ID],
     // Off, so an existing project reads exactly as it did.
     translationFollowsWords: false,
+    // Off by default: a full printed line is about 18 em wide, so on a 9:16
+    // card it forces the Arabic down to roughly half the size wrapping gives.
+    mushafLines: false,
     showWaveform: true,
     showSurahBadge: true,
     surahBadgeText: '',
@@ -1837,6 +1846,7 @@ export default function VideoCreatorPage() {
         ? proj.translationIds
         : [DEFAULT_TRANSLATION_ID],
       translationFollowsWords: proj.translationFollowsWords ?? false,
+      mushafLines: proj.mushafLines ?? false,
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
       surahBadgeText: proj.surahBadgeText || '',

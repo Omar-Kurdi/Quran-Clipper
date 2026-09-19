@@ -129,6 +129,39 @@ export async function ensureQpcPages(pages: number[]): Promise<void> {
   }));
 }
 
+/** One row of a caption as the mushaf prints it: its glyphs, in the family of the page it is on. */
+export interface MushafRow {
+  text: string;
+  family: string;
+}
+
+/**
+ * The caption broken where the printed page breaks it, or null to wrap.
+ *
+ * Consecutive shown words that share a page and a line are one row. Each row
+ * carries its own page's family, which is also what lets a caption that runs
+ * across a page break be drawn from the page fonts at all: a single line of
+ * the mushaf is never on two pages, so no row ever needs two families.
+ *
+ * Null when the mushaf face is not chosen or any shown word lacks its glyph,
+ * page or line -- the caller then wraps by width, as it always has.
+ */
+export function mushafRows(
+  words: { glyph?: string; glyphPage?: number; glyphLine?: number; excluded?: boolean }[] | undefined,
+  fontId: string
+): MushafRow[] | null {
+  if (fontId !== QPC_V2 || !words?.length) return null;
+  const shown = words.filter(word => !word.excluded);
+  if (!canDrawAsMushaf(shown) || !hasLines(shown)) return null;
+  const rows: { page: number; line: number; glyphs: string[] }[] = [];
+  for (const word of shown) {
+    const last = rows[rows.length - 1];
+    if (last && last.page === word.glyphPage && last.line === word.glyphLine) last.glyphs.push(word.glyph!);
+    else rows.push({ page: word.glyphPage!, line: word.glyphLine!, glyphs: [word.glyph!] });
+  }
+  return rows.map(row => ({ text: row.glyphs.join(' '), family: qpcPageFamily(row.page) }));
+}
+
 /** How to show one word: the mushaf's glyph where there is one, else the text. */
 export function wordFace(word: { arabic: string; glyph?: string; glyphPage?: number }):
   { text: string; family?: string } {
@@ -138,7 +171,10 @@ export function wordFace(word: { arabic: string; glyph?: string; glyphPage?: num
 }
 
 /** A word as far as the page glyphs are concerned. */
-type Glyphable = { glyph?: string; glyphPage?: number };
+type Glyphable = { glyph?: string; glyphPage?: number; glyphLine?: number };
+
+/** Whether every word also knows its printed line, which `mushafRows` needs. */
+const hasLines = (words: Glyphable[] = []) => words.length > 0 && words.every(word => Boolean(word.glyphLine));
 
 /**
  * Fill in the page glyphs a timeline arrived without.
@@ -168,7 +204,7 @@ export function withGlyphs<W extends Glyphable, V extends { verseKey: string; wo
 
   const filled = verses.map(verse => {
     const from = source.get(verse.verseKey);
-    if (!from?.length || canDrawAsMushaf(verse.words)) return verse;
+    if (!from?.length || (canDrawAsMushaf(verse.words) && hasLines(verse.words))) return verse;
 
     // No word list of its own: the fetched one is the only one there is.
     if (!verse.words?.length) {
@@ -180,14 +216,20 @@ export function withGlyphs<W extends Glyphable, V extends { verseKey: string; wo
 
     let filledHere = false;
     const words = verse.words.map((word, index) => {
-      const glyph = from[index].glyph;
-      const glyphPage = from[index].glyphPage;
+      const { glyph, glyphPage, glyphLine } = from[index];
       // Nothing to copy is not a change. Writing `glyph: undefined` onto the
       // word would rebuild the list for no gain, and the key would then be
       // saved into the project the next time it is written out.
-      if ((word.glyph && word.glyphPage) || !glyph || !glyphPage) return word;
+      const needsGlyph = !(word.glyph && word.glyphPage) && glyph && glyphPage;
+      // A line only belongs with the glyph it was printed as.
+      const needsLine = !word.glyphLine && glyphLine && (needsGlyph || word.glyphPage === glyphPage);
+      if (!needsGlyph && !needsLine) return word;
       filledHere = true;
-      return { ...word, glyph, glyphPage };
+      return {
+        ...word,
+        ...(needsGlyph ? { glyph, glyphPage } : {}),
+        ...(needsLine ? { glyphLine } : {})
+      };
     });
     if (!filledHere) return verse;
     changed = true;

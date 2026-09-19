@@ -305,6 +305,18 @@ export const en = {
     choose: 'Choose translations'
   },
 
+  presets: {
+    heading: 'Presets',
+    help: 'A whole look in one click: font, colours, card and background. Your translations, badge, watermark and aspect ratio stay as they are.',
+    items: {
+      'night-mosque': { name: 'Night Mosque', note: 'The studio’s default look: the mushaf on a moonlit mosque, soft blue accents.' },
+      'gold-kaaba': { name: 'Gold Kaaba', note: 'Warm gold over the Kaaba, lightly blurred and dimmed.' },
+      starlight: { name: 'Starlight', note: 'Digital Khatt on a starry sky, no card, periwinkle accents.' },
+      minimal: { name: 'Minimal', note: 'No card, no badge, no visualiser: large Arabic straight on a blurred sky.' },
+      'madinah-green': { name: 'Madinah Green', note: 'The Prophet’s Mosque with green accents and a deeper card.' },
+      indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq under a moonlit minaret, amber accents.' }
+    }
+  },
   tour: {
     open: 'Take the tour',
     progress: (step: number, total: number) => `Step ${step} of ${total}`,
@@ -436,6 +448,9 @@ export const en = {
 
     headingFormat: 'Format',
     headingTypography: 'Typography',
+    mushafLines: 'Follow the mushaf’s lines',
+    mushafLinesHint:
+      'Break the Arabic where the printed page breaks it, instead of wherever the card runs out of room. A long line gets smaller type rather than a new break.',
     headingBranding: 'Branding',
 
     aspectRatioLabel: 'Select Video Aspect Ratio:',

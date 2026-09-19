@@ -175,6 +175,7 @@ export async function POST(req: NextRequest) {
         ? body.translationIds.filter((id: unknown) => typeof id === 'string' && id).slice(0, 5)
         : [],
       translationFollowsWords: body.translationFollowsWords ?? false,
+      mushafLines: body.mushafLines ?? false,
       showWaveform: body.showWaveform ?? true,
       showSurahBadge: body.showSurahBadge ?? true,
       surahBadgeText: body.surahBadgeText || '',

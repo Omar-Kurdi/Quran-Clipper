@@ -52,6 +52,12 @@ export interface VerseWord {
    */
   glyph?: string;
   glyphPage?: number;
+  /**
+   * Which line of that printed page the word sits on, 1-15. Lets a caption
+   * break its rows where the mushaf breaks them rather than wherever the card
+   * runs out of width. Absent on the same terms as the glyph.
+   */
+  glyphLine?: number;
 }
 
 export interface VerseData {

@@ -3,7 +3,8 @@
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { VerseData, arabicFontFamily } from '@/lib/quranData';
 import {
-  mushafCaption, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY
+  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY,
+  type MushafRow
 } from '@/lib/mushafFonts';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
@@ -61,6 +62,13 @@ export interface VideoCanvasConfig {
    * they appear. Absent means the one every project started with.
    */
   translationIds?: string[];
+  /**
+   * Break the Arabic where the printed mushaf breaks it, instead of wherever
+   * the card runs out of width. Only the mushaf face has the line data; other
+   * faces wrap as before. Absent means off, which is every project saved
+   * before it existed.
+   */
+  mushafLines?: boolean;
   /**
    * Draw the English of the visible words instead of the whole ayah's.
    *
@@ -203,13 +211,20 @@ const ARABIC_SAMPLE = 'بِسْمِ ٱللَّهِ ﴾١٢٣﴿ 0123456789';
  * baseline the glyphs are actually built on do the two numbers describe the
  * gap between one row and the next.
  */
-function arabicRowPitch(ctx: CanvasRenderingContext2D, lines: string[], size: number) {
+function arabicRowPitch(
+  ctx: CanvasRenderingContext2D,
+  lines: MushafRow[],
+  size: number,
+  fontFor: (family: string, size: number) => string
+) {
   const previousBaseline = ctx.textBaseline;
   ctx.textBaseline = 'alphabetic';
   const ascents: number[] = [];
   const descents: number[] = [];
   for (const line of lines) {
-    const m = ctx.measureText(line);
+    // Per row: a row that follows the mushaf is drawn in its own page's face.
+    ctx.font = fontFor(line.family, size);
+    const m = ctx.measureText(line.text);
     ascents.push(m.actualBoundingBoxAscent || 0);
     descents.push(m.actualBoundingBoxDescent || 0);
   }
@@ -237,7 +252,8 @@ type TranslationBlockLayout = {
 };
 
 type CardTextLayout = {
-  arabicLines: string[];
+  /** Each row with the family it is drawn in -- one per page when the rows follow the mushaf. */
+  arabicLines: MushafRow[];
   arabicLineHeight: number;
   /** One entry per translation on the card, in the order they are drawn. */
   blocks: TranslationBlockLayout[];
@@ -955,7 +971,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // space-separated characters, which is why everything below -- wrapping,
       // measuring, the shrink-to-fit search -- needs no other change.
       const mushaf = activeVerse ? mushafCaption(activeVerse.words, config.fontArabic) : null;
-      const arabicText = mushaf ? mushaf.text : displayArabic;
+      // Rows as the page prints them, when asked for and the words carry their
+      // lines. They take precedence over `mushaf`, and unlike it they can span
+      // a page break: each row is on one page and brings that page's family.
+      const pageRows = activeVerse && config.mushafLines ? mushafRows(activeVerse.words, config.fontArabic) : null;
+      const arabicText = pageRows ? pageRows.map(row => row.text).join('\n') : mushaf ? mushaf.text : displayArabic;
       const arabicFamily = mushaf ? mushaf.family : arabicFontFamily(config.fontArabic);
       if (activeVerse && displayArabic) {
         // One block per chosen translation, in the order they were chosen. A
@@ -987,8 +1007,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
          * faces this replaced did ship a 700, so the bold was real and this
          * never showed.
          */
-        const arabicFont = (size: number) =>
-          `${size}px '${arabicFamily}', '${FALLBACK_ARABIC_FAMILY}', serif`;
+        const arabicFontIn = (family: string, size: number) =>
+          `${size}px '${family}', '${FALLBACK_ARABIC_FAMILY}', serif`;
+        const arabicFont = (size: number) => arabicFontIn(arabicFamily, size);
         const translationFont = (size: number) =>
           `${size}px '${config.fontTranslation}', sans-serif`;
         /**
@@ -1011,10 +1032,17 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
         const layoutAt = (arabic: number, translation: number) => {
           ctx.font = arabicFont(arabic);
-          const arabicLines = wrapAll(arabicText, maxTextWidth);
-          const arabicLineHeight = arabicRowPitch(ctx, arabicLines, arabic);
+          // Following the mushaf, the rows are given; otherwise they are wrapped
+          // to the card. Either way the shrink-to-fit below is what makes the
+          // widest row fit, so a long printed line gets smaller type, never a cut.
+          const arabicLines: MushafRow[] = pageRows
+            ?? wrapAll(arabicText, maxTextWidth).map(text => ({ text, family: arabicFamily }));
+          const arabicLineHeight = arabicRowPitch(ctx, arabicLines, arabic, arabicFontIn);
           let widest = 0;
-          for (const line of arabicLines) widest = Math.max(widest, ctx.measureText(line).width);
+          for (const line of arabicLines) {
+            ctx.font = arabicFontIn(line.family, arabic);
+            widest = Math.max(widest, ctx.measureText(line.text).width);
+          }
           const blocks: { lines: string[]; rtl: boolean; lineHeight: number }[] = [];
           let translationHeight = 0;
           if (withTranslation) {
@@ -1048,7 +1076,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           arabicText,
           translationBlocks.map(block => `${block.id}:${block.text}`).join('\u0001'),
           withTranslation, cardWidth, cardHeight,
-          config.fontArabic, config.fontTranslation, config.arabicFontSize,
+          config.fontArabic, config.mushafLines, config.fontTranslation, config.arabicFontSize,
           config.translationFontSize, config.ayahNumberFontSize,
           typeof document !== 'undefined' ? document.fonts.status : '',
         ].join('|');
@@ -1089,7 +1117,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           ctx.shadowOffsetY = 4;
         }
         for (const line of layout.arabicLines) {
-          ctx.fillText(line.trim(), textX, y);
+          ctx.font = arabicFontIn(line.family, layout.arabicSize);
+          ctx.fillText(line.text.trim(), textX, y);
           y += layout.arabicLineHeight;
         }
         ctx.direction = 'ltr';
