@@ -4,7 +4,8 @@ import type { ReciterVerseTiming } from './reciterSegments';
 export interface QuranComTimings {
   audioUrl: string;
   totalSeconds: number;
-  timings: Map<string, { start: number; end: number }>;
+  /** Seconds, with quran.com's word segments (milliseconds) where it published them. */
+  timings: Map<string, { start: number; end: number; segments?: number[][] }>;
 }
 
 /** QUL's timings for one surah, as `qulSurah` returns them -- milliseconds. */
@@ -22,6 +23,8 @@ export interface TimingChoice {
   totalSeconds: number | null;
   /** One ayah's bounds in seconds, on that recording's clock. */
   boundsFor: (verseKey: string) => { start: number; end: number } | null;
+  /** One ayah as published -- milliseconds, word segments included -- for splitting it into phrases. */
+  published: (verseKey: string) => ReciterVerseTiming | null;
 }
 
 /**
@@ -44,6 +47,10 @@ export function chooseReciterTiming(
       audioUrl: quranCom.audioUrl,
       totalSeconds: quranCom.totalSeconds || null,
       boundsFor: key => quranCom.timings.get(key) ?? null,
+      published: key => {
+        const timing = quranCom.timings.get(key);
+        return timing ? { from: timing.start * 1000, to: timing.end * 1000, segments: timing.segments } : null;
+      },
     };
   }
   if (qul && verseKeys.every(key => qul.timings.has(key))) {
@@ -55,7 +62,8 @@ export function chooseReciterTiming(
         const timing = qul.timings.get(key);
         return timing ? { start: timing.from / 1000, end: timing.to / 1000 } : null;
       },
+      published: key => qul.timings.get(key) ?? null,
     };
   }
-  return { provider: null, audioUrl: null, totalSeconds: null, boundsFor: () => null };
+  return { provider: null, audioUrl: null, totalSeconds: null, boundsFor: () => null, published: () => null };
 }

@@ -37,5 +37,15 @@ describe('chooseReciterTiming', () => {
     const none = chooseReciterTiming(keys, quranCom(['40:13']), qul(['40:14']));
     expect(none).toMatchObject({ provider: null, audioUrl: null, totalSeconds: null });
     expect(none.boundsFor('40:13')).toBeNull();
+    expect(none.published('40:13')).toBeNull();
+  });
+
+  it('hands over each source’s word segments in milliseconds, for splitting into phrases', () => {
+    const withWords = quranCom(keys);
+    withWords.timings.set('40:13', { start: 0, end: 9, segments: [[1, 0, 4000], [2, 4000, 9000]] });
+    expect(chooseReciterTiming(keys, withWords, null).published('40:13')).toEqual({
+      from: 0, to: 9000, segments: [[1, 0, 4000], [2, 4000, 9000]],
+    });
+    expect(chooseReciterTiming(keys, null, qul(keys)).published('40:14')).toEqual({ from: 12000, to: 18500 });
   });
 });

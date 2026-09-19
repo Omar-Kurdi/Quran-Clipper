@@ -623,7 +623,7 @@ export default function VideoCreatorPage() {
       // aligned, not the reciter's recording.
       if (!customAudioUrl && data.audioUrl && loaded.length) {
         const totalSeconds = Math.max(...loaded.map((v: VerseData) => v.endTime));
-        await alignLoadedReciter(loaded, data.audioUrl, totalSeconds);
+        await alignLoadedReciter(loaded, data.audioUrl, totalSeconds, data.timingSource === 'measured');
       }
     } catch {
       setLoadResult({ ok: false });
@@ -911,6 +911,10 @@ export default function VideoCreatorPage() {
       formData.append('audioUrl', source.url);
       formData.append('windowStart', String(source.start));
       formData.append('windowEnd', String(source.end));
+      // A built-in reciter's recording: where it has published timings the
+      // server times the captions from them and only asks the aligner where the
+      // reciter paused. Any other audio is aligned as before.
+      formData.append('timing', 'published');
     }
     formData.append('surah', String(selectedSurah));
     formData.append('start', String(ayahStart));
@@ -978,10 +982,11 @@ export default function VideoCreatorPage() {
       // check it explicitly rather than implying the match verified itself.
       const confirmRange = data.provider === 'align' || data.provider === 'qul';
       setMatchStatus({
-        text:
-          (data.warning ? `⚠ ${data.warning} ` : '') +
-          t.match.detected(detectedLabel, (data.verses || []).length) +
-          (confirmRange ? t.match.confirmRange : t.match.reviewTimings),
+        text: data.timedFrom
+          ? t.match.publishedTimed((data.verses || []).length, data.timedFrom === 'qul' ? 'QUL' : 'quran.com', Boolean(data.pausesFromAudio))
+          : (data.warning ? `⚠ ${data.warning} ` : '') +
+            t.match.detected(detectedLabel, (data.verses || []).length) +
+            (confirmRange ? t.match.confirmRange : t.match.reviewTimings),
         tone: 'info'
       });
       setMobileSurface('preview');
@@ -1049,7 +1054,7 @@ export default function VideoCreatorPage() {
    * reciter's file is the whole chapter -- up to 87 MB against its ~18 MB limit
    * -- so offering it would fail after a long upload rather than up front.
    */
-  const alignLoadedReciter = async (loaded: VerseData[], rawUrl: string, totalSeconds: number) => {
+  const alignLoadedReciter = async (loaded: VerseData[], rawUrl: string, totalSeconds: number, timed: boolean) => {
     const url = alignableAudioUrl(rawUrl);
     if (!url || loaded.length === 0) return;
 
@@ -1063,10 +1068,12 @@ export default function VideoCreatorPage() {
     }
 
     // Asked before trying, so a missing sidecar is one clear sentence rather
-    // than a failed upload and a stack of retries.
+    // than a failed upload and a stack of retries. A passage loaded with
+    // published timings goes ahead regardless: the server times it from them,
+    // and the aligner only adds where the reciter paused.
     const health = await fetch('/api/health', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
     const alignerUp = health?.aligner?.state === 'up' && health.aligner.ready !== false;
-    if (!alignerUp) {
+    if (!alignerUp && !timed) {
       setMatchStatus({ text: t.match.noAlignerOnLoad, tone: 'error' });
       return;
     }
@@ -1095,7 +1102,7 @@ export default function VideoCreatorPage() {
       setMatchStatus({ text: t.match.needLoad, tone: 'error' });
       return;
     }
-    void alignLoadedReciter(verses, audioUrl, audioDuration);
+    void alignLoadedReciter(verses, audioUrl, audioDuration, loadResult?.timingSource === 'measured' && !loadResult.againstUpload);
   };
 
   /**

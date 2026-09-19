@@ -10,6 +10,9 @@ import {
   estimateDurationFromSegments
 } from '@/lib/matchTimeline';
 import type { MatchResult } from '@/lib/matchTypes';
+import { publishedPassage } from '@/lib/publishedTiming';
+import { timedFromPublished } from '@/lib/publishedPhrases';
+import { alignerAudioUrl } from '@/lib/alignerAudio';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -139,7 +142,7 @@ export async function POST(req: NextRequest) {
     // of it to read. The reciter's file is the whole chapter, so sending it
     // here would mean carrying up to 87 MB through this process to use half a
     // minute of it.
-    const audioUrl = String(formData.get('audioUrl') || '').trim();
+    const audioUrl = alignerAudioUrl(String(formData.get('audioUrl') || '').trim());
     const windowStart = Number(formData.get('windowStart') ?? NaN);
     const windowEnd = Number(formData.get('windowEnd') ?? NaN);
     const hasWindow = !!audioUrl && Number.isFinite(windowStart) && Number.isFinite(windowEnd) && windowEnd > windowStart;
@@ -170,14 +173,26 @@ export async function POST(req: NextRequest) {
     const reciter = String(formData.get('reciter') || '');
 
     let result: MatchResult;
+    /**
+     * A timed reciter's own recording: its published word timings, whose
+     * source is named in the response. The aligner is then only asked where
+     * the reciter paused -- see `publishedPhrases`.
+     */
+    const published =
+      isLocal(provider) && hasWindow && String(formData.get('timing') || '') === 'published'
+        ? await publishedPassage(reciter, selectedSurah, selectedStart, selectedEnd, audioUrl)
+        : null;
+    /** Whether the captions were cut at pauses the aligner heard, rather than only per ayah. */
+    let pausesFromAudio = false;
 
     if (isLocal(provider)) {
       const serviceUrl = defaultAsrServiceUrl();
       try {
         // Auto-detect by default: the sidecar reads the audio and finds the
         // passage itself. Send `autoDetect=false` to align the range the user
-        // picked in the UI instead.
-        const autoDetect = String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
+        // picked in the UI instead. Published timings are for exactly that
+        // range, so they are always aligned against it.
+        const autoDetect = !published && String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
         result = await runForcedAlignMatch({
           serviceUrl,
           source: audio instanceof File
@@ -191,8 +206,13 @@ export async function POST(req: NextRequest) {
         });
       } catch (err) {
         const error = err as Error;
-        return NextResponse.json({ success: false, provider, error: error.message }, { status: 502 });
+        if (!published) return NextResponse.json({ success: false, provider, error: error.message }, { status: 502 });
+        // The published timings stand on their own; without the aligner each
+        // ayah is simply one caption, split only where the reciter repeated.
+        console.warn(`[match] aligner unavailable, timing from ${published.provider} alone: ${error.message}`);
+        result = { segments: [] };
       }
+      if (published) ({ result, pausesFromAudio } = timedFromPublished(published, result));
     } else {
       const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
       if (!geminiApiKey) {
@@ -303,6 +323,9 @@ export async function POST(req: NextRequest) {
       ayahStart: summary.ayahStart,
       ayahEnd: summary.ayahEnd,
       audioDuration,
+      /** Whose published timings the captions use, or null when the aligner timed them. */
+      timedFrom: published?.provider ?? null,
+      pausesFromAudio,
       verses: timeline
     });
   } catch (err: unknown) {

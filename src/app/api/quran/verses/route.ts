@@ -6,28 +6,13 @@ import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 import { qulSurah } from '@/lib/qulRecitations';
 import { chooseReciterTiming } from '@/lib/reciterTimingChoice';
+import { fetchReciterTimings } from '@/lib/publishedTiming';
 
 function getReciterAudioUrl(reciterId: string, surahNumber: number) {
   const reciter = RECITERS.find(r => r.id === reciterId) || RECITERS[0];
   const paddedSurah = String(surahNumber).padStart(3, '0');
   return `${reciter.audioServerUrl}${paddedSurah}.mp3`;
 }
-
-/**
- * Measured per-ayah timings for a reciter's chapter recording.
- *
- * The studio used to invent these: every ayah got `max(3.5, length * 0.15)`
- * seconds laid end to end from zero. For a range starting past ayah 1 that is
- * not an approximation, it is wrong -- ayah 5's block sat at 0:00 while the
- * recording at 0:00 is ayah 1 -- and even from ayah 1 it drifted apart within
- * a few ayahs. quran.com publishes the real boundaries, so use them.
- *
- * The timings index quran.com's own recording, so `audioUrl` here must travel
- * with them; pairing them with the mp3quran file would be just as wrong as the
- * estimates were. Returns null whenever anything is missing, and the caller
- * falls back to estimates against mp3quran.
- */
-type VerseTiming = { start: number; end: number };
 
 /** What the Quran API returns per ayah, as far as this route reads it. */
 interface ApiVerse {
@@ -43,43 +28,6 @@ interface ApiVerse {
     line_v2?: number;
     translation?: { text?: string };
   }[];
-}
-
-async function fetchReciterTimings(
-  quranApiId: number,
-  surahNumber: number
-): Promise<{ audioUrl: string; totalSeconds: number; timings: Map<string, VerseTiming> } | null> {
-  if (!quranApiId) return null;
-  try {
-    const res = await fetch(
-      `https://api.qurancdn.com/api/qdc/audio/reciters/${quranApiId}/audio_files?chapter=${surahNumber}&segments=true`,
-      { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const file = data?.audio_files?.[0];
-    if (!file?.audio_url || !Array.isArray(file.verse_timings)) return null;
-
-    const timings = new Map<string, VerseTiming>();
-    for (const entry of file.verse_timings as { verse_key?: string; timestamp_from?: number; timestamp_to?: number }[]) {
-      if (!entry?.verse_key) continue;
-      // Milliseconds. The response also carries its own `duration` field, which
-      // comes back negative -- computing it from the two timestamps instead.
-      const start = (entry.timestamp_from ?? 0) / 1000;
-      const end = (entry.timestamp_to ?? 0) / 1000;
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
-      timings.set(entry.verse_key, { start, end });
-    }
-    if (timings.size === 0) return null;
-
-    return {
-      audioUrl: file.audio_url as string,
-      totalSeconds: Number.isFinite(file.duration) ? file.duration / 1000 : 0,
-      timings
-    };
-  } catch {
-    return null;
-  }
 }
 
 function buildRangeFallbackVerses(surahNumber: number, start: number, end: number) {
