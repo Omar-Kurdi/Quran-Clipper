@@ -110,6 +110,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
   waveform of the recitation. Drag an edge to retime it, or tap **B** at each boundary while
   the audio plays (SPACE plays and pauses). Changes cascade so the timeline stays contiguous.
+  Drag a block by its middle to move it elsewhere in the order; the captions are laid end to end
+  again in the new order, each keeping its length.
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Timeline.png" alt="The timeline: transport controls, a time ruler, the background lane naming its clip and marking where it repeats, and one block per ayah drawn over the waveform.">
 </p>
@@ -152,6 +154,13 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - **A three-step tour** on the first visit points at the source panel, the timeline and the Style
   tab in turn. It is offered once; *Take the tour* under *How it works*, or in the menu, brings it
   back.
+- **Works on a phone.** Below tablet width one surface shows at a time (Source, Preview, Edit),
+  the header keeps Undo and Export in reach and moves the rest, language included, into its menu,
+  and the timeline's edge handles are wider under a finger.
+- **Background blur on the GPU where that is faster.** The first blurred frame times the canvas
+  blur against a WebGL one and keeps whichever is quicker in this browser. Where Chrome already
+  draws canvases on the GPU the two are within a millisecond and the canvas blur stays; where it
+  does not, the WebGL blur saves most of a frame (11 ms down to 5–7 ms at 1080×1920, measured).
 - **The interface in English or Arabic**, switched from the header. The choice is a cookie, so
   the server renders the page in the right language and direction from the first paint rather
   than flashing English and correcting itself. Arabic gets a real RTL layout and its own
@@ -745,6 +754,7 @@ src/lib/
   exportQueue.ts             Several renders in a row: order, cancel, per-shape file names
   stylePresets.ts            The Style tab's whole-look presets
   batchMatch.ts              Matching several recordings, one after another
+  glBlur.ts                  The background blur in WebGL, used where it is the faster one
   offlineExport.ts           The frame-by-frame WebCodecs render
   videoFrames.ts             In-order demux/decode of a video background
   exportName.ts              The suggested file name, read off the timeline

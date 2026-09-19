@@ -374,6 +374,7 @@ export const ar: Dictionary = {
   },
 
   timeline: {
+    dragToReorder: 'اسحبه لتغيير ترتيبه',
     label: 'المسار الزمني',
     playRecitation: 'تشغيل التلاوة',
     pauseRecitation: 'إيقاف التلاوة',

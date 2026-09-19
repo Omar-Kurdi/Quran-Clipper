@@ -381,6 +381,7 @@ export const en = {
   },
 
   timeline: {
+    dragToReorder: 'drag to move it in the order',
     label: 'Timeline',
     playRecitation: 'Play recitation',
     pauseRecitation: 'Pause recitation',

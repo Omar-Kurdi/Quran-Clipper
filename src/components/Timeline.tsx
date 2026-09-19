@@ -11,6 +11,7 @@ import { formatClipLength, repeatCount } from '@/lib/mediaDuration';
 import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { useT } from './LocaleProvider';
 import { TimelineSkeleton } from './Skeleton';
+import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
 
 interface TimelineProps {
   verses: VerseData[];
@@ -62,6 +63,8 @@ interface TimelineProps {
    * skeleton of themselves until the new timeline arrives.
    */
   loading?: boolean;
+  /** Drag of a block's body: move that caption to another place in the order. */
+  onReorder?: (from: number, to: number) => void;
 }
 
 const ZOOMS = [1, 2, 4, 8];
@@ -103,7 +106,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
   onTrim, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
-  selectedBackground = null, onSelectBackground, loading = false
+  selectedBackground = null, onSelectBackground, loading = false, onReorder
 }) => {
   const t = useT();
   /** Named once here so every block, handle and tooltip agrees on what a clip is called. */
@@ -237,6 +240,8 @@ export const Timeline: React.FC<TimelineProps> = ({
     return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   }, [duration]);
 
+  const reorderDrag = useBlockReorder({ spans: verses, xToTime, onReorder });
+
   // Edge dragging via window listeners, so the pointer can leave the 8px grab
   // strip without dropping the drag.
   useEffect(() => {
@@ -363,7 +368,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     <section data-tour="timeline" aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
       {/* Transport. Everything that controls time is on this bar, so there is
           one clock rather than a scrubber here and nudge buttons elsewhere. */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800/70">
+      <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-slate-800/70">
         <button
           onClick={onPlayPause}
           aria-label={isPlaying ? t.timeline.pauseRecitation : t.timeline.playRecitation}
@@ -375,12 +380,13 @@ export const Timeline: React.FC<TimelineProps> = ({
           onClick={() => onSeek(0)}
           aria-label={t.timeline.backToStart}
           title={t.timeline.backToStart}
-          className="p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
+          // Below `sm` the ruler is the way back: tapping 0:00 seeks there.
+          className="hidden sm:inline-flex p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
         </button>
 
-        <span className="font-mono text-[11px] text-slate-300 tabular-nums px-1">
+        <span className="font-mono text-[11px] text-slate-300 tabular-nums px-1 whitespace-nowrap">
           {formatTime(currentTime)} <span className="text-slate-400">/ {formatTime(duration)}</span>
         </span>
 
@@ -457,7 +463,8 @@ export const Timeline: React.FC<TimelineProps> = ({
           onClick={onToggleMute}
           aria-label={isMuted ? t.timeline.unmute : t.timeline.mute}
           title={isMuted ? t.timeline.unmute : t.timeline.mute}
-          className="p-1.5 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
+          // A phone has its own volume keys, and the row needs the width.
+          className="hidden sm:inline-flex p-1.5 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
         >
           {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
         </button>
@@ -484,7 +491,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
-        <span className="font-mono text-[11px] text-slate-400 w-7 text-center" dir="ltr">{zoom}x</span>
+        <span className="hidden sm:inline font-mono text-[11px] text-slate-400 w-7 text-center" dir="ltr">{zoom}x</span>
         <button
           onClick={() => setZoom(ZOOMS[zoomIndex + 1])}
           disabled={zoomIndex >= ZOOMS.length - 1}
@@ -721,12 +728,17 @@ export const Timeline: React.FC<TimelineProps> = ({
                     active
                       ? 'bg-gold/25 border-gold ring-1 ring-gold/50 z-10'
                       : 'bg-slate-800/55 border-slate-600 hover:bg-slate-700/60'
-                  }`}
+                  } ${reorderDrag.dragging?.from === i ? 'opacity-40' : ''}`}
                   style={{ left: `${left}%`, width: `${width}%` }}
                 >
                   <button
-                    onClick={() => { onSelect(i); onSeek(verse.startTime); }}
-                    title={`${verse.verseKey} · ${formatTime(verse.endTime - verse.startTime)}`}
+                    onPointerDown={e => { if (e.button === 0) reorderDrag.begin(i, e.clientX); }}
+                    onClick={() => {
+                      if (reorderDrag.consumeClick()) return;
+                      onSelect(i);
+                      onSeek(verse.startTime);
+                    }}
+                    title={`${verse.verseKey} · ${formatTime(verse.endTime - verse.startTime)}${onReorder ? ` · ${t.timeline.dragToReorder}` : ''}`}
                     className="absolute inset-0 px-2 flex flex-col justify-center items-start text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold-bright"
                   >
                     <span className={`font-mono text-[10px] truncate w-full ${active ? 'text-gold-bright' : 'text-slate-300'}`}>
@@ -741,17 +753,26 @@ export const Timeline: React.FC<TimelineProps> = ({
                     onPointerDown={e => { e.stopPropagation(); onSelect(i); setDrag({ index: i, edge: 'startTime' }); }}
                     role="separator"
                     aria-label={t.timeline.moveStartOf(verse.verseKey)}
-                    className="absolute inset-y-0 left-0 w-2 cursor-ew-resize touch-none hover:bg-gold/50"
+                    className="absolute inset-y-0 left-0 w-2 pointer-coarse:w-4 cursor-ew-resize touch-none hover:bg-gold/50"
                   />
                   <span
                     onPointerDown={e => { e.stopPropagation(); onSelect(i); setDrag({ index: i, edge: 'endTime' }); }}
                     role="separator"
                     aria-label={t.timeline.moveEndOf(verse.verseKey)}
-                    className="absolute inset-y-0 right-0 w-2 cursor-ew-resize touch-none hover:bg-gold/50"
+                    className="absolute inset-y-0 right-0 w-2 pointer-coarse:w-4 cursor-ew-resize touch-none hover:bg-gold/50"
                   />
                 </div>
               );
             })}
+
+            {/* Where a dragged block will land. */}
+            {reorderDrag.dragging && (
+              <span
+                aria-hidden
+                className="absolute inset-y-0 -ml-px w-1 rounded bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] pointer-events-none z-30"
+                style={{ left: `${pct(dropMarker(verses, reorderDrag.dragging.from, reorderDrag.dragging.to))}%` }}
+              />
+            )}
 
             {/* What the clip handles above would cut away. */}
             {onTrimRange && !clipIsWhole && (

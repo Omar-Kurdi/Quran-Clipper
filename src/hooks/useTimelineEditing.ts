@@ -83,5 +83,11 @@ export function useTimelineEditing(initial: VerseData[]) {
     merge: () => apply(mergeWithNext(verses, selectedIndex)),
   }), [verses, selectedIndex, apply]);
 
-  return { verses, setVerses, selectedIndex, setSelectedIndex, edit };
+  /** A drag on the timeline: any caption, not only the selected one. Selection follows it. */
+  const reorderAt = useCallback(
+    (from: number, to: number) => apply(reorder(verses, from, to), Math.max(0, Math.min(verses.length - 1, to))),
+    [verses, apply]
+  );
+
+  return { verses, setVerses, selectedIndex, setSelectedIndex, edit, reorderAt };
 }

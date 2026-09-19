@@ -6,6 +6,7 @@ import {
   mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY,
   type MushafRow
 } from '@/lib/mushafFonts';
+import { blurPath } from '@/lib/glBlur';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
 import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
@@ -771,15 +772,28 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // failed to load blanked the ones that had not.
       if (mediaReady(media)) {
         const source = media as BackgroundMedia;
-        ctx.save();
-        if (config.bgBlur > 0) ctx.filter = `blur(${config.bgBlur * 2.5}px)`;
         const { w, h } = mediaSize(source);
         const vRatio = w / h;
         const cRatio = width / height;
         let dw = width, dh = height, dx = 0, dy = 0;
         if (vRatio > cRatio) { dw = height * vRatio; dx = (width - dw) / 2; }
         else { dh = width / vRatio; dy = (height - dh) / 2; }
-        ctx.drawImage(source, dx, dy, dw, dh);
+        // A blurred background goes through WebGL where that is the faster
+        // way in this browser -- `blurPath` measures once and remembers, for
+        // the preview and the encoder alike -- and through the 2D filter
+        // otherwise. `gpuAccelerated` is the project's switch for it.
+        const sigma = config.bgBlur * 2.5;
+        const blurred = sigma > 0 && config.gpuAccelerated !== false
+          ? blurPath()?.blurCover(source, width, height, [dx / width, dy / height, dw / width, dh / height], sigma)
+          : null;
+        ctx.save();
+        if (blurred) {
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(blurred, 0, 0, width, height);
+        } else {
+          if (sigma > 0) ctx.filter = `blur(${sigma}px)`;
+          ctx.drawImage(source, dx, dy, dw, dh);
+        }
         ctx.restore();
       } else {
         // Gradient fallback

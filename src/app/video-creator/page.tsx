@@ -70,6 +70,7 @@ import { applyContentSync } from '@/lib/contentSyncCore';
 import type { CorpusVerse } from '@/lib/quranCorpus';
 import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
 import { InspectorSkeleton } from '@/components/Skeleton';
+import { DICTIONARIES, LOCALES } from '@/lib/i18n';
 import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
 import { tourSeen, rememberTourSeen } from '@/lib/tourSeen';
 import { BatchMatchDialog } from '@/components/BatchMatchDialog';
@@ -85,6 +86,7 @@ import {
   Music, 
   BookOpen, 
   Layers,
+  Languages,
   Check, 
   Video,
   Server,
@@ -100,7 +102,7 @@ import {
 } from 'lucide-react';
 
 export default function VideoCreatorPage() {
-  const { locale, t } = useLocale();
+  const { locale, setLocale, t } = useLocale();
 
   // Quran & Audio Selection State
   const [selectedSurah, setSelectedSurah] = useState<number>(1);
@@ -195,7 +197,7 @@ export default function VideoCreatorPage() {
   const [surahNameArabic, setSurahNameArabic] = useState<string>('الفاتحة');
   const [surahNameEnglish, setSurahNameEnglish] = useState<string>('Al-Fatihah');
   const [audioUrl, setAudioUrl] = useState<string>('https://server11.mp3quran.net/download/sds/001.mp3');
-  const { verses, setVerses, selectedIndex, setSelectedIndex, edit } = useTimelineEditing(SAMPLE_PROJECTS[0].verses);
+  const { verses, setVerses, selectedIndex, setSelectedIndex, edit, reorderAt } = useTimelineEditing(SAMPLE_PROJECTS[0].verses);
   /**
    * The studio opens with Al-Fatihah already in the timeline so the preview is
    * not blank on a first visit. That is useful, but it is indistinguishable
@@ -1582,7 +1584,16 @@ export default function VideoCreatorPage() {
     }
   };
 
+  const otherLocale = LOCALES.find(id => id !== locale) ?? locale;
   const headerOverflowItems: OverflowItem[] = [
+    // Only reaches the menu below `sm`, where the switcher itself is hidden;
+    // above that the header has room for it and this entry is redundant but harmless.
+    {
+      key: 'language',
+      label: DICTIONARIES[otherLocale].languageName,
+      icon: <Languages className="w-4 h-4" />,
+      onSelect: () => setLocale(otherLocale)
+    },
     {
       key: 'saved',
       label: t.header.savedClips,
@@ -1976,7 +1987,7 @@ export default function VideoCreatorPage() {
       </h1>
 
       {/* Top Navbar */}
-      <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-30">
+      <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-2 sm:px-4 flex items-center justify-between gap-2 shrink-0 z-30">
         <div className="flex items-center gap-3">
           {/* Not a link. The studio is the only page, so the wordmark had
               nowhere to go -- and because the whole project lives in component
@@ -1984,7 +1995,7 @@ export default function VideoCreatorPage() {
               work. */}
           <span className="flex items-baseline gap-2">
             <span className="font-display text-xl leading-none text-parchment">{t.header.wordmark}</span>
-            <span className="text-[11px] uppercase tracking-[0.22em] text-gold">{t.header.wordmarkSuffix}</span>
+            <span className="hidden sm:inline text-[11px] uppercase tracking-[0.22em] text-gold">{t.header.wordmarkSuffix}</span>
           </span>
 
           {/* The reference, set the way a mushaf cites itself: surah name, then
@@ -2028,7 +2039,11 @@ export default function VideoCreatorPage() {
             />
           </div>
 
-          <LanguageSwitcher />
+          {/* On a phone the language moves into the menu: at 375px the bar
+              cannot hold it and Export both, and Export is the one that matters. */}
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
 
           <div className="hidden lg:flex items-center gap-2">
             <PaletteSwitcher />
@@ -2739,6 +2754,7 @@ export default function VideoCreatorPage() {
           onSeek={handleSeek}
           onPlayPause={togglePlayPause}
           loading={isLoadingVerses || isMatching}
+          onReorder={reorderAt}
           backgroundSegments={bgSegments}
           selectedBackground={activeBackground}
           onSelectBackground={setSelectedBackground}
