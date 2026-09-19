@@ -128,6 +128,41 @@ so there is no gap-filling pass left to hand a segment two minutes it never earn
 Measured against per-ayah ground truth on that same 220s passage, the single alignment placed
 **all 177 words**, monotonic, with a mean ayah-start error of **0.48s**.
 
+### Going back is only over words that were said
+
+The search may step backwards through the reference, because reciters do: a restart returns to
+text already said and carries on, and a repeat says a run of it again. What it must never do is
+step back into words it *skipped*. It did, on Maher al-Muaiqly's Yusuf 12:1–7 windowed to
+0–158s:
+
+1. One window read `لَ عَلَيْد`, which is `عَلَيْكَ`. It had letters enough to pass
+   `carries_position`, but its match rested on the lone `ل`, and that matched 12:4's `لِى`
+   **27 words ahead** at 0.65.
+2. The next window read `أَحْسَنَ ٱلْقَصَصِ ...` cleanly and was credited as 12:3 said again —
+   though this route had never said it. It had jumped over it.
+3. So the script ran 12:3's first two words, then 12:4's `لِى`, then the rest of 12:3: a later
+   ayah's word wedged inside an earlier one. With the assignments out of order,
+   `_absorb_orphan_words` could not reach `عَلَيْكَ` either, and it left the script entirely.
+
+The same recording windowed to 180.56s came out right, only because its boundaries fell
+differently.
+
+Two rules close this, and neither works alone. A window that goes back over words this route
+mostly never said earns nothing, whatever it scores (`_goes_back_over_unsaid`): it is not a
+restart. And a step that skips words also leaves a route in which that window stays unclaimed —
+otherwise the wrong jump is the only way forward and there is nothing to compare it against.
+The route that declined the jump claims `أَحْسَنَ ٱلْقَصَصِ ...` and 12:4 as new text and explains
+far more, and `عَلَيْكَ` is then one stranded word between two parts of its own ayah, which is
+what orphan absorption is for.
+
+"Mostly" is deliberate. A window the decoder garbled leaves a few words of the first pass
+unclaimed, and a reciter going back over them is still repeating.
+
+Nothing else moved: every scoreable ground-truth clip produced identical output with the change.
+Across those clips, test5 and both Yusuf windows, no later ayah's word is first placed before an
+earlier ayah's, and every reference word gets a timestamp. `scripts/test_phrase_search.py` runs
+the search on this recording's own read-outs, with no model and no audio.
+
 ### Where a line breaks
 
 Segments are a grouping of consecutive aligned words, so a segment can never span audio its own
@@ -579,6 +614,9 @@ asr-service/.venv/bin/python scripts/eval_segments.py test.mp3 33 21 23
 
 # the alignment rules themselves -- no audio, no model, runs in milliseconds
 asr-service/.venv/bin/python scripts/test_alignment_rules.py
+
+# which words the phrase search may claim -- likewise no audio and no model
+asr-service/.venv/bin/python scripts/test_phrase_search.py
 
 # segmentation faults reported against real recitations (needs the clips)
 asr-service/.venv/bin/python scripts/test_reported_cases.py

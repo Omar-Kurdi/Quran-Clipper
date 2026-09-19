@@ -1609,6 +1609,45 @@ def _said_again(match: tuple[int, int, float]) -> bool:
     return match[2] >= MIN_SAID_AGAIN_SCORE
 
 
+def _goes_back_over_unsaid(match: tuple[int, int, float], reached: int, said: set[int]) -> bool:
+    """Does this window go back over words the route never said, rather than ones it did?
+
+    Going back is what a restart and a repeat are: the reciter returns to text
+    already on screen. Words behind the reading that were never said are not
+    that -- they are words an earlier window jumped over, and crediting a return
+    into them builds a script with a later ayah wedged inside an earlier one. On
+    Yusuf 12:3, a window reading `لَ عَلَيْد` placed its lone `ل` on 12:4's `لِى`,
+    27 words ahead; the next window's `أَحْسَنَ ٱلْقَصَصِ ...` then counted as 12:3
+    "said again" though it had never been said, and `عَلَيْكَ` fell into the hole
+    between the two and left the script entirely.
+
+    A run whose words behind the reading are mostly ones already said is still
+    a restart: a window the decoder garbled leaves a few words of the first pass
+    unclaimed, and the reciter going back over them is no less a repeat.
+    """
+    start, end, _ = match
+    behind = range(start, min(end, reached) + 1)
+    unsaid = sum(1 for word in behind if word not in said)
+    return 2 * unsaid > len(behind)
+
+
+def _keep_route(
+    slot: dict[int, tuple[float, int, list, list[str]]], route: tuple[float, int, list, list[str]]
+) -> None:
+    """Keep a route at a boundary unless one that landed on the same word beats it.
+
+    Rank on words explained, then on *more* phrases. A tie means both
+    segmentations account for the same text equally well, and the finer one is
+    the one that respects the pause the dip detector found. Segments that
+    explain nothing new are suppressed before they get here rather than merged
+    away here.
+    """
+    landed = route[2][-1][1] if route[2] else -1
+    current = slot.get(landed)
+    if current is None or route[:2] > current[:2]:
+        slot[landed] = route
+
+
 def assign_phrase_ranges_by_decode(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -1677,6 +1716,7 @@ def assign_phrase_ranges_by_decode(
         for explained, used, assignments, decodes in routes:
             reached = assignments[-1][1] if assignments else -1
             cursor = reached + 1
+            said = {word for start, end, *_ in assignments for word in range(start, end + 1)}
 
             for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
                 if j > i + 1 and not _cuts_a_word(decode, i, j, cursor, ref_words, match_from):
@@ -1693,10 +1733,16 @@ def assign_phrase_ranges_by_decode(
                 match = match_decoded_to_range(
                     decoded, ref_words, cursor, near_only=not carries_position(decoded)
                 )
+                slot = states.setdefault(j, {})
+                unclaimed = (explained, used + 1, assignments, decodes)
                 if match is None or match[2] < MIN_ASSIGN_SCORE:
                     # This span explains nothing. Still a legal step -- the audio may
                     # be silence, an intro, or a du'a -- it just earns no credit.
-                    candidate = (explained, used + 1, assignments, decodes)
+                    candidate = unclaimed
+                elif match[0] <= reached and _goes_back_over_unsaid(match, reached, said):
+                    # Not a restart: these are words this route skipped. See
+                    # `_goes_back_over_unsaid`.
+                    candidate = unclaimed
                 elif match[1] <= reached and not _said_again(match):
                     # This window reaches no further into the reference than
                     # what is already on screen, so it has nothing of its own
@@ -1712,7 +1758,7 @@ def assign_phrase_ranges_by_decode(
                     # in its own right. So is a whole run said a second time
                     # with the same extent, which reaches no further and is no
                     # re-read either -- see `_said_again`.
-                    candidate = (explained, used + 1, assignments, decodes)
+                    candidate = unclaimed
                 else:
                     start, end, score = match
                     candidate = (
@@ -1721,17 +1767,16 @@ def assign_phrase_ranges_by_decode(
                         assignments + [(start, end, score, boundaries[i], boundaries[j])],
                         decodes + [decoded],
                     )
-
-                slot = states.setdefault(j, {})
-                landed = candidate[2][-1][1] if candidate[2] else -1
-                # Rank on words explained, then on *more* phrases. A tie means both
-                # segmentations account for the same text equally well, and the
-                # finer one is the one that respects the pause the dip detector
-                # found. Segments that explain nothing new are suppressed above
-                # rather than merged away here.
-                current = slot.get(landed)
-                if current is None or candidate[:2] > current[:2]:
-                    slot[landed] = candidate
+                    if start > cursor:
+                        # A step that skips words may be the wrong step, and only
+                        # what the later windows read can say so. Without leaving
+                        # this span unclaimed as a route of its own, a wrong jump
+                        # is the only way forward and nothing is left to compare
+                        # it against. The route that took it can no longer claim
+                        # the skipped words back (see `_goes_back_over_unsaid`),
+                        # so where they were recited this one explains more.
+                        _keep_route(slot, unclaimed)
+                _keep_route(slot, candidate)
 
     _, _, assignments, decodes = max(states[phrases].values(), key=lambda route: route[:2])
     claimed = {(a[3], a[4]) for a in assignments}

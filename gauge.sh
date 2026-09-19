@@ -101,7 +101,7 @@ fi
 # scoreable clip while breaking a case reported by ear on a clip nobody has
 # written ground truth for yet. `test_reported_cases.py` is those reports.
 # A change is only good if BOTH of these agree.
-for suite in test_reported_cases test_alignment_rules; do
+for suite in test_reported_cases test_alignment_rules test_phrase_search; do
   log="$RUN_DIR/gauge-$suite.log"
   "$PY" "scripts/$suite.py" >"$log" 2>&1
   pass="$(grep -c '^  PASS' "$log" || true)"
