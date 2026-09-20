@@ -1546,12 +1546,19 @@ def _carries_a_word(token: str, ref_words=None, expected: int | None = None) -> 
     beginning of the word the reading is about to reach and not that word, so
     comparing it against the expected word is what separates `فَ` from
     `فَضَّلْتُكُمْ`.
+
+    A head need not be spelled like the word it was cut from to be a piece of
+    it. The boundary at 57.55s of one Al-Baqarah 2:140 fell inside `أَعْلَمُ`
+    and the half left to the next window read back as `س` -- no prefix of
+    anything, and a letter on its own carries no more of a word than the tail
+    debris above does. So a one-letter reading is a piece unless the reference
+    word really is one letter, which is how `قٓ`, `صٓ` and `نٓ` stay words.
     """
     if not re.sub(r"[اويهةء]", "", normalize_for_vocab(token)):
         return False
     if ref_words is not None and expected is not None and 0 <= expected < len(ref_words):
         piece, whole = _skeleton(token), _skeleton(ref_words[expected][2])
-        if piece != whole and whole.startswith(piece):
+        if piece != whole and (whole.startswith(piece) or len(piece) == 1):
             return False
     return True
 
