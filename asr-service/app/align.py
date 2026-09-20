@@ -2444,6 +2444,20 @@ MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.34")
 #: See `_held_nasal_junction`.
 NASAL_JUNCTION_FACTOR = float(os.getenv("ALIGN_NASAL_JUNCTION_FACTOR", "2"))
 
+#: The longest join a held nasal can be the explanation for.
+#:
+#: A ghunnah is held about two counts and a madd a little longer, so it can lie
+#: under a short join -- but not under any join at all, which is what doubling
+#: the bar with no ceiling amounted to. Ghafir 40:39 stops on `مَتَـٰعٌ` before
+#: `وَإِنَّ`, a tanween into و and so a ghunnah join by the letters, and left a
+#: **1.04s** hole with 0.56s of quiet in it; nothing is held for that long, and
+#: the raised bar kept a plain stop inside one caption with the rest of the
+#: ayah. Stopping there drops the tanween that makes it a ghunnah join at all.
+#:
+#: The joins the rule exists for are far shorter: 0.48s at `لَكُم مِّنَ`, and the
+#: 0.5s the rules suite holds it to. Set above those and below a stop.
+MAX_NASAL_JOIN_SEC = float(os.getenv("ALIGN_MAX_NASAL_JOIN_SEC", "0.7"))
+
 #: Words a caption may not end on, because the next word is what completes them.
 #:
 #: The reciter's own silence decides an unmarked break, and it should: a stop
@@ -2728,12 +2742,21 @@ def _segment_the_timeline(
             # overrides this, and a mark never falls here.
             continue
         bar = MIN_MARKED_PAUSE_SEC if marked else MIN_UNMARKED_PAUSE_SEC
-        if _sustained_junction(aligned[i].text, aligned[i + 1].text) and not marked:
+        gap = aligned[i + 1].start - aligned[i].end
+        held = gap <= MAX_NASAL_JOIN_SEC
+        if _sustained_junction(aligned[i].text, aligned[i + 1].text) and not marked and held:
             # A ghunnah or a madd is held across this join, so quiet here is
             # partly the recitation itself and proves less than usual. With a
             # mark the bar is already the lower one and the mark carries the
             # rest: رِزْقًا ۚ is a ghunnah join the reciter does stop at, on 0.26s,
             # where the unmarked بِكَلِمَـٰتٍ does not on 0.30s.
+            #
+            # Only over a join short enough for something to be held across
+            # it -- see `MAX_NASAL_JOIN_SEC`. Ghafir 40:39 stops on مَتَـٰعٌ
+            # before وَإِنَّ, a ghunnah join by the letters, and leaves 1.04s
+            # with 0.56s of quiet in it: no nasal is held that long, and the
+            # raised bar kept that stop inside one caption with the rest of
+            # the ayah.
             bar *= NASAL_JUNCTION_FACTOR
         if length >= bar:
             cuts.add(i)
