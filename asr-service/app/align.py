@@ -545,6 +545,114 @@ def _align_path(emission, target_ids: list[int]):
     return path[0].cpu().numpy(), scores[0].float().cpu().numpy(), float(scores[0].float().sum())
 
 
+#: Blank probability at which the emission is not reading the audio at all.
+#: Ordinary speech frames sit well below this even where the model is unsure --
+#: measured across one clip the per-second mean ranges 0.24 to 0.93, while a
+#: stretch it cannot see at all pins at 1.000.
+BLIND_BLANK_PROB = float(os.getenv("ALIGN_BLIND_BLANK_PROB", "0.995"))
+
+#: How long that has to run before it is worth reading again. Every pause in a
+#: recitation is blank by definition, so this is above any of them that carry
+#: no speech, and the repair only ever looks at spans the audio says are loud.
+MIN_BLIND_SEC = float(os.getenv("ALIGN_MIN_BLIND_SEC", "1.5"))
+
+#: A ceiling on the second looks, longest first. Each one is another forward
+#: pass, and a clip whose emission is blind in a dozen places has something
+#: else wrong with it.
+MAX_BLIND_REREADS = 8
+
+
+def _blank_runs(emission, sec_per_frame: float) -> list[tuple[int, int]]:
+    """Frame runs long enough that the emission is reading nothing there at all."""
+    import torch
+
+    blank = torch.as_tensor(emission[0]).float().exp()[:, _blank_id()].cpu().numpy()
+    runs: list[tuple[int, int]] = []
+    run: int | None = None
+    for frame, unseeing in enumerate(blank >= BLIND_BLANK_PROB):
+        if unseeing and run is None:
+            run = frame
+        elif not unseeing and run is not None:
+            runs.append((run, frame))
+            run = None
+    if run is not None:
+        runs.append((run, len(blank)))
+    return [(a, b) for a, b in runs if (b - a) * sec_per_frame >= MIN_BLIND_SEC]
+
+
+def _blind_spans(emission, pcm: np.ndarray, sec_per_frame: float) -> list[tuple[float, int, int]]:
+    """Of those runs, the ones the recording says carry speech, longest first.
+
+    Silence reads blank because it *is* blank, and a recitation is full of it.
+    Only a stretch as loud as the speech around it has anything to recover, so
+    the level decides which runs are worth another pass -- the same measure
+    `quiet_spans` breaks lines on.
+    """
+    hop = max(1, int(0.02 * SAMPLE_RATE))
+    level = np.array(
+        [np.sqrt(np.mean(pcm[i : i + hop] ** 2) + 1e-12) for i in range(0, max(1, len(pcm) - hop), hop)]
+    )
+    if not len(level):
+        return []
+    db = 20 * np.log10(level + 1e-12)
+    quiet = float(np.percentile(db, 70)) - QUIET_DROP_DB
+
+    spans = []
+    for first, last in _blank_runs(emission, sec_per_frame):
+        begin, end = first * sec_per_frame, last * sec_per_frame
+        heard = db[int(begin / 0.02) : int(end / 0.02)]
+        if len(heard) and float(np.mean(heard)) >= quiet:
+            spans.append((end - begin, first, last))
+    return sorted(spans, reverse=True)[:MAX_BLIND_REREADS]
+
+
+def _reread_blind_spans(emission, pcm: np.ndarray, sec_per_frame: float):
+    """Read again, on their own, the stretches the clip-wide emission cannot see.
+
+    NeMo normalises features over whatever window it is handed, and over a long
+    one a passage can fall out of view completely. On an Al-Baqarah 2:138-140
+    recitation the reciter's first `قُلْ ءَأَنتُمْ أَعْلَمُ أَمِ ٱللَّهُ` reads
+    **1.000 blank for 9.5 seconds**, while the same seconds decode cleanly on an
+    emission of their own and sit within 0.7 dB of the clip's own level. It is
+    not silence, not a seam -- every window placement tried put the blindness in
+    the same seconds -- and not gain, which changed nothing at +6 or +12 dB.
+
+    What it costs is the whole pass. Forced alignment must give every scripted
+    word frames, and where the right words score below blank the path simply
+    goes around them: both utterances of that phrase were placed inside the
+    second one, leaving the first 9.5s empty. `_fill_gaps_with_repeats` then
+    answered that hole with copies of what it heard, three of them, and a phrase
+    recited twice came out as six captions.
+
+    So the repair belongs here rather than downstream: the frames are read again
+    from their own audio and put back on the clip's grid. Each frame is still a
+    distribution over the same vocabulary, which is all the Viterbi pass reads.
+    """
+    import torch
+
+    spans = _blind_spans(emission, pcm, sec_per_frame)
+    if not spans:
+        return emission
+
+    patched = torch.as_tensor(emission).clone()
+    for _, first, last in spans:
+        begin, end = first * sec_per_frame, last * sec_per_frame
+        chunk = pcm[int(begin * SAMPLE_RATE) : int(end * SAMPLE_RATE)]
+        if len(chunk) < SAMPLE_RATE // 2:
+            continue
+        own = torch.as_tensor(compute_emission(chunk)[0])
+        wanted = last - first
+        onto = [min(own.shape[0] - 1, int(i * own.shape[0] / wanted)) for i in range(wanted)]
+        patched[0, first:last, :] = own[onto].to(patched.dtype).to(patched.device)
+        log.info(
+            "emission read %.2f-%.2fs again on its own audio -- the clip-wide pass saw only blank there",
+            begin,
+            end,
+        )
+
+    return patched
+
+
 def _token_spans(path: np.ndarray, scores: np.ndarray) -> dict[int, tuple[int, int, list[float]]]:
     """Collapse the frame path into one frame span per target position.
 
@@ -2748,6 +2856,11 @@ def align_recitation(
     duration = len(pcm) / SAMPLE_RATE
     emission = compute_emission(pcm)
     sec_per_frame = duration / emission.shape[1]
+
+    # Before anything reads it: a stretch the clip-wide pass cannot see costs
+    # every stage below it, and it is cheap to look again. See
+    # `_reread_blind_spans`.
+    emission = _reread_blind_spans(emission, pcm, sec_per_frame)
 
     if boundaries is None:
         boundaries = detect_boundaries(pcm)

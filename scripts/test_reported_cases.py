@@ -163,5 +163,31 @@ if os.path.exists(ROOT + furqan):
 else:
     print("  SKIP  the Al-Furqan voice note is not in scripts/audio/")
 
+# Al-Baqarah 2:140, where قُلْ ءَأَنتُمْ أَعْلَمُ أَمِ ٱللَّهُ is recited twice and
+# came back as six captions -- قُلْ ءَأَنتُمْ, then أَعْلَمُ on its own, then four
+# more. Reported as "EXTREMELY horrible results when it reached ayah 140".
+#
+# Two faults, one after the other. A boundary fell inside أَعْلَمُ and the half
+# left to the next window read back as `س`, which `_carries_a_word` did not
+# know for the piece of a word it is, so the windows were never merged. And the
+# clip-wide emission reads 1.000 blank across the whole first utterance, so the
+# alignment put both scripted passes inside the second one and the repeat
+# search answered the 9.5s hole that left with three copies of what it heard.
+baqara = "scripts/audio/Al_Baqara_121_141.mp3"
+if os.path.exists(ROOT + baqara):
+    said = [(s.start_word + 1, s.end_word + 1) for s in segs(baqara) if s.verse_key == "2:140"]
+    check(
+        "al-baqarah: the phrase recited twice is captioned twice, whole (2:140 w13-17)",
+        said.count((13, 17)) == 2,
+        str(said),
+    )
+    check(
+        "al-baqarah: no piece of it is captioned on its own",
+        not [r for r in said if 13 <= r[0] <= 17 and r != (13, 17)],
+        str(said),
+    )
+else:
+    print("  SKIP  Al_Baqara_121_141.mp3 is not in scripts/audio/")
+
 print(f"\n{'FAILED: '+', '.join(fails) if fails else 'all reported cases pass'}")
 sys.exit(1 if fails else 0)
