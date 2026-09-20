@@ -162,7 +162,7 @@ export const OFFLINE_BITRATE = 12_000_000;
 
 export interface OfflineExportRequest {
   /** Draws one frame into `ctx`; everything time-varying is handed to it. */
-  paint: (ctx: CanvasRenderingContext2D, frame: { atSeconds: number; spectrum: Uint8Array; tick: number }) => void | Promise<void>;
+  paint: (ctx: CanvasRenderingContext2D, frame: { atSeconds: number; spectrum: Uint8Array }) => void | Promise<void>;
   width: number;
   height: number;
   fps: number;
@@ -291,7 +291,7 @@ export async function encodeOffline(request: OfflineExportRequest): Promise<Offl
 
     const atSeconds = range.start + i / fps;
     spectrumAt(mono, audio.sampleRate, atSeconds, spectrum);
-    await paint(ctx, { atSeconds, spectrum, tick: i });
+    await paint(ctx, { atSeconds, spectrum });
 
     const frame = new VideoFrame(canvas as unknown as CanvasImageSource, {
       timestamp: Math.round(i * frameDuration),

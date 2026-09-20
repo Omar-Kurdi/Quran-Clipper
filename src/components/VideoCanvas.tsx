@@ -742,15 +742,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       spectrum: Uint8Array | null;
       /** Background to paint under it, already positioned for this frame. */
       media: BackgroundMedia | null;
-      /**
-       * Drives the drifting particles. A counter, not a timestamp: offline it
-       * is the frame's index so a re-render of the same clip is identical,
-       * where the preview simply passes its own frame count.
-       */
-      tick: number;
     }
   ) => {
-    const { activeVerse, media, tick } = frame;
+    const { activeVerse, media } = frame;
       const { width, height } = dimensions;
 
       // The offline encoder hands in a detached canvas of its own, so sizing
@@ -827,23 +821,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.fillRect(0, 0, width, height);
       }
 
-      // 3. Subtle ambient particles
-      ctx.save();
       const goldAccent = config.accentColor || '#b8c7dc';
-      for (let i = 0; i < 12; i++) {
-        const px = (Math.sin(tick * 0.02 + i * 2.1) * 0.5 + 0.5) * width;
-        const py = ((tick * 0.15 + i * 73) % height);
-        ctx.beginPath();
-        ctx.arc(px, py, 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = goldAccent;
-        ctx.globalAlpha = 0.2;
-        ctx.shadowColor = goldAccent;
-        ctx.shadowBlur = 6;
-        ctx.fill();
-      }
-      ctx.restore();
 
-      // 4. Audio waveform
+      // 3. Audio waveform
       //
       // From the argument, never from the analyser: an AnalyserNode only ever
       // reports what is audible *now*, so reading it here would have made the
@@ -874,7 +854,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.restore();
       }
 
-      // 5. Surah badge
+      // 4. Surah badge
       if (config.showSurahBadge) {
         ctx.save();
         // Everything else on the canvas scales with height; this badge used a
@@ -967,7 +947,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.restore();
       }
 
-      // 6. Verse card
+      // 5. Verse card
       ctx.save();
       const cardMargin = width * 0.08;
       const cardWidth = width - cardMargin * 2;
@@ -1195,7 +1175,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
       ctx.restore();
 
-      // 7. Watermark
+      // 6. Watermark
       if (config.watermarkText) {
         ctx.save();
         ctx.font = `600 20px 'Inter', sans-serif`;
@@ -1233,7 +1213,6 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         activeVerse: activeVerse ?? null,
         spectrum: audioAnalyser ? spectrum : null,
         media: bgMediaRef.current,
-        tick: frameCount,
       });
 
       frameCount++;
@@ -1360,7 +1339,6 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
               activeVerse: verse,
               spectrum: frame.spectrum,
               media: await backgroundFor(frame.atSeconds),
-              tick: frame.tick,
             });
           },
         });
