@@ -292,6 +292,25 @@ export function backgroundLabel(url: string, labels: BackgroundLabels = DEFAULT_
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
+/**
+ * A hand-cut lane after a trim: cut to the kept window and moved onto its
+ * clock, the way `trimTimeline` moves the ayahs.
+ *
+ * Left alone, the blocks kept the times of the file before the trim while
+ * every caption moved -- so the lane put its backgrounds against the wrong
+ * ayahs, and a gap in it (which paints the gradient fallback) landed wherever
+ * the old times happened to put it in the new clip.
+ */
+export function trimLane(segments: BackgroundSegment[], trimStart: number, trimEnd: number): BackgroundSegment[] {
+  return segments
+    .filter(seg => seg.end > trimStart && seg.start < trimEnd)
+    .map(seg => ({
+      ...seg,
+      start: round2(Math.max(seg.start, trimStart) - trimStart),
+      end: round2(Math.min(seg.end, trimEnd) - trimStart)
+    }));
+}
+
 /** The room a block has, given the blocks either side of it. */
 function neighbours(segments: BackgroundSegment[], index: number, duration: number) {
   return {

@@ -19,6 +19,29 @@
 /** Frames held ahead of the one being asked for. Bounded: each is a full raw image. */
 const QUEUE_AHEAD = 6;
 
+/**
+ * Frames sent to the decoder and not yet back out of it. The decoder's own
+ * `decodeQueueSize` cannot bound this: a hardware decoder takes input at once
+ * and holds the work where that count does not see it. Sixteen is the most
+ * frames H.264 may hold back for reordering, so a valid stream never needs
+ * more in hand to produce its next one.
+ */
+const MAX_IN_FLIGHT = 16;
+
+/** How long the decoder may go without producing a frame before it is given up on. */
+const DECODE_STALL_MS = 5000;
+
+/**
+ * Hands control back so decoder output, which arrives as tasks, can land.
+ * A message rather than a timer, which a hidden tab would clamp to a second.
+ */
+const nextTask = () =>
+  new Promise<void>(resolve => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => { channel.port1.close(); resolve(); };
+    channel.port2.postMessage(0);
+  });
+
 interface Sample {
   chunk: EncodedVideoChunk;
 }
@@ -61,7 +84,7 @@ function codecDescription(
 }
 
 /** Why a clip could not be demuxed, for the console when one cannot. */
-type OpenFailure = 'fetch' | 'demux' | 'no-video-track' | 'no-samples' | 'unsupported-codec' | 'no-decoder';
+type OpenFailure = 'fetch' | 'demux' | 'no-video-track' | 'no-samples' | 'unsupported-codec' | 'no-decoder' | 'decode-error';
 
 /** How long to wait for one seek before drawing whatever frame is there. */
 const SEEK_TIMEOUT_MS = 2000;
@@ -281,7 +304,12 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
   const size = (info.video as { width: number; height: number } | undefined) || { width: 0, height: 0 };
   const width = size.width;
   const height = size.height;
-  const duration = (info.duration as number) / timescale;
+  // A fragmented MP4 declares no length up front -- its samples arrive in
+  // fragments after an empty header -- so the track says 0. Taken at its word,
+  // nothing looped: the background ran once and froze on its last frame for
+  // the rest of the render. The samples themselves say where it ends.
+  const duration = (info.duration as number) / timescale
+    || samples.reduce((end, { chunk }) => Math.max(end, chunk.timestamp + (chunk.duration ?? 0)), 0) / 1e6;
 
   const config: VideoDecoderConfig = {
     codec: info.codec as string,
@@ -300,14 +328,17 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
   let cursor = 0;
   let decoder: VideoDecoder | null = null;
   let failed = false;
+  let lastOutputAt = 0;
+  let inFlight = 0;
 
   const start = () => {
     decoder = new VideoDecoder({
-      output: frame => queue.push(frame),
+      output: frame => { queue.push(frame); inFlight = Math.max(0, inFlight - 1); lastOutputAt = performance.now(); },
       error: () => { failed = true; },
     });
     decoder.configure(config);
     cursor = 0;
+    inFlight = 0;
   };
 
   const reset = () => {
@@ -320,20 +351,74 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
   start();
   let lastAsked = -1;
 
-  const pump = async (untilMicros: number) => {
-    while (!failed && (queue.length < QUEUE_AHEAD || lastFrameEnd() < untilMicros)) {
-      if (cursor >= samples.length) break;
-      decoder!.decode(samples[cursor++].chunk);
-      if (decoder!.decodeQueueSize > QUEUE_AHEAD * 2) {
-        await new Promise<void>(r => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
-      }
-    }
-    if (cursor >= samples.length && queue.length === 0) await decoder!.flush().catch(() => {});
+  // Where frames come from once the decoder has failed. A decoder error used
+  // to end the background for the rest of the render: `failed` was never
+  // cleared, so every frame after it came back null, and a null frame paints
+  // the gradient fallback -- the plain navy an Ash-Shura 42:17-18 export
+  // showed from 0:28 to its end, with nothing to say why. The browser's own
+  // player reads anything the preview played, so the rest of the render is
+  // read by seeking instead.
+  let seeking: Promise<BackgroundClip | null> | null = null;
+  const bySeeking = async (seconds: number) => {
+    seeking ??= fall_back('decode-error');
+    const clip = await seeking;
+    return clip ? clip.frameAt(seconds) : null;
   };
 
-  const lastFrameEnd = () => {
-    const last = queue[queue.length - 1];
-    return last ? last.timestamp + (last.duration ?? 0) : -1;
+  const submit = () => {
+    inFlight++;
+    decoder!.decode(samples[cursor++].chunk);
+  };
+
+  /**
+   * Feeds the decoder as far as it will go without waiting, and says what, if
+   * anything, has to be waited for before the frame is out.
+   */
+  const feed = (untilMicros: number, began: number): 'ready' | 'output' | 'flush' => {
+    while (!failed && lastFrameEnd() <= untilMicros) {
+      dropBehind(untilMicros);
+      if (cursor >= samples.length) return 'flush';
+      if (inFlight >= MAX_IN_FLIGHT) {
+        if (performance.now() - Math.max(began, lastOutputAt) > DECODE_STALL_MS) failed = true;
+        return failed ? 'ready' : 'output';
+      }
+      submit();
+    }
+    return 'ready';
+  };
+
+  /**
+   * Decodes until a frame covering `untilMicros` is out, with at most
+   * `MAX_IN_FLIGHT` frames in the decoder at once.
+   *
+   * It used to decode without waiting for anything to come out. Output
+   * arrives as tasks, and nothing here gave it one, so the loop ran on until
+   * it had handed over the whole clip -- 237 of 240 frames in the decoder at
+   * once on an 8s clip, every one of them then held as a full raw image --
+   * and returned whatever the queue happened to hold. After a loop restart
+   * that was one early frame: the second pass through a 15s Pexels clip drew
+   * its 0.17s frame for all fifteen seconds. Now it waits for the frame it
+   * was asked for, and gives the decoder up for failed if nothing comes out
+   * for `DECODE_STALL_MS`.
+   */
+  const pump = async (untilMicros: number, began = performance.now()): Promise<void> => {
+    const waitFor = feed(untilMicros, began);
+    if (waitFor === 'output') {
+      await nextTask();
+      return pump(untilMicros, began);
+    }
+    // With all of it in, a decoder holds its last few frames back until it is
+    // told nothing more is coming.
+    if (waitFor === 'flush') await decoder!.flush().catch(() => {});
+    // Keep a little decoded ahead so the next frame is usually already there.
+    while (!failed && cursor < samples.length && queue.length + inFlight < QUEUE_AHEAD) submit();
+  };
+
+  const frameEnd = (frame: VideoFrame) => frame.timestamp + (frame.duration ?? 0);
+  const lastFrameEnd = () => (queue.length ? frameEnd(queue[queue.length - 1]) : -1);
+  /** Frames wholly before `micros` are done with; the newest is kept whatever its time. */
+  const dropBehind = (micros: number) => {
+    while (queue.length > 1 && frameEnd(queue[0]) <= micros) queue.shift()!.close();
   };
 
   return {
@@ -344,9 +429,10 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
       queue.forEach(frame => frame.close());
       queue = [];
       try { decoder?.close(); } catch { /* already gone */ }
+      void seeking?.then(clip => clip?.close());
     },
     async frameAt(seconds) {
-      if (failed) return null;
+      if (failed) return bySeeking(seconds);
       // Looping is the only way time goes backwards, and a decoder cannot be
       // rewound -- so it is rebuilt. Cheap next to the alternative, and it
       // happens once per loop rather than once per frame.
@@ -355,10 +441,8 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
 
       const wanted = Math.max(0, seconds) * 1e6;
       await pump(wanted);
-      // Drop frames already behind the moment being drawn.
-      while (queue.length > 1 && queue[0].timestamp + (queue[0].duration ?? 0) <= wanted) {
-        queue.shift()!.close();
-      }
+      if (failed) return bySeeking(seconds);
+      dropBehind(wanted);
       return queue[0] ?? null;
     },
   };

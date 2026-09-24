@@ -10,6 +10,7 @@ import {
   removeSegment,
   resizeSegment,
   moveSegmentTo,
+  trimLane,
 } from './backgroundTimeline';
 import { BACKGROUND_VIDEOS } from './quranData';
 
@@ -153,5 +154,29 @@ describe('custom lane edits', () => {
   it('keeps a moved segment inside the clip', () => {
     const next = moveSegmentTo(lane, 0, -50, 12);
     expect(next[0].start).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('trimLane', () => {
+  // A lane cut on the untrimmed recording, then the recording trimmed to
+  // 320.41-370.45s: the captions move onto the new clock, so the lane must too.
+  const lane = [
+    { url: 'a.mp4', start: 0, end: 300 },
+    { url: 'b.mp4', start: 300, end: 350 },
+    { url: 'c.mp4', start: 350, end: 400 },
+    { url: 'd.mp4', start: 400, end: 758 },
+  ];
+
+  it('keeps only the blocks inside the trim, on the trimmed clip\'s clock', () => {
+    expect(trimLane(lane, 320.41, 370.45)).toEqual([
+      { url: 'b.mp4', start: 0, end: 29.59 },
+      { url: 'c.mp4', start: 29.59, end: 50.04 },
+    ]);
+  });
+
+  it('leaves no gap where the lane had none', () => {
+    const trimmed = trimLane(lane, 320.41, 370.45);
+    const at = (t: number) => backgroundAt({ bgType: 'video', bgUrl: '', bgMode: 'custom' as const, bgSegments: trimmed }, [], t)?.url;
+    expect([at(0), at(29), at(30), at(50)]).toEqual(['b.mp4', 'b.mp4', 'c.mp4', 'c.mp4']);
   });
 });

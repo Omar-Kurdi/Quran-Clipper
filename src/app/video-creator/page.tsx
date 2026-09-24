@@ -33,7 +33,7 @@ import { Inspector } from '@/components/Inspector';
 import { segmentAt, trimTimeline, fitVersesToAudio, fillFromCorpus } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import {
-  backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName,
+  backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName, trimLane,
   BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
@@ -818,6 +818,12 @@ export default function VideoCreatorPage() {
     setAudioUrl(result.url);
     setAudioDuration(result.duration);
     setVerses(prev => trimTimeline(prev, result.trimStart, result.trimEnd));
+    // A hand-cut background lane is on the same clock, so it moves with them.
+    setCanvasConfig(prev =>
+      prev.bgMode === 'custom' && prev.bgSegments?.length
+        ? { ...prev, bgSegments: trimLane(prev.bgSegments, result.trimStart, result.trimEnd) }
+        : prev
+    );
     setCurrentTime(0);
     // Trimming re-encodes audio only, so the background video is still the full
     // original. Accumulate how far into it the new clip now starts, and the
