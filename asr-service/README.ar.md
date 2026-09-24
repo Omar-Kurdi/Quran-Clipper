@@ -46,7 +46,7 @@ hf auth login                 # الصق رمز القراءة
 نحو 2–3 غيغابايت من مكتبات CUDA لن تُحمَّل أبدًا:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 

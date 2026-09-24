@@ -18,6 +18,8 @@
  * module may be imported from a client component.
  */
 
+import { studioMode } from './studioMode';
+
 export type QuranApiSource = 'public' | 'foundation';
 
 const PUBLIC_BASE = 'https://api.quran.com/api/v4';
@@ -60,6 +62,9 @@ export const quranApiSource = (): QuranApiSource => (quranApiConfigured() ? 'fou
  * that is the one piece of this the client legitimately has to see.
  */
 export function defaultTranslationId(): string {
+  // A public studio serves the edition every visitor can be given, whatever
+  // this machine's settings name for its owner. See `studioMode`.
+  if (studioMode() === 'public') return '20';
   const explicit = (
     process.env.QURAN_TRANSLATION_ID ||
     process.env.NEXT_PUBLIC_QURAN_TRANSLATION_ID ||

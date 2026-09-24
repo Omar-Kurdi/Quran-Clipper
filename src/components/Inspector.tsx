@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { wordFace, pagesUsedBy, ensureQpcPages } from '@/lib/mushafFonts';
+import { wordFace, pagesUsedBy, ensureQpcPages, QPC_V2 } from '@/lib/mushafFonts';
+import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle, SplitSquareHorizontal, Combine, Languages } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
@@ -217,7 +218,8 @@ export const Inspector: React.FC<InspectorProps> = ({
   // showing a word before the canvas has painted it, so it asks too --
   // `ensureQpcPages` is idempotent and `document.fonts` is shared. Above the
   // early return because a hook cannot be called conditionally.
-  const shownPages = pagesUsedBy(verse ? ensureWords(verse) : []).join(',');
+  const glyphs = !useStudioConfig().missingFonts.has(QPC_V2);
+  const shownPages = glyphs ? pagesUsedBy(verse ? ensureWords(verse) : []).join(',') : '';
   useEffect(() => {
     void ensureQpcPages(shownPages ? shownPages.split(',').map(Number) : []);
   }, [shownPages]);
@@ -415,8 +417,8 @@ export const Inspector: React.FC<InspectorProps> = ({
                   : 'bg-slate-800 border-slate-700 text-parchment'
               }`}
             >
-              <span style={wordFace(word).family ? { fontFamily: wordFace(word).family } : undefined}>
-                {wordFace(word).text}
+              <span style={wordFace(word, glyphs).family ? { fontFamily: wordFace(word, glyphs).family } : undefined}>
+                {wordFace(word, glyphs).text}
               </span>
               {word.excluded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3 opacity-50" />}
             </button>

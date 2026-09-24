@@ -48,7 +48,7 @@ On a machine **without an NVIDIA GPU**, install the CPU-only torch wheel first â
 PyPI wheel bundles roughly 2â€“3 GB of CUDA libraries you will never load:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 

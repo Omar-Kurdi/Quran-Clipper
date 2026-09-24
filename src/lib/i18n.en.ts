@@ -97,6 +97,7 @@ export const en = {
     saving: 'Saving…',
     saved: 'Project Saved!',
     savedThisSession: 'Saved (this session)',
+    savedInBrowser: 'Saved in this browser',
     saveFailed: 'Save Failed',
     saveFailedStatus: (status: number) => `The server answered ${status}.`,
     audioNotStored:
@@ -161,6 +162,7 @@ export const en = {
     matcherOnlineTechnical: 'Gemini cloud matching',
     matcherOnlineBlurb:
       'Works with nothing installed, but the timing is estimated rather than measured, so expect to correct it by hand. Your audio is sent to Google.',
+    matcherOnlinePublic: 'Not offered on this public studio.',
     matcherOnlineFix: 'Add a Gemini API key to use this option.',
     matcherChecking: 'Checking…',
     matcherQulMissing: 'QUL files missing',
@@ -271,6 +273,8 @@ export const en = {
     alignReciterTitle:
       'Read the reciter\u2019s own recording and place every word, instead of estimating where the ayahs fall.',
     needUpload: 'Upload an audio file before running AI auto-match.',
+    queued: (position: number, wait: string | null) =>
+      `In the queue, number ${position}${wait ? ` -- about ${wait}` : ''}. Other people are matching first.`,
     aligning:
       'Force-aligning the selected ayah range against your audio (first run loads the model — may take longer)...',
     sendingToGemini: 'Sending audio to Gemini for analysis...',
@@ -627,8 +631,10 @@ export const en = {
       'qpc-v2': 'Madani Mushaf',
       DigitalKhatt: 'Digital Khatt',
       DigitalKhattIndoPak: 'Digital Khatt IndoPak',
-      IndopakNastaleeq: 'Indopak Nastaleeq'
+      IndopakNastaleeq: 'Indopak Nastaleeq',
+      amiri: 'Amiri (built in)'
     },
+    fontNotInstalled: 'Greyed-out fonts are not installed on this server. They come from the QUL archives -- see “Mushaf fonts” in the README.',
     arabicFontSize: 'Arabic Font Size:',
     translationFontSize: 'Translation Font Size:',
     ayahNumberSize: 'Ayah Number Size:',

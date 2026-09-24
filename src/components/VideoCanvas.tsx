@@ -1,9 +1,10 @@
 'use client';
 
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
-import { VerseData, arabicFontFamily } from '@/lib/quranData';
+import { VerseData, arabicFontFamily, usableArabicFont } from '@/lib/quranData';
+import { useStudioConfig } from '@/hooks/useStudioConfig';
 import {
-  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY,
+  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY, QPC_V2,
   type MushafRow
 } from '@/lib/mushafFonts';
 import { blurPath } from '@/lib/glBlur';
@@ -321,6 +322,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   isPlaying = false,
   backgroundTimeOffset = 0
 }, ref) => {
+  // The face this installation can actually draw -- see `usableArabicFont`.
+  const { missingFonts } = useStudioConfig();
+  const arabicFontId = usableArabicFont(config.fontArabic, missingFonts);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bgMediaRef = useRef<BackgroundMedia | null>(null);
   const isExportingRef = useRef<boolean>(false);
@@ -511,9 +515,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     if (typeof document === 'undefined' || !document.fonts) return;
     let cancelled = false;
     const wanted: [string, string][] = [
-      [`bold 60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
-      [`600 60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
-      [`60px '${arabicFontFamily(config.fontArabic)}'`, ARABIC_SAMPLE],
+      [`bold 60px '${arabicFontFamily(arabicFontId)}'`, ARABIC_SAMPLE],
+      [`600 60px '${arabicFontFamily(arabicFontId)}'`, ARABIC_SAMPLE],
+      [`60px '${arabicFontFamily(arabicFontId)}'`, ARABIC_SAMPLE],
       // The badge, the ayah numeral and right-to-left translations are not
       // Quran text, so they draw in the studio's own face whatever the verse font is.
       [`bold 60px '${LABEL_FAMILY}'`, ARABIC_SAMPLE],
@@ -527,7 +531,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       textLayoutCache.current.clear();
     });
     return () => { cancelled = true; };
-  }, [config.fontArabic, config.fontTranslation]);
+  }, [arabicFontId, config.fontTranslation]);
 
   /**
    * Register and fetch the mushaf page fonts this project needs.
@@ -546,6 +550,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
    */
   useEffect(() => {
     if (typeof document === 'undefined' || !document.fonts || typeof FontFace === 'undefined') return;
+    // Nothing to fetch on a server without them: 604 requests that all 404.
+    if (missingFonts.has(QPC_V2)) return;
     const pages = pagesUsedBy(sortedVerses.flatMap(verse => verse.words || []));
     if (!pages.length) return;
     let cancelled = false;
@@ -555,7 +561,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       if (!cancelled) textLayoutCache.current.clear();
     });
     return () => { cancelled = true; };
-  }, [sortedVerses]);
+  }, [sortedVerses, missingFonts]);
 
   useEffect(() => {
     if (syncBackgroundVideo) return;
@@ -982,13 +988,13 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // the text and the family change together or not at all. Glyphs are
       // space-separated characters, which is why everything below -- wrapping,
       // measuring, the shrink-to-fit search -- needs no other change.
-      const mushaf = activeVerse ? mushafCaption(activeVerse.words, config.fontArabic) : null;
+      const mushaf = activeVerse ? mushafCaption(activeVerse.words, arabicFontId) : null;
       // Rows as the page prints them, when asked for and the words carry their
       // lines. They take precedence over `mushaf`, and unlike it they can span
       // a page break: each row is on one page and brings that page's family.
-      const pageRows = activeVerse && config.mushafLines ? mushafRows(activeVerse.words, config.fontArabic) : null;
+      const pageRows = activeVerse && config.mushafLines ? mushafRows(activeVerse.words, arabicFontId) : null;
       const arabicText = pageRows ? pageRows.map(row => row.text).join('\n') : mushaf ? mushaf.text : displayArabic;
-      const arabicFamily = mushaf ? mushaf.family : arabicFontFamily(config.fontArabic);
+      const arabicFamily = mushaf ? mushaf.family : arabicFontFamily(arabicFontId);
       if (activeVerse && displayArabic) {
         // One block per chosen translation, in the order they were chosen. A
         // language whose text has not arrived yet is absent rather than blank,
@@ -1020,7 +1026,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
          * never showed.
          */
         const arabicFontIn = (family: string, size: number) =>
-          `${size}px '${family}', '${FALLBACK_ARABIC_FAMILY}', serif`;
+          `${size}px '${family}', '${FALLBACK_ARABIC_FAMILY}', 'Amiri', serif`;
         const arabicFont = (size: number) => arabicFontIn(arabicFamily, size);
         const translationFont = (size: number) =>
           `${size}px '${config.fontTranslation}', sans-serif`;
@@ -1086,7 +1092,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           arabicText,
           translationBlocks.map(block => `${block.id}:${block.text}`).join('\u0001'),
           withTranslation, cardWidth, cardHeight,
-          config.fontArabic, config.mushafLines, config.fontTranslation, config.arabicFontSize,
+          arabicFontId, config.mushafLines, config.fontTranslation, config.arabicFontSize,
           config.translationFontSize, config.ayahNumberFontSize,
           typeof document !== 'undefined' ? document.fonts.status : '',
         ].join('|');
@@ -1192,7 +1198,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
 
   }, [config, verses, surahNameArabic, surahNameEnglish, dimensions,
-      getDisplayArabic, surahNumber, ayahStart, ayahEnd]);
+      getDisplayArabic, surahNumber, ayahStart, ayahEnd, arabicFontId]);
 
   // ---- LIVE PREVIEW LOOP ----
   useEffect(() => {

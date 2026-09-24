@@ -17,17 +17,18 @@
 const DB_NAME = 'quranclipper';
 
 /**
- * Bumped from 1 when `audio` was added.
+ * Bumped from 1 when `audio` was added, and to 3 for `projects`, which a
+ * public installation keeps here instead of on its server.
  *
  * Raising this runs `onupgradeneeded` against an existing database, where each
- * store is created only if it is missing -- so an upgrade from 1 keeps every
- * background already stored.
+ * store is created only if it is missing -- so an upgrade keeps everything
+ * already stored.
  */
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
-export type StoreName = 'backgrounds' | 'audio';
+export type StoreName = 'backgrounds' | 'audio' | 'projects';
 
-const STORES: StoreName[] = ['backgrounds', 'audio'];
+const STORES: StoreName[] = ['backgrounds', 'audio', 'projects'];
 
 export function openDb(): Promise<IDBDatabase | null> {
   return new Promise(resolve => {
@@ -90,5 +91,21 @@ export function idbDelete(store: StoreName, key: string): Promise<void> {
     } catch {
       // Nothing to do: the record is unreachable either way.
     }
+  });
+}
+
+/** Every record in a store, or none when storage is unavailable. */
+export function idbAll(store: StoreName): Promise<Blob[]> {
+  return openDb().then(db => {
+    if (!db) return [];
+    return new Promise<Blob[]>(resolve => {
+      try {
+        const request = db.transaction(store, 'readonly').objectStore(store).getAll();
+        request.onsuccess = () => resolve((request.result as unknown[]).filter((v): v is Blob => v instanceof Blob));
+        request.onerror = () => resolve([]);
+      } catch {
+        resolve([]);
+      }
+    });
   });
 }

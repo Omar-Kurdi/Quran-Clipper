@@ -25,13 +25,37 @@ mkdir -p "$RUN_DIR"
 MODE="dev"
 [[ "${1:-}" == "--prod" ]] && MODE="prod"
 
+# A public installation (./install.sh --public) serves through Caddy, so the
+# app itself listens on this machine only: bound to every interface, port
+# 3000 would be a second way in, around the HTTPS in front of it.
+#
+# The mode is the one word ./install.sh writes to .studio-mode, and is handed
+# to the app here as STUDIO_MODE -- which the server reads, and which beats
+# anything in .env.local. So is the default translation: a public studio
+# serves the one every visitor can be given, whatever this machine's
+# .env.local names for its owner.
+PUBLIC=""
+[[ "$(cat .studio-mode 2>/dev/null)" == "public" ]] && PUBLIC=1
+WEB_HOST=()
+if [[ -n "$PUBLIC" ]]; then
+  export STUDIO_MODE=public QURAN_TRANSLATION_ID=20 NEXT_PUBLIC_QURAN_TRANSLATION_ID=20
+  # The sidecar fetches reciter audio through the app's proxy on this machine,
+  # not out through Caddy and back -- see `alignerAudioUrl`.
+  export ALIGN_AUDIO_PROXY_ORIGIN=http://127.0.0.1:3000
+  WEB_HOST=(-- -H 127.0.0.1)
+fi
+
 DB_STATE="skipped"; ASR_STATE="skipped"; WEB_STATE="skipped"; TEXT_STATE="skipped"
 
 alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
 # --- database ---------------------------------------------------------------
 printf '[1/4] database    ... '
-if scripts/db.sh start >"$RUN_DIR/db.log" 2>&1; then
+if [[ -n "$PUBLIC" ]]; then
+  # Projects live in each visitor's browser on a public studio.
+  DB_STATE="not used (public: projects are kept in each visitor's browser)"
+  echo "not used"
+elif scripts/db.sh start >"$RUN_DIR/db.log" 2>&1; then
   DB_STATE="up on 127.0.0.1:5432"
   echo "up"
 else
@@ -104,8 +128,8 @@ else
     fi
   fi
   if [[ "$MODE" != "none" ]]; then
-    if [[ "$MODE" == "prod" ]]; then npm run start >"$RUN_DIR/web.log" 2>&1 &
-    else npm run dev >"$RUN_DIR/web.log" 2>&1 & fi
+    if [[ "$MODE" == "prod" ]]; then npm run start "${WEB_HOST[@]}" >"$RUN_DIR/web.log" 2>&1 &
+    else npm run dev "${WEB_HOST[@]}" >"$RUN_DIR/web.log" 2>&1 & fi
     echo $! >"$RUN_DIR/web.pid"
     for _ in $(seq 1 60); do
       curl -sf --max-time 2 http://127.0.0.1:3000 >/dev/null 2>&1 && break

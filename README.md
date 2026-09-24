@@ -214,7 +214,21 @@ The app runs with Node alone. Everything else unlocks an optional capability.
 
 ### Everything at once
 
-Once the pieces below are installed, this starts all three and says what came up:
+`./install.sh` installs the pieces below in one go -- the web app's packages, the sidecar's
+virtualenv (torch and torchaudio matched to the machine, with or without a GPU), the database
+and `.env.local` -- skipping whatever is already there, and ends with a list of what it could
+not do for you: the Hugging Face login, `STUDIO_TOKEN`, the fonts. It asks which studio this is:
+
+```bash
+./install.sh --personal          # for you: saved projects in a database, every matcher
+./install.sh --public --domain studio.example.com   # for anyone: see "A public studio" below
+```
+
+On Debian or Ubuntu, add `--apt` to also install ffmpeg, Python, and podman (personal) or Caddy
+(public). The mushaf fonts and QUL data are never downloaded for you -- see
+[Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data).
+
+Once they are installed, this starts all three and says what came up:
 
 ```bash
 ./start.sh          # web app with hot reload, for editing
@@ -273,8 +287,12 @@ source .venv/bin/activate
 avoids pulling ~2–3 GB of unused CUDA libraries:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
+
+Both from that index, together. A torchaudio installed later from PyPI is the CUDA build, and
+next to a CPU torch its library will not load -- the sidecar starts but alignment fails with
+`Could not load this library: ..._torchaudio.abi3.so`.
 
 Then, on any machine:
 
@@ -324,6 +342,31 @@ cp .env.example .env.local
 
 Nothing in it is required to run the app.
 
+### A public studio
+
+`./install.sh --public` sets up a studio for anyone to open, with no accounts:
+
+- **No database.** Saved projects are kept in each visitor's own browser, so nobody sees anyone
+  else's. The routes that would share them -- projects, export records, ground truth, background
+  renders -- answer 403.
+- **One match at a time.** Alignment is the one thing visitors wait on each other for (exports
+  run in their own browser), so matches queue, and each visitor sees their place and an estimate.
+  At most `MATCH_QUEUE_LIMIT` (20) wait at once, and one match reads at most ten minutes of a
+  reciter's recording.
+- **No Gemini.** The key would be yours, so the option is greyed out and the route refuses it.
+- **The default translation (Saheeh International, 20),** and no locally installed edition is
+  served, whatever is on the disk.
+- **Only reciter audio reaches the sidecar.** A match may not point it at an arbitrary address --
+  another port on the server, a local file -- only at the reciter CDNs or this app's own proxy.
+- **HTTPS through Caddy.** With `--domain`, Caddy serves the studio on that name and renews its
+  certificate; the app itself then listens on `127.0.0.1` only. An existing Caddyfile is added
+  to, not replaced. If `ufw` is already on, ports 80 and 443 are opened in it; nothing else about
+  the firewall is changed, and other services on the machine are left alone.
+
+`./install.sh` records the choice in `.studio-mode`, and `./start.sh` hands it to the app as
+`STUDIO_MODE=public`, with the default translation; the server reads it at run time. Setting
+`STUDIO_MODE=public` in `.env.local` yourself does the same.
+
 ---
 
 ## Environment variables
@@ -346,6 +389,8 @@ an optional capability, and the app degrades cleanly without it.
 | `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
 | `PEXELS_API_KEY` | pasting Pexels *page* links | — | Without it, copy the file link from Pexels instead. |
 | `STUDIO_TOKEN` | serving this beyond localhost | — | Shared secret in front of the whole studio. Unset means no authentication at all. See below. |
+| `STUDIO_MODE` | — | `personal` | `public` for a studio anyone can use -- see [A public studio](#a-public-studio). Passed by `./start.sh` from `.studio-mode`, which `./install.sh` writes. |
+| `MATCH_QUEUE_LIMIT` | — | `20` | How many matches may wait at once before the next is told to try later. |
 | `RENDER_CHROME` | [background renders](#rendering-in-the-background) | found | The browser that renders. Otherwise Chrome/Chromium on the `PATH`, then Playwright's Chromium. |
 | `RENDER_CHROME_FLAGS` | — | — | Extra flags for it, e.g. `--use-angle=vulkan --enable-features=Vulkan` for a GPU. |
 | `RENDER_FFMPEG` | background renders | `ffmpeg` on the `PATH` | Adds the recitation to the rendered picture. |
@@ -396,7 +441,7 @@ they can be swapped freely and compared on the same clip.
 | Provider | Needs | Who picks the ayah range | Timing accuracy |
 |---|---|---|---|
 | **Local** (`align`) | sidecar | detected from audio, or you | **Exact** — cannot drop or garble a word |
-| **Local + QUL** (`qul`) | sidecar and the [QUL exports](#qul-data) | detected from audio, with QUL's help, or you | **Exact** — the same aligner |
+| **Local + QUL** (`qul`) | sidecar and the [QUL exports](#mushaf-fonts-and-qul-data) | detected from audio, with QUL's help, or you | **Exact** — the same aligner |
 | **Online** (`gemini`) | API key | you | Approximate |
 
 <p align="center">
@@ -501,12 +546,28 @@ correct range from a wrong one — [docs/ALIGNMENT.md](docs/ALIGNMENT.md) has th
 
 ---
 
-### QUL data
+### Mushaf fonts and QUL data
 
 Some options read exports from the [Quranic Universal Library](https://qul.tarteel.ai) (QUL),
 which Tarteel publishes. QUL has no API; its downloads need a free QUL account. Nothing here
-ships with the repository, because `data/` is not tracked. Without the exports, the options
-that need them say so, and everything else works as before.
+ships with the repository, because `data/` and `public/fonts/` are not tracked. Without the
+exports, the options that need them say so, and everything else works as before.
+
+**The mushaf fonts.** Without them the Arabic is drawn in Amiri, which every installation has,
+and the other faces are greyed out in the Style panel. To add them, download these from QUL's
+font resources into `data/qul/fonts/` and run `node scripts/qul-import.mjs`, which unpacks them
+into `public/fonts/`:
+
+| Face | File, as QUL names it |
+|---|---|
+| Madani Mushaf (the default) | `qpc-v2-woff2.zip` -- one font per printed page, 604 of them |
+| Digital Khatt | `DigitalKhattV2.otf.zip` |
+| Digital Khatt IndoPak | `DigitalKhattIndoPak.otf.zip` |
+| Indopak Nastaleeq | `IndopakNastaleeqFont.woff2.zip` |
+| Surah headings | `surah-name-v4.woff2.zip` and `surah-name-ligatures.json.bz2` |
+
+Or copy `data/qul/` and `public/fonts/` from a machine that already has them. Either way, a
+server that is already running needs no rebuild: it checks the files on every page load.
 
 | For | Download from QUL | Put it in |
 |---|---|---|
@@ -625,7 +686,7 @@ order, which is how the work actually goes.
    and a checkbox offers the footage as the background, synced to playback.
    - **Local** detects the passage from the audio and times every word locally.
    - **Local + QUL** does the same, and also uses QUL's word roots and repeated phrases to find
-     the passage. See [QUL data](#qul-data).
+     the passage. See [QUL data](#mushaf-fonts-and-qul-data).
    - **Online** works with nothing installed, but the timing is estimated rather than measured.
    - Options that need something you do not have say so, and say what to do about it.
    - **Trim audio** is in the top toolbar and available at any point — before matching, after
@@ -898,7 +959,7 @@ Any Postgres 14+ will do — a system install, a managed instance, or a containe
 or Docker:
 
 ```bash
-podman run -d --name quranclipper-db --restart=unless-stopped -e POSTGRES_USER=quranclipper -e POSTGRES_PASSWORD=quranclipper -e POSTGRES_DB=quranclipper -p 5432:5432 -v quranclipper-pgdata:/var/lib/postgresql/data docker.io/library/postgres:16-alpine
+podman run -d --name quranclipper-db --restart=unless-stopped -e POSTGRES_USER=quranclipper -e POSTGRES_PASSWORD=quranclipper -e POSTGRES_DB=quranclipper -p 127.0.0.1:5432:5432 -v quranclipper-pgdata:/var/lib/postgresql/data docker.io/library/postgres:16-alpine
 ```
 
 The named volume is what makes the data outlive the container. Swap `podman` for `docker` if

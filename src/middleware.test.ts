@@ -151,3 +151,21 @@ describe('the comparison itself', () => {
     expect(bearer(wrong).status).toBe(401);
   });
 });
+
+describe('middleware in public mode', () => {
+  let mode: string | undefined;
+  beforeEach(() => { mode = process.env.STUDIO_MODE; process.env.STUDIO_MODE = 'public'; });
+  afterEach(() => {
+    if (mode === undefined) delete process.env.STUDIO_MODE;
+    else process.env.STUDIO_MODE = mode;
+  });
+
+  it('refuses the routes that have no owner to answer to', async () => {
+    const res = middleware(request('http://localhost/api/projects'));
+    expect(res.status).toBe(403);
+  });
+
+  it('serves the studio itself', () => {
+    expect(middleware(request('http://localhost/video-creator')).status).toBe(200);
+  });
+});

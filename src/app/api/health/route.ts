@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { studioMode } from "@/lib/studioMode";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,11 @@ export interface HealthReport {
 }
 
 async function probeDatabase(): Promise<HealthReport["database"]> {
+  // A public studio keeps projects in each visitor's browser and never uses a
+  // database, so one left named in .env.local is not "down".
+  if (studioMode() === "public") {
+    return { state: "not_configured", detail: "Not used: projects are kept in each visitor's browser." };
+  }
   if (!process.env.DATABASE_URL) {
     return { state: "not_configured", detail: "Saving to memory; projects will not survive a restart." };
   }

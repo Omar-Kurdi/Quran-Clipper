@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { studioMode, closedInPublicMode } from '@/lib/studioMode';
 
 /**
  * A shared secret in front of the whole studio, for the day it is not local.
@@ -32,6 +33,10 @@ function tokenMatches(supplied: string, expected: string): boolean {
 }
 
 export function middleware(req: NextRequest) {
+  if (studioMode() === 'public' && closedInPublicMode(req.nextUrl.pathname)) {
+    return NextResponse.json({ error: 'Not available on this public studio.' }, { status: 403 });
+  }
+
   const expected = process.env.STUDIO_TOKEN;
   if (!expected) return NextResponse.next();
 

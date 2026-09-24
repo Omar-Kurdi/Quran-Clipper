@@ -26,13 +26,18 @@ fi
 
 exists() { "$RUNTIME" container exists "$NAME" 2>/dev/null || "$RUNTIME" inspect "$NAME" >/dev/null 2>&1; }
 
+# Published on localhost only. The app is the database's one client and runs on
+# this machine; `-p 5432:5432` put Postgres, with the password below, on every
+# interface -- on a server, open to the internet. A container created before
+# this keeps its old binding until it is recreated (stop, `rm`, start again;
+# the volume keeps the data).
 create() {
   echo "creating $NAME ($IMAGE) with volume $VOLUME"
   "$RUNTIME" run -d --name "$NAME" --restart=unless-stopped \
     -e POSTGRES_USER=quranclipper \
     -e POSTGRES_PASSWORD=quranclipper \
     -e POSTGRES_DB=quranclipper \
-    -p 5432:5432 \
+    -p 127.0.0.1:5432:5432 \
     -v "$VOLUME":/var/lib/postgresql/data \
     "$IMAGE"
 }

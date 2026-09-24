@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FONTS_ARABIC, arabicFontFamily, resolveArabicFont, FONT_ARABIC_DEFAULT } from './quranData';
+import { FONTS_ARABIC, arabicFontFamily, resolveArabicFont, FONT_ARABIC_DEFAULT, usableArabicFont, FONT_ARABIC_BUILTIN } from './quranData';
 
 describe('arabicFontFamily', () => {
   it('gives every face its own family, not the same one', () => {
@@ -33,5 +33,22 @@ describe('resolveArabicFont', () => {
       expect(resolveArabicFont(retired)).toBe(FONT_ARABIC_DEFAULT);
     }
     expect(resolveArabicFont(undefined)).toBe(FONT_ARABIC_DEFAULT);
+  });
+});
+
+describe('usableArabicFont', () => {
+  it('draws the chosen face when this installation has it', () => {
+    expect(usableArabicFont('qpc-v2', new Set())).toBe('qpc-v2');
+  });
+
+  it('falls back to the built-in face when the chosen one is not installed', () => {
+    // A fresh server has no public/fonts/, and the mushaf face then drew
+    // page glyphs with no page font behind them: rows of empty boxes.
+    expect(usableArabicFont('qpc-v2', new Set(['qpc-v2', 'DigitalKhatt']))).toBe(FONT_ARABIC_BUILTIN);
+  });
+
+  it('resolves a retired face before checking, and never marks the built-in face missing', () => {
+    expect(usableArabicFont('Amiri', new Set(['qpc-v2']))).toBe(FONT_ARABIC_BUILTIN);
+    expect(FONTS_ARABIC.find(font => font.id === FONT_ARABIC_BUILTIN)?.file).toBeNull();
   });
 });

@@ -12,7 +12,10 @@ import {
 import type { MatchResult } from '@/lib/matchTypes';
 import { publishedPassage } from '@/lib/publishedTiming';
 import { timedFromPublished } from '@/lib/publishedPhrases';
-import { alignerAudioUrl } from '@/lib/alignerAudio';
+import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
+import { hostAllowed } from '@/app/api/audio/proxy/route';
+import { studioMode } from '@/lib/studioMode';
+import { matchQueue, ticketFrom, QueueFullError } from '@/lib/matchQueue';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,6 +31,9 @@ export const dynamic = 'force-dynamic';
 type Provider = 'gemini' | 'align' | 'qul';
 
 const PROVIDERS: Provider[] = ['gemini', 'align', 'qul'];
+
+/** The longest stretch of a reciter's chapter one match may read on a public studio. */
+const PUBLIC_MAX_WINDOW_SEC = 600;
 
 /** Both local providers run the forced aligner; they differ only in how the passage is found. */
 const isLocal = (provider: Provider) => provider === 'align' || provider === 'qul';
@@ -147,6 +153,26 @@ export async function POST(req: NextRequest) {
     const windowEnd = Number(formData.get('windowEnd') ?? NaN);
     const hasWindow = !!audioUrl && Number.isFinite(windowStart) && Number.isFinite(windowEnd) && windowEnd > windowStart;
 
+    // A public studio has no Gemini (its key is the owner's, and its free tier
+    // is not a shared one) and hands the sidecar only reciter audio -- see
+    // `publicAudioUrlAllowed`.
+    if (studioMode() === 'public') {
+      if (provider === 'gemini') {
+        return NextResponse.json({ success: false, provider, error: 'Gemini matching is not offered on this public studio.' }, { status: 403 });
+      }
+      if (audioUrl && !publicAudioUrlAllowed(audioUrl, req.nextUrl.origin, hostAllowed)) {
+        return NextResponse.json({ success: false, provider, error: 'That audio address is not one this studio reads.' }, { status: 400 });
+      }
+      // One visitor's window of a reciter's chapter should not hold the queue
+      // for everyone behind them.
+      if (hasWindow && windowEnd - windowStart > PUBLIC_MAX_WINDOW_SEC) {
+        return NextResponse.json(
+          { success: false, provider, error: `Match at most ${PUBLIC_MAX_WINDOW_SEC / 60} minutes of a recitation at a time on this public studio.` },
+          { status: 400 }
+        );
+      }
+    }
+
     if (!(audio instanceof File) && !hasWindow) {
       return NextResponse.json(
         { success: false, error: 'Send an audio file, or an audioUrl with windowStart and windowEnd.' },
@@ -193,7 +219,9 @@ export async function POST(req: NextRequest) {
         // picked in the UI instead. Published timings are for exactly that
         // range, so they are always aligned against it.
         const autoDetect = !published && String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
-        result = await runForcedAlignMatch({
+        // The sidecar reads one recording at a time; everyone else waits their
+        // turn here, and can see where they stand -- see `matchQueue`.
+        result = await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
           serviceUrl,
           source: audio instanceof File
             ? { kind: 'file', audio }
@@ -203,8 +231,11 @@ export async function POST(req: NextRequest) {
           start: selectedStart,
           end: selectedEnd,
           assist: provider === 'qul' ? 'qul' : undefined
-        });
+        }));
       } catch (err) {
+        if (err instanceof QueueFullError) {
+          return NextResponse.json({ success: false, provider, error: err.message }, { status: 503 });
+        }
         const error = err as Error;
         if (!published) return NextResponse.json({ success: false, provider, error: error.message }, { status: 502 });
         // The published timings stand on their own; without the aligner each

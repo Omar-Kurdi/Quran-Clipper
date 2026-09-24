@@ -21,8 +21,10 @@ import {
 import { 
   BACKGROUND_VIDEOS, 
   FONTS_ARABIC, 
-  ASPECT_RATIOS 
+  ASPECT_RATIOS,
+  usableArabicFont
 } from '@/lib/quranData';
+import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { 
   Layout, 
   Type, 
@@ -71,6 +73,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   onSelectBackground
 }) => {
   const t = useT();
+  const { missingFonts } = useStudioConfig();
   /** One name per clip, shared by the lane list, the sequence list and every tooltip. */
   const nameOf = (url: string) => backgroundLabel(url, t.backgrounds);
   const [activeTab, setActiveTab] = useState<'design' | 'background' | 'card'>('design');
@@ -1001,8 +1004,12 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 <button
                   key={f.id}
                   onClick={() => updateConfig('fontArabic', f.id)}
-                  className={`p-2.5 rounded-xl border text-start transition-all ${
-                    config.fontArabic === f.id
+                  // A face whose files are not on this server cannot be drawn,
+                  // so it cannot be chosen either -- see usableArabicFont.
+                  disabled={missingFonts.has(f.id)}
+                  title={missingFonts.has(f.id) ? t.style.fontNotInstalled : undefined}
+                  className={`p-2.5 rounded-xl border text-start transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    usableArabicFont(config.fontArabic, missingFonts) === f.id
                       ? 'bg-amber-500/15 border-amber-500 text-amber-300 ring-1 ring-amber-500/40'
                       : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
@@ -1020,8 +1027,11 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 </button>
               ))}
             </div>
+            {missingFonts.size > 0 && (
+              <p className="mt-2 text-[11px] text-slate-400">{t.style.fontNotInstalled}</p>
+            )}
             {/* Only the mushaf face knows where the printed lines break. */}
-            {FONTS_ARABIC.find(f => f.id === config.fontArabic)?.mushaf && (
+            {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
               <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
                 <input
                   type="checkbox"

@@ -9,6 +9,8 @@ import { useT } from './LocaleProvider';
 import { forgetProjectAudio } from '@/lib/projectAudio';
 import { formatBytes } from '@/lib/exportPresets';
 import { formatTime } from '@/lib/verseEdits';
+import { listProjects, deleteProject as removeProject } from '@/lib/projectStore';
+import { useStudioConfig } from '@/hooks/useStudioConfig';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
@@ -22,6 +24,8 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   onLoadProject
 }) => {
   const t = useT();
+  // A public studio keeps projects in this browser and records no exports.
+  const { mode } = useStudioConfig();
   const [activeTab, setActiveTab] = useState<'projects' | 'exports'>('projects');
   const [projectsList, setProjectsList] = useState<any[]>([]);
   const [exportsList, setExportsList] = useState<any[]>([]);
@@ -34,16 +38,13 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [projRes, expRes] = await Promise.all([
-        fetch('/api/projects'),
-        fetch('/api/exports')
+      const [projects, expRes] = await Promise.all([
+        listProjects(mode),
+        mode === 'public' ? null : fetch('/api/exports')
       ]);
 
-      if (projRes.ok) {
-        const data = await projRes.json();
-        setProjectsList(data.projects || []);
-      }
-      if (expRes.ok) {
+      if (projects) setProjectsList(projects);
+      if (expRes?.ok) {
         const data = await expRes.json();
         setExportsList(data.exports || []);
       }
@@ -52,7 +53,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   /**
    * Removes the row only once the server says it is gone.
@@ -65,10 +66,9 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
     setDeletingId(id);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/projects?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) {
-        setDeleteError(data?.error || t.projects.deleteFailed(res.status));
+      const res = await removeProject(id, mode);
+      if (!res.ok) {
+        setDeleteError(res.error || t.projects.deleteFailed(res.status));
         return;
       }
       // The recitation goes with the row, but only if nothing else is using
@@ -162,14 +162,16 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
           >
             {t.projects.tabProjects(projectsList.length)}
           </button>
-          <button
-            onClick={() => setActiveTab('exports')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === 'exports' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {t.projects.tabExports(exportsList.length)}
-          </button>
+          {mode !== 'public' && (
+            <button
+              onClick={() => setActiveTab('exports')}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+                activeTab === 'exports' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t.projects.tabExports(exportsList.length)}
+            </button>
+          )}
         </div>
 
         {deleteError && (

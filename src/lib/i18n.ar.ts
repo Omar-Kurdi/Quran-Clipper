@@ -96,6 +96,7 @@ export const ar: Dictionary = {
     saving: 'جارٍ الحفظ…',
     saved: 'تم حفظ المشروع',
     savedThisSession: 'محفوظ (لهذه الجلسة)',
+    savedInBrowser: 'محفوظ في هذا المتصفح',
     saveFailed: 'فشل الحفظ',
     saveFailedStatus: status => `ردّ الخادم بالرمز ${status}.`,
     audioNotStored:
@@ -160,6 +161,7 @@ export const ar: Dictionary = {
     matcherOnlineTechnical: 'مطابقة Gemini السحابية',
     matcherOnlineBlurb:
       'يعمل دون تثبيت أي شيء، لكن التوقيت مُقدَّر لا مقاس، فتوقّع تصحيحه يدويًا. ويُرسَل الصوت إلى Google.',
+    matcherOnlinePublic: 'غير متاح في هذا الاستوديو العام.',
     matcherOnlineFix: 'أضف مفتاح Gemini API لاستخدام هذا الخيار.',
     matcherQulMissing: 'ملفات QUL غير موجودة',
     matcherQulRestart: 'أعد تشغيل التطبيق المساعد',
@@ -267,6 +269,8 @@ export const ar: Dictionary = {
     alignReciterTitle:
       'يقرأ تسجيل القارئ نفسه ويحدّد موضع كل كلمة، بدل تقدير مواضع الآيات.',
     needUpload: 'ارفع ملفًا صوتيًا قبل تشغيل المطابقة التلقائية.',
+    queued: (position: number, wait: string | null) =>
+      `في الانتظار، رقم ${position}${wait ? ` -- نحو ${wait}` : ''}. تُطابَق تسجيلات آخرين قبلك.`,
     aligning:
       'جارٍ محاذاة نطاق الآيات المحدد على تسجيلك (التشغيل الأول يحمّل النموذج — وقد يستغرق وقتًا أطول)...',
     sendingToGemini: 'جارٍ إرسال الصوت إلى Gemini للتحليل...',
@@ -612,8 +616,10 @@ export const ar: Dictionary = {
       'qpc-v2': 'المصحف المدني',
       DigitalKhatt: 'الخط الرقمي',
       DigitalKhattIndoPak: 'الخط الرقمي الهندي',
-      IndopakNastaleeq: 'نستعليق هندي'
+      IndopakNastaleeq: 'نستعليق هندي',
+      amiri: 'الأميري (مدمج)'
     },
+    fontNotInstalled: 'الخطوط الباهتة غير مثبّتة على هذا الخادم، ومصدرها أرشيفات QUL -- انظر «خطوط المصحف» في ملف README.',
     arabicFontSize: 'حجم الخط العربي:',
     translationFontSize: 'حجم خط الترجمة:',
     ayahNumberSize: 'حجم رقم الآية:',

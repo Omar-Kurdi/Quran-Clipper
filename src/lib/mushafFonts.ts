@@ -162,10 +162,14 @@ export function mushafRows(
   return rows.map(row => ({ text: row.glyphs.join(' '), family: qpcPageFamily(row.page) }));
 }
 
-/** How to show one word: the mushaf's glyph where there is one, else the text. */
-export function wordFace(word: { arabic: string; glyph?: string; glyphPage?: number }):
+/**
+ * How to show one word: the mushaf's glyph where there is one, else the text.
+ * `glyphs` is false where the page fonts are not installed, since a glyph
+ * without its page's font is an empty box.
+ */
+export function wordFace(word: { arabic: string; glyph?: string; glyphPage?: number }, glyphs = true):
   { text: string; family?: string } {
-  return word.glyph && word.glyphPage
+  return glyphs && word.glyph && word.glyphPage
     ? { text: word.glyph, family: qpcPageFamily(word.glyphPage) }
     : { text: word.arabic };
 }

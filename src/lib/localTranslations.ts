@@ -23,6 +23,7 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { studioMode } from './studioMode';
 
 export interface LocalEdition {
   id: string;
@@ -45,6 +46,10 @@ const texts = new Map<string, Record<string, string[]> | null>();
 
 function readManifest(): ManifestEntry[] {
   if (manifest !== undefined) return manifest;
+  // A public installation serves no local edition, whatever is on its disk:
+  // they are held here under terms that cover one person's use, not a
+  // service anyone can reach.
+  if (studioMode() === 'public') return (manifest = []);
   try {
     const parsed = JSON.parse(readFileSync(path.join(DIR(), 'manifest.json'), 'utf8'));
     manifest = (Array.isArray(parsed) ? parsed : [])

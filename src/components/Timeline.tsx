@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
+import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform } from '@/lib/waveform';
@@ -89,7 +90,8 @@ const ZOOMS = [1, 2, 4, 8];
  * Unicode text otherwise.
  */
 function CaptionText({ verse }: { verse: VerseData }) {
-  const drawn = mushafCaption(verse.words, QPC_V2);
+  const glyphs = !useStudioConfig().missingFonts.has(QPC_V2);
+  const drawn = glyphs ? mushafCaption(verse.words, QPC_V2) : null;
   return (
     <span
       className="font-quran text-[13px] truncate w-full text-parchment/90"

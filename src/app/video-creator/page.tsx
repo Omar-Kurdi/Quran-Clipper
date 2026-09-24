@@ -78,6 +78,9 @@ import type { BatchResult } from '@/lib/batchMatch';
 import { buildRenderForm } from '@/lib/serverRenderForm';
 import { exportFileName } from '@/lib/exportName';
 import { exportRangeFor } from '@/lib/exportRange';
+import { saveProject } from '@/lib/projectStore';
+import { newMatchTicket, watchQueue, roughWait } from '@/lib/queueWatch';
+import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { withAspect } from '@/lib/exportQueue';
 
 import { 
@@ -106,8 +109,20 @@ import {
   Keyboard
 } from 'lucide-react';
 
+/** What "Save" reports, by where the project went: see `projectStore`. */
+function savedStatusText(
+  source: string | undefined,
+  header: { saved: string; savedThisSession: string; savedInBrowser: string }
+): string {
+  if (source === 'memory') return header.savedThisSession;
+  if (source === 'browser') return header.savedInBrowser;
+  return header.saved;
+}
+
 export default function VideoCreatorPage() {
   const { locale, setLocale, t } = useLocale();
+  // Personal or public, and which fonts this server has -- see `/api/studio`.
+  const studio = useStudioConfig();
 
   // Quran & Audio Selection State
   const [selectedSurah, setSelectedSurah] = useState<number>(1);
@@ -186,7 +201,10 @@ export default function VideoCreatorPage() {
    */
   const [matchStatus, setMatchStatus] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
-  const [matchProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul'>('align');
+  const [chosenProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul'>('align');
+  // Whatever was picked before, a public studio matches locally: it offers no
+  // Gemini, and its route refuses one.
+  const matchProvider = studio.mode === 'public' && chosenProvider === 'gemini' ? 'align' : chosenProvider;
   /** Built-in reciters with a QUL timing export on this machine. */
   const [qulTimedReciters, setQulTimedReciters] = useState<string[]>([]);
   const [providerStatus, setProviderStatus] = useState<{
@@ -936,11 +954,24 @@ export default function VideoCreatorPage() {
       formData.append('audioDuration', String(customAudioDuration));
     }
 
+    // A ticket, so that while this request waits behind other people's
+    // matches the studio can say where it stands -- see `matchQueue`.
+    const ticket = newMatchTicket();
+    formData.append('ticket', ticket);
+    const stopWatching = matchProvider === 'gemini' ? () => {} : watchQueue(ticket, seen => {
+      setMatchStatus({
+        text: seen.position > 0
+          ? t.match.queued(seen.position, seen.etaSeconds === null ? null : roughWait(seen.etaSeconds))
+          : t.match.aligning,
+        tone: 'info'
+      });
+    });
+
     try {
       const res = await fetch('/api/audio/match', {
         method: 'POST',
         body: formData
-      });
+      }).finally(stopWatching);
       const data = await res.json();
 
       if (!res.ok || !data.success) {
@@ -1213,11 +1244,7 @@ export default function VideoCreatorPage() {
       verses: result.verses,
       config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
     });
-    const res = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).catch(() => null);
+    const res = await saveProject(payload, studio.mode).catch(() => null);
     return Boolean(res?.ok);
   };
 
@@ -1537,18 +1564,15 @@ export default function VideoCreatorPage() {
         config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
       });
 
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const res = await saveProject(payload, studio.mode);
 
       if (res.ok) {
-        const data = await res.json().catch(() => null);
+        const data = await res.json().catch(() => null) as { source?: string } | null;
         // The route falls back to in-memory storage when DATABASE_URL is unset;
-        // say so rather than implying the project survived a restart.
+        // say so rather than implying the project survived a restart. A public
+        // studio keeps it in this browser, which is worth saying too.
         setSaveStatus({
-          text: data?.source === 'memory' ? t.header.savedThisSession : t.header.saved,
+          text: savedStatusText(data?.source, t.header),
           kind: 'ok',
           // Saved, but the recitation did not fit alongside it. Better said now
           // than discovered on reopening, when the only clue would be silence.
@@ -1556,7 +1580,7 @@ export default function VideoCreatorPage() {
         });
         setTimeout(() => setSaveStatus(null), storedAudio ? 3000 : 8000);
       } else {
-        const data = await res.json().catch(() => null);
+        const data = await res.json().catch(() => null) as { error?: string } | null;
         const reason = data?.error || t.header.saveFailedStatus(res.status);
         console.error('Save failed:', reason);
         // The reason rides along on the status rather than living only in the
@@ -1631,11 +1655,13 @@ export default function VideoCreatorPage() {
       technical: t.source.matcherOnlineTechnical,
       Icon: Sparkles,
       ready: !!providerStatus?.gemini.configured,
-      status: !providerStatus
-        ? t.source.matcherChecking
-        : providerStatus.gemini.configured
-          ? t.source.matcherReady
-          : t.source.matcherNeedsApiKey,
+      status: studio.mode === 'public'
+        ? t.source.matcherOnlinePublic
+        : !providerStatus
+          ? t.source.matcherChecking
+          : providerStatus.gemini.configured
+            ? t.source.matcherReady
+            : t.source.matcherNeedsApiKey,
       blurb: t.source.matcherOnlineBlurb,
       fix: t.source.matcherOnlineFix
     }
@@ -2377,8 +2403,11 @@ export default function VideoCreatorPage() {
                             role="radio"
                             aria-checked={selected}
                             onClick={() => setMatchProvider(opt.id)}
-                            title={t.source.matcherUses(opt.technical)}
-                            className={`py-2 px-2.5 rounded-lg border text-start flex items-center gap-1.5 transition-all ${
+                            // A public studio offers no Gemini: the key is the
+                            // owner's, and the route refuses it anyway.
+                            disabled={studio.mode === 'public' && opt.id === 'gemini'}
+                            title={studio.mode === 'public' && opt.id === 'gemini' ? t.source.matcherOnlinePublic : t.source.matcherUses(opt.technical)}
+                            className={`py-2 px-2.5 rounded-lg border text-start flex items-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                               selected
                                 ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
                                 : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'

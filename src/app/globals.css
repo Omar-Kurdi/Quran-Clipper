@@ -252,22 +252,27 @@
      silent-letter zero correctly -- the UI font it replaced had neither, and
      showed them as empty rectangles. */
   .font-quran {
-    font-family: 'DigitalKhatt New Madina', serif;
+    font-family: 'DigitalKhatt New Madina', 'Amiri', serif;
   }
   /* The mushaf face has no static preview: every page is its own font and a
      word is a glyph, so a swatch has to load the page it wants to show. The
      class exists for the picker to hang that on. */
   .font-mushaf {
-    font-family: 'DigitalKhatt New Madina', serif;
+    font-family: 'DigitalKhatt New Madina', 'Amiri', serif;
   }
   .font-digitalkhatt {
-    font-family: 'DigitalKhatt New Madina', serif;
+    font-family: 'DigitalKhatt New Madina', 'Amiri', serif;
   }
   .font-digitalkhatt-indopak {
-    font-family: 'DigitalKhatt IndoPak', serif;
+    font-family: 'DigitalKhatt IndoPak', 'Amiri', serif;
   }
   .font-indopak-nastaleeq {
-    font-family: 'AlQuran IndoPak by QuranWBW', serif;
+    font-family: 'AlQuran IndoPak by QuranWBW', 'Amiri', serif;
+  }
+  /* The face every installation has -- see FONT_ARABIC_BUILTIN. Amiri, not
+     the mushaf faces, is the one a server without public/fonts/ can draw. */
+  .font-amiri {
+    font-family: 'Amiri', serif;
   }
 }
 

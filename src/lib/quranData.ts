@@ -589,6 +589,19 @@ export const BACKGROUND_VIDEOS = [
 ];
 
 /**
+ * The Arabic face every installation has.
+ *
+ * The others are files under `public/fonts/`, unpacked from the QUL archives
+ * and never committed, so a fresh clone has none of them. Amiri comes from
+ * Google Fonts with the studio's own interface, so it is always there to fall
+ * back to. It was dropped as a choice once because it draws the sukun as a
+ * closed ring -- the mark the mushaf keeps for a letter that is not
+ * pronounced -- which is still true: it is the face that works, not the right
+ * one. See `usableArabicFont`.
+ */
+export const FONT_ARABIC_BUILTIN = 'amiri';
+
+/**
  * The Arabic faces a caption can be drawn in.
  *
  * Every one is a mushaf font, self-hosted out of the QUL archives rather than
@@ -599,13 +612,16 @@ export const BACKGROUND_VIDEOS = [
  *
  * `mushaf` says the face draws `word.glyph`, the printed page's own drawing,
  * rather than composing `word.arabic` from Unicode marks. Only one face can:
- * see `mushafFonts`.
+ * see `mushafFonts`. `file` is one file under `public/` whose presence says
+ * the face is installed -- `/api/fonts` checks it.
  */
 export const FONTS_ARABIC = [
-  { id: QPC_V2, name: 'Madani Mushaf', className: 'font-mushaf', family: FALLBACK_ARABIC_FAMILY, mushaf: true },
-  { id: 'DigitalKhatt', name: 'Digital Khatt', className: 'font-digitalkhatt', family: 'DigitalKhatt New Madina', mushaf: false },
-  { id: 'DigitalKhattIndoPak', name: 'Digital Khatt IndoPak', className: 'font-digitalkhatt-indopak', family: 'DigitalKhatt IndoPak', mushaf: false },
-  { id: 'IndopakNastaleeq', name: 'Indopak Nastaleeq', className: 'font-indopak-nastaleeq', family: 'AlQuran IndoPak by QuranWBW', mushaf: false }
+  { id: QPC_V2, name: 'Madani Mushaf', className: 'font-mushaf', family: FALLBACK_ARABIC_FAMILY, mushaf: true, file: 'fonts/qcf/p1.woff2' },
+  { id: 'DigitalKhatt', name: 'Digital Khatt', className: 'font-digitalkhatt', family: 'DigitalKhatt New Madina', mushaf: false, file: 'fonts/unicode/DigitalKhattV2.otf' },
+  { id: 'DigitalKhattIndoPak', name: 'Digital Khatt IndoPak', className: 'font-digitalkhatt-indopak', family: 'DigitalKhatt IndoPak', mushaf: false, file: 'fonts/unicode/DigitalKhattIndoPak.otf' },
+  { id: 'IndopakNastaleeq', name: 'Indopak Nastaleeq', className: 'font-indopak-nastaleeq', family: 'AlQuran IndoPak by QuranWBW', mushaf: false, file: 'fonts/unicode/IndopakNastaleeq.woff2' },
+  // Last, and the only one with no file: see `FONT_ARABIC_BUILTIN`.
+  { id: FONT_ARABIC_BUILTIN, name: 'Amiri', className: 'font-amiri', family: 'Amiri', mushaf: false, file: null }
 ];
 
 /**
@@ -635,6 +651,20 @@ export const FONT_ARABIC_DEFAULT = QPC_V2;
 
 export function resolveArabicFont(id: string | undefined): string {
   return FONTS_ARABIC.some(font => font.id === id) ? (id as string) : FONT_ARABIC_DEFAULT;
+}
+
+/**
+ * The face to actually draw with, given which ones this installation lacks.
+ *
+ * Applied when drawing, never written back: a project or preset naming the
+ * mushaf keeps naming it, and gets it the moment the fonts are installed.
+ * Without the page fonts the mushaf face would draw `word.glyph` -- codepoints
+ * that mean nothing outside their own page's font -- as rows of empty boxes,
+ * which is what a fresh server showed.
+ */
+export function usableArabicFont(id: string | undefined, missing: ReadonlySet<string>): string {
+  const chosen = resolveArabicFont(id);
+  return missing.has(chosen) ? FONT_ARABIC_BUILTIN : chosen;
 }
 
 export const ASPECT_RATIOS = [

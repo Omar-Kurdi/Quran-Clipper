@@ -20,6 +20,8 @@ pnpm-debug.log*
 .env
 .env.local
 .env.*.local
+# Personal or public, written by ./install.sh and read by ./start.sh.
+.studio-mode
 
 # OS junk
 .DS_Store

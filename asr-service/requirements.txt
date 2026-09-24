@@ -10,9 +10,16 @@ silero-vad==5.1.2
 # Torch. On Linux the default PyPI wheel bundles the CUDA runtime (~2-3 GB of
 # nvidia-* packages). On a machine with no NVIDIA GPU, install the CPU wheel
 # BEFORE this file to skip all of that:
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 # See "Running without a GPU" in README.md.
+#
+# torchaudio has to come from the same index as torch. Installed later from PyPI
+# (NeMo pulls it in), it is the CUDA build, and beside a CPU torch its native
+# library fails to load: the sidecar starts, and alignment reports
+# "Could not load this library: .../_torchaudio.abi3.so". Listed here so the
+# pair is one decision; an already-installed CPU torchaudio satisfies it.
 torch>=2.2
+torchaudio
 
 # Backend: wav2vec2 (ungated, CTC char offsets -> word timestamps)
 # Backend: whisper (Tarteel-fine-tuned, e.g. IJyad/whisper-large-v3-Tarteel)

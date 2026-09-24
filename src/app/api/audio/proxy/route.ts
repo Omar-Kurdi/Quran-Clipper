@@ -38,7 +38,7 @@ const ALLOWED_HOSTS = new Set([
  */
 const ALLOWED_HOST_SUFFIX = '.mp3quran.net';
 
-function hostAllowed(hostname: string): boolean {
+export function hostAllowed(hostname: string): boolean {
   return ALLOWED_HOSTS.has(hostname) || hostname.endsWith(ALLOWED_HOST_SUFFIX);
 }
 
