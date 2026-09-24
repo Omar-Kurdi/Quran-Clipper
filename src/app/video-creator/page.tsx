@@ -77,6 +77,7 @@ import { BatchMatchDialog } from '@/components/BatchMatchDialog';
 import type { BatchResult } from '@/lib/batchMatch';
 import { buildRenderForm } from '@/lib/serverRenderForm';
 import { exportFileName } from '@/lib/exportName';
+import { exportRangeFor } from '@/lib/exportRange';
 import { withAspect } from '@/lib/exportQueue';
 
 import { 
@@ -1727,26 +1728,11 @@ export default function VideoCreatorPage() {
   ];
 
 
-  /**
-   * The stretch of audio an export should cover: the first ayah's start to the
-   * last one's end.
-   *
-   * Not the whole file. A built-in reciter's audio is the entire chapter, so
-   * exporting `audioDuration` turned a three-ayah clip from Al-Baqarah into an
-   * eighty-seven minute video -- and because capture runs in real time, an
-   * eighty-seven minute wait for it.
-   */
-  const exportRange = useMemo(() => {
-    if (verses.length === 0 || !(audioDuration > 0)) {
-      return { start: 0, end: audioDuration, span: audioDuration };
-    }
-    const start = Math.max(0, Math.min(...verses.map(v => v.startTime)));
-    const end = Math.min(audioDuration, Math.max(...verses.map(v => v.endTime)));
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-      return { start: 0, end: audioDuration, span: audioDuration };
-    }
-    return { start, end, span: end - start };
-  }, [verses, audioDuration]);
+  /** The stretch of audio an export should cover -- see `exportRangeFor`. */
+  const exportRange = useMemo(
+    () => exportRangeFor(verses, audioDuration, !!customAudioUrl),
+    [verses, audioDuration, customAudioUrl]
+  );
 
   /**
    * The passage the export actually contains, read off the timeline.

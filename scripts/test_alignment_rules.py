@@ -148,6 +148,16 @@ check(
     f"got {[(s.start_word, s.end_word) for s in segments]}",
 )
 
+# Ash-Shura 42:18: بِهَا ۖ held straight into وَٱلَّذِينَ. The words sit apart on
+# the path, but a mark's gap the voice never left is not a hesitation.
+held, _ = align._segment_the_timeline(run, script, 5.0, pauses=[], hush=[])
+dipped, _ = align._segment_the_timeline(run, script, 5.0, pauses=[], hush=[(2.1, 2.14)])
+check(
+    "a vowel held across a stop mark does not end a line; a dip in the gap does",
+    [s.end_word for s in held][:1] == [3] and [s.end_word for s in dipped][:1] == [2],
+    f"held {[(s.start_word, s.end_word) for s in held]}, dipped {[(s.start_word, s.end_word) for s in dipped]}",
+)
+
 # Silence after the last word is the recording running out, not a break before
 # anything -- this used to cut the final word off into a caption of its own.
 segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 5.5, pauses=[(3.7, 5.5)])

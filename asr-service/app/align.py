@@ -2403,6 +2403,24 @@ QUIET_DROP_DB = float(os.getenv("ALIGN_QUIET_DROP_DB", "10"))
 #: anything a word could fit inside.
 QUIET_MERGE_SEC = float(os.getenv("ALIGN_QUIET_MERGE_SEC", "0.12"))
 
+#: How quiet, as a rank over the clip's own level, a stop mark's gap must get
+#: somewhere for that gap to count as the reciter hesitating there.
+#:
+#: Deliberately a low demand -- one 20ms frame quieter than 70% of the clip --
+#: because a real stop in a reverberant room need not go quiet: وَرَسُولُهُۥ ۚ
+#: bottoms out at the 12th percentile. A vowel held across the join does not
+#: dip at all. On the two Ash-Shura clips here بِهَا ۖ and بَيْنَنَا ۖ were
+#: sustained straight into the next word, leaving 0.40s and 0.48s between the
+#: aligned words that never fell below the 38th and 52nd percentiles. Across
+#: every mark cut on the thirteen ground-truth clips, all 37 the reciter
+#: really stopped at reached the 18th or lower.
+#:
+#: A rank, although `QUIET_DROP_DB` explains why ranks shift with trimming,
+#: because in dB against the speech level the two groups sit only 2.2 dB apart
+#: while 30 leaves 12 points to one side and 8 to the other. Fitted on two
+#: false cuts; a third ground-truth file that lands between them should move it.
+MARK_GAP_QUIET_PERCENTILE = float(os.getenv("ALIGN_MARK_GAP_QUIET_PERCENTILE", "30"))
+
 #: How far short of a word's end a silence may stop and still be read as
 #: following that word. Beyond this the word is plainly still being said after
 #: the quiet, so the quiet is inside it rather than at the join.
@@ -2544,6 +2562,23 @@ def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, 
     return [(a, b) for a, b in merged if b - a >= MIN_PAUSE_SEC]
 
 
+def hushes(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
+    """Every moment, however brief, quieter than `MARK_GAP_QUIET_PERCENTILE` of the clip."""
+    hop = max(1, int(window_sec * SAMPLE_RATE))
+    frames = np.array(
+        [np.sqrt(np.mean(pcm[i : i + hop] ** 2) + 1e-12) for i in range(0, max(1, len(pcm) - hop), hop)]
+    )
+    if not len(frames):
+        return []
+    db = 20 * np.log10(frames + 1e-12)
+    return [(a, b) for a, b in _runs_below(db, window_sec, float(np.percentile(db, MARK_GAP_QUIET_PERCENTILE)))]
+
+
+def _held_through(start: float, end: float, hush: list[tuple[float, float]] | None) -> bool:
+    """Was sound kept up over the whole of this gap? Unknown without a level to read."""
+    return hush is not None and not any(a < end and b > start for a, b in hush)
+
+
 def _close_gaps(
     segments: list[Segment], duration: float, pauses: list[tuple[float, float]] | None = None
 ) -> list[Segment]:
@@ -2596,6 +2631,7 @@ def _segment_the_timeline(
     duration: float,
     pauses: list[tuple[float, float]] | None = None,
     repeated: list[bool] | None = None,
+    hush: list[tuple[float, float]] | None = None,
 ) -> tuple[list[Segment], list[list[AlignedWord]]]:
     """Cut the aligned word sequence into on-screen segments.
 
@@ -2697,6 +2733,11 @@ def _segment_the_timeline(
                 # The recitation itself accounts for the gap, so the gap says
                 # nothing about hesitation and the mark has nothing to stand on.
                 # Leave it to the pause loop below, which asks the audio.
+                pass
+            elif _held_through(word.end, nxt.start, hush):
+                # Nor does a gap the voice never left: that is a vowel held
+                # into the next word, not a hesitation. See
+                # `MARK_GAP_QUIET_PERCENTILE`.
                 pass
             elif nxt.start - word.end >= waqf_pause:
                 cuts.add(i)
@@ -2921,7 +2962,7 @@ def align_recitation(
     # this placed all 177 words with a mean ayah-start error of 0.48s.
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
-    segments, spans = _segment_the_timeline(aligned, script, duration, quiet_spans(pcm), repeated)
+    segments, spans = _segment_the_timeline(aligned, script, duration, quiet_spans(pcm), repeated, hushes(pcm))
     segments = _close_gaps(
         _extend_over_repeated_tail(segments, spans, ref_words, pcm), duration, quiet_spans(pcm)
     )
