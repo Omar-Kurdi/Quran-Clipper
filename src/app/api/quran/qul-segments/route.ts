@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRange } from '@/lib/quranCorpus';
 import { versesFromReciterSegments } from '@/lib/reciterSegments';
 import { qulReciters, qulSurah } from '@/lib/qulRecitations';
+import { plausibleWords } from '@/lib/reciterTimingChoice';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
 /**
@@ -40,6 +41,10 @@ export async function GET(req: NextRequest) {
     // Words and text from the corpus, as every other load: only the times
     // and the recording differ.
     const passage = await getRange(surah, start, end);
+    const broken = passage.find(verse => !plausibleWords(held.timings.get(verse.verseKey)?.segments));
+    if (broken) {
+      return NextResponse.json({ success: false, error: `QUL's timing of ${broken.verseKey} is broken` }, { status: 422 });
+    }
     const built = versesFromReciterSegments(passage, held.timings);
     if (built.verses.length === 0) {
       return NextResponse.json({ success: false, error: 'no timings for this passage' }, { status: 404 });

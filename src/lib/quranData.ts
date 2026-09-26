@@ -175,10 +175,16 @@ export const RECITERS: Reciter[] = [
     ['rifai', 'Hani Ar-Rifai', 'هاني الرفاعي'],
     ['tunaiji', 'Khalifa Al-Tunaiji', 'خليفة الطنيجي'],
     ['jalil', 'Khalid Al-Jalil', 'خالد الجليل'],
-    ['toure', 'Hady Toure', 'هادي توري'],
   ] as const).map(([id, name, arabicName]): Reciter => ({
     id, name, arabicName, style: 'Murattal', audioServerUrl: '', quranApiId: 0, needsQul: true
-  }))
+  })),
+  {
+    // QUL's export for this recording is not usable: 143 words timed over 10s
+    // across 93 ayahs, one of 13:10's at 32s with the three after it as long,
+    // where the recording has the ayah over in a few seconds.
+    id: 'toure', name: 'Hady Toure', arabicName: 'هادي توري', style: 'Murattal',
+    audioServerUrl: '', quranApiId: 0, needsQul: true, hidden: true
+  }
 ];
 
 export const SURAHS_LIST: Surah[] = [

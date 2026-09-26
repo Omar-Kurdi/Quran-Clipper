@@ -28,11 +28,27 @@ export interface TimingChoice {
 }
 
 /**
+ * Longer than any word is held. The longest real ones are the opening letters
+ * of a surah (Alif-Lam-Mim-Sad, 7:1) at 10-15s; the published exports also
+ * carry the odd smear -- one word of Shuraim's 2:144 runs 2026s, one of
+ * Ghamdi's 3:188 256s -- which, taken as given, pushes every word after it
+ * minutes out of place.
+ */
+export const MAX_WORD_MS = 30_000;
+
+/** Whether no word in these segments runs past `MAX_WORD_MS`. */
+export function plausibleWords(segments: number[][] | undefined): boolean {
+  return (segments || []).every(([, start, end]) => !(end - start > MAX_WORD_MS));
+}
+
+/**
  * Which timings a reciter load uses: quran.com's where it has timed every ayah
  * asked for, then QUL's, then none.
  *
  * All or nothing per source. A half-timed range would mix absolute timestamps
- * with offsets counted from zero, which is worse than either. And the audio
+ * with offsets counted from zero, which is worse than either. A source whose
+ * timing of any ayah in the range is broken -- a word running implausibly
+ * long -- counts as not covering it. And the audio
  * travels with the timings: each source measured its own recording, and a
  * start time from one is fiction against the other.
  */
@@ -41,7 +57,7 @@ export function chooseReciterTiming(
   quranCom: QuranComTimings | null,
   qul: QulTimings | null
 ): TimingChoice {
-  if (quranCom && verseKeys.every(key => quranCom.timings.has(key))) {
+  if (quranCom && verseKeys.every(key => quranCom.timings.has(key) && plausibleWords(quranCom.timings.get(key)!.segments))) {
     return {
       provider: 'quran.com',
       audioUrl: quranCom.audioUrl,
@@ -53,7 +69,7 @@ export function chooseReciterTiming(
       },
     };
   }
-  if (qul && verseKeys.every(key => qul.timings.has(key))) {
+  if (qul && verseKeys.every(key => qul.timings.has(key) && plausibleWords(qul.timings.get(key)!.segments))) {
     return {
       provider: 'qul',
       audioUrl: qul.audioUrl,

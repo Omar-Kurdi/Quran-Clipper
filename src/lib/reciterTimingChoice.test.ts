@@ -15,6 +15,17 @@ const qul = (keys: string[]): QulTimings => ({
 describe('chooseReciterTiming', () => {
   const keys = ['40:13', '40:14'];
 
+  it("passes over a source whose timing of an ayah is broken", () => {
+    // Shuraim's QUL 2:144 times its second word at 2026s.
+    const smeared = qul(keys);
+    smeared.timings.set('40:14', { from: 12000, to: 2_040_000, segments: [[1, 12000, 14000], [2, 14000, 2_040_000]] });
+    expect(chooseReciterTiming(keys, null, smeared).provider).toBeNull();
+    expect(chooseReciterTiming(keys, quranCom(keys), smeared).provider).toBe('quran.com');
+    // The opening letters of a surah are long, and real.
+    smeared.timings.set('40:14', { from: 12000, to: 27000, segments: [[1, 12000, 27000]] });
+    expect(chooseReciterTiming(keys, null, smeared).provider).toBe('qul');
+  });
+
   it('keeps quran.com wherever it timed every ayah, so those reciters load as before', () => {
     const choice = chooseReciterTiming(keys, quranCom(keys), qul(keys));
     expect(choice.provider).toBe('quran.com');

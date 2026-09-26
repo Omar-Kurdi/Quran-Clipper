@@ -346,6 +346,8 @@ export default function VideoCreatorPage() {
      * they cannot be trusted against it.
      */
     againstUpload?: boolean;
+    /** Why a load failed, when the route said. */
+    error?: string;
   } | null>(null);
   /**
    * Where in the new recording playback should resume once its metadata
@@ -602,7 +604,10 @@ export default function VideoCreatorPage() {
       if (!res.ok) {
         // A failed load used to be swallowed: `if (res.ok)` with no else and an
         // empty catch, so a broken fetch looked exactly like a successful one.
-        setLoadResult({ ok: false });
+        // The route's own reason where it gave one: a QUL-only reciter whose
+        // timings are broken in this passage is not a connection problem.
+        const reason = await res.json().then((body: { error?: string }) => body?.error).catch(() => undefined);
+        setLoadResult({ ok: false, error: reason });
         return;
       }
       const data = await res.json();
@@ -2740,54 +2745,43 @@ export default function VideoCreatorPage() {
 
                 {/* Reciter Selector */}
                 <div>
-                  <label id="reciter-label" className="font-semibold text-slate-200 block mb-1.5">{t.source.selectReciter}</label>
-                  <div role="radiogroup" aria-labelledby="reciter-label" className="grid grid-cols-1 gap-2">
-                    {listedReciters(qulTimedReciters).map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => setSelectedReciter(r.id)}
-                        className={`p-3 rounded-xl border text-start flex items-center justify-between transition-all ${
-                          selectedReciter === r.id
-                            ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div>
-                          {locale === 'ar' ? (
-                            <>
-                              <span className="font-bold block text-slate-200 font-quran text-base" dir="rtl">
-                                {r.arabicName}
-                              </span>
-                              <span className="text-[11px] text-amber-400 block" dir="ltr">{r.name}</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="font-bold block text-slate-200">{r.name}</span>
-                              <span className="text-[11px] text-amber-400 font-quran block" dir="rtl">{r.arabicName}</span>
-                            </>
-                          )}
-                        </div>
-                        {/* Whether this voice has published ayah timings decides
-                            whether "Load ayahs & audio" produces a real timeline
-                            or one you have to set by hand, so it belongs on the
-                            choice rather than in a note underneath it. */}
-                        <span className="flex items-center gap-1.5">
-                          {/* Timed by quran.com, or by a QUL export on this machine. */}
-                          {(r.quranApiId > 0 || qulTimedReciters.includes(r.id)) && (
-                            <span
-                              title={t.source.reciterTimedTitle}
-                              className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
-                            >
-                              {t.source.reciterTimed}
-                            </span>
-                          )}
-                          <span className="text-[11px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
-                            {t.source.reciterStyles[r.style as keyof typeof t.source.reciterStyles] ?? r.style}
-                          </span>
-                        </span>
-                      </button>
+                  <label htmlFor="reciter-select" className="font-semibold text-slate-200 block mb-1.5">{t.source.selectReciter}</label>
+                  <select
+                    id="reciter-select"
+                    value={selectedReciter}
+                    onChange={(e) => setSelectedReciter(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-100 text-sm font-medium"
+                  >
+                    {/* A project saved with a reciter since hidden still shows who it is. */}
+                    {[
+                      ...listedReciters(qulTimedReciters),
+                      ...RECITERS.filter(r => r.id === selectedReciter && !listedReciters(qulTimedReciters).includes(r)),
+                    ].map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {locale === 'ar' ? `${r.arabicName} — ${r.name}` : `${r.name} — ${r.arabicName}`}
+                      </option>
                     ))}
-                  </div>
+                  </select>
+                  {/* Whether this voice has published ayah timings decides
+                      whether "Load ayahs & audio" produces a real timeline
+                      or one you have to set by hand, so it stays beside the
+                      choice rather than in a note underneath it. */}
+                  {selectedReciterMeta && (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {/* Timed by quran.com, or by a QUL export on this machine. */}
+                      {(selectedReciterMeta.quranApiId > 0 || qulTimedReciters.includes(selectedReciterMeta.id)) && (
+                        <span
+                          title={t.source.reciterTimedTitle}
+                          className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
+                        >
+                          {t.source.reciterTimed}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
+                        {t.source.reciterStyles[selectedReciterMeta.style as keyof typeof t.source.reciterStyles] ?? selectedReciterMeta.style}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Load & Fetch Button */}
@@ -2812,7 +2806,7 @@ export default function VideoCreatorPage() {
                     }`}
                   >
                     <span className="font-semibold">
-                      {loadResult.ok ? t.source.loadedCount(loadResult.count ?? 0) : t.source.loadFailed}
+                      {loadResult.ok ? t.source.loadedCount(loadResult.count ?? 0) : loadResult.error || t.source.loadFailed}
                     </span>
                     {loadResult.ok && (
                       <button

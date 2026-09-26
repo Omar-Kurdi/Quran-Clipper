@@ -129,6 +129,14 @@ export async function GET(req: NextRequest) {
           await fetchReciterTimings(reciterMeta.quranApiId, surahNumber),
           qulSurah(reciter, surahNumber)
         );
+        // A QUL-only reciter has no estimate to fall back on: its recording is
+        // QUL's, and the timings the export has for this passage are broken.
+        if (reciterMeta.needsQul && !choice.provider) {
+          return NextResponse.json(
+            { success: false, error: `QUL's timings for ${reciterMeta.name} are broken somewhere in this passage. Choose another reciter or range.` },
+            { status: 422 }
+          );
+        }
 
         let currentOffset = 0;
         const mappedVerses = filtered.map(v => {

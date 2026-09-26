@@ -51,7 +51,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   uses. Warsh, Qalun, Duri, Susi and Shuʿbah differ in the letters themselves, not merely in
   pronunciation, so they are not a setting: they would need their own text, their own fonts
   and their own aligner vocabulary. See [FutureIdeas.md](FutureIdeas.md).
-- Eleven reciters, every one **timed**. Five are always offered: per-word timings measured on the recording, published by
+- Ten reciters, every one **timed**. Five are always offered: per-word timings measured on the recording, published by
   Quran.com for Sudais, Yasser and Shuraim and by QUL for Maher and Ghamdi (with their QUL
   exports imported -- see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data); without them
   those two fall back to estimated boundaries). Loading one gives a real timeline, streamed
@@ -59,9 +59,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   passage chosen, with two seconds either side dimmed to drag an edge into, and playback runs
   from its first ayah to its last -- what the export contains. Raad Al-Kurdi is no longer
   offered: neither source publishes timings for his recording. Projects already made with him
-  still open. Six more -- Abdul Basit, Abu Bakr Al-Shatri, Hani Ar-Rifai, Khalifa Al-Tunaiji,
-  Khalid Al-Jalil and Hady Toure -- are timed word by word by QUL alone and appear once their
-  exports are imported.
+  still open. Five more -- Abdul Basit, Abu Bakr Al-Shatri, Hani Ar-Rifai, Khalifa Al-Tunaiji
+  and Khalid Al-Jalil -- are timed word by word by QUL alone and appear once their exports are
+  imported.
 
   | Reciter | Arabic | Style | Timings |
   |---|---|---|---|
@@ -612,10 +612,13 @@ one recording of the whole surah. Each download covers all 114 surahs for one re
 | Hani Ar-Rifai | [Hani ar-Rifai, 333](https://qul.tarteel.ai/resources/recitation/333) | `rifai` |
 | Khalifa Al-Tunaiji | [Khalifah Taniji, 389](https://qul.tarteel.ai/resources/recitation/389) | `tunaiji` |
 | Khalid Al-Jalil | [Khalid Al-Jalil, 420](https://qul.tarteel.ai/resources/recitation/420) | `jalil` |
-| Hady Toure | [Hady Toure, 421](https://qul.tarteel.ai/resources/recitation/421) | `toure` |
 
-The last six are listed in the studio only once their export is imported: QUL is their only
-source. Many more QUL recitations are tagged *With segments* but time whole ayahs only, not
+The last five are listed in the studio only once their export is imported: QUL is their only
+source. Hady Toure (421) is imported but not listed: his export times 143 words at over ten
+seconds, some over thirty, where the recording has the ayah over in a few. Any passage whose
+timings contain a word longer than 30 seconds -- a handful of ayahs in other exports too, such as
+Ghamdi's 3:188 -- is not loaded from them: a reciter with another source falls back to it, and a
+QUL-only one says so. Many more QUL recitations are tagged *With segments* but time whole ayahs only, not
 words -- 18 of 24 checked on 2026-09-26, among them a second Yasser ad-Dussary (351) -- and the
 importer turns those away rather than install them.
 
