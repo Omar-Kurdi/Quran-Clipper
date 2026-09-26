@@ -46,7 +46,7 @@ import {
 import { PresetGallery } from './PresetGallery';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 import { FRAME_LAYOUTS, asFrameLayout } from '@/lib/frameLayout';
-import { BADGE_STYLES, SURAH_NAME_FONT_ID, usableBadgeStyle } from '@/lib/surahBadge';
+import { BADGE_STYLES, SURAH_NAME_FONT_ID, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 
 interface StyleConfigPanelProps {
   config: VideoCanvasConfig;
@@ -1192,6 +1192,24 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
             {missingFonts.has(SURAH_NAME_FONT_ID) && (
               <p className="-mt-1 text-[11px] text-slate-400">{t.style.badgeFontMissing}</p>
+            )}
+            {/* Its own control, not the card's: a no-card layout sets the card
+                to nothing, and the badge still has to read over the footage. */}
+            {config.showSurahBadge && (
+              <div>
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>{t.style.badgeOpacity}</span>
+                  <span className="font-mono text-amber-400">{config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}
+                  onChange={(e) => updateConfig('badgeOpacity', parseInt(e.target.value, 10))}
+                  className="w-full accent-amber-500"
+                />
+              </div>
             )}
 
             <div className="pt-2 border-t border-slate-800">

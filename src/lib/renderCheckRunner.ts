@@ -21,9 +21,8 @@ export interface RenderCheckInput {
   /** The trim, on the recording's clock. */
   range: { start: number; end: number };
   fps: number;
-  /** The recording the render's audio came from, and its length. */
+  /** The recording the render's audio came from. */
   sourceUrl: string;
-  sourceDuration: number;
   /** The background lane, on the recording's clock. */
   lane: BackgroundSegment[];
   layout: string | undefined;
@@ -107,16 +106,18 @@ async function checkAudio(blob: Blob, input: RenderCheckInput): Promise<{ items:
     decodeAudioFile(blob).catch(() => null),
   ]);
   if (!rendered) return { items: [{ id: 'start', state: 'unsure' }, { id: 'end', state: 'unsure' }], seconds: NaN };
-  if (!source || !(input.sourceDuration > 0)) {
+  if (!source || !(source.duration > 0)) {
     return { items: [{ id: 'start', state: 'unsure' }, { id: 'end', state: 'unsure' }], seconds: rendered.duration };
   }
-  // The render's envelope at the recording's rate, so the two line up bucket for bucket.
-  const rate = source.length / input.sourceDuration;
+  // The render's envelope at the recording's rate, so the two line up bucket
+  // for bucket. The recording's own length, not the timeline's: a reciter's
+  // timeline can end at the passage while the file is the whole chapter.
+  const rate = source.peaks.length / source.duration;
   const peaks = computePeaks(rendered, Math.max(1, Math.round(rendered.duration * rate)));
   return {
     items: [
-      edgeCheck('start', source, peaks, rate, input.range),
-      edgeCheck('end', source, peaks, rate, input.range),
+      edgeCheck('start', source.peaks, peaks, rate, input.range),
+      edgeCheck('end', source.peaks, peaks, rate, input.range),
     ],
     seconds: rendered.duration,
   };

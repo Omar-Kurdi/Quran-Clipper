@@ -12,8 +12,22 @@
 
 import { computePeaks } from '@/lib/audioTrim';
 
-const cache = new Map<string, Float32Array>();
-const inflight = new Map<string, Promise<Float32Array | null>>();
+/**
+ * Peaks for a whole file, with the length of the file they span.
+ *
+ * The length travels with them because it is not always the studio's
+ * `audioDuration`: a built-in reciter's timeline can end at the last ayah of
+ * the passage while the file is the whole chapter, and spreading the peaks
+ * over the shorter span drew the waveform stretched, out of step with the
+ * ayahs on top of it.
+ */
+export interface Waveform {
+  peaks: Float32Array;
+  duration: number;
+}
+
+const cache = new Map<string, Waveform>();
+const inflight = new Map<string, Promise<Waveform | null>>();
 
 /**
  * How finely the waveform is sampled, in buckets per second of audio.
@@ -67,7 +81,7 @@ function getAudioContextCtor(): AudioContextCtor | null {
  * wants the answer should ignore it rather than cancel it -- the fetch is
  * cached, so finishing it costs nothing and warms the next request.
  */
-export async function loadWaveform(url: string): Promise<Float32Array | null> {
+export async function loadWaveform(url: string): Promise<Waveform | null> {
   if (!url) return null;
   const cached = cache.get(url);
   if (cached) return cached;
@@ -84,9 +98,9 @@ export async function loadWaveform(url: string): Promise<Float32Array | null> {
       if (!res.ok) return null;
       const bytes = await res.arrayBuffer();
       const buffer = await ctx.decodeAudioData(bytes);
-      const peaks = computePeaks(buffer, bucketsFor(buffer.duration));
-      cache.set(url, peaks);
-      return peaks;
+      const waveform = { peaks: computePeaks(buffer, bucketsFor(buffer.duration)), duration: buffer.duration };
+      cache.set(url, waveform);
+      return waveform;
     } catch {
       return null;
     } finally {

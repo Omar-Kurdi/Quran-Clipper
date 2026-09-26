@@ -633,6 +633,7 @@ export const ar: Dictionary = {
     colourTranslationDescription: 'السطر الإنجليزي تحت النص العربي.',
 
     cardOpacity: 'عتامة البطاقة الزجاجية:',
+    badgeOpacity: 'عتامة الشارة:',
     badgeTextLabel: 'نص شارة السورة:',
     badgeTextPlaceholder: 'اتركه فارغًا لعنوان تلقائي بالسورة والنطاق',
     badgeTextHelp: 'اتركه فارغًا ليُولَّد تلقائيًا من السورة ونطاق الآيات المكتشفين.',

@@ -14,7 +14,7 @@ import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
 import { frameLayout, blockTop, textFits } from '@/lib/frameLayout';
-import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle } from '@/lib/surahBadge';
+import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
@@ -83,6 +83,8 @@ export interface VideoCanvasConfig {
   showSurahBadge: boolean;
   /** How the badge is drawn: see `BADGE_STYLES`. Absent reads as the pill every older project has. */
   badgeStyle?: string;
+  /** 0-100, the plate behind the badge. Absent reads as the 74 every older project was drawn with. */
+  badgeOpacity?: number;
   surahBadgeText: string;
   surahBadgeSubtitleText: string;
   /** Where the text sits on the frame: see `FRAME_LAYOUTS`. Absent reads as the centred card. */
@@ -899,6 +901,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           subtitle: config.surahBadgeSubtitleText?.trim() || '',
           watermarkPosition: config.watermarkPosition,
           labelFamily: LABEL_FAMILY,
+          plateOpacity: (config.badgeOpacity ?? DEFAULT_BADGE_OPACITY) / 100,
         });
       }
 

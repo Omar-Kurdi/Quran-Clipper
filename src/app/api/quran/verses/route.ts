@@ -60,6 +60,13 @@ export async function GET(req: NextRequest) {
     const surahMeta = SURAHS_LIST.find(s => s.number === surahNumber) || SURAHS_LIST[0];
 
     const reciterMeta = RECITERS.find(r => r.id === reciter) || RECITERS[0];
+    // A QUL-only reciter has no recording to fall back to without its export.
+    if (reciterMeta.needsQul && !qulSurah(reciterMeta.id, surahNumber)) {
+      return NextResponse.json(
+        { success: false, error: `${reciterMeta.name} needs QUL's timing export, which this studio has not imported.` },
+        { status: 404 }
+      );
+    }
 
     // Hand-authored sample, used as a shortcut for the ranges it covers -- but
     // only for reciters quran.com has no timings for. Every sample here is

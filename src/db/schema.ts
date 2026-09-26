@@ -65,6 +65,8 @@ export const projects = pgTable('projects', {
   showSurahBadge: boolean('show_surah_badge').notNull().default(true),
   /** How the badge is drawn (`surahBadge.ts`). Every row written before it existed reads as the pill. */
   badgeStyle: text('badge_style').notNull().default('pill'),
+  /** 0-100, the plate behind the badge. Every older row reads as the 74 it was drawn with. */
+  badgeOpacity: integer('badge_opacity').notNull().default(74),
   /** Where the text sits on the frame (`frameLayout.ts`). Every older row reads as the centred card. */
   layout: text('layout').notNull().default('card'),
   surahBadgeText: text('surah_badge_text').default(''),

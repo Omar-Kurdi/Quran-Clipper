@@ -649,6 +649,7 @@ export const en = {
     colourTranslationDescription: 'The English line under the Arabic.',
 
     cardOpacity: 'Card Glass Opacity:',
+    badgeOpacity: 'Badge Opacity:',
     badgeTextLabel: 'Surah Badge Text:',
     badgeTextPlaceholder: 'Leave blank for automatic surah/range title',
     badgeTextHelp: 'Leave empty to auto-generate from detected surah and ayah range.',

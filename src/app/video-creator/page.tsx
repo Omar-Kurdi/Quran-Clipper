@@ -36,8 +36,9 @@ import {
   backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName, trimLane,
   BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
-import { asBadgeStyle, DEFAULT_BADGE_STYLE } from '@/lib/surahBadge';
+import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
+import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -60,6 +61,7 @@ import { useLocale } from '@/components/LocaleProvider';
 import { 
   SURAHS_LIST,
   RECITERS,
+  listedReciters,
   SAMPLE_PROJECTS,
   BACKGROUND_VIDEOS,
   VerseData,
@@ -406,6 +408,7 @@ export default function VideoCreatorPage() {
     showWaveform: true,
     showSurahBadge: true,
     badgeStyle: DEFAULT_BADGE_STYLE,
+    badgeOpacity: DEFAULT_BADGE_OPACITY,
     layout: DEFAULT_FRAME_LAYOUT,
     surahBadgeText: '',
     surahBadgeSubtitleText: '',
@@ -1428,13 +1431,46 @@ export default function VideoCreatorPage() {
     return () => { cancelled = true; };
   }, [canvasConfig.translationIds, verses, setVerses]);
 
+  /** The stretch of audio an export should cover -- see `exportRangeFor`. */
+  const exportRange = useMemo(
+    () => exportRangeFor(verses, audioDuration, !!customAudioUrl),
+    [verses, audioDuration, customAudioUrl]
+  );
+
+  /**
+   * A built-in reciter's passage inside its chapter file, and the stretch of
+   * that file the timeline draws -- see `clipWindow`. Null for an upload.
+   */
+  const passage = useMemo(
+    () => clipWindow(exportRange, audioDuration, !!customAudioUrl),
+    [exportRange, audioDuration, customAudioUrl]
+  );
+  const timelineWindow = useMemo(() => timelineView(passage, audioDuration), [passage, audioDuration]);
+
+  /**
+   * Play the clip, not the chapter: from the passage's first ayah when the
+   * playhead is outside it, which is what the export will contain.
+   */
+  const playClip = useCallback(() => {
+    const from = isPlaying ? null : playFrom(currentTime, passage);
+    if (from !== null) handleSeek(from);
+    togglePlayPause();
+  }, [isPlaying, currentTime, passage, handleSeek, togglePlayPause]);
+
+  // ...and stop at its last ayah, where the export ends.
+  useEffect(() => {
+    if (!isPlaying || !pastClipEnd(currentTime, passage)) return;
+    audioElementRef.current?.pause();
+    setIsPlaying(false);
+  }, [isPlaying, currentTime, passage, audioElementRef, setIsPlaying]);
+
   /** Which ayah the playhead is currently inside. */
   const activeVerseIndex = useMemo(() => segmentAt(verses, currentTime), [verses, currentTime]);
 
   const handleMarkHere = useCallback(() => edit.markHere(currentTime), [edit, currentTime]);
 
   useTransportKeys({
-    onTogglePlay: togglePlayPause,
+    onTogglePlay: playClip,
     onMarkHere: handleMarkHere,
     onUndo: history.undo,
     onRedo: history.redo,
@@ -1770,12 +1806,6 @@ export default function VideoCreatorPage() {
   ];
 
 
-  /** The stretch of audio an export should cover -- see `exportRangeFor`. */
-  const exportRange = useMemo(
-    () => exportRangeFor(verses, audioDuration, !!customAudioUrl),
-    [verses, audioDuration, customAudioUrl]
-  );
-
   /**
    * The passage the export actually contains, read off the timeline.
    *
@@ -1971,11 +2001,10 @@ export default function VideoCreatorPage() {
     range: { start: exportRange.start, end: exportRange.end },
     fps: canvasConfig.fps,
     sourceUrl: customAudioUrl || audioUrl,
-    sourceDuration: audioDuration,
     lane: bgSegments,
     layout: canvasConfig.layout,
     overlayOpacity: canvasConfig.bgOverlayOpacity,
-  }), [exportRange.start, exportRange.end, canvasConfig.fps, customAudioUrl, audioUrl, audioDuration,
+  }), [exportRange.start, exportRange.end, canvasConfig.fps, customAudioUrl, audioUrl,
       bgSegments, canvasConfig.layout, canvasConfig.bgOverlayOpacity]);
 
   /** The frame the finished file has, whichever path produced it. */
@@ -2139,6 +2168,7 @@ export default function VideoCreatorPage() {
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
       badgeStyle: asBadgeStyle(proj.badgeStyle),
+      badgeOpacity: proj.badgeOpacity ?? DEFAULT_BADGE_OPACITY,
       layout: asFrameLayout(proj.layout),
       surahBadgeText: proj.surahBadgeText || '',
       surahBadgeSubtitleText: proj.surahBadgeSubtitleText || '',
@@ -2712,7 +2742,7 @@ export default function VideoCreatorPage() {
                 <div>
                   <label id="reciter-label" className="font-semibold text-slate-200 block mb-1.5">{t.source.selectReciter}</label>
                   <div role="radiogroup" aria-labelledby="reciter-label" className="grid grid-cols-1 gap-2">
-                    {RECITERS.map((r) => (
+                    {listedReciters(qulTimedReciters).map((r) => (
                       <button
                         key={r.id}
                         onClick={() => setSelectedReciter(r.id)}
@@ -2872,7 +2902,7 @@ export default function VideoCreatorPage() {
             {/* The preview sits inside a jadwal -- the ruled frame a mushaf
                 draws around its text block -- because that is exactly what the
                 preview is. Chrome only; it is not in the exported video. */}
-            <div className="jadwal relative cursor-pointer" onClick={togglePlayPause} title={isPlaying ? t.common.pause : t.common.play}>
+            <div className="jadwal relative cursor-pointer" onClick={playClip} title={isPlaying ? t.common.pause : t.common.play}>
               <div className="jadwal-inner overflow-hidden">
               <VideoCanvas
                 ref={canvasRef}
@@ -2981,7 +3011,9 @@ export default function VideoCreatorPage() {
           selectedIndex={selectedIndex}
           onSelect={setSelectedIndex}
           onSeek={handleSeek}
-          onPlayPause={togglePlayPause}
+          onPlayPause={playClip}
+          clip={passage}
+          view={timelineWindow}
           loading={isLoadingVerses || isMatching}
           onReorder={reorderAt}
           backgroundSegments={bgSegments}

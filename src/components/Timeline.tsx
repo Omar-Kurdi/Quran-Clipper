@@ -5,7 +5,8 @@ import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
-import { loadWaveform } from '@/lib/waveform';
+import { loadWaveform, type Waveform as WaveformData } from '@/lib/waveform';
+import type { ClipWindow } from '@/lib/clipWindow';
 import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import { BackgroundSegment, backgroundLabel, moveSegmentTo, resizeSegment } from '@/lib/backgroundTimeline';
 import { formatClipLength, repeatCount } from '@/lib/mediaDuration';
@@ -66,6 +67,15 @@ interface TimelineProps {
   loading?: boolean;
   /** Drag of a block's body: move that caption to another place in the order. */
   onReorder?: (from: number, to: number) => void;
+  /**
+   * The clip inside a longer recording -- a built-in reciter's passage in its
+   * chapter file -- and the stretch of the recording to draw around it. The
+   * timeline shows `view` rather than the whole file, dims what lies outside
+   * `clip`, and goes back to the clip's start rather than to 0:00. Both absent
+   * for an upload, whose file is the clip.
+   */
+  clip?: ClipWindow | null;
+  view?: ClipWindow | null;
 }
 
 const ZOOMS = [1, 2, 4, 8];
@@ -108,7 +118,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
   onTrim, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
-  selectedBackground = null, onSelectBackground, loading = false, onReorder
+  selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null
 }) => {
   const t = useT();
   /** Named once here so every block, handle and tooltip agrees on what a clip is called. */
@@ -131,7 +141,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   // is derived rather than stored -- setting a loading flag synchronously
   // inside the effect is what react-hooks/set-state-in-effect rejects, and
   // deriving it also cannot go stale when the url changes mid-flight.
-  const [loaded, setLoaded] = useState<{ url: string; peaks: Float32Array | null } | null>(null);
+  const [loaded, setLoaded] = useState<{ url: string; waveform: WaveformData | null } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ index: number; edge: 'startTime' | 'endTime' } | null>(null);
 
@@ -211,17 +221,36 @@ export const Timeline: React.FC<TimelineProps> = ({
     // cached, so cancelling would rob any other listener of the same result.
     let stale = false;
     loadWaveform(audioUrl).then(result => {
-      if (!stale) setLoaded({ url: audioUrl, peaks: result });
+      if (!stale) setLoaded({ url: audioUrl, waveform: result });
     });
     return () => { stale = true; };
   }, [audioUrl]);
 
   const settled = loaded?.url === audioUrl;
-  const peaks = settled ? loaded!.peaks : null;
+  const waveform = settled ? loaded!.waveform : null;
   const waveformState: 'idle' | 'loading' | 'ready' | 'unavailable' =
-    !audioUrl ? 'idle' : !settled ? 'loading' : loaded!.peaks ? 'ready' : 'unavailable';
+    !audioUrl ? 'idle' : !settled ? 'loading' : loaded!.waveform ? 'ready' : 'unavailable';
 
   const duration = audioDuration || Math.max(...verses.map(v => v.endTime), 1);
+  /**
+   * The stretch of time drawn across the track. Held still while an ayah edge
+   * is dragged: the view follows the passage, so letting it move under the
+   * pointer would map the same spot to an ever-earlier time and run the edge
+   * away to the start of the file.
+   */
+  const [heldView, setHeldView] = useState<ClipWindow | null>(null);
+  if (drag && view && !heldView) setHeldView(view);
+  if (!drag && heldView) setHeldView(null);
+  const shown = heldView ?? view;
+  const viewStart = shown?.start ?? 0;
+  const viewSpan = Math.max(0.1, (shown?.end ?? duration) - viewStart);
+  /** Which of the waveform's buckets the view covers, since the peaks span the whole file. */
+  const waveSlice = waveform
+    ? {
+        first: (viewStart / waveform.duration) * waveform.peaks.length,
+        last: ((viewStart + viewSpan) / waveform.duration) * waveform.peaks.length,
+      }
+    : null;
   /** The lane to draw: where the pointer has it, or where the studio has it. */
   const lane = bgPreview ?? backgroundSegments;
   /**
@@ -233,14 +262,14 @@ export const Timeline: React.FC<TimelineProps> = ({
    */
   const beginBgDrag = (index: number, edge: 'start' | 'end' | 'move', grabOffset: number) =>
     setBgDrag({ index, edge, grabOffset, base: backgroundSegments, span: duration });
-  const pct = useCallback((t: number) => (duration > 0 ? (t / duration) * 100 : 0), [duration]);
+  const pct = useCallback((t: number) => ((t - viewStart) / viewSpan) * 100, [viewStart, viewSpan]);
 
   const xToTime = useCallback((clientX: number) => {
     const el = trackRef.current;
-    if (!el || duration <= 0) return 0;
+    if (!el) return viewStart;
     const rect = el.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
-  }, [duration]);
+    return viewStart + Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * viewSpan;
+  }, [viewStart, viewSpan]);
 
   const reorderDrag = useBlockReorder({ spans: verses, xToTime, onReorder });
 
@@ -344,21 +373,20 @@ export const Timeline: React.FC<TimelineProps> = ({
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp || zoom === 1 || !isPlaying) return;
-    const x = (currentTime / duration) * vp.scrollWidth;
+    const x = ((currentTime - viewStart) / viewSpan) * vp.scrollWidth;
     const margin = vp.clientWidth * 0.15;
     if (x < vp.scrollLeft + margin || x > vp.scrollLeft + vp.clientWidth - margin) {
       vp.scrollLeft = Math.max(0, Math.min(x - vp.clientWidth / 2, vp.scrollWidth - vp.clientWidth));
     }
-  }, [currentTime, duration, zoom, isPlaying]);
+  }, [currentTime, viewStart, viewSpan, zoom, isPlaying]);
 
   const ticks = useMemo(() => {
-    if (duration <= 0) return [];
-    const visible = duration / zoom;
+    const visible = viewSpan / zoom;
     const step = [1, 2, 5, 10, 15, 30, 60, 120, 300].find(s => s >= visible / 8) ?? 300;
     const out: number[] = [];
-    for (let t = 0; t <= duration; t += step) out.push(t);
+    for (let t = Math.ceil(viewStart / step) * step; t <= viewStart + viewSpan; t += step) out.push(t);
     return out;
-  }, [duration, zoom]);
+  }, [viewStart, viewSpan, zoom]);
 
   const zoomIndex = ZOOMS.indexOf(zoom);
 
@@ -379,7 +407,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
         </button>
         <button
-          onClick={() => onSeek(0)}
+          onClick={() => onSeek(passage?.start ?? 0)}
           aria-label={t.timeline.backToStart}
           title={t.timeline.backToStart}
           // Below `sm` the ruler is the way back: tapping 0:00 seeks there.
@@ -554,8 +582,8 @@ export const Timeline: React.FC<TimelineProps> = ({
             className="relative h-5 border-b border-slate-800/70 cursor-ew-resize touch-none"
             role="slider"
             aria-label={t.timeline.playhead}
-            aria-valuemin={0}
-            aria-valuemax={Math.round(duration)}
+            aria-valuemin={Math.round(viewStart)}
+            aria-valuemax={Math.round(viewStart + viewSpan)}
             aria-valuenow={Math.round(currentTime)}
             aria-valuetext={formatTime(currentTime)}
             tabIndex={0}
@@ -575,8 +603,8 @@ export const Timeline: React.FC<TimelineProps> = ({
             onPointerCancel={() => { scrubbingRef.current = false; }}
             onKeyDown={e => {
               const step = e.shiftKey ? 1 : 0.1;
-              if (e.key === 'ArrowLeft') { e.preventDefault(); onSeek(Math.max(0, currentTime - step)); }
-              if (e.key === 'ArrowRight') { e.preventDefault(); onSeek(Math.min(duration, currentTime + step)); }
+              if (e.key === 'ArrowLeft') { e.preventDefault(); onSeek(Math.max(viewStart, currentTime - step)); }
+              if (e.key === 'ArrowRight') { e.preventDefault(); onSeek(Math.min(viewStart + viewSpan, currentTime + step)); }
             }}
           >
             {ticks.map(t => (
@@ -708,7 +736,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             className="relative h-20 touch-none cursor-text"
             onPointerDown={e => { if (e.target === e.currentTarget) onSeek(xToTime(e.clientX)); }}
           >
-            <Waveform peaks={peaks} zoom={zoom} />
+            <Waveform peaks={waveform?.peaks ?? null} first={waveSlice?.first ?? 0} last={waveSlice?.last ?? 0} zoom={zoom} />
 
             {loading && (
               <TimelineSkeleton
@@ -776,6 +804,21 @@ export const Timeline: React.FC<TimelineProps> = ({
               />
             )}
 
+            {/* The recording either side of a reciter's passage: shown, so an
+                edge can be dragged into it, but not part of the clip. */}
+            {passage && (
+              <>
+                <span
+                  className="absolute inset-y-0 left-0 bg-slate-950/65 pointer-events-none z-10"
+                  style={{ width: `${Math.max(0, pct(passage.start))}%` }}
+                />
+                <span
+                  className="absolute inset-y-0 right-0 bg-slate-950/65 pointer-events-none z-10"
+                  style={{ width: `${Math.max(0, 100 - pct(passage.end))}%` }}
+                />
+              </>
+            )}
+
             {/* What the clip handles above would cut away. */}
             {onTrimRange && !clipIsWhole && (
               <>
@@ -810,7 +853,13 @@ export const Timeline: React.FC<TimelineProps> = ({
 /** Widest canvas to allocate. 8x zoom on a wide screen lands well inside this. */
 const MAX_WAVEFORM_CANVAS = 16_384;
 
-const Waveform = React.memo(function Waveform({ peaks, zoom }: { peaks: Float32Array | null; zoom: number }) {
+/**
+ * `first` and `last` are the buckets at the track's two edges -- fractional,
+ * and past either end of the peaks where the view runs off the file.
+ */
+const Waveform = React.memo(function Waveform({ peaks, first, last, zoom }: {
+  peaks: Float32Array | null; first: number; last: number; zoom: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Follows the zoom, because the track is `zoom * 100%` wide: a fixed canvas
   // is stretched by the browser, so zooming in used to magnify the same coarse
@@ -834,17 +883,18 @@ const Waveform = React.memo(function Waveform({ peaks, zoom }: { peaks: Float32A
     // clamped to a minimum width and painted over its neighbours, so a quiet
     // bucket was simply overwritten by the loud one beside it. That is the
     // mechanism that filled pauses in and moved the dips.
+    const perPixel = (last - first) / width;
     for (let x = 0; x < width; x++) {
-      const from = Math.floor((x * peaks.length) / width);
-      const to = Math.max(from + 1, Math.floor(((x + 1) * peaks.length) / width));
+      const from = Math.floor(first + x * perPixel);
+      const to = Math.max(from + 1, Math.floor(first + (x + 1) * perPixel));
       let peak = 0;
-      for (let i = from; i < to && i < peaks.length; i++) {
+      for (let i = Math.max(0, from); i < to && i < peaks.length; i++) {
         if (peaks[i] > peak) peak = peaks[i];
       }
       const h = Math.max(0.5, peak * mid * 0.92);
       ctx.fillRect(x, mid - h, 1, h * 2);
     }
-  }, [peaks, width]);
+  }, [peaks, first, last, width]);
 
   return <canvas ref={canvasRef} width={width} height={80} className="absolute inset-0 w-full h-full" />;
 });

@@ -19,7 +19,22 @@ export interface Reciter {
    * `api.quran.com/api/v4/resources/recitations` (Aug 2026).
    */
   quranApiId: number;
+  /**
+   * Kept for projects that already name this reciter, but not offered for a
+   * new one: no published timings exist for the recording, so every clip
+   * would rest on the aligner alone.
+   */
+  hidden?: boolean;
+  /**
+   * Timed only by a QUL export, with no other recording to fall back to:
+   * offered only on a machine that has imported it (`qulTimed`).
+   */
+  needsQul?: boolean;
 }
+
+/** The reciters offered when starting a clip, given which QUL exports this machine holds. */
+export const listedReciters = (qulTimed: readonly string[]): Reciter[] =>
+  RECITERS.filter(reciter => !reciter.hidden && (!reciter.needsQul || qulTimed.includes(reciter.id)));
 
 export interface Surah {
   number: number;
@@ -146,8 +161,24 @@ export const RECITERS: Reciter[] = [
     arabicName: 'رعد محمد الكردي',
     style: 'Emotional',
     audioServerUrl: 'https://server6.mp3quran.net/download/kurdi/',
-    quranApiId: 0
-  }
+    quranApiId: 0,
+    // Neither quran.com nor QUL publishes timings for this recording.
+    hidden: true
+  },
+  // Timed word by word by QUL, and played from QUL's own recording. Checked
+  // on 2026-09-26: every ayah of all 114 surahs timed (Hani ar-Rifai's 89:1,
+  // one word, has its bounds only). QUL tags 18 more recitations "with
+  // segments" whose exports time only whole ayahs; those are not listed.
+  ...([
+    ['basit', 'Abdul Basit Abdul Samad', 'عبد الباسط عبد الصمد'],
+    ['shatri', 'Abu Bakr Al-Shatri', 'أبو بكر الشاطري'],
+    ['rifai', 'Hani Ar-Rifai', 'هاني الرفاعي'],
+    ['tunaiji', 'Khalifa Al-Tunaiji', 'خليفة الطنيجي'],
+    ['jalil', 'Khalid Al-Jalil', 'خالد الجليل'],
+    ['toure', 'Hady Toure', 'هادي توري'],
+  ] as const).map(([id, name, arabicName]): Reciter => ({
+    id, name, arabicName, style: 'Murattal', audioServerUrl: '', quranApiId: 0, needsQul: true
+  }))
 ];
 
 export const SURAHS_LIST: Surah[] = [

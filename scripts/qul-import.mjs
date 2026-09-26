@@ -223,8 +223,21 @@ if (mutashabihat) {
 /** Which studio reciter a download is for, read from its file name. */
 const RECITER_NAMES = [
   [/sudais/i, 'sudais'], [/mu'?aiqly|muaiqli/i, 'muaiqly'], [/ghamadi|ghamdi/i, 'ghamdi'],
-  [/shuraim|shuraym/i, 'shuraim'], [/dosari|dussary/i, 'yasser'], [/kurdi/i, 'raad']
+  [/shuraim|shuraym/i, 'shuraim'], [/dosari|dussary/i, 'yasser'], [/kurdi/i, 'raad'],
+  [/abdul-?basit/i, 'basit'], [/shatri/i, 'shatri'], [/toure/i, 'toure'], [/rifai/i, 'rifai'],
+  [/jalil/i, 'jalil'], [/tunaiji|taniji/i, 'tunaiji']
 ];
+
+/**
+ * How much of an export must time each word for it to be used.
+ *
+ * QUL tags recitations "with segments" whose exports carry only each ayah's
+ * start and end -- 18 of the 24 checked on 2026-09-26, among them a second
+ * Yasser ad-Dussary that would have replaced the word-timed one. An ayah's
+ * bounds cannot split a caption or place a word, so such an export is turned
+ * away rather than installed over something better.
+ */
+const MIN_WORD_TIMED = 0.99;
 
 /** `{ surah: [address, ...] }` and `{ "s:a": {...} }` from either export. */
 function readRecitation(zip) {
@@ -320,6 +333,11 @@ async function installRecitation(zip) {
   if (!reciter) return `${zip}: no studio reciter by that name, skipped`;
   const read = readRecitation(zip);
   if (!read || !Object.keys(read.segments).length) return `${zip}: no surah list and segments inside, skipped`;
+  const ayahs = Object.values(read.segments);
+  const worded = ayahs.filter(ayah => Array.isArray(ayah.segments) && ayah.segments.length).length;
+  if (worded < ayahs.length * MIN_WORD_TIMED) {
+    return `${zip}: only ${worded} of ${ayahs.length} ayahs have word timings (ayah bounds only), skipped`;
+  }
   const { surahs, verdicts } = await chooseAddresses(read.addresses);
   const target = path.join(DIR, 'recitations', reciter);
   mkdirSync(target, { recursive: true });

@@ -51,19 +51,25 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   uses. Warsh, Qalun, Duri, Susi and Shuʿbah differ in the letters themselves, not merely in
   pronunciation, so they are not a setting: they would need their own text, their own fonts
   and their own aligner vocabulary. See [FutureIdeas.md](FutureIdeas.md).
-- Six reciters. The three marked **timed** carry per-ayah boundaries measured from the
-  recording, published by Quran.com; loading them gives a real timeline, and the recording is
-  streamed through `/api/audio/proxy`. The rest stream from mp3quran.net with boundaries
-  estimated from text length, which have to be corrected on the timeline by hand.
+- Eleven reciters, every one **timed**. Five are always offered: per-word timings measured on the recording, published by
+  Quran.com for Sudais, Yasser and Shuraim and by QUL for Maher and Ghamdi (with their QUL
+  exports imported -- see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data); without them
+  those two fall back to estimated boundaries). Loading one gives a real timeline, streamed
+  through `/api/audio/proxy`. The recording is the whole surah, so the timeline shows only the
+  passage chosen, with two seconds either side dimmed to drag an edge into, and playback runs
+  from its first ayah to its last -- what the export contains. Raad Al-Kurdi is no longer
+  offered: neither source publishes timings for his recording. Projects already made with him
+  still open. Six more -- Abdul Basit, Abu Bakr Al-Shatri, Hani Ar-Rifai, Khalifa Al-Tunaiji,
+  Khalid Al-Jalil and Hady Toure -- are timed word by word by QUL alone and appear once their
+  exports are imported.
 
   | Reciter | Arabic | Style | Timings |
   |---|---|---|---|
   | Abdul Rahman Al-Sudais | عبد الرحمن السديس | Murattal | timed |
-  | Maher Al-Muaiqly | ماهر المعيقلي | Murattal | estimated |
+  | Maher Al-Muaiqly | ماهر المعيقلي | Murattal | timed (QUL) |
   | Yasser Al-Dosari | ياسر الدوسري | Emotional | timed |
   | Saud Al-Shuraim | سعود الشريم | Murattal | timed |
-  | Saad Al-Ghamdi | سعد الغامدي | Murattal | estimated |
-  | Raad Al-Kurdi | رعد محمد الكردي | Emotional | estimated |
+  | Saad Al-Ghamdi | سعد الغامدي | Murattal | timed (QUL) |
 
 **Timing your own audio**
 - Two interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).
@@ -601,12 +607,23 @@ one recording of the whole surah. Each download covers all 114 surahs for one re
 | Abdul Rahman Al-Sudais | [Abdur-Rahman as-Sudais, 407](https://qul.tarteel.ai/resources/recitation/407) | `sudais` |
 | Yasser Al-Dosari | [Yasser ad-Dussary, 422](https://qul.tarteel.ai/resources/recitation/422) | `yasser` |
 | Saud Al-Shuraim | [Sa`ud ash-Shuraym, 317](https://qul.tarteel.ai/resources/recitation/317) — not 402, the older recitation | `shuraim` |
+| Abdul Basit Abdul Samad | [Abdul Basit Abdul Samad, 408](https://qul.tarteel.ai/resources/recitation/408) | `basit` |
+| Abu Bakr Al-Shatri | [Abu Bakr al-Shatri, 315](https://qul.tarteel.ai/resources/recitation/315) | `shatri` |
+| Hani Ar-Rifai | [Hani ar-Rifai, 333](https://qul.tarteel.ai/resources/recitation/333) | `rifai` |
+| Khalifa Al-Tunaiji | [Khalifah Taniji, 389](https://qul.tarteel.ai/resources/recitation/389) | `tunaiji` |
+| Khalid Al-Jalil | [Khalid Al-Jalil, 420](https://qul.tarteel.ai/resources/recitation/420) | `jalil` |
+| Hady Toure | [Hady Toure, 421](https://qul.tarteel.ai/resources/recitation/421) | `toure` |
+
+The last six are listed in the studio only once their export is imported: QUL is their only
+source. Many more QUL recitations are tagged *With segments* but time whole ayahs only, not
+words -- 18 of 24 checked on 2026-09-26, among them a second Yasser ad-Dussary (351) -- and the
+importer turns those away rather than install them.
 
 Muaiqly and Ghamdi are the two that matter most: quran.com publishes no timings for them, so QUL
 is their only source. With their exports imported, **Load ayahs & audio** times them from QUL and
 plays QUL's recording, and the reciter list marks them *timed*. The other three already have
 quran.com's timings, which a load keeps using; QUL's are a second opinion behind the **QUL
-timings** button. QUL has no segmented recitation of Raad Al-Kurdi.
+timings** button. QUL has no segmented recitation of Raad Al-Kurdi, which is why he is no longer offered.
 
 The importer keeps one row per ayah (QUL's SQLite lists each twice) and, where a surah is listed
 under two addresses, the one QUL's CDN actually serves. Restart the studio after importing: each

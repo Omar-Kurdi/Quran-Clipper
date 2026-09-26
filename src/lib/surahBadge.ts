@@ -82,6 +82,8 @@ export interface BadgeInput {
   watermarkPosition: string;
   /** The face for text that is not Quran text. */
   labelFamily: string;
+  /** 0 to 1: how much of the footage the plate hides. */
+  plateOpacity: number;
 }
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -148,7 +150,10 @@ function drawStack(
   }
 }
 
-const PLATE = 'rgba(6, 9, 16, 0.74)';
+/** How opaque the plate behind the badge is when a project does not say: today's badge. */
+export const DEFAULT_BADGE_OPACITY = 74;
+
+const plate = (input: BadgeInput) => `rgba(6, 9, 16, ${input.plateOpacity})`;
 const SUBTITLE_INK = 'rgba(237, 241, 247, 0.92)';
 
 /** Today's badge: a rounded plate with the title and an optional subtitle. */
@@ -180,7 +185,7 @@ function paintPill(ctx: Ctx, input: BadgeInput, scale: number) {
     contentHeight + 12 * scale
   );
 
-  ctx.fillStyle = PLATE;
+  ctx.fillStyle = plate(input);
   ctx.strokeStyle = accent;
   ctx.lineWidth = Math.max(1, 2 * scale);
   roundRect(ctx, { x: badgeX, y, w: badgeWidth, h: badgeHeight }, badgeHeight / 2);
@@ -223,7 +228,7 @@ function paintCalligraphic(ctx: Ctx, input: BadgeInput, scale: number) {
   }, 0) + gap * (lines.length - 1);
   const plateHeight = content + 36 * scale;
 
-  ctx.fillStyle = PLATE;
+  ctx.fillStyle = plate(input);
   ctx.strokeStyle = accent;
   ctx.lineWidth = Math.max(1, 1.5 * scale);
   roundRect(ctx, { x: plateX, y, w: plateWidth, h: plateHeight }, 18 * scale);
@@ -271,7 +276,7 @@ function paintFrame(ctx: Ctx, input: BadgeInput, scale: number) {
   }, 0) + gap;
   const frameHeight = content + 40 * scale;
 
-  ctx.fillStyle = PLATE;
+  ctx.fillStyle = plate(input);
   ctx.fillRect(frameX, y, frameWidth, frameHeight);
   ctx.strokeStyle = accent;
   ctx.lineWidth = Math.max(1, 3 * scale);
@@ -312,7 +317,7 @@ function paintCorner(ctx: Ctx, input: BadgeInput, heightScale: number) {
   const x = onRight ? width - margin - tagWidth : margin;
   const y = margin;
 
-  ctx.fillStyle = PLATE;
+  ctx.fillStyle = plate(input);
   ctx.strokeStyle = accent;
   ctx.lineWidth = Math.max(1, 1.5 * scale);
   roundRect(ctx, { x, y, w: tagWidth, h: tagHeight }, 10 * scale);
