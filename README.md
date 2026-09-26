@@ -181,9 +181,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   default, since a full printed line needs smaller type on a portrait card, and it also draws a caption that runs across a page break. Each colour
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
   picker in the last cell of the grid.
-- **Layouts**, under *Style → Card*: the centred card; a **lower third** that leaves the footage
-  clear above the words; **top**; **no card**, the text set straight on the picture; and the
-  **Arabic and the translation apart**, each on its own card. Each is a set of positions as
+- **Layouts**, under *Style → Card*: the centred card; **no card**, the text set straight on the
+  picture; and the **Arabic and the translation apart**, each on its own card, with the ayah
+  number between them. Each is a set of positions as
   fractions of the frame, so it holds at every aspect ratio, and the text inside is still shrunk
   to fit. A project saved before layouts existed opens as the centred card.
 - **Badge styles**, beside the layout: the **pill**; a **calligraphic heading** in QUL's
@@ -234,16 +234,20 @@ The app runs with Node alone. Everything else unlocks an optional capability.
 
 `./install.sh` installs the pieces below in one go -- the web app's packages, the sidecar's
 virtualenv (torch and torchaudio matched to the machine, with or without a GPU), the database
-and `.env.local` -- skipping whatever is already there, and ends with a list of what it could
-not do for you: the Hugging Face login, `STUDIO_TOKEN`, the fonts. It asks which studio this is:
+and `.env.local` -- skipping whatever is already there. It asks for a Hugging Face token if it
+has none (the alignment model is gated), then downloads the model to prove the token works. It
+ends with a list of what it could not do for you, such as `STUDIO_TOKEN` and the fonts. It asks
+which studio this is:
 
 ```bash
 ./install.sh --personal          # for you: saved projects in a database, every matcher
 ./install.sh --public --domain studio.example.com   # for anyone: see "A public studio" below
 ```
 
-On Debian or Ubuntu, add `--apt` to also install ffmpeg, Python, and podman (personal) or Caddy
-(public). The mushaf fonts and QUL data are never downloaded for you -- see
+On Debian or Ubuntu, run as root or with sudo, it also installs whatever system packages are
+missing: Node.js 22, ffmpeg, Python 3.12 or 3.11 with venv, and podman (personal) or Caddy
+(public). `--no-apt` leaves the system alone and only lists what is missing. A step that fails
+shows the end of its log right there. The mushaf fonts and QUL data are never downloaded for you -- see
 [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data).
 
 Once they are installed, this starts all three and says what came up:

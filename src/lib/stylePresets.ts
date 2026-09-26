@@ -105,7 +105,7 @@ export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'starlight',
     look: {
-      layout: 'lower-third',
+      layout: 'open',
       badgeStyle: 'pill',
       background: 'starry-sky',
       fontArabic: 'DigitalKhatt',
@@ -130,7 +130,7 @@ export const STYLE_PRESETS: StylePreset[] = [
     id: 'minimal',
     look: {
       layout: 'open',
-      badgeStyle: 'pill',
+      badgeStyle: 'corner',
       background: 'clouds-night',
       fontArabic: QPC_V2,
       arabicFontSize: 50,
@@ -142,7 +142,7 @@ export const STYLE_PRESETS: StylePreset[] = [
       translationColor: '#e2e8f0',
       textShadow: true,
       showWaveform: false,
-      showSurahBadge: false,
+      showSurahBadge: true,
       bgOverlayOpacity: 50,
       bgBlur: 6,
       cardBgOpacity: 0,
@@ -175,7 +175,7 @@ export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'indopak',
     look: {
-      layout: 'top',
+      layout: 'card',
       badgeStyle: 'corner',
       background: 'minaret-moonlit',
       fontArabic: 'IndopakNastaleeq',

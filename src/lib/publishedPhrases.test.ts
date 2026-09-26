@@ -86,6 +86,16 @@ describe('phrasesFromPublished', () => {
   });
 });
 
+describe('an export with words before the first', () => {
+  it('drops words listed before the ayah\u2019s first word, rather than reading them as a repeat', () => {
+    // Ghamdi's 97:3 as QUL publishes it: a word 4 timed at the tail of 97:2, then the ayah.
+    const leadIn = new Map([['97:3', { from: 11647, to: 16400, segments: [[4, 11520, 12310], [1, 12360, 13190], [2, 13240, 13830], [3, 13880, 14870], [4, 14920, 15350], [5, 15400, 15950], [6, 16000, 16400]] }]]);
+    const captions = phrasesFromPublished([{ verseKey: '97:3', wordCount: 6 }], leadIn, [])!;
+    expect(captions.map(words)).toEqual([['97:3', 0, 5]]);
+    expect(captions[0].startTime).toBe(11.647);
+  });
+});
+
 describe('timedFromPublished', () => {
   const muaiqly = { provider: 'qul', passage, timings: published };
 

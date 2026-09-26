@@ -100,7 +100,7 @@ function PresetThumb({ preset }: { preset: StylePreset }) {
         />
       )}
       <span className="absolute inset-0 bg-black" style={{ opacity: look.bgOverlayOpacity / 100 }} />
-      {/* Placed where the preset's layout puts the text, so a lower third
+      {/* Placed where the preset's layout puts the text, so a split layout
           reads as one before it is applied. */}
       <span className={`${BOX} flex-col justify-center gap-1`} style={boxStyle(layout.text, look, layout.drawsCard)}>
         <span

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { frameLayout, asFrameLayout, blockTop, textFits, FRAME_LAYOUTS } from './frameLayout';
+import { frameLayout, asFrameLayout, blockTop, textFits, splitFits, FRAME_LAYOUTS } from './frameLayout';
 
 const FRAMES = [[1080, 1920], [1080, 1080], [1080, 1350], [1920, 1080]];
 
@@ -17,6 +17,9 @@ describe('frameLayout', () => {
   it('reads anything unknown as the card', () => {
     expect(asFrameLayout('sideways')).toBe('card');
     expect(asFrameLayout(42)).toBe('card');
+    // Removed layouts: a project saved with one opens as the card.
+    expect(asFrameLayout('lower-third')).toBe('card');
+    expect(asFrameLayout('top')).toBe('card');
     expect(asFrameLayout('split')).toBe('split');
   });
 
@@ -53,6 +56,8 @@ describe('frameLayout, every layout', () => {
     }
     const split = frameLayout('split', 1080, 1920);
     expect(split.translation!.y).toBeGreaterThan(split.text.y + split.text.height);
+    // The two cards are the same size.
+    expect(split.translation!.height).toBeCloseTo(split.text.height);
   });
 
   it('draws no card in the open layout', () => {
@@ -87,5 +92,15 @@ describe('textFits', () => {
     expect(textFits(split, { arabic: arabicRoom - 60, belowArabic: 60, translation: translationRoom }, padding)).toBe(true);
     expect(textFits(split, { arabic: 10, belowArabic: 60, translation: translationRoom + 1 }, padding)).toBe(false);
     expect(textFits(split, { arabic: arabicRoom, belowArabic: 60, translation: 10 }, padding)).toBe(false);
+  });
+});
+
+describe('splitFits', () => {
+  const padding = 40;
+  it('answers for each half on its own', () => {
+    const split = frameLayout('split', 1080, 1920);
+    const room = split.text.height - padding * 2;
+    expect(splitFits(split, { arabic: room + 1, belowArabic: 0, translation: 10 }, padding)).toEqual({ arabic: false, translation: true });
+    expect(splitFits(split, { arabic: 10, belowArabic: 0, translation: room + 1 }, padding)).toEqual({ arabic: true, translation: false });
   });
 });

@@ -48,12 +48,19 @@ interface RecitedWord {
  * timings cut a long madd into pieces -- most often an ayah's last word, which
  * Muaiqly's export splits 132 times -- and reciters do not go back over a
  * single word. Taken as a repeat, it flashed that word up as a caption of its own.
+ *
+ * Nothing comes before the ayah's first word. Some exports list words ahead of
+ * it -- Ghamdi's 97:3 opens with a word 4 timed during the end of 97:2 -- and,
+ * read as a repeat, that made a caption of its own before the ayah proper.
+ * Reciters start an ayah at its beginning, so those are dropped.
  */
 function recitedWords(timing: ReciterVerseTiming, wordCount: number): RecitedWord[] {
-  const words = (timing.segments || [])
+  const listed = (timing.segments || [])
     .map(([index, start, end]) => ({ index, start, end }))
     .filter(word => Number.isInteger(word.index) && word.index >= 1 && word.index <= wordCount && word.end > word.start)
     .sort((a, b) => a.start - b.start);
+  const first = listed.findIndex(word => word.index === 1);
+  const words = first > 0 ? listed.slice(first) : listed;
   return words.reduce<RecitedWord[]>((merged, word) => {
     const previous = merged[merged.length - 1];
     if (previous?.index === word.index) previous.end = Math.max(previous.end, word.end);
