@@ -242,8 +242,10 @@ not do for you: the Hugging Face login, `STUDIO_TOKEN`, the fonts. It asks which
 ./install.sh --public --domain studio.example.com   # for anyone: see "A public studio" below
 ```
 
-On Debian or Ubuntu, add `--apt` to also install ffmpeg, Python, and podman (personal) or Caddy
-(public). The mushaf fonts and QUL data are never downloaded for you -- see
+On Debian or Ubuntu, run as root or with sudo, it also installs whatever system packages are
+missing: Node.js 22, ffmpeg, Python 3.12 or 3.11 with venv, and podman (personal) or Caddy
+(public). `--no-apt` leaves the system alone and only lists what is missing. A step that fails
+shows the end of its log right there. The mushaf fonts and QUL data are never downloaded for you -- see
 [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data).
 
 Once they are installed, this starts all three and says what came up:
