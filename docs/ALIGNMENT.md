@@ -361,6 +361,21 @@ before it or past it, so one that stops more than `ALIGN_MAX_PAUSE_INSET` short 
 inside the word rather than at the join. The distinction matters both ways: test4's 1.42s pause
 also sits inside a stretched word, but runs past its end, and must still break.
 
+At a stop mark the word's end is less trustworthy than that. Stopping drops a final short vowel
+(`وَبَيْنَكُمُ ۖ` is said `وَبَيْنَكُمْ`), but the reference still spells it, so the aligner lays
+the `ـُ` somewhere -- after the silence. On Ash-Shura 42:15 that left 0.19s of "word" after a 0.74s
+stop, and the next phrase was run into this caption. So a marked word ending in a vowel the stop
+drops gets `ALIGN_MAX_WAQF_VOWEL_INSET` (0.25s) instead. An unmarked word keeps the tight limit,
+which is what protects the held closure of `رَبَّنَا`.
+
+### Which captions to check
+
+Each segment the sidecar returns carries `checks`: `stop_mark` when the line ended on a mark and
+the alignment's own gap, with no ayah end, restart or measured silence behind it. The studio adds
+a score under 0.5, marks those captions on the timeline and steps through them with N. Across the
+ground-truth clips that marks one caption in ten and four of the ten wrong ones; the calibration
+is in `src/lib/captionChecks.ts`. Nothing about `checks` changes where a line breaks.
+
 ### A verified repeat needs no second proof
 
 A backward step in the script has two possible sources, and they deserve different treatment. Two

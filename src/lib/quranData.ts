@@ -84,6 +84,13 @@ export interface VerseData {
   endTime: number;   // in seconds (e.g. 5.2)
   words?: VerseWord[];
   matchConfidence?: number;
+  /**
+   * The aligner's reasons to check this caption -- `stop_mark` when it ended
+   * the line on a mushaf stop mark with no silence heard. See `captionChecks`.
+   */
+  checks?: string[];
+  /** Someone has dealt with this caption, so it is no longer marked for checking. */
+  checked?: boolean;
   // Optional segment-specific display overrides from AI matching.
   // Useful when only part of an ayah is recited or repeated.
   displayTextUthmani?: string;

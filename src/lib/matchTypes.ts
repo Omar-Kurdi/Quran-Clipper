@@ -11,6 +11,8 @@ export type MatchSegment = {
   startTime?: number;
   endTime?: number;
   confidence?: number;
+  /** The aligner's reasons to check this caption; see `captionChecks`. */
+  checks?: string[];
   notes?: string;
   displayTextUthmani?: string;
   recitedTextUthmani?: string;

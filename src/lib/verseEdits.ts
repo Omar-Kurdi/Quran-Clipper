@@ -447,8 +447,9 @@ export function splitSegment(verses: VerseData[], index: number, atTime: number)
 
   return [
     ...verses.slice(0, index),
-    { ...verse, endTime: cut, words: head, displayTextUthmani: shown(head) },
-    { ...verse, startTime: cut, words: tail, displayTextUthmani: shown(tail) },
+    // Splitting a caption is dealing with it, so neither half stays marked.
+    { ...verse, endTime: cut, words: head, displayTextUthmani: shown(head), checked: true },
+    { ...verse, startTime: cut, words: tail, displayTextUthmani: shown(tail), checked: true },
     ...verses.slice(index + 1),
   ];
 }
@@ -507,6 +508,8 @@ export function mergeWithNext(verses: VerseData[], index: number): VerseData[] {
     endTime: Math.max(first.endTime, second.endTime),
     words,
     displayTextUthmani: words.filter(word => !word.excluded).map(word => word.arabic).join(' '),
+    // As is joining two: see `captionChecks`.
+    checked: true,
   };
   return [...verses.slice(0, index), merged, ...verses.slice(index + 2)];
 }

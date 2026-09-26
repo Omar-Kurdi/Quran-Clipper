@@ -39,6 +39,7 @@ import {
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
 import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
+import { nextToCheck } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -1474,12 +1475,21 @@ export default function VideoCreatorPage() {
 
   const handleMarkHere = useCallback(() => edit.markHere(currentTime), [edit, currentTime]);
 
+  /** Selects the next caption marked for checking and puts the playhead on it. */
+  const goToNextCheck = useCallback(() => {
+    const next = nextToCheck(verses, selectedIndex);
+    if (next === null) return;
+    setSelectedIndex(next);
+    handleSeek(verses[next].startTime);
+  }, [verses, selectedIndex, setSelectedIndex, handleSeek]);
+
   useTransportKeys({
     onTogglePlay: playClip,
     onMarkHere: handleMarkHere,
     onUndo: history.undo,
     onRedo: history.redo,
-    onShowShortcuts: () => setIsShortcutsOpen(true)
+    onShowShortcuts: () => setIsShortcutsOpen(true),
+    onNextToCheck: goToNextCheck
   });
 
 
@@ -2981,6 +2991,7 @@ export default function VideoCreatorPage() {
                   currentTime={currentTime}
                   onSplit={() => edit.split(currentTime)}
                   onMerge={edit.merge}
+                  onChecked={edit.checked}
                 />
               ) : (
                 <StyleConfigPanel
@@ -3021,6 +3032,7 @@ export default function VideoCreatorPage() {
           rippleEdits={rippleEdits}
           onToggleRippleEdits={toggleRippleEdits}
           onMarkHere={handleMarkHere}
+          onNextToCheck={goToNextCheck}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
           onTrimRange={customAudioFile ? handleTrimRange : undefined}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}

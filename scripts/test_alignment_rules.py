@@ -158,6 +158,18 @@ check(
     f"held {[(s.start_word, s.end_word) for s in held]}, dipped {[(s.start_word, s.end_word) for s in dipped]}",
 )
 
+# Ash-Shura 42:15: the reciter stops on وَبَيْنَكُمُ ۖ and so does not say its
+# final ـُ, which the aligner lays 0.2s past the silence anyway. At the mark
+# that is still the stop; with no mark it is quiet inside a word, as before.
+def stopped_on(text: str) -> list:
+    spans = [("لَا", 0.0, 0.5), ("بَيْنَنَا", 0.6, 1.2), (text, 1.3, 3.2), ("ٱللَّهُ", 3.2, 3.6), ("يَجْمَعُ", 3.7, 4.2)]
+    words = [word("42:15", 25 + i, t, a, b) for i, (t, a, b) in enumerate(spans)]
+    segments, _ = align._segment_the_timeline(words, list(range(5)), 4.2, pauses=[(2.2, 3.0)], hush=[])
+    return [(s.start_word, s.end_word) for s in segments]
+
+check("a stop at a mark ends the line though its dropped vowel lies after it", stopped_on("وَبَيْنَكُمُ ۖ") == [(25, 27), (28, 29)])
+check("while quiet that far inside an unmarked word still does not", stopped_on("وَبَيْنَكُمُ") == [(25, 29)])
+
 # Silence after the last word is the recording running out, not a break before
 # anything -- this used to cut the final word off into a caption of its own.
 segments, _ = align._segment_the_timeline(smooth, [5, 6, 7, 8, 9], 5.5, pauses=[(3.7, 5.5)])
@@ -181,6 +193,11 @@ check(
 # which is how a segment silently stopped picking up words the reciter repeated
 # at its end. So the splitter must hand back *tight* segments.
 tight, _ = align._segment_the_timeline(run, script, 5.0, pauses=[(1.85, 2.65)])
+# `dipped` (42:18, above) broke on the mark and the path's gap alone, so the
+# studio is told to check it; the same break over measured silence is not.
+flagged = [s.checks for s in dipped + tight]
+check("a line ended on a stop mark alone is reported for checking; one with silence is not",
+      flagged[0] == ["stop_mark"] and not any(flagged[1:]), f"got {flagged}")
 check(
     "segments come back tight, leaving the gap for the tail pass to read",
     all(b.start > a.end for a, b in zip(tight, tight[1:])),

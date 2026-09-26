@@ -15,7 +15,7 @@ import { timedFromPublished } from '@/lib/publishedPhrases';
 import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
 import { hostAllowed } from '@/app/api/audio/proxy/route';
 import { studioMode } from '@/lib/studioMode';
-import { matchQueue, ticketFrom, QueueFullError } from '@/lib/matchQueue';
+import { matchQueue, ticketFrom, visitorFrom, QueueFullError, VisitorBusyError, AbandonedError } from '@/lib/matchQueue';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -231,10 +231,22 @@ export async function POST(req: NextRequest) {
           start: selectedStart,
           end: selectedEnd,
           assist: provider === 'qul' ? 'qul' : undefined
-        }));
+        }), {
+          // On a public studio each visitor holds only a small share of the
+          // queue, and a visitor who closes the tab gives up their place.
+          visitor: studioMode() === 'public' ? visitorFrom(req.headers) ?? undefined : undefined,
+          signal: req.signal,
+        });
       } catch (err) {
         if (err instanceof QueueFullError) {
           return NextResponse.json({ success: false, provider, error: err.message }, { status: 503 });
+        }
+        if (err instanceof VisitorBusyError) {
+          return NextResponse.json({ success: false, provider, error: err.message }, { status: 429 });
+        }
+        // Nobody is left to read this answer.
+        if (err instanceof AbandonedError) {
+          return NextResponse.json({ success: false, provider, error: err.message }, { status: 499 });
         }
         const error = err as Error;
         if (!published) return NextResponse.json({ success: false, provider, error: error.message }, { status: 502 });

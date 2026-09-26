@@ -15,6 +15,7 @@ import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { TranslationPicker } from './TranslationPicker';
 import { Button } from './Button';
 import { Status } from './Status';
+import { captionChecks } from '@/lib/captionChecks';
 import { useT } from './LocaleProvider';
 
 interface InspectorProps {
@@ -39,6 +40,8 @@ interface InspectorProps {
    */
   onSplit: () => void;
   onMerge: () => void;
+  /** "Looks right": clears this caption's mark for checking. See `captionChecks`. */
+  onChecked: () => void;
   /** Where the playhead is, so the split control can say whether it would work. */
   currentTime: number;
   /**
@@ -79,7 +82,7 @@ interface InspectorProps {
 export const Inspector: React.FC<InspectorProps> = ({
   verses, index, isActive,
   onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onAdd,
-  onSplit, onMerge, currentTime,
+  onSplit, onMerge, onChecked, currentTime,
   translationIds, onTranslationIds, onTranslationText,
   translationFollowsWords, onTranslationFollowsWords
 }) => {
@@ -235,6 +238,7 @@ export const Inspector: React.FC<InspectorProps> = ({
 
   const words = ensureWords(verse);
   const duration = verse.endTime - verse.startTime;
+  const checks = captionChecks(verse);
 
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
@@ -251,6 +255,23 @@ export const Inspector: React.FC<InspectorProps> = ({
         <span className="flex-1" />
         <span className="font-mono text-[11px] text-slate-400 tabular-nums">{formatTime(duration)}</span>
       </div>
+
+      {/* Why this caption is marked on the timeline, and the way to unmark it. */}
+      {checks.length > 0 && (
+        <div role="note" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 flex flex-col gap-1.5">
+          <span className="font-semibold text-amber-300">{t.inspector.checkTitle}</span>
+          {checks.includes('stop_mark') && <p className="text-slate-200">{t.inspector.checkStopMark}</p>}
+          {checks.includes('low_match') && (
+            <p className="text-slate-200">{t.inspector.checkLowMatch(Math.round((verse.matchConfidence ?? 0) * 100))}</p>
+          )}
+          <button
+            onClick={onChecked}
+            className="self-start px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          >
+            {t.inspector.looksRight}
+          </button>
+        </div>
+      )}
 
       {/* Timing. Fine adjustment lives here; coarse adjustment is dragging the
           block on the timeline. Both write through the same functions. */}

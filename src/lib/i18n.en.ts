@@ -423,6 +423,7 @@ export const en = {
     macNote: 'On a Mac, ⌘ works wherever Ctrl is listed.',
     playPause: 'Play or pause the recitation',
     markEnd: 'End the selected ayah at the playhead',
+    nextToCheck: 'Go to the next caption marked for checking',
     undo: 'Undo the last timeline or styling change',
     redo: 'Redo a change that was undone',
     list: 'Open this list',
@@ -443,6 +444,10 @@ export const en = {
       'Unlinked: each edge moves on its own, and an end stops where the next segment begins. Click to link them again.',
     markAyahEnd: 'Mark ayah end',
     markAyahEndTitle: 'Mark the end of this ayah at the playhead (B)',
+    nextToCheck: (count: number) => `Check next (${count})`,
+    nextToCheckTitle: (count: number) =>
+      `${count} ${count === 1 ? 'caption is' : 'captions are'} marked for checking, where the match was least sure. Go to the next one (N).`,
+    toCheck: 'marked for checking',
     trimAudio: 'Trim audio',
     trimAudioTitle: 'Trim the uploaded audio — your timeline edits are kept',
     keep: (length: string) => `Keep ${length}`,
@@ -476,6 +481,12 @@ export const en = {
     tabStyle: 'Style',
     empty: 'Select an ayah on the timeline to choose its words and edit its translation.',
     matchConfidence: (percent: number) => `Match ${percent}%`,
+    checkTitle: 'Worth checking',
+    checkStopMark:
+      'This line ends at a stop mark, but no pause was heard there. If the reciter ran straight on, merge it with the next caption.',
+    checkLowMatch: (percent: number) =>
+      `The aligner was unsure of this caption (${percent}%). Play it and check where it starts and ends.`,
+    looksRight: 'Looks right',
     starts: (time: string) => `Starts ${time}`,
     ends: (time: string) => `Ends ${time}`,
     edgeStart: 'start',

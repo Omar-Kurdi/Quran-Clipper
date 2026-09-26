@@ -191,6 +191,7 @@ export async function fetchVersesByDetectedSegments(params: {
       endTime,
       words: segmentWords,
       matchConfidence: Math.max(0, Math.min(1, Number(segment.confidence ?? 0.65))),
+      ...(segment.checks?.length ? { checks: segment.checks } : {}),
       displayTextUthmani: onScreen || baseVerse.textUthmani,
       displayTranslation: segment.displayTranslation || ''
     });

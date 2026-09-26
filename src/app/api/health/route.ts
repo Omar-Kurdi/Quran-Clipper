@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { studioMode } from "@/lib/studioMode";
+import { matchQueue, type QueueCounts } from "@/lib/matchQueue";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,14 @@ export interface HealthReport {
     canAutoDetectRange?: boolean;
     detail?: string;
   };
+  /**
+   * The alignment queue since this process started: what is running and
+   * waiting now, and how many matches finished, failed, were abandoned or
+   * turned away. An uptime check can alert on `waiting` near `limit`, or on
+   * `failed` climbing. Counts only -- no addresses, tickets or error text,
+   * because this route answers anyone.
+   */
+  queue: QueueCounts;
 }
 
 async function probeDatabase(): Promise<HealthReport["database"]> {
@@ -90,6 +99,6 @@ export async function GET() {
   // with Gemini without the sidecar. Reporting a deliberate setup as a failure
   // would make the indicator something to ignore.
   const ok = database.state !== "down" && aligner.state !== "down";
-  const report: HealthReport = { ok, database, aligner };
+  const report: HealthReport = { ok, database, aligner, queue: matchQueue.counts() };
   return Response.json(report);
 }

@@ -370,7 +370,18 @@ Nothing in it is required to run the app.
 - **One match at a time.** Alignment is the one thing visitors wait on each other for (exports
   run in their own browser), so matches queue, and each visitor sees their place and an estimate.
   At most `MATCH_QUEUE_LIMIT` (20) wait at once, and one match reads at most ten minutes of a
-  reciter's recording.
+  reciter's recording. One visitor -- one address, as Caddy saw it -- may hold only
+  `MATCH_QUEUE_PER_VISITOR` (2) of those places, waiting or running; a third is refused with 429
+  until one finishes. People sharing an address (an office, a mobile carrier) share those two. The
+  address comes from the `X-Forwarded-For` Caddy sets, so the cap needs Caddy (or another proxy
+  that sets it) in front: with the port exposed directly there is no cap, and a client could send
+  any address it liked. A
+  visitor who closes the tab gives up their place, and everyone behind moves up; a match already
+  running finishes, since the sidecar would go on reading it anyway.
+- **Something to watch.** `/api/health` also reports the queue since the server started: what is
+  running and waiting, and how many matches finished, failed, were abandoned or turned away, with
+  the time of the last failure. Counts only -- no addresses or error text, because it answers
+  anyone. An uptime check can alert on `waiting` nearing `limit`, or on `failed` climbing.
 - **No Gemini.** The key would be yours, so the option is greyed out and the route refuses it.
 - **The default translation (Saheeh International, 20),** and no locally installed edition is
   served, whatever is on the disk.
@@ -409,6 +420,7 @@ an optional capability, and the app degrades cleanly without it.
 | `STUDIO_TOKEN` | serving this beyond localhost | — | Shared secret in front of the whole studio. Unset means no authentication at all. See below. |
 | `STUDIO_MODE` | — | `personal` | `public` for a studio anyone can use -- see [A public studio](#a-public-studio). Passed by `./start.sh` from `.studio-mode`, which `./install.sh` writes. |
 | `MATCH_QUEUE_LIMIT` | — | `20` | How many matches may wait at once before the next is told to try later. |
+| `MATCH_QUEUE_PER_VISITOR` | — | `2` | On a public studio, how many of those one visitor (one address) may hold, waiting or running. |
 | `RENDER_CHROME` | [background renders](#rendering-in-the-background) | found | The browser that renders. Otherwise Chrome/Chromium on the `PATH`, then Playwright's Chromium. |
 | `RENDER_CHROME_FLAGS` | — | — | Extra flags for it, e.g. `--use-angle=vulkan --enable-features=Vulkan` for a GPU. |
 | `RENDER_FFMPEG` | background renders | `ffmpeg` on the `PATH` | Adds the recitation to the rendered picture. |
@@ -520,6 +532,13 @@ back without a review prompt.
 Segmentation has to decide whether a given silence ends a phrase, and some of those calls cannot
 be made from the audio alone. **Split** cuts the selected caption at the playhead and **Merge**
 joins it to the next one, so a wrong boundary is a two-second fix rather than a bug report.
+
+**Check next** on the timeline toolbar (or <kbd>N</kbd>) steps through the captions a match was
+least sure of, each marked with an amber dot: a line the aligner ended at a stop mark with no
+pause heard there, or a caption scoring under 50%. It is about one caption in ten, and across our
+ground-truth clips four of the ten wrong ones were among them -- a place to start, not a
+guarantee. The Inspector says why each is marked; **Looks right**, or splitting or merging it,
+clears the mark.
 
 **Linked / Unlinked** on the timeline toolbar decides what a drag affects. Linked (the default,
 and how this always behaved) is a *ripple* edit: moving a segment's end shifts every segment after

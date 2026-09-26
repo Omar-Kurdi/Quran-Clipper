@@ -47,6 +47,8 @@ type AlignResponse = {
     end: number;
     score: number;
     is_restart: boolean;
+    /** Why a person should check this caption; see `captionChecks`. Absent from older sidecars. */
+    checks?: string[];
   }[];
   meanScore: number;
   /**
@@ -316,6 +318,7 @@ export async function runForcedAlignMatch(params: {
       startTime: segment.start,
       endTime: segment.end,
       confidence: Math.max(0, Math.min(1, segment.score)),
+      checks: segment.checks?.length ? segment.checks : undefined,
       displayTextUthmani: recited.map(word => word.arabic).join(' '),
       // No translation of its own. This used to copy the ayah's translation
       // into every segment on the reasoning that per-word glosses are

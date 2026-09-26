@@ -7,6 +7,7 @@ import {
   setTranslationText, setVerseNumber,
   toggleWord, addVerseAfter, removeVerse, duplicateVerse, splitSegment, mergeWithNext,
 } from '@/lib/verseEdits';
+import { markChecked } from '@/lib/captionChecks';
 
 /**
  * The timeline and which segment is selected, with every edit that acts on
@@ -81,6 +82,7 @@ export function useTimelineEditing(initial: VerseData[]) {
     },
 
     merge: () => apply(mergeWithNext(verses, selectedIndex)),
+    checked: () => apply(markChecked(verses, selectedIndex)), // "Looks right" -- see `captionChecks`
   }), [verses, selectedIndex, apply]);
 
   /** A drag on the timeline: any caption, not only the selected one. Selection follows it. */

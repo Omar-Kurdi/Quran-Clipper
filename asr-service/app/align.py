@@ -39,7 +39,7 @@ import logging
 import os
 import re
 import statistics
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 
 import numpy as np
@@ -1013,6 +1013,18 @@ class Segment:
     end: float
     score: float
     is_restart: bool = False
+    #: Why a person should look at this caption before trusting it, for the
+    #: studio to mark on the timeline. Reporting only: nothing here changes
+    #: where a line breaks.
+    #:
+    #: ``stop_mark`` -- the line ends at a mushaf stop mark on the alignment's
+    #: own gap, with no ayah end, restart or measured silence behind it. Of the
+    #: signals the aligner has, this is the one that points at mistakes:
+    #: across the 166 captions of the ground-truth clips (2026-09-27) it marked
+    #: 6, and 3 of them were wrong, against 10 wrong in all. A restart marked
+    #: 19 (3 wrong) and a blind stretch read again 72 (4 wrong) -- about the
+    #: rate of picking captions at random, so neither is reported.
+    checks: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -2363,6 +2375,7 @@ def _extend_over_repeated_tail(
             end=round(unclaimed_until, 3),
             score=segment.score,
             is_restart=segment.is_restart,
+            checks=segment.checks,
         )
 
     return out
@@ -2432,6 +2445,25 @@ MARK_GAP_QUIET_PERCENTILE = float(os.getenv("ALIGN_MARK_GAP_QUIET_PERCENTILE", "
 #: word left after -- and at 0.25 that passed for a stop and put a caption
 #: break where the reciter never paused.
 MAX_PAUSE_INSET = float(os.getenv("ALIGN_MAX_PAUSE_INSET", "0.10"))
+
+#: The same allowance where the reciter stopped at a mark on a word ending in a
+#: short vowel. Stopping drops that vowel -- وَبَيْنَكُمُ ۖ is said وَبَيْنَكُمْ --
+#: but the reference still spells it, so the aligner has to put the ـُ somewhere
+#: and puts it after the silence. On Ash-Shura 42:15 that left 0.19s of "word"
+#: after a 0.74s stop, the stop read as quiet inside the word, and the next
+#: phrase joined this caption. A held closure has no mark to stand on, so the
+#: case `MAX_PAUSE_INSET` guards against is untouched.
+MAX_WAQF_VOWEL_INSET = float(os.getenv("ALIGN_MAX_WAQF_VOWEL_INSET", "0.25"))
+
+#: Final short vowels, and the tanwin that is dropped with them, at a stop. The
+#: fathatan is left out: a stop turns it into a long ā that is still said.
+_DROPPED_AT_WAQF = "\u064c\u064d\u064e\u064f\u0650"
+
+
+def _drops_a_vowel_at_waqf(text: str) -> bool:
+    """Whether the word ends in a vowel a reciter stopping on it does not say."""
+    letters = re.sub(r"[\u06D6-\u06DC\s]", "", text)
+    return bool(letters) and letters[-1] in _DROPPED_AT_WAQF
 
 #: Quiet shorter than this is the ordinary articulation gap between two words,
 #: not a stop.
@@ -2693,6 +2725,10 @@ def _segment_the_timeline(
 
     # Index of the last word of each piece.
     cuts: set[int] = set()
+    # Breaks taken on a stop mark and the alignment's own gap, kept apart until
+    # the audio has had its say, so a break nothing else supports can be
+    # reported as one to check.
+    mark_breaks: set[int] = set()
     for i, (word, nxt) in enumerate(zip(aligned, aligned[1:])):
         if word.verse_key != nxt.verse_key:
             cuts.add(i)
@@ -2740,7 +2776,7 @@ def _segment_the_timeline(
                 # `MARK_GAP_QUIET_PERCENTILE`.
                 pass
             elif nxt.start - word.end >= waqf_pause:
-                cuts.add(i)
+                mark_breaks.add(i)
 
     # Every stop the reciter took ends a line. The audio decides this and
     # nothing else does: a stop mark is permission rather than instruction, and
@@ -2760,7 +2796,11 @@ def _segment_the_timeline(
         if not begun:
             continue
         i = max(begun)
-        if pause_end < aligned[i].end - MAX_PAUSE_INSET:
+        marked = _stop_licence(aligned[i].text) in ("allowed", "always", "paired")
+        # At a mark, the word's dropped final vowel may be what the aligner
+        # laid past the silence -- see `MAX_WAQF_VOWEL_INSET`.
+        inset = MAX_WAQF_VOWEL_INSET if marked and _drops_a_vowel_at_waqf(aligned[i].text) else MAX_PAUSE_INSET
+        if pause_end < aligned[i].end - inset:
             # The silence stops well before this word does, so the word is
             # still going afterwards and the quiet is somewhere inside it, not
             # at the join. A word the aligner has stretched still ends where it
@@ -2776,7 +2816,6 @@ def _segment_the_timeline(
             # nothing -- the run-out at the end of a recording is silence after
             # the last word, not between two of them.
             continue
-        marked = _stop_licence(aligned[i].text) in ("allowed", "always", "paired")
         if not marked and _completed_by_what_follows(aligned[i].text):
             # They stopped, but not where a line can end -- see
             # `_CANNOT_END_A_PHRASE`. Nothing but the mushaf's own mark
@@ -2802,6 +2841,10 @@ def _segment_the_timeline(
         if length >= bar:
             cuts.add(i)
 
+    # A break only the mark and the alignment's gap stand behind: no ayah end,
+    # no restart, no silence the audio measured.
+    on_mark_alone = mark_breaks - cuts
+    cuts |= mark_breaks
     cuts.add(len(aligned) - 1)
 
     segments: list[Segment] = []
@@ -2822,6 +2865,7 @@ def _segment_the_timeline(
                 end=round(span[-1].end, 3),
                 score=round(float(np.mean(scores)) if scores else 0.0, 4),
                 is_restart=script[first] <= previous_end,
+                checks=["stop_mark"] if cut in on_mark_alone else [],
             )
         )
         spans.append(span)

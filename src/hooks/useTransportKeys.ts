@@ -2,8 +2,16 @@
 
 import { useEffect, useRef } from 'react';
 
+/** `KeyB` or `KeyN` pressed on its own -- by physical key, or by name where no code is sent. */
+function bareLetter(e: KeyboardEvent): 'KeyB' | 'KeyN' | null {
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  const code = e.code || `Key${e.key.toUpperCase()}`;
+  return code === 'KeyB' || code === 'KeyN' ? code : null;
+}
+
 /**
- * SPACE plays/pauses, B ends the current ayah at the playhead, Ctrl+Z and
+ * SPACE plays/pauses, B ends the current ayah at the playhead, N goes to the
+ * next caption marked for checking, Ctrl+Z and
  * Ctrl+Shift+Z (or Ctrl+Y) walk the edit history, and ? opens the list of all
  * of them.
  *
@@ -29,6 +37,7 @@ export function useTransportKeys(handlers: {
   onUndo?: () => void;
   onRedo?: () => void;
   onShowShortcuts?: () => void;
+  onNextToCheck?: () => void;
 }) {
   const latest = useRef(handlers);
   useEffect(() => {
@@ -49,10 +58,17 @@ export function useTransportKeys(handlers: {
         return;
       }
 
-      if (e.code === 'KeyB') {
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // B and N with no modifier, so Ctrl/Cmd+B cannot silently drop a
+      // boundary and Ctrl/Cmd+N still opens a window.
+      const letter = bareLetter(e);
+      if (letter === 'KeyB') {
         e.preventDefault();
         latest.current.onMarkHere();
+        return;
+      }
+      if (letter === 'KeyN') {
+        e.preventDefault();
+        latest.current.onNextToCheck?.();
         return;
       }
 

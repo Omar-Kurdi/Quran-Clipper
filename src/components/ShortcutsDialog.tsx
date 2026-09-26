@@ -41,6 +41,7 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
   const rows: [string, string][] = [
     ['Space', t.shortcuts.playPause],
     ['B', t.shortcuts.markEnd],
+    ['N', t.shortcuts.nextToCheck],
     ['Ctrl + Z', t.shortcuts.undo],
     ['Ctrl + Shift + Z', t.shortcuts.redo],
     ['?', t.shortcuts.list],

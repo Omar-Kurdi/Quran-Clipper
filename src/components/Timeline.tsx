@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle } from 'lucide-react';
+import { captionChecks, toCheckCount } from '@/lib/captionChecks';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform, type Waveform as WaveformData } from '@/lib/waveform';
 import type { ClipWindow } from '@/lib/clipWindow';
@@ -16,6 +17,8 @@ import { TimelineSkeleton } from './Skeleton';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
 
 interface TimelineProps {
+  /** Selects and plays from the next caption marked for checking; the button shows only while one is. */
+  onNextToCheck?: () => void;
   verses: VerseData[];
   audioUrl: string;
   audioDuration: number;
@@ -113,14 +116,26 @@ function CaptionText({ verse }: { verse: VerseData }) {
   );
 }
 
+/** The dot on a caption marked for checking, and the words a screen reader reads for it. */
+function CheckMark({ label }: { label: string }) {
+  return (
+    <>
+      <span className="sr-only">{label}</span>
+      <span aria-hidden className="absolute top-1 end-2.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-900 pointer-events-none" />
+    </>
+  );
+}
+
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
   onTrim, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
-  selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null
+  selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
+  onNextToCheck
 }) => {
   const t = useT();
+  const toCheck = useMemo(() => toCheckCount(verses), [verses]);
   /** Named once here so every block, handle and tooltip agrees on what a clip is called. */
   const nameOf = (url: string) => backgroundLabel(url, t.backgrounds);
   /**
@@ -431,6 +446,21 @@ export const Timeline: React.FC<TimelineProps> = ({
           <span className="hidden sm:inline">{t.timeline.markAyahEnd}</span>
           <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">B</kbd>
         </button>
+
+        {/* Reviewing a match starts with the few captions it was least sure of,
+            rather than a watch-through -- see `captionChecks`. */}
+        {onNextToCheck && toCheck > 0 && (
+          <button
+            onClick={onNextToCheck}
+            title={t.timeline.nextToCheckTitle(toCheck)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 text-[11px] font-semibold rounded-lg border border-amber-500/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">{t.timeline.nextToCheck(toCheck)}</span>
+            <span className="sm:hidden tabular-nums">{toCheck}</span>
+            <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">N</kbd>
+          </button>
+        )}
 
         {/* Next to marking because it changes what marking and dragging *do*.
             Its state has to be visible without hovering -- the same drag moves
@@ -751,6 +781,7 @@ export const Timeline: React.FC<TimelineProps> = ({
               const left = pct(verse.startTime);
               const width = Math.max(0.4, pct(verse.endTime) - left);
               const active = i === selectedIndex;
+              const flagged = captionChecks(verse).length > 0;
               return (
                 <div
                   key={`${verse.verseKey}-${i}`}
@@ -768,13 +799,14 @@ export const Timeline: React.FC<TimelineProps> = ({
                       onSelect(i);
                       onSeek(verse.startTime);
                     }}
-                    title={`${verse.verseKey} · ${formatTime(verse.endTime - verse.startTime)}${onReorder ? ` · ${t.timeline.dragToReorder}` : ''}`}
+                    title={`${verse.verseKey} · ${formatTime(verse.endTime - verse.startTime)}${flagged ? ` · ${t.timeline.toCheck}` : ''}${onReorder ? ` · ${t.timeline.dragToReorder}` : ''}`}
                     className="absolute inset-0 px-2 flex flex-col justify-center items-start text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold-bright"
                   >
                     <span className={`font-mono text-[10px] truncate w-full ${active ? 'text-gold-bright' : 'text-slate-300'}`}>
                       {verse.verseKey}
                     </span>
                     <CaptionText verse={verse} />
+                    {flagged && <CheckMark label={t.timeline.toCheck} />}
                   </button>
 
                   {/* Grab strips. Inside the block so they can never be orphaned
