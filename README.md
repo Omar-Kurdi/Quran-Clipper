@@ -234,8 +234,10 @@ The app runs with Node alone. Everything else unlocks an optional capability.
 
 `./install.sh` installs the pieces below in one go -- the web app's packages, the sidecar's
 virtualenv (torch and torchaudio matched to the machine, with or without a GPU), the database
-and `.env.local` -- skipping whatever is already there, and ends with a list of what it could
-not do for you: the Hugging Face login, `STUDIO_TOKEN`, the fonts. It asks which studio this is:
+and `.env.local` -- skipping whatever is already there. It asks for a Hugging Face token if it
+has none (the alignment model is gated), then downloads the model to prove the token works. It
+ends with a list of what it could not do for you, such as `STUDIO_TOKEN` and the fonts. It asks
+which studio this is:
 
 ```bash
 ./install.sh --personal          # for you: saved projects in a database, every matcher

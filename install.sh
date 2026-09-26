@@ -30,6 +30,7 @@
 # a compiler for the few Python packages built from source, and podman
 # (personal) or Caddy (public).
 #   HF_TOKEN=hf_... ./install.sh     log in to Hugging Face without a prompt
+#                                    (otherwise it asks, and downloads the model)
 #
 # Not installed here, because they cannot be fetched: the mushaf fonts and the
 # QUL data (downloaded from a signed-in qul.tarteel.ai account). The studio
@@ -258,18 +259,62 @@ else
     || todo "torch/torchaudio do not load together (see $LOG). On a machine without a GPU: $VENV/bin/pip install --force-reinstall --no-deps torch torchaudio --index-url https://download.pytorch.org/whl/cpu"
 fi
 
-# --- Hugging Face login ---------------------------------------------------------
-printf '[5/8] model login ... '
-HF="$VENV/bin/hf"
-if [[ ! -x "$HF" ]]; then
+# --- Hugging Face login and the model -------------------------------------------
+# The alignment model is gated, and until this machine holds a token that has
+# accepted its terms, every alignment fails with a 401. So this does not stop
+# at "a token is stored": it downloads the model, which is the one check that
+# proves access -- and means the first alignment does not wait on ~0.5 GB.
+printf '[5/8] model       ... '
+MODEL="Muno459/fastconformer-quran"
+fetch_model() {
+  # 0 downloaded, 2 no usable token, 3 token without access, 1 anything else.
+  "$VENV/bin/python" - "$MODEL" >>"$LOG" 2>&1 <<'PY'
+import sys
+from huggingface_hub import hf_hub_download
+try:
+    hf_hub_download(repo_id=sys.argv[1], filename="nemo/fastconformer-quran.nemo")
+except Exception as exc:
+    print(f"{type(exc).__name__}: {exc}")
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    sys.exit(2 if status == 401 else 3 if status == 403 else 1)
+PY
+}
+hf_login() {
+  HF_LOGIN_TOKEN="$1" "$VENV/bin/python" -c 'import os; from huggingface_hub import login; login(token=os.environ["HF_LOGIN_TOKEN"])' >>"$LOG" 2>&1
+}
+MODEL_HOWTO="accept its terms while signed in at https://huggingface.co/$MODEL, and make a read token at https://huggingface.co/settings/tokens"
+if [[ ! -x "$VENV/bin/python" ]] || ! "$VENV/bin/python" -c 'import huggingface_hub' >/dev/null 2>&1; then
   echo "skipped (no sidecar)"
-elif "$HF" auth whoami >/dev/null 2>&1; then
-  echo "logged in"
-elif [[ -n "${HF_TOKEN:-}" ]] && "$HF" auth login --token "$HF_TOKEN" >>"$LOG" 2>&1; then
-  echo "logged in with HF_TOKEN"
+  todo "Once the sidecar installs, run this again: it sets up the alignment model, which needs a Hugging Face account."
 else
-  echo "not logged in"
-  todo "The alignment model is gated: accept its terms at https://huggingface.co/Muno459/fastconformer-quran, make a read token at https://huggingface.co/settings/tokens, then run: $HF auth login"
+  [[ -n "${HF_TOKEN:-}" ]] && hf_login "$HF_TOKEN"
+  fetch_model; RC=$?
+  # Asked for here, where it can be fixed on the spot, rather than left for the
+  # first alignment to fail over.
+  while (( RC == 2 || RC == 3 )) && [[ -t 0 ]]; do
+    echo
+    if (( RC == 2 )); then
+      echo "      The alignment model is gated. To use it, $MODEL_HOWTO."
+      read -r -s -p "      Paste the token (blank to skip): " TOKEN; echo
+      [[ -n "$TOKEN" ]] || break
+      hf_login "$TOKEN" || { echo "      Hugging Face did not accept that token."; continue; }
+    else
+      echo "      This token's account has not accepted the model's terms: open https://huggingface.co/$MODEL, sign in and accept."
+      read -r -p "      Press Enter once accepted (or type skip): " ANSWER
+      [[ "$ANSWER" == skip ]] && break
+    fi
+    printf '[5/8] model       ... '
+    fetch_model; RC=$?
+  done
+  case $RC in
+    0) echo "downloaded, access confirmed" ;;
+    2) echo "not logged in to Hugging Face"
+       todo "Alignment will fail until the gated model is reachable: $MODEL_HOWTO, then run this again (or HF_TOKEN=hf_... ./install.sh)." ;;
+    3) echo "this Hugging Face account has not accepted the model's terms"
+       todo "Accept the model's terms at https://huggingface.co/$MODEL with the account whose token this machine holds, then run this again." ;;
+    *) echo "download failed:"; show_log_tail
+       todo "The alignment model did not download (see above). Run this again once it is fixed." ;;
+  esac
 fi
 
 # --- database -------------------------------------------------------------------
