@@ -147,6 +147,8 @@ export const en = {
 
     matcherLabel: 'AI Matcher:',
     matcherUses: (technical: string) => `Uses ${technical}`,
+    skipAlignerTimed: 'Built-in reciters: use their published timings only, without the aligner',
+    skipAlignerTimedHelp: 'Faster, and works without the alignment model. Each ayah is one caption, split only where the reciter repeats; the aligner would also split a long ayah where the reciter pauses. Uploads are still aligned.',
     matcherLocal: 'Local',
     matcherLocalTechnical: 'local forced alignment',
     matcherLocalBlurb:
@@ -277,6 +279,7 @@ export const en = {
       `In the queue, number ${position}${wait ? ` -- about ${wait}` : ''}. Other people are matching first.`,
     aligning:
       'Force-aligning the selected ayah range against your audio (first run loads the model — may take longer)...',
+    timingPublished: 'Timing the passage from the reciter\u2019s published word timings...',
     sendingToGemini: 'Sending audio to Gemini for analysis...',
     notConfigured: 'AI matcher is not configured. Use manual matching for this audio.',
     failed: 'AI matcher failed. Use manual matching, or configure the server-side AI matcher and try again.',
@@ -386,10 +389,10 @@ export const en = {
     items: {
       'night-mosque': { name: 'Night Mosque', note: 'The studio’s default look: the mushaf on a moonlit mosque, soft blue accents.' },
       'gold-kaaba': { name: 'Gold Kaaba', note: 'Warm gold over the Kaaba, lightly blurred and dimmed, under a mushaf-style framed heading.' },
-      starlight: { name: 'Starlight', note: 'Digital Khatt in the lower third of a starry sky, no card, periwinkle accents.' },
-      minimal: { name: 'Minimal', note: 'No card, no badge, no visualiser: large Arabic straight on a blurred sky.' },
+      starlight: { name: 'Starlight', note: 'Digital Khatt straight on a starry sky, no card, periwinkle accents.' },
+      minimal: { name: 'Minimal', note: 'No card and no visualiser, just a small corner tag: large Arabic straight on a blurred sky.' },
       'madinah-green': { name: 'Madinah Green', note: 'The Prophet’s Mosque with green accents, the calligraphic surah heading, and the Arabic and translation on cards of their own.' },
-      indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq near the top under a moonlit minaret, a small corner tag, amber accents.' }
+      indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq on a card under a moonlit minaret, a small corner tag, amber accents.' }
     }
   },
   tour: {
@@ -675,8 +678,6 @@ export const en = {
     layoutLabel: 'Layout:',
     layouts: {
       card: 'Centred card',
-      'lower-third': 'Lower third',
-      top: 'Top',
       open: 'No card',
       split: 'Arabic and translation apart'
     },

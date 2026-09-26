@@ -17,6 +17,9 @@ describe('frameLayout', () => {
   it('reads anything unknown as the card', () => {
     expect(asFrameLayout('sideways')).toBe('card');
     expect(asFrameLayout(42)).toBe('card');
+    // Removed layouts: a project saved with one opens as the card.
+    expect(asFrameLayout('lower-third')).toBe('card');
+    expect(asFrameLayout('top')).toBe('card');
     expect(asFrameLayout('split')).toBe('split');
   });
 

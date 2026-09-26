@@ -15,6 +15,8 @@ import { createBooleanPreference } from '@/lib/uiPreference';
 
 /** Module scope, so every render subscribes to the same store. */
 const ripplePreference = createBooleanPreference('qc-ripple-edits', true);
+/** Local + QUL: time a built-in reciter from its published timings alone, without the aligner. */
+const skipAlignerPreference = createBooleanPreference('qc-qul-skip-aligner', true);
 
 /**
  * Whether to show tools that only mean something next to this repository.
@@ -188,6 +190,11 @@ export default function VideoCreatorPage() {
     ripplePreference.getServerSnapshot
   );
   const toggleRippleEdits = () => ripplePreference.set(!rippleEdits);
+  const skipAlignerSetting = useSyncExternalStore(
+    skipAlignerPreference.subscribe,
+    skipAlignerPreference.get,
+    skipAlignerPreference.getServerSnapshot
+  );
   const [showTrimModal, setShowTrimModal] = useState(false);
   /** Set when the upload was a video file, so its footage can double as the background. */
   const [uploadIsVideo, setUploadIsVideo] = useState(false);
@@ -927,7 +934,7 @@ export default function VideoCreatorPage() {
   const MAX_ALIGN_SPAN_SEC = 2400;
 
   const runAutoMatch = async (
-    source: { kind: 'file'; file: File } | { kind: 'url'; url: string; start: number; end: number },
+    source: { kind: 'file'; file: File } | { kind: 'url'; url: string; start: number; end: number; skipAligner?: boolean },
     /**
      * Vetoes a result before it replaces the timeline. Used by the automatic
      * pass after Load, which must never leave someone worse off than the
@@ -937,7 +944,8 @@ export default function VideoCreatorPage() {
   ) => {
     setIsMatching(true);
     setMatchStatus({
-      text: matchProvider === 'gemini' ? t.match.sendingToGemini : t.match.aligning,
+      text: matchProvider === 'gemini' ? t.match.sendingToGemini
+        : source.kind === 'url' && source.skipAligner ? t.match.timingPublished : t.match.aligning,
       tone: 'info'
     });
 
@@ -952,6 +960,7 @@ export default function VideoCreatorPage() {
       // server times the captions from them and only asks the aligner where the
       // reciter paused. Any other audio is aligned as before.
       formData.append('timing', 'published');
+      if (source.skipAligner) formData.append('aligner', 'skip');
     }
     formData.append('surah', String(selectedSurah));
     formData.append('start', String(ayahStart));
@@ -1114,6 +1123,13 @@ export default function VideoCreatorPage() {
         text: t.match.passageTooLong(Math.round((end - start) / 60), Math.round(MAX_ALIGN_SPAN_SEC / 60)),
         tone: 'error'
       });
+      return;
+    }
+
+    // Local + QUL can be set to leave the aligner out for a timed reciter: the
+    // published timings alone, one caption per ayah, and no model needed.
+    if (timed && matchProvider === 'qul' && skipAlignerSetting) {
+      await runAutoMatch({ kind: 'url', url, start, end, skipAligner: true });
       return;
     }
 
@@ -2534,6 +2550,20 @@ export default function VideoCreatorPage() {
                       })}
                     </div>
                     <p className="text-[11px] text-slate-400 mt-1.5">{selectedMatchOption.blurb}</p>
+                    {matchProvider === 'qul' && (
+                      <label className="flex items-start gap-2 mt-1.5 text-[11px] text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={skipAlignerSetting}
+                          onChange={e => skipAlignerPreference.set(e.target.checked)}
+                          className="mt-0.5 accent-amber-500"
+                        />
+                        <span>
+                          <span className="block">{t.source.skipAlignerTimed}</span>
+                          <span className="block text-slate-400">{t.source.skipAlignerTimedHelp}</span>
+                        </span>
+                      </label>
+                    )}
                     {!selectedMatchOption.ready && selectedMatchOption.fix && (
                       <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
                         {selectedMatchOption.fix}

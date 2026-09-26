@@ -957,8 +957,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const withTranslation = Boolean(config.showTranslation && translationBlocks.length);
         const maxTextWidth = cardWidth - 80;
         const ayahFontSize = (config.ayahNumberFontSize || 34) * (height / 1920);
-        // Ayah numeral, the gap around the divider, and the room under it.
-        const belowArabic = ayahFontSize + 48;
+        // Ayah numeral, the gap around the divider, and the room under it. The
+        // split layout has neither under the Arabic: its numeral sits in the gap
+        // between the two cards, where it joins them rather than leaving the
+        // Arabic card with a numeral and an empty stretch beneath it.
+        const belowArabic = translationBox ? 0 : ayahFontSize + 48;
         const cardPadding = 40;
 
         /**
@@ -1095,22 +1098,35 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
         // The numeral is a label too. The mushaf faces have no Latin digits, so
         // it was drawn in whatever serif the browser falls back to.
-        ctx.font = `600 ${ayahFontSize}px '${LABEL_FAMILY}', serif`;
-        ctx.fillStyle = goldAccent;
         // U+FD3E opens and U+FD3F closes when read right-to-left, despite their
         // Unicode names ("ornate left/right parenthesis") suggesting the reverse.
-        ctx.fillText(`﴾ ${activeVerse.verseNumber} ﴿`, width / 2, y);
-        y += ayahFontSize + 24;
+        const numeral = `﴾ ${activeVerse.verseNumber} ﴿`;
+        ctx.fillStyle = goldAccent;
+        if (translationBox) {
+          // Centred in the gap between the cards, and no larger than it.
+          const top = arrangement.text.y + arrangement.text.height;
+          const gap = translationBox.y - top;
+          ctx.font = `600 ${Math.min(ayahFontSize, gap * 0.8)}px '${LABEL_FAMILY}', serif`;
+          ctx.textBaseline = 'middle';
+          if (config.textShadow) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 8; }
+          ctx.fillText(numeral, width / 2, top + gap / 2);
+          ctx.shadowColor = 'transparent';
+          ctx.textBaseline = 'top';
+        } else {
+          ctx.font = `600 ${ayahFontSize}px '${LABEL_FAMILY}', serif`;
+          ctx.fillText(numeral, width / 2, y);
+          y += ayahFontSize + 24;
 
-        ctx.strokeStyle = goldAccent;
-        ctx.globalAlpha = 0.4;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(width / 2 - 120, y);
-        ctx.lineTo(width / 2 + 120, y);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;
-        y += 24;
+          ctx.strokeStyle = goldAccent;
+          ctx.globalAlpha = 0.4;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(width / 2 - 120, y);
+          ctx.lineTo(width / 2 + 120, y);
+          ctx.stroke();
+          ctx.globalAlpha = 1.0;
+          y += 24;
+        }
 
         if (withTranslation) {
           if (translationBox) y = blockTop(translationBox, layout.stackHeight - arabicHeight, cardPadding);

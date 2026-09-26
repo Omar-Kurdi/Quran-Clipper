@@ -12,9 +12,9 @@
  * a small box gets smaller type rather than text off the frame.
  */
 
-export type FrameLayoutId = 'card' | 'lower-third' | 'top' | 'open' | 'split';
+export type FrameLayoutId = 'card' | 'open' | 'split';
 
-export const FRAME_LAYOUTS: FrameLayoutId[] = ['card', 'lower-third', 'top', 'open', 'split'];
+export const FRAME_LAYOUTS: FrameLayoutId[] = ['card', 'open', 'split'];
 
 export const DEFAULT_FRAME_LAYOUT: FrameLayoutId = 'card';
 
@@ -52,10 +52,6 @@ const SHAPES: Record<FrameLayoutId, {
   // Today's arrangement, to the pixel: every project saved before layouts
   // existed has none, and must render exactly as it did.
   card: { text: [0.08, 0.23, 0.84, 0.52], drawsCard: true, badgeY: 0.12, waveY: 0.88 },
-  // The words in the bottom third, the footage left clear above them. The
-  // waveform moves above the card rather than sitting on it.
-  'lower-third': { text: [0.06, 0.6, 0.88, 0.31], drawsCard: true, badgeY: 0.06, waveY: 0.54 },
-  'top': { text: [0.08, 0.13, 0.84, 0.45], drawsCard: true, badgeY: 0.04, waveY: 0.88 },
   // No card at all: a larger box, and the text carries itself on its shadow.
   open: { text: [0.06, 0.2, 0.88, 0.62], drawsCard: false, badgeY: 0.08, waveY: 0.9 },
   // The Arabic and the translation in blocks of their own.
@@ -71,7 +67,10 @@ const SHAPES: Record<FrameLayoutId, {
 const toBox = ([x, y, w, h]: Fractions, width: number, height: number): Box =>
   ({ x: width * x, y: height * y, width: width * w, height: height * h });
 
-/** A stored value as a layout, with anything unknown read as today's card. */
+/**
+ * A stored value as a layout, with anything unknown read as today's card --
+ * including the lower third and top layouts, which were removed.
+ */
 export function asFrameLayout(value: unknown): FrameLayoutId {
   return FRAME_LAYOUTS.includes(value as FrameLayoutId) ? (value as FrameLayoutId) : DEFAULT_FRAME_LAYOUT;
 }

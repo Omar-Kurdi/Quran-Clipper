@@ -181,9 +181,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   default, since a full printed line needs smaller type on a portrait card, and it also draws a caption that runs across a page break. Each colour
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
   picker in the last cell of the grid.
-- **Layouts**, under *Style → Card*: the centred card; a **lower third** that leaves the footage
-  clear above the words; **top**; **no card**, the text set straight on the picture; and the
-  **Arabic and the translation apart**, each on its own card. Each is a set of positions as
+- **Layouts**, under *Style → Card*: the centred card; **no card**, the text set straight on the
+  picture; and the **Arabic and the translation apart**, each on its own card, with the ayah
+  number between them. Each is a set of positions as
   fractions of the frame, so it holds at every aspect ratio, and the text inside is still shrunk
   to fit. A project saved before layouts existed opens as the centred card.
 - **Badge styles**, beside the layout: the **pill**; a **calligraphic heading** in QUL's

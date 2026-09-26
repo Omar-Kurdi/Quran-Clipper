@@ -211,6 +211,10 @@ export async function POST(req: NextRequest) {
     /** Whether the captions were cut at pauses the aligner heard, rather than only per ayah. */
     let pausesFromAudio = false;
 
+    // The studio can ask for the published timings alone (Local + QUL's
+    // setting): no aligner, so each ayah is one caption split only at repeats.
+    const skipAligner = !!published && String(formData.get('aligner') || '') === 'skip';
+
     if (isLocal(provider)) {
       const serviceUrl = defaultAsrServiceUrl();
       try {
@@ -221,7 +225,7 @@ export async function POST(req: NextRequest) {
         const autoDetect = !published && String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
         // The sidecar reads one recording at a time; everyone else waits their
         // turn here, and can see where they stand -- see `matchQueue`.
-        result = await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
+        result = skipAligner ? { segments: [] } : await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
           serviceUrl,
           source: audio instanceof File
             ? { kind: 'file', audio }
