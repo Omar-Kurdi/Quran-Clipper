@@ -13,7 +13,7 @@ import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportRes
 import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
-import { frameLayout, blockTop, textFits } from '@/lib/frameLayout';
+import { frameLayout, blockTop, textFits, splitFits } from '@/lib/frameLayout';
 import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 
 /**
@@ -289,6 +289,9 @@ type CardTextLayout = {
   /** One entry per translation on the card, in the order they are drawn. */
   blocks: TranslationBlockLayout[];
   widest: number;
+  /** The widest Arabic row and the widest translation line, for a split layout's boxes. */
+  arabicWidest: number;
+  translationWidest: number;
   arabicSize: number;
   translationSize: number;
   stackHeight: number;
@@ -1006,11 +1009,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           const arabicLines: MushafRow[] = pageRows
             ?? wrapAll(arabicText, maxTextWidth).map(text => ({ text, family: arabicFamily }));
           const arabicLineHeight = arabicRowPitch(ctx, arabicLines, arabic, arabicFontIn);
-          let widest = 0;
+          let arabicWidest = 0;
           for (const line of arabicLines) {
             ctx.font = arabicFontIn(line.family, arabic);
-            widest = Math.max(widest, ctx.measureText(line.text).width);
+            arabicWidest = Math.max(arabicWidest, ctx.measureText(line.text).width);
           }
+          let translationWidest = 0;
           const blocks: { lines: string[]; rtl: boolean; lineHeight: number }[] = [];
           let translationHeight = 0;
           if (withTranslation) {
@@ -1018,13 +1022,14 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
               ctx.font = block.rtl ? rtlTranslationFont(translation) : translationFont(translation);
               const lines = wrapAll(block.text, maxTextWidth);
               const lineHeight = blockLineHeight(translation, block.rtl);
-              for (const line of lines) widest = Math.max(widest, ctx.measureText(line).width);
+              for (const line of lines) translationWidest = Math.max(translationWidest, ctx.measureText(line).width);
               blocks.push({ lines, rtl: block.rtl, lineHeight });
               translationHeight += lines.length * lineHeight + (index > 0 ? blockGap(translation) : 0);
             });
           }
           return {
-            arabicLines, arabicLineHeight, blocks, widest,
+            arabicLines, arabicLineHeight, blocks, widest: Math.max(arabicWidest, translationWidest),
+            arabicWidest, translationWidest,
             arabicSize: arabic, translationSize: translation,
             stackHeight: arabicLines.length * arabicLineHeight + translationHeight,
           };
@@ -1060,7 +1065,27 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
               arrangement, { arabic, belowArabic, translation: trial.stackHeight - arabic }, cardPadding
             );
           };
-          while (!fits(layout) && arabicSize > MIN_ARABIC_PX) {
+          const halves = (trial: CardTextLayout) => {
+            const arabic = trial.arabicLines.length * trial.arabicLineHeight;
+            const fit = splitFits(arrangement, { arabic, belowArabic, translation: trial.stackHeight - arabic }, cardPadding);
+            return {
+              arabic: fit.arabic && trial.arabicWidest <= maxTextWidth,
+              translation: fit.translation && trial.translationWidest <= maxTextWidth,
+            };
+          };
+          if (translationBox) {
+            // Two boxes, each sized on its own: the Arabic shrinks only for
+            // its card and the translation only for its own.
+            while (!halves(layout).arabic && arabicSize > MIN_ARABIC_PX) {
+              arabicSize -= 1;
+              layout = layoutAt(arabicSize, translationSize);
+            }
+            while (!halves(layout).translation && translationSize > MIN_TRANSLATION_PX) {
+              translationSize = Math.max(MIN_TRANSLATION_PX, translationSize - 0.6);
+              layout = layoutAt(arabicSize, translationSize);
+            }
+          }
+          while (!translationBox && !fits(layout) && arabicSize > MIN_ARABIC_PX) {
             arabicSize -= 1;
             translationSize = Math.max(MIN_TRANSLATION_PX, translationSize - 0.6);
             layout = layoutAt(arabicSize, translationSize);
@@ -1106,7 +1131,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           // Centred in the gap between the cards, and no larger than it.
           const top = arrangement.text.y + arrangement.text.height;
           const gap = translationBox.y - top;
-          ctx.font = `600 ${Math.min(ayahFontSize, gap * 0.8)}px '${LABEL_FAMILY}', serif`;
+          ctx.font = `600 ${Math.min(ayahFontSize * 0.75, gap * 0.7)}px '${LABEL_FAMILY}', serif`;
           ctx.textBaseline = 'middle';
           if (config.textShadow) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 8; }
           ctx.fillText(numeral, width / 2, top + gap / 2);
@@ -1133,7 +1158,26 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           ctx.fillStyle = config.translationColor || '#e2e8f0';
           if (config.textShadow) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 8; }
           layout.blocks.forEach((block, index) => {
-            if (index > 0) y += blockGap(layout.translationSize);
+            if (index > 0) {
+              // A short rule between two translations, in the gap already
+              // there rather than a line of its own.
+              const gap = blockGap(layout.translationSize);
+              const mid = y + (gap - (layout.blocks[index - 1].lineHeight - layout.translationSize)) / 2;
+              const half = 45 * (height / 1920);
+              const centre = config.textAlignment === 'right' ? textX - half
+                : config.textAlignment === 'left' ? textX + half : textX;
+              ctx.save();
+              ctx.shadowColor = 'transparent';
+              ctx.strokeStyle = config.translationColor || '#e2e8f0';
+              ctx.globalAlpha = 0.45;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(centre - half, mid);
+              ctx.lineTo(centre + half, mid);
+              ctx.stroke();
+              ctx.restore();
+              y += gap;
+            }
             ctx.font = block.rtl ? rtlTranslationFont(layout.translationSize) : translationFont(layout.translationSize);
             // Set per block, not once: two translations in one card can run in
             // opposite directions, and the second would otherwise inherit

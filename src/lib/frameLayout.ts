@@ -54,10 +54,11 @@ const SHAPES: Record<FrameLayoutId, {
   card: { text: [0.08, 0.23, 0.84, 0.52], drawsCard: true, badgeY: 0.12, waveY: 0.88 },
   // No card at all: a larger box, and the text carries itself on its shadow.
   open: { text: [0.06, 0.2, 0.88, 0.62], drawsCard: false, badgeY: 0.08, waveY: 0.9 },
-  // The Arabic and the translation in blocks of their own.
+  // The Arabic and the translation in blocks of their own, the same size, with
+  // the ayah number in the gap between them.
   split: {
-    text: [0.08, 0.17, 0.84, 0.38],
-    translation: [0.08, 0.6, 0.84, 0.26],
+    text: [0.08, 0.17, 0.84, 0.325],
+    translation: [0.08, 0.535, 0.84, 0.325],
     drawsCard: true,
     badgeY: 0.07,
     waveY: 0.92,
@@ -109,9 +110,26 @@ export function textFits(
   heights: { arabic: number; belowArabic: number; translation: number },
   padding: number
 ): boolean {
-  const room = (box: Box) => box.height - padding * 2;
   if (!layout.translation) {
-    return heights.arabic + heights.translation <= room(layout.text) - heights.belowArabic;
+    return heights.arabic + heights.translation <= layout.text.height - padding * 2 - heights.belowArabic;
   }
-  return heights.arabic + heights.belowArabic <= room(layout.text) && heights.translation <= room(layout.translation);
+  const halves = splitFits(layout, heights, padding);
+  return halves.arabic && halves.translation;
+}
+
+/**
+ * Whether each half of a split layout fits its own box, separately -- so each
+ * can be sized on its own, and making one smaller never makes the other larger.
+ * Both true for a layout with one box, which `textFits` answers instead.
+ */
+export function splitFits(
+  layout: FrameLayout,
+  heights: { arabic: number; belowArabic: number; translation: number },
+  padding: number
+): { arabic: boolean; translation: boolean } {
+  if (!layout.translation) return { arabic: true, translation: true };
+  return {
+    arabic: heights.arabic + heights.belowArabic <= layout.text.height - padding * 2,
+    translation: heights.translation <= layout.translation.height - padding * 2,
+  };
 }
