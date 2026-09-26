@@ -20,6 +20,9 @@ import { FrameSkeleton } from './Skeleton';
 import { ExportQueuePanel } from './ExportQueuePanel';
 import { useExportQueue } from '@/hooks/useExportQueue';
 import { ServerRendersPanel } from './ServerRendersPanel';
+import { ExportWarnings, type ExportLane } from './ExportWarnings';
+import { RenderCheckPanel } from './RenderCheckPanel';
+import type { RenderCheckInput } from '@/lib/renderCheckRunner';
 import { useServerRenders } from '@/hooks/useServerRenders';
 
 // Re-exported so existing importers of this module keep working; the function
@@ -89,6 +92,10 @@ interface GpuExportModalProps {
    * the recording and any uploaded backgrounds. See `lib/serverRender.ts`.
    */
   buildServerRender: (plan: ExportPlan) => Promise<FormData>;
+  /** The background lane over the render's range, for what to warn about first. */
+  exportLane: ExportLane;
+  /** What the finished file is checked against, on request. */
+  renderCheck: RenderCheckInput;
 }
 
 
@@ -114,7 +121,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   isPreviewing,
   previewProgress,
   exportSeconds,
-  buildServerRender
+  buildServerRender,
+  exportLane,
+  renderCheck
 }) => {
   const t = useT();
   // Report what this machine actually has rather than a hardcoded model name.
@@ -138,6 +147,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [presetId, setPresetId] = useState<string>(() => presetForAspect(aspectRatio).id);
   const [tier, setTier] = useState<QualityTier>('standard');
   const [exportedBlobUrl, setExportedBlobUrl] = useState<string | null>(null);
+  /** The file itself, for the render check to read back. */
+  const [exportedBlob, setExportedBlob] = useState<Blob | null>(null);
   const [renderedMs, setRenderedMs] = useState<number>(0);
   // Whether the finished file is actually watchable, which is not the same
   // question as whether the export succeeded -- see `exportHealth.ts`.
@@ -226,6 +237,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
     setWasOpen(isOpen);
     if (isOpen) {
       setExportedBlobUrl(null);
+      setExportedBlob(null);
       setPreviewUrl(current => { if (current) URL.revokeObjectURL(current); return null; });
       setPreviewFailed(false);
       // Open on the platform that matches the shape the studio is already set
@@ -307,6 +319,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
   const handleExport = () => {
     setExportedBlobUrl(null);
+    setExportedBlob(null);
     onStartExport(plan, (blob, renderMs, health) => {
       // Named here rather than up front: which container was produced is only
       // known once the export has chosen its path.
@@ -317,6 +330,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       );
       setDownloadFileName(fileName);
       const url = URL.createObjectURL(blob);
+      setExportedBlob(blob);
       setExportedBlobUrl(url);
       setRenderedMs(renderMs);
       setVerdict(exportVerdict(health, selectedFps));
@@ -681,6 +695,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 </div>
               )}
 
+              <div className="mb-2 empty:hidden">
+                <ExportWarnings lane={exportLane} offline={fastPath} />
+              </div>
+
               <button
                 onClick={handleExport}
                 className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-slate-950 font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-98"
@@ -798,6 +816,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               </span>
             </button>
 
+            {/* Before it is posted: the faults found by hand in earlier
+                renders, measured on the file itself. */}
+            {exportedBlob && (
+              <RenderCheckPanel key={exportedBlobUrl} url={exportedBlobUrl} blob={exportedBlob} input={renderCheck} />
+            )}
+
             {/* Beside the download rather than anywhere else: the next thing
                 that happens to this file is an upload form. */}
             <PublishCaption
@@ -810,7 +834,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
             {/* Renders are repeatable -- the previous blob URL is left alive on
                 purpose so the saved export record keeps working. */}
             <button
-              onClick={() => setExportedBlobUrl(null)}
+              onClick={() => { setExportedBlobUrl(null); setExportedBlob(null); }}
               className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
             >
               <Film className="w-3.5 h-3.5 text-amber-400" />

@@ -49,7 +49,8 @@ export async function saveProject(payload: Record<string, unknown>, mode: Studio
   const now = new Date().toISOString();
   const row: Row = {
     ...payload,
-    id: newId(),
+    // A render saves under an id it chose, so its export can name the project.
+    id: typeof payload.id === 'string' && payload.id ? payload.id : newId(),
     fontArabic: resolveArabicFont(payload.fontArabic as string | undefined),
     createdAt: now,
     updatedAt: now,

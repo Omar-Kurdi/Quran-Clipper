@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveArabicFont } from '@/lib/quranData';
 import { desc, eq, isNull, lt, or } from 'drizzle-orm';
 import { BACKGROUND_MODES } from '@/lib/backgroundTimeline';
+import { asBadgeStyle } from '@/lib/surahBadge';
+import { asFrameLayout } from '@/lib/frameLayout';
 import { describeDbError } from '@/lib/dbError';
 import { needsContentSync, syncProjectContent, CONTENT_SYNC_MAX_AGE_MS } from '@/lib/contentSync';
 
@@ -178,6 +180,8 @@ export async function POST(req: NextRequest) {
       mushafLines: body.mushafLines ?? false,
       showWaveform: body.showWaveform ?? true,
       showSurahBadge: body.showSurahBadge ?? true,
+      badgeStyle: asBadgeStyle(body.badgeStyle),
+      layout: asFrameLayout(body.layout),
       surahBadgeText: body.surahBadgeText || '',
       surahBadgeSubtitleText: body.surahBadgeSubtitleText || '',
       bgType: body.bgType || 'video',

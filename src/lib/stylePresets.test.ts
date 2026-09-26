@@ -82,4 +82,15 @@ describe('applyStylePreset', () => {
     expect(matchingPreset(project)).toBeNull();
     expect(matchingPreset(applied)).toBe(preset.id);
   });
+
+  it('carries a layout and a badge style', () => {
+    expect(applied.layout).toBe(preset.look.layout);
+    expect(applied.badgeStyle).toBe(preset.look.badgeStyle);
+  });
+
+  it('matches a project saved before layouts existed as the card and the pill', () => {
+    const defaults = STYLE_PRESETS.find(p => p.look.layout === 'card' && p.look.badgeStyle === 'pill')!;
+    const { layout: _layout, badgeStyle: _badge, ...older } = applyStylePreset(project, defaults);
+    expect(matchingPreset(older)).toBe(defaults.id);
+  });
 });

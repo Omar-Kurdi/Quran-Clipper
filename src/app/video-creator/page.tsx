@@ -36,6 +36,8 @@ import {
   backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName, trimLane,
   BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
+import { asBadgeStyle, DEFAULT_BADGE_STYLE } from '@/lib/surahBadge';
+import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -403,6 +405,8 @@ export default function VideoCreatorPage() {
     mushafLines: false,
     showWaveform: true,
     showSurahBadge: true,
+    badgeStyle: DEFAULT_BADGE_STYLE,
+    layout: DEFAULT_FRAME_LAYOUT,
     surahBadgeText: '',
     surahBadgeSubtitleText: '',
     bgType: 'video',
@@ -1533,37 +1537,43 @@ export default function VideoCreatorPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  /** The project as it stands, in the shape a save sends. */
+  const currentProjectPayload = () => buildProjectPayload({
+    surahNumber: selectedSurah,
+    surahNameArabic,
+    surahNameEnglish,
+    ayahStart,
+    ayahEnd,
+    reciterId: selectedReciter,
+    reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || 'Abdul Rahman Al-Sudais',
+    audioUrl,
+    audioDurationSeconds: audioDuration,
+    audioFileName: customAudioFile ? uploadOriginalName : '',
+    audioKey,
+    trimWindow,
+    verses,
+    // An uploaded background is a `blob:` url that dies with this tab, so
+    // what goes to the row is the library's id for the file instead. A
+    // pasted link is already durable and passes through untouched.
+    config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
+  });
+
+  /**
+   * The audio goes to the browser before the row goes to the server, so a
+   * project never claims a recording that was not stored. A refusal here is
+   * almost always quota; the row still saves, and the file name and trim
+   * window in it are what let the recitation be offered back by hand.
+   */
+  const storeUploadFor = async (payload: Record<string, unknown>) => {
+    if (!customAudioFile || !audioKey) return { payload, storedAudio: true };
+    const storedAudio = await storeProjectAudio(audioKey, customAudioFile);
+    return { payload: storedAudio ? payload : { ...payload, audioKey: '' }, storedAudio };
+  };
+
   const handleSaveProject = async () => {
     setSaveStatus({ text: t.header.saving, kind: 'pending' });
     try {
-      // The audio goes to the browser before the row goes to the server, so a
-      // project never claims a recording that was not stored. A refusal here is
-      // almost always quota; the row still saves, and the file name and trim
-      // window in it are what let the recitation be offered back by hand.
-      let storedAudio = true;
-      if (customAudioFile && audioKey) {
-        storedAudio = await storeProjectAudio(audioKey, customAudioFile);
-      }
-      const payload = buildProjectPayload({
-        surahNumber: selectedSurah,
-        surahNameArabic,
-        surahNameEnglish,
-        ayahStart,
-        ayahEnd,
-        reciterId: selectedReciter,
-        reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || 'Abdul Rahman Al-Sudais',
-        audioUrl,
-        audioDurationSeconds: audioDuration,
-        audioFileName: customAudioFile ? uploadOriginalName : '',
-        audioKey: storedAudio ? audioKey : '',
-        trimWindow,
-        verses,
-        // An uploaded background is a `blob:` url that dies with this tab, so
-        // what goes to the row is the library's id for the file instead. A
-        // pasted link is already durable and passes through untouched.
-        config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
-      });
-
+      const { payload, storedAudio } = await storeUploadFor(currentProjectPayload());
       const res = await saveProject(payload, studio.mode);
 
       if (res.ok) {
@@ -1880,18 +1890,55 @@ export default function VideoCreatorPage() {
    */
   const exportedResolution = useRef('1080x1920');
 
+  /**
+   * The project each render was made from, so any exported video can be
+   * reopened and rendered again. Taken when the render starts -- the export
+   * queue changes the shape between jobs -- and saved when it finishes, as a
+   * project of its own: a render never overwrites one saved by hand.
+   */
+  const renderedProject = useRef<Record<string, unknown> | null>(null);
+  /**
+   * What has been saved this session, by content, so rendering the same thing
+   * twice lists it once. A render in another shape is another project.
+   */
+  const savedRenders = useRef(new Map<string, string>());
+
+  /** Saves the project behind a render, and says under which id. */
+  const saveRenderedProject = async (planned: Record<string, unknown> | null, fileName: string): Promise<string | null> => {
+    if (!planned) return null;
+    const content = JSON.stringify(planned);
+    const saved = savedRenders.current.get(content);
+    if (saved) return saved;
+    const id = `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const { payload } = await storeUploadFor(planned);
+    const res = await saveProject({ ...payload, id, title: `${planned.title} → ${fileName}` }, studio.mode).catch(() => null);
+    if (!res?.ok) return null;
+    savedRenders.current.set(content, id);
+    return id;
+  };
+
   const handleStartExport = (
     plan: ExportPlan,
     onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
   ) => {
     exportedResolution.current = `${plan.width}x${plan.height}`;
+    renderedProject.current = currentProjectPayload();
     startExport(audioElementRef.current, { start: exportRange.start, end: exportRange.end }, plan, onComplete);
   };
 
-  /** What the export dialog would render here, as a job for the server. See `lib/serverRender.ts`. */
-  const buildServerRender = (plan: ExportPlan) => {
+  /**
+   * What the export dialog would render here, as a job for the server. See
+   * `lib/serverRender.ts`. The project is saved as the job is sent -- the tab
+   * may be closed long before the file is ready -- and the job carries its id
+   * for the export log.
+   */
+  const buildServerRender = async (plan: ExportPlan) => {
     const audio = audioElementRef.current;
     const fileName = exportFileName(surahNameEnglish, clipPassage.surahNumber, clipPassage.start, clipPassage.end, 'mp4');
+    const projectId = await saveRenderedProject(
+      { ...currentProjectPayload(), aspectRatio: plan.aspectRatio },
+      withAspect(fileName, plan.aspectRatio)
+    );
     return buildRenderForm({
       config: { ...canvasConfig, aspectRatio: plan.aspectRatio },
       verses,
@@ -1907,8 +1954,29 @@ export default function VideoCreatorPage() {
       plan: { width: plan.width, height: plan.height, fps: plan.fps, bitrate: plan.bitrate },
       fileName: withAspect(fileName, plan.aspectRatio),
       title: `${surahNameEnglish} GPU Clip`,
+      projectId: projectId ?? undefined,
     }, audio?.currentSrc || audio?.src || '');
   };
+
+  /** The background lane over what is about to be rendered, for the export dialog to check. */
+  const exportLane = useMemo(() => ({
+    segments: bgSegments,
+    handCut: canvasConfig.bgMode === 'custom',
+    start: exportRange.start,
+    end: exportRange.end,
+  }), [bgSegments, canvasConfig.bgMode, exportRange.start, exportRange.end]);
+
+  /** What a finished render is checked against: see `lib/renderCheck.ts`. */
+  const renderCheckInput = useMemo(() => ({
+    range: { start: exportRange.start, end: exportRange.end },
+    fps: canvasConfig.fps,
+    sourceUrl: customAudioUrl || audioUrl,
+    sourceDuration: audioDuration,
+    lane: bgSegments,
+    layout: canvasConfig.layout,
+    overlayOpacity: canvasConfig.bgOverlayOpacity,
+  }), [exportRange.start, exportRange.end, canvasConfig.fps, customAudioUrl, audioUrl, audioDuration,
+      bgSegments, canvasConfig.layout, canvasConfig.bgOverlayOpacity]);
 
   /** The frame the finished file has, whichever path produced it. */
   const renderedResolution = () => {
@@ -1918,10 +1986,14 @@ export default function VideoCreatorPage() {
 
   const handleSaveExportRecord = async ({ fileName, fileSizeBytes, durationSec, renderMs }: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => {
     try {
+      const projectId = await saveRenderedProject(renderedProject.current, fileName);
+      // A public studio keeps no render log; the project is in this browser.
+      if (studio.mode === 'public') return;
       await fetch('/api/exports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          projectId,
           title: `${surahNameEnglish} GPU Clip`,
           fileName,
           fileSizeBytes,
@@ -2066,6 +2138,8 @@ export default function VideoCreatorPage() {
       mushafLines: proj.mushafLines ?? false,
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
+      badgeStyle: asBadgeStyle(proj.badgeStyle),
+      layout: asFrameLayout(proj.layout),
       surahBadgeText: proj.surahBadgeText || '',
       surahBadgeSubtitleText: proj.surahBadgeSubtitleText || '',
       bgType: proj.bgType || 'video',
@@ -3000,6 +3074,8 @@ export default function VideoCreatorPage() {
         isPreviewing={previewing}
         previewProgress={previewProgress}
         buildServerRender={buildServerRender}
+        exportLane={exportLane}
+        renderCheck={renderCheckInput}
       />
 
       {/* Saved Projects Drawer */}

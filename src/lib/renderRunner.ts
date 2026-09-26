@@ -20,7 +20,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { inputPath, listJobs, newKey, outputPath, picturePath, readJob, readSpec, updateJob, type StoredJob } from './renderJobs';
-import { muxArgs } from './serverRender';
+import { muxArgs, type RenderSpec } from './serverRender';
 
 /** No word from the render page for this long and it is taken to have died. */
 const STALL_MS = 120_000;
@@ -177,16 +177,17 @@ export const studioAuth = (): Record<string, string> =>
   (process.env.STUDIO_TOKEN ? { Authorization: `Bearer ${process.env.STUDIO_TOKEN}` } : {});
 
 /** The export log's note that this render happened, as the studio writes it for a tab render. */
-async function recordExport(job: StoredJob, aspectRatio: string) {
+async function recordExport(job: StoredJob, spec: RenderSpec) {
   try {
     await fetch(new URL('/api/exports', state.origin), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...studioAuth() },
       body: JSON.stringify({
+        projectId: spec.projectId ?? null,
         title: job.title,
         fileName: job.fileName,
         fileSizeBytes: job.bytes,
-        aspectRatio,
+        aspectRatio: spec.config.aspectRatio,
         duration: Math.round(job.durationSec),
         resolution: `${job.width}x${job.height}`,
         fps: job.fps,
@@ -216,7 +217,7 @@ async function finish(job: StoredJob, startedAt: number) {
   const done = await updateJob(job.id, current => (current.status === 'finishing'
     ? { status: 'done', progress: 100, bytes: statSync(outputPath(job)).size, elapsedMs: Date.now() - startedAt }
     : null));
-  if (done?.status === 'done') await recordExport(done, spec.config.aspectRatio);
+  if (done?.status === 'done') await recordExport(done, spec);
 }
 
 async function run(job: StoredJob) {

@@ -52,6 +52,11 @@ export interface BackgroundClip {
   width: number;
   height: number;
   /**
+   * How the frames are read: decoded in order, or by seeking an element --
+   * which works, but costs a seek per frame. Said before an export, not after.
+   */
+  readsBy: 'decoder' | 'seeking';
+  /**
    * The frame covering `seconds` into the clip. Times must not go backwards
    * except to loop, which is detected and restarts the decode.
    */
@@ -140,7 +145,7 @@ function looksLikeIsoBmff(bytes: ArrayBuffer): boolean {
  * past that is holding a closed frame either way.
  */
 /** A video element with the clip loaded, or null when the browser refuses it too. */
-async function loadElement(url: string): Promise<HTMLVideoElement | null> {
+export async function loadElement(url: string): Promise<HTMLVideoElement | null> {
   const video = document.createElement('video');
   video.crossOrigin = 'anonymous';
   video.muted = true;
@@ -159,7 +164,7 @@ async function loadElement(url: string): Promise<HTMLVideoElement | null> {
 }
 
 /** Moves the element to `seconds`, resolving when the frame there is showing. */
-function seekTo(video: HTMLVideoElement, seconds: number): Promise<void> {
+export function seekTo(video: HTMLVideoElement, seconds: number): Promise<void> {
   return new Promise<void>(resolve => {
     // An exact re-ask fires no `seeked` at all, and waiting for one would hang
     // the render on a background that simply has not moved yet.
@@ -193,6 +198,7 @@ async function openSeekingClip(url: string): Promise<BackgroundClip | null> {
     duration: Number.isFinite(video.duration) ? video.duration : 0,
     width: video.videoWidth,
     height: video.videoHeight,
+    readsBy: 'seeking',
     close() {
       held?.close();
       held = null;
@@ -425,6 +431,7 @@ export async function openBackgroundClip(url: string): Promise<BackgroundClip | 
     duration,
     width,
     height,
+    readsBy: 'decoder',
     close() {
       queue.forEach(frame => frame.close());
       queue = [];

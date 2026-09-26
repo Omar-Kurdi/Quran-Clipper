@@ -5,7 +5,7 @@ import type { StudioMode } from '@/lib/studioMode';
 
 export interface StudioConfig {
   mode: StudioMode;
-  /** Arabic faces whose files are not on this server. */
+  /** Arabic faces whose files are not on this server, and `surah-name` when the badge face is not. */
   missingFonts: ReadonlySet<string>;
 }
 

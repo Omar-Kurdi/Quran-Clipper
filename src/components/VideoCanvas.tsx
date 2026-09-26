@@ -4,7 +4,7 @@ import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallba
 import { VerseData, arabicFontFamily, usableArabicFont } from '@/lib/quranData';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import {
-  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY, QPC_V2,
+  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY, QPC_V2, SURAH_NAME_FAMILY,
   type MushafRow
 } from '@/lib/mushafFonts';
 import { blurPath } from '@/lib/glBlur';
@@ -13,6 +13,8 @@ import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportRes
 import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
+import { frameLayout, blockTop, textFits } from '@/lib/frameLayout';
+import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle } from '@/lib/surahBadge';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
@@ -79,8 +81,12 @@ export interface VideoCanvasConfig {
   translationFollowsWords?: boolean;
   showWaveform: boolean;
   showSurahBadge: boolean;
+  /** How the badge is drawn: see `BADGE_STYLES`. Absent reads as the pill every older project has. */
+  badgeStyle?: string;
   surahBadgeText: string;
   surahBadgeSubtitleText: string;
+  /** Where the text sits on the frame: see `FRAME_LAYOUTS`. Absent reads as the centred card. */
+  layout?: string;
   bgType: string;
   bgUrl: string;
   /** Extra backgrounds for the non-single modes. `bgUrl` stays the single-background case. */
@@ -212,6 +218,13 @@ const MIN_TRANSLATION_PX = 10;
 const ARABIC_SAMPLE = 'بِسْمِ ٱللَّهِ ﴾١٢٣﴿ 0123456789';
 
 /**
+ * The calligraphic badge's face. The encoder paints without waiting for fonts,
+ * so a render starts only once this has landed -- before it, the ligature is
+ * never formed and the frame shows the literal `surah009`.
+ */
+const SURAH_NAME_FONT_SPEC: [string, string] = [`60px '${SURAH_NAME_FAMILY}'`, 'surah001'];
+
+/**
  * Row pitch for a block of fully vocalised Arabic.
  *
  * A flat multiple of the type size cannot know how far a face stacks its
@@ -325,6 +338,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   // The face this installation can actually draw -- see `usableArabicFont`.
   const { missingFonts } = useStudioConfig();
   const arabicFontId = usableArabicFont(config.fontArabic, missingFonts);
+  const badgeStyle = usableBadgeStyle(config.badgeStyle, missingFonts);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bgMediaRef = useRef<BackgroundMedia | null>(null);
   const isExportingRef = useRef<boolean>(false);
@@ -523,6 +537,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       [`bold 60px '${LABEL_FAMILY}'`, ARABIC_SAMPLE],
       [`600 60px '${LABEL_FAMILY}'`, '0123456789'],
       [`60px '${config.fontTranslation}'`, 'Ag'],
+      // Named only when drawn: a face nothing asks for is never fetched.
+      ...(badgeStyle === 'calligraphic' ? [SURAH_NAME_FONT_SPEC] : []),
     ];
     Promise.all(
       wanted.map(([spec, sample]) => document.fonts.load(spec, sample).catch(() => []))
@@ -531,7 +547,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       textLayoutCache.current.clear();
     });
     return () => { cancelled = true; };
-  }, [arabicFontId, config.fontTranslation]);
+  }, [arabicFontId, config.fontTranslation, badgeStyle]);
 
   /**
    * Register and fetch the mushaf page fonts this project needs.
@@ -828,6 +844,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
 
       const goldAccent = config.accentColor || '#b8c7dc';
+      const arrangement = frameLayout(config.layout, width, height);
 
       // 3. Audio waveform
       //
@@ -843,7 +860,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const barCount = 48;
         const barWidth = (width * 0.7) / barCount;
         const startX = (width - barCount * barWidth) / 2;
-        const waveY = height * 0.88;
+        const waveY = arrangement.waveY;
         for (let i = 0; i < barCount; i++) {
           const index = Math.floor((i / barCount) * (bufferLength / 2));
           const value = dataArray[index] || 0;
@@ -861,109 +878,39 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
 
       // 4. Surah badge
+      //
+      // Ordinary text -- a name, a bullet, a range -- so it draws in the label
+      // face, not a Quran one: the mushaf faces carry no Latin. The calligraphic
+      // style is the exception, and brings QUL's surah-name face of its own.
       if (config.showSurahBadge) {
-        ctx.save();
-        // Everything else on the canvas scales with height; this badge used a
-        // fixed 22px on a 1080-wide frame, which rendered as an illegible strip
-        // and could overflow its own plate on a long surah name.
-        const scale = height / 1920;
-        const badgeWidth = width * 0.72;
-        const badgeX = (width - badgeWidth) / 2;
-        const badgeY = height * 0.12;
-
-        const firstVK = verses[0]?.verseKey;
-        const lastVK = verses[verses.length - 1]?.verseKey;
-        const range = firstVK && lastVK
-          ? firstVK.split(':')[0] === lastVK.split(':')[0]
-            ? `${firstVK}-${lastVK.split(':')[1]}`
-            : `${firstVK} → ${lastVK}`
-          : `${surahNumber}:${ayahStart}-${ayahEnd}`;
-        const title = config.surahBadgeText?.trim() || `سُورَةُ ${surahNameArabic} • ${surahNameEnglish} (${range})`;
-        const subtitle = config.surahBadgeSubtitleText?.trim() || '';
-
-        // The badge is ordinary text -- a name, a bullet, a range -- so it
-        // draws in the studio's label face, not a Quran one: the mushaf faces
-        // carry no Latin, and "Ghafir (40:13)" fell through to the browser's
-        // default serif. QUL's calligraphic surah-name font could replace the
-        // Arabic half of it; see FutureIdeas.md.
-        const titleFamily = LABEL_FAMILY;
-        // Shrink to fit rather than spill past the plate.
-        let titleSize = 34 * scale;
-        const innerWidth = badgeWidth - 44 * scale;
-        ctx.font = `bold ${titleSize}px '${titleFamily}', serif`;
-        while (ctx.measureText(title).width > innerWidth && titleSize > 16 * scale) {
-          titleSize -= scale;
-          ctx.font = `bold ${titleSize}px '${titleFamily}', serif`;
-        }
-        const subtitleSize = 20 * scale;
-
-        // Place the text by where its glyphs actually are, not by the baseline
-        // convention. `textBaseline: 'middle'` centres on the font's em box,
-        // and Amiri's Arabic ink -- harakat and all -- sits well above that:
-        // measured on the default title it put the text 8px high in a 68px
-        // plate and pushed the diacritics of سُورَةُ through the gold border.
-        // actualBoundingBox* is where the glyphs really land.
-        const titleFont = `bold ${titleSize}px '${titleFamily}', serif`;
-        const subtitleFont = `600 ${subtitleSize}px 'Inter', sans-serif`;
-        const inkHeight = (text: string, font: string) => {
-          ctx.font = font;
-          const m = ctx.measureText(text);
-          return { ascent: m.actualBoundingBoxAscent, descent: m.actualBoundingBoxDescent };
-        };
-        const titleInk = inkHeight(title, titleFont);
-        const subtitleInk = subtitle ? inkHeight(subtitle, subtitleFont) : { ascent: 0, descent: 0 };
-        const stackGap = subtitle ? 8 * scale : 0;
-        const contentHeight =
-          titleInk.ascent + titleInk.descent + stackGap + subtitleInk.ascent + subtitleInk.descent;
-
-        // The plate keeps its old height so the badge doesn't resize itself
-        // with every change of wording; the max() is only a floor, for a title
-        // whose ink genuinely cannot fit inside the border.
-        const badgeHeight = Math.max(
-          subtitle ? titleSize + subtitleSize + 34 * scale : titleSize + 34 * scale,
-          contentHeight + 12 * scale
-        );
-
-        // Darker plate than before: the badge sits over arbitrary footage, so
-        // it has to carry its own contrast rather than hope the frame is dark.
-        ctx.fillStyle = 'rgba(6, 9, 16, 0.74)';
-        ctx.strokeStyle = goldAccent;
-        ctx.lineWidth = Math.max(1, 2 * scale);
-        drawRoundRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, badgeHeight / 2);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'alphabetic';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-        ctx.shadowBlur = 6 * scale;
-
-        // Centre the whole stack's ink box in the plate, then sit each line on
-        // its own baseline within it.
-        let inkTop = badgeY + (badgeHeight - contentHeight) / 2;
-        ctx.font = titleFont;
-        ctx.fillStyle = goldAccent;
-        ctx.fillText(title, width / 2, inkTop + titleInk.ascent);
-        if (subtitle) {
-          inkTop += titleInk.ascent + titleInk.descent + stackGap;
-          ctx.font = subtitleFont;
-          ctx.fillStyle = 'rgba(237, 241, 247, 0.92)';
-          ctx.fillText(subtitle, width / 2, inkTop + subtitleInk.ascent);
-        }
-        ctx.restore();
+        paintSurahBadge(ctx, {
+          // Until its face has landed the heading would draw as the literal
+          // `surah001`, so the preview shows the pill for that moment. A render
+          // waits for the face before it starts, so this never reaches a file.
+          style: badgeStyle === 'calligraphic' && typeof document !== 'undefined'
+            && !document.fonts.check(...SURAH_NAME_FONT_SPEC) ? 'pill' : badgeStyle,
+          width,
+          height,
+          y: arrangement.badgeY,
+          accent: goldAccent,
+          surah: badgeSurah(activeVerse?.verseKey, { number: surahNumber, nameArabic: surahNameArabic, nameEnglish: surahNameEnglish }),
+          range: badgeRange(verses[0]?.verseKey, verses[verses.length - 1]?.verseKey, { surah: surahNumber, start: ayahStart, end: ayahEnd }),
+          customTitle: config.surahBadgeText?.trim() || '',
+          subtitle: config.surahBadgeSubtitleText?.trim() || '',
+          watermarkPosition: config.watermarkPosition,
+          labelFamily: LABEL_FAMILY,
+        });
       }
 
       // 5. Verse card
       ctx.save();
-      const cardMargin = width * 0.08;
-      const cardWidth = width - cardMargin * 2;
-      const cardHeight = height * 0.52;
-      const cardX = cardMargin;
-      const cardY = height * 0.23;
+      const { x: cardX, width: cardWidth, height: cardHeight } = arrangement.text;
+      const translationBox = arrangement.translation;
 
-      if (config.cardBgOpacity > 0) {
+      for (const box of arrangement.drawsCard && config.cardBgOpacity > 0
+        ? [arrangement.text, translationBox].filter(b => b !== null) : []) {
         ctx.fillStyle = `rgba(15, 23, 42, ${config.cardBgOpacity / 100})`;
-        drawRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, 28);
+        drawRoundRect(ctx, box.x, box.y, box.width, box.height, 28);
         ctx.fill();
         if (config.cardBorder) {
           // Follows the accent colour like the badge, the ayah numeral and the
@@ -1010,7 +957,6 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // Ayah numeral, the gap around the divider, and the room under it.
         const belowArabic = ayahFontSize + 48;
         const cardPadding = 40;
-        const availableHeight = cardHeight - cardPadding * 2 - belowArabic;
 
         /**
          * No weight is named, and that is deliberate.
@@ -1091,7 +1037,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         const layoutKey = [
           arabicText,
           translationBlocks.map(block => `${block.id}:${block.text}`).join('\u0001'),
-          withTranslation, cardWidth, cardHeight,
+          withTranslation, cardWidth, cardHeight, arrangement.id,
           arabicFontId, config.mushafLines, config.fontTranslation, config.arabicFontSize,
           config.translationFontSize, config.ayahNumberFontSize,
           typeof document !== 'undefined' ? document.fonts.status : '',
@@ -1102,10 +1048,13 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           let arabicSize = config.arabicFontSize * (height / 1920) * 1.5;
           let translationSize = config.translationFontSize * (height / 1920) * 1.3;
           layout = layoutAt(arabicSize, translationSize);
-          while (
-            (layout.stackHeight > availableHeight || layout.widest > maxTextWidth)
-            && arabicSize > MIN_ARABIC_PX
-          ) {
+          const fits = (trial: CardTextLayout) => {
+            const arabic = trial.arabicLines.length * trial.arabicLineHeight;
+            return trial.widest <= maxTextWidth && textFits(
+              arrangement, { arabic, belowArabic, translation: trial.stackHeight - arabic }, cardPadding
+            );
+          };
+          while (!fits(layout) && arabicSize > MIN_ARABIC_PX) {
             arabicSize -= 1;
             translationSize = Math.max(MIN_TRANSLATION_PX, translationSize - 0.6);
             layout = layoutAt(arabicSize, translationSize);
@@ -1118,10 +1067,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // height the fitting loop measured. Drawing the first line on an
         // alphabetic baseline at the top of the block put its ascenders --
         // which in Arabic carry the harakat -- above the space budgeted for it.
-        let y = cardY + Math.max(
-          cardPadding,
-          (cardHeight - (layout.stackHeight + belowArabic)) / 2
-        );
+        const arabicHeight = layout.arabicLines.length * layout.arabicLineHeight;
+        let y = translationBox
+          ? blockTop(arrangement.text, arabicHeight + belowArabic, cardPadding)
+          : blockTop(arrangement.text, layout.stackHeight + belowArabic, cardPadding);
 
         ctx.textBaseline = 'top';
         ctx.direction = 'rtl';
@@ -1161,6 +1110,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         y += 24;
 
         if (withTranslation) {
+          if (translationBox) y = blockTop(translationBox, layout.stackHeight - arabicHeight, cardPadding);
           ctx.fillStyle = config.translationColor || '#e2e8f0';
           if (config.textShadow) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 8; }
           layout.blocks.forEach((block, index) => {
@@ -1198,7 +1148,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
 
   }, [config, verses, surahNameArabic, surahNameEnglish, dimensions,
-      getDisplayArabic, surahNumber, ayahStart, ayahEnd, arabicFontId]);
+      getDisplayArabic, surahNumber, ayahStart, ayahEnd, arabicFontId, badgeStyle]);
 
   // ---- LIVE PREVIEW LOOP ----
   useEffect(() => {
@@ -1252,6 +1202,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
     exportVideoOffline: async (range, audio, targetFps, onProgress, output) => {
       if (!canEncodeOffline(config)) return null;
+      if (badgeStyle === 'calligraphic') await document.fonts.load(...SURAH_NAME_FONT_SPEC).catch(() => []);
       isExportingRef.current = true;
       cancelledRef.current = false;
 

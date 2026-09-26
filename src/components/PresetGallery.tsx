@@ -3,7 +3,8 @@
 import React from 'react';
 import { Check, Palette } from 'lucide-react';
 import { FONTS_ARABIC } from '@/lib/quranData';
-import { STYLE_PRESETS, presetBackground, type StylePreset } from '@/lib/stylePresets';
+import { STYLE_PRESETS, presetBackground, type StylePreset, type PresetLook } from '@/lib/stylePresets';
+import { frameLayout, type Box } from '@/lib/frameLayout';
 import { useT } from './LocaleProvider';
 
 interface PresetGalleryProps {
@@ -58,9 +59,31 @@ export const PresetGallery: React.FC<PresetGalleryProps> = ({ current, onApply }
   );
 };
 
+const BOX = 'absolute rounded flex items-center px-1';
+
+/** A box of the layout, as a share of the miniature, with the preset's card behind it. */
+const boxStyle = (box: Box, look: PresetLook, drawsCard: boolean): React.CSSProperties => ({
+  left: `${box.x * 100}%`,
+  top: `${box.y * 100}%`,
+  width: `${box.width * 100}%`,
+  height: `${box.height * 100}%`,
+  backgroundColor: drawsCard ? `rgba(15, 23, 42, ${look.cardBgOpacity / 100})` : undefined,
+  border: drawsCard && look.cardBorder && look.cardBgOpacity > 0 ? `1px solid ${look.accentColor}66` : undefined,
+});
+
+function TranslationBars({ colour }: { colour: string }) {
+  return (
+    <>
+      <span className="block h-1 w-3/4 rounded-full" style={{ backgroundColor: colour, opacity: 0.7 }} />
+      <span className="block h-1 w-1/2 rounded-full" style={{ backgroundColor: colour, opacity: 0.7 }} />
+    </>
+  );
+}
+
 /** A 9:16 miniature of the frame, from the preset's own values. */
 function PresetThumb({ preset }: { preset: StylePreset }) {
   const { look } = preset;
+  const layout = frameLayout(look.layout, 1, 1);
   const background = presetBackground(look.background);
   const fontClass = FONTS_ARABIC.find(font => font.id === look.fontArabic)?.className ?? '';
   return (
@@ -77,13 +100,9 @@ function PresetThumb({ preset }: { preset: StylePreset }) {
         />
       )}
       <span className="absolute inset-0 bg-black" style={{ opacity: look.bgOverlayOpacity / 100 }} />
-      <span
-        className="absolute inset-x-[10%] top-[30%] bottom-[30%] rounded flex flex-col items-center justify-center gap-1 px-1"
-        style={{
-          backgroundColor: `rgba(15, 23, 42, ${look.cardBgOpacity / 100})`,
-          border: look.cardBorder ? `1px solid ${look.accentColor}66` : undefined
-        }}
-      >
+      {/* Placed where the preset's layout puts the text, so a lower third
+          reads as one before it is applied. */}
+      <span className={`${BOX} flex-col justify-center gap-1`} style={boxStyle(layout.text, look, layout.drawsCard)}>
         <span
           dir="rtl"
           className={`${fontClass} text-[13px] leading-tight`}
@@ -92,9 +111,13 @@ function PresetThumb({ preset }: { preset: StylePreset }) {
           بِسْمِ ٱللَّهِ
         </span>
         <span className="block h-px w-1/2" style={{ backgroundColor: look.accentColor, opacity: 0.6 }} />
-        <span className="block h-1 w-3/4 rounded-full" style={{ backgroundColor: look.translationColor, opacity: 0.7 }} />
-        <span className="block h-1 w-1/2 rounded-full" style={{ backgroundColor: look.translationColor, opacity: 0.7 }} />
+        {!layout.translation && <TranslationBars colour={look.translationColor} />}
       </span>
+      {layout.translation && (
+        <span className={`${BOX} flex-col justify-center gap-1`} style={boxStyle(layout.translation, look, layout.drawsCard)}>
+          <TranslationBars colour={look.translationColor} />
+        </span>
+      )}
     </span>
   );
 }

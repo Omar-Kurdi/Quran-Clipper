@@ -18,6 +18,8 @@
 import { BACKGROUND_VIDEOS } from './quranData';
 import { QPC_V2 } from './mushafFonts';
 import type { VideoCanvasConfig } from '@/components/VideoCanvas';
+import { asFrameLayout, type FrameLayoutId } from './frameLayout';
+import { asBadgeStyle, type BadgeStyle } from './surahBadge';
 
 /** The fields a preset sets. Everything else in the config is left as it was. */
 export type PresetLook = Pick<
@@ -33,11 +35,15 @@ export type PresetLook = Pick<
   | 'textShadow'
   | 'showWaveform'
   | 'showSurahBadge'
+  | 'badgeStyle'
+  | 'layout'
   | 'bgOverlayOpacity'
   | 'bgBlur'
   | 'cardBgOpacity'
   | 'cardBorder'
 > & {
+  badgeStyle: BadgeStyle;
+  layout: FrameLayoutId;
   /** A stock background, by its id in `BACKGROUND_VIDEOS`. */
   background: string;
 };
@@ -53,6 +59,8 @@ export const STYLE_PRESETS: StylePreset[] = [
     // The studio's own defaults, so there is always a way back to them.
     id: 'night-mosque',
     look: {
+      layout: 'card',
+      badgeStyle: 'pill',
       background: 'mosque-moon',
       fontArabic: QPC_V2,
       arabicFontSize: 45,
@@ -74,6 +82,8 @@ export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'gold-kaaba',
     look: {
+      layout: 'card',
+      badgeStyle: 'frame',
       background: 'kaaba-pilgrims',
       fontArabic: QPC_V2,
       arabicFontSize: 48,
@@ -95,6 +105,8 @@ export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'starlight',
     look: {
+      layout: 'lower-third',
+      badgeStyle: 'pill',
       background: 'starry-sky',
       fontArabic: 'DigitalKhatt',
       arabicFontSize: 46,
@@ -117,6 +129,8 @@ export const STYLE_PRESETS: StylePreset[] = [
     // No card and a soft blur: the words sit on the picture itself.
     id: 'minimal',
     look: {
+      layout: 'open',
+      badgeStyle: 'pill',
       background: 'clouds-night',
       fontArabic: QPC_V2,
       arabicFontSize: 50,
@@ -138,6 +152,8 @@ export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'madinah-green',
     look: {
+      layout: 'split',
+      badgeStyle: 'calligraphic',
       background: 'prophet-mosque',
       fontArabic: QPC_V2,
       arabicFontSize: 46,
@@ -159,6 +175,8 @@ export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'indopak',
     look: {
+      layout: 'top',
+      badgeStyle: 'corner',
       background: 'minaret-moonlit',
       fontArabic: 'IndopakNastaleeq',
       arabicFontSize: 44,
@@ -204,7 +222,10 @@ export function applyStylePreset<C extends VideoCanvasConfig>(config: C, preset:
 export function matchingPreset(config: VideoCanvasConfig): string | null {
   const match = STYLE_PRESETS.find(({ look }) => {
     const { background, ...rest } = look;
-    const sameLook = (Object.keys(rest) as (keyof typeof rest)[]).every(key => config[key] === rest[key]);
+    // A project from before layouts and badge styles has neither, and reads as
+    // the card and the pill -- so it still matches a preset that names them.
+    const current = { ...config, layout: asFrameLayout(config.layout), badgeStyle: asBadgeStyle(config.badgeStyle) };
+    const sameLook = (Object.keys(rest) as (keyof typeof rest)[]).every(key => current[key] === rest[key]);
     return sameLook && config.bgUrl === presetBackground(background)?.url;
   });
   return match?.id ?? null;

@@ -45,6 +45,8 @@ import {
 } from 'lucide-react';
 import { PresetGallery } from './PresetGallery';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
+import { FRAME_LAYOUTS, asFrameLayout } from '@/lib/frameLayout';
+import { BADGE_STYLES, SURAH_NAME_FONT_ID, usableBadgeStyle } from '@/lib/surahBadge';
 
 interface StyleConfigPanelProps {
   config: VideoCanvasConfig;
@@ -1151,7 +1153,48 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       {activeTab === 'card' && (
         <div className="flex flex-col gap-3">
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
-            <div>
+            {/* Where things sit, then how the badge looks: the two choices
+                that change the frame's arrangement rather than its colours. */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="font-semibold text-slate-200 block mb-1">{t.style.layoutLabel}</label>
+                <select
+                  value={asFrameLayout(config.layout)}
+                  onChange={(e) => updateConfig('layout', e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  {FRAME_LAYOUTS.map(id => <option key={id} value={id}>{t.style.layouts[id]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeStyleLabel}</label>
+                {/* "None" is the badge switch, not a style: hiding the badge
+                    keeps the style it had for when it comes back. */}
+                <select
+                  value={config.showSurahBadge ? usableBadgeStyle(config.badgeStyle, missingFonts) : 'none'}
+                  onChange={(e) => onChangeConfig(e.target.value === 'none'
+                    ? { ...config, showSurahBadge: false }
+                    : { ...config, showSurahBadge: true, badgeStyle: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  <option value="none">{t.style.badgeStyles.none}</option>
+                  {BADGE_STYLES.map(id => (
+                    <option
+                      key={id}
+                      value={id}
+                      disabled={id === 'calligraphic' && missingFonts.has(SURAH_NAME_FONT_ID)}
+                    >
+                      {t.style.badgeStyles[id]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {missingFonts.has(SURAH_NAME_FONT_ID) && (
+              <p className="-mt-1 text-[11px] text-slate-400">{t.style.badgeFontMissing}</p>
+            )}
+
+            <div className="pt-2 border-t border-slate-800">
               <div className="flex justify-between text-slate-300 mb-1">
                 <span>{t.style.cardOpacity}</span>
                 <span className="font-mono text-amber-400">{config.cardBgOpacity}%</span>

@@ -382,14 +382,14 @@ export const en = {
   },
   presets: {
     heading: 'Presets',
-    help: 'A whole look in one click: font, colours, card and background. Your translations, badge, watermark and aspect ratio stay as they are.',
+    help: 'A whole look in one click: font, colours, card, layout, badge style and background. Your translations, badge text, watermark and aspect ratio stay as they are.',
     items: {
       'night-mosque': { name: 'Night Mosque', note: 'The studio’s default look: the mushaf on a moonlit mosque, soft blue accents.' },
-      'gold-kaaba': { name: 'Gold Kaaba', note: 'Warm gold over the Kaaba, lightly blurred and dimmed.' },
-      starlight: { name: 'Starlight', note: 'Digital Khatt on a starry sky, no card, periwinkle accents.' },
+      'gold-kaaba': { name: 'Gold Kaaba', note: 'Warm gold over the Kaaba, lightly blurred and dimmed, under a mushaf-style framed heading.' },
+      starlight: { name: 'Starlight', note: 'Digital Khatt in the lower third of a starry sky, no card, periwinkle accents.' },
       minimal: { name: 'Minimal', note: 'No card, no badge, no visualiser: large Arabic straight on a blurred sky.' },
-      'madinah-green': { name: 'Madinah Green', note: 'The Prophet’s Mosque with green accents and a deeper card.' },
-      indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq under a moonlit minaret, amber accents.' }
+      'madinah-green': { name: 'Madinah Green', note: 'The Prophet’s Mosque with green accents, the calligraphic surah heading, and the Arabic and translation on cards of their own.' },
+      indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq near the top under a moonlit minaret, a small corner tag, amber accents.' }
     }
   },
   tour: {
@@ -669,7 +669,25 @@ export const en = {
       'bottom-left': 'Bottom Left',
       'top-right': 'Top Right',
       'top-left': 'Top Left'
-    }
+    },
+
+    layoutLabel: 'Layout:',
+    layouts: {
+      card: 'Centred card',
+      'lower-third': 'Lower third',
+      top: 'Top',
+      open: 'No card',
+      split: 'Arabic and translation apart'
+    },
+    badgeStyleLabel: 'Badge:',
+    badgeStyles: {
+      none: 'None',
+      pill: 'Pill',
+      calligraphic: 'Calligraphic heading',
+      frame: 'Mushaf frame',
+      corner: 'Corner tag'
+    },
+    badgeFontMissing: 'The calligraphic heading needs the surah-name font, which is not installed on this server. See the README, "Mushaf fonts and QUL data".'
   },
 
   colorField: {
@@ -741,6 +759,31 @@ export const en = {
     trimming: 'Trimming…',
     resizeWindow: 'Resize the trim window',
     resizeWindowTitle: 'Drag to resize the whole window'
+  },
+
+  renderCheck: {
+    button: 'Check this render',
+    running: 'Reading the file…',
+    failed: 'This browser could not read the file back to check it.',
+    ok: {
+      length: (seconds: string) => `Length ${seconds}, as trimmed.`,
+      start: (at: string) => `Starts at ${at} in the recording, where the trim does.`,
+      end: (at: string) => `Ends at ${at} in the recording, where the trim does.`
+    },
+    problem: {
+      length: (seconds: string, expected: string) => `Length ${seconds}, but the trim is ${expected}.`,
+      start: (at: string, expected: string) => `Starts at ${at} in the recording, but the trim starts at ${expected}: the beginning is cut.`,
+      end: (at: string, expected: string) => `Ends at ${at} in the recording, but the trim ends at ${expected}.`
+    },
+    unsure: {
+      length: 'Could not read the length of the file.',
+      start: 'Could not match the start against the recording (too quiet there, or the recording could not be read).',
+      end: 'Could not match the end against the recording (too quiet there, or the recording could not be read).',
+      background: 'Could not sample the background from this file.'
+    },
+    backgroundOk: 'Background present and moving throughout.',
+    backgroundMissing: (from: string, to: string) => `No background from ${from} to ${to}: the plain gradient shows instead.`,
+    backgroundStill: (from: string, to: string) => `The background does not move from ${from} to ${to}: check it has not frozen.`
   },
 
   exportModal: {
@@ -822,7 +865,11 @@ export const en = {
     previewClear: 'Close preview',
     previewFailed:
       'The preview did not finish. Nothing is wrong with the export itself — try it, or run the preview again.',
-    renderAnother: 'Render Another Export'
+    renderAnother: 'Render Another Export',
+    warningsHeading: 'Before you render',
+    warnGap: (from: string, to: string) => `No background from ${from} to ${to}: the frame shows the plain gradient there. Drag a block over it on the timeline.`,
+    warnSeeking: (name: string) => `${name} cannot be decoded frame by frame here, so it is read by seeking. It will render correctly, but slowly.`,
+    warnUnreadable: (name: string) => `${name} cannot be read by this browser: the frame shows the plain gradient wherever it should be. Replace it, or re-add the file.`
   },
 
   publish: {
@@ -849,6 +896,7 @@ export const en = {
     loading: 'Loading saved items...',
     noProjects: 'No saved projects yet. Click “Save Project” in the studio!',
     noExports: 'No exported video clips yet. Click “Export Video” to render your first clip.',
+    openRenderedProject: 'Open the project it was rendered from',
     openInStudio: 'Open in Studio',
     passage: (surah: string, number: number, start: number, end: number) =>
       `${surah} (${number}:${start}-${end})`,

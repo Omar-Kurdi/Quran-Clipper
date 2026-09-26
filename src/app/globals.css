@@ -230,9 +230,9 @@
   font-display: swap;
 }
 /* The surah heading face: one calligraphic glyph per surah, reached by writing
-   `surah009` -- see `surahNameText`. Declared but not drawn yet; the badge is
-   still ordinary text. A face nothing names is never fetched, so this costs
-   nothing until something uses it. See FutureIdeas.md. */
+   `surah009` -- see `surahNameText`. Drawn by the calligraphic badge style
+   (`surahBadge.ts`). A face nothing names is never fetched, so this costs
+   nothing until that style is chosen. */
 @font-face {
   font-family: 'surah-name-v4';
   src: url('/fonts/surah-name/surah-name-v4.woff2') format('woff2');

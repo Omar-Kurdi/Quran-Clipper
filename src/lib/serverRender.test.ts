@@ -67,6 +67,8 @@ describe('parseRenderSpec', () => {
 
   it('accepts a description the studio would send', () => {
     expect(parseRenderSpec(JSON.stringify(valid))).toEqual(valid);
+    const linked = { ...valid, projectId: 'proj_1790410746589_belrg' };
+    expect(parseRenderSpec(JSON.stringify(linked))).toEqual(linked);
   });
 
   it('refuses what an encoder, a path or a range could not take', () => {
@@ -80,6 +82,8 @@ describe('parseRenderSpec', () => {
       { ...valid, media: [{ name: 'bg-0', kind: 'script' }] },
       { ...valid, fileName: 7 },
       { ...valid, verses: 'none' },
+      { ...valid, projectId: "x'); drop table projects; --" },
+      { ...valid, projectId: 42 },
     ];
     for (const body of broken) {
       expect(parseRenderSpec(typeof body === 'string' ? body : JSON.stringify(body))).toBeNull();

@@ -137,9 +137,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   background automatically instead of discarding it.
 
 **Styling and export**
-- **Presets**: six complete looks (font, colours, card, background and its dimming) at the top of
+- **Presets**: six complete looks (font, colours, card, layout, badge, background and its dimming) at the top of
   the Style tab, each shown as a miniature of the frame it makes. A preset never changes the
-  aspect ratio, the translations, the badge or the watermark, and applying one is a single undo.
+  aspect ratio, the translations, the badge text or the watermark, and applying one is a single undo.
 - Aspect ratios 9:16, 16:9, 1:1, 4:5.
 - 11 Pexels video backgrounds, plus any video or image you paste a link to or upload — stills
   render exactly like footage.
@@ -175,6 +175,18 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   default, since a full printed line needs smaller type on a portrait card, and it also draws a caption that runs across a page break. Each colour
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
   picker in the last cell of the grid.
+- **Layouts**, under *Style → Card*: the centred card; a **lower third** that leaves the footage
+  clear above the words; **top**; **no card**, the text set straight on the picture; and the
+  **Arabic and the translation apart**, each on its own card. Each is a set of positions as
+  fractions of the frame, so it holds at every aspect ratio, and the text inside is still shrunk
+  to fit. A project saved before layouts existed opens as the centred card.
+- **Badge styles**, beside the layout: the **pill**; a **calligraphic heading** in QUL's
+  surah-name face with the reference small beneath it, as a printed mushaf heads a surah; a
+  **mushaf frame**, ruled twice with an ornament at each end; a small **corner tag** in whichever
+  top corner the watermark is not; or none. A clip that runs from one surah into the next names
+  the surah being recited on each caption. The calligraphic heading needs the surah-name font
+  (see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data)); without it the option is greyed
+  out and a project that asks for it draws the pill.
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Layout and Text panel: aspect ratio, Arabic calligraphy face, text sizes, the chosen translations, and the colour fields." width="30%">
 </p>
@@ -747,6 +759,28 @@ attached rather than quietly producing something smaller than was asked for.
   <img src="docs/screenshots/QuranClipper_Export.png" alt="The export dialog: the detected GPU and codecs, the seven platform presets, frame rate and quality tiers, and the resulting resolution, bitrate and estimated file size." width="52%">
 </p>
 
+### Before and after a render
+
+**Before**, the dialog says what the render is about to do that nobody would choose: a stretch
+of a hand-cut background lane with no block over it, which paints the plain gradient, and a
+background this browser cannot read at all (the gradient again) or can only read by seeking,
+which renders correctly but slowly. Each background is opened once per session to find out,
+without holding up the Render button.
+
+**After**, *Check this render* reads the finished file and compares it with what was asked for:
+its length against the trim; where its first and last seconds of audio sit in the recording,
+matched on the waveform, so a cut-off beginning is measured rather than noticed later; and a
+strip of the frame beside the text sampled every second or so, which catches the plain gradient
+where a clip should be and a clip that stopped moving for several seconds. It runs on a click,
+since it reads the whole file.
+
+**Every render saves the project it was made from** — in this tab, in a queue, or sent to the
+server, where it is saved as the job is sent — as a project of its own named after the
+file (`… Clip → Al-Fatihah_1_1-7.mp4`), so any exported video can be reopened and rendered
+again. It never overwrites a project you saved yourself, and rendering the same thing twice
+saves it once. Under *Saved clips → Rendered videos*, **Open the project it was rendered from**
+opens it. On a public studio the project goes to the visitor's browser like any other.
+
 ### Several renders in a row
 
 *Add to queue* keeps the current choice (platform, quality, frame rate) and lets you choose
@@ -907,6 +941,11 @@ src/lib/
   videoFrames.ts             In-order demux/decode of a video background
   exportName.ts              The suggested file name, read off the timeline
   exportHealth.ts            What the export dialog can promise on this browser
+  exportWarnings.ts          Lane gaps and unreadable backgrounds, said before a render
+  renderCheck.ts             A finished render against the trim: length, edges, background
+  renderCheckRunner.ts       Reads the file back in the browser for renderCheck
+  frameLayout.ts             Where the text, badge and waveform sit, per layout
+  surahBadge.ts              The surah badge in each of its styles
   i18n.ts                    Locale registry, cookie name, direction
   i18n.en.ts                 English interface copy -- the Dictionary type is derived from it
   i18n.ar.ts                 Arabic interface copy, typed against the English one
@@ -1007,7 +1046,10 @@ Next.js reads the environment at boot, so a running server will not pick up a ne
 - **A placeholder `DATABASE_URL` is worse than none.** The API checks whether the variable is
   set, not whether it connects, so a leftover `postgres://USER:PASSWORD@HOST:PORT/DATABASE`
   bypasses the in-memory fallback and every save returns HTTP 500.
-- **Re-run `npm run db:push` after editing `src/db/schema.ts`.**
+- **Re-run `npm run db:push` after editing `src/db/schema.ts`** — and after pulling a version
+  that adds columns. Layouts and badge styles added `layout` and `badge_style` to `projects`; on a
+  database created before them, both listing and saving projects fail with a 500
+  (`column "badge_style" does not exist`) until `npm run db:push` has run once.
 - **Exported videos are not stored in the database.** Only metadata is; the video itself is a
   browser blob URL that dies with the tab.
 - **If the container is not running, saves fail with a 500.** The response says which failure

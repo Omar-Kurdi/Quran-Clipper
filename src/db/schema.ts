@@ -63,6 +63,10 @@ export const projects = pgTable('projects', {
   mushafLines: boolean('mushaf_lines').notNull().default(false),
   showWaveform: boolean('show_waveform').notNull().default(true),
   showSurahBadge: boolean('show_surah_badge').notNull().default(true),
+  /** How the badge is drawn (`surahBadge.ts`). Every row written before it existed reads as the pill. */
+  badgeStyle: text('badge_style').notNull().default('pill'),
+  /** Where the text sits on the frame (`frameLayout.ts`). Every older row reads as the centred card. */
+  layout: text('layout').notNull().default('card'),
   surahBadgeText: text('surah_badge_text').default(''),
   surahBadgeSubtitleText: text('surah_badge_subtitle_text').default(''),
   

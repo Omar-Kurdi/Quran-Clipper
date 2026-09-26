@@ -278,6 +278,24 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                 {/* The name it was saved under, not a link to it: the browser
                     is never told where the file went, and the blob url this
                     used to offer died with the page that made it. */}
+                {/* The project the render was made from, saved with it, so the
+                    video can be opened and rendered again. */}
+                {(() => {
+                  const source = exp.projectId ? projectsList.find(proj => proj.id === exp.projectId) : undefined;
+                  return source ? (
+                    <button
+                      onClick={() => {
+                        onLoadProject(source);
+                        onClose();
+                      }}
+                      className="py-2 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>{t.projects.openRenderedProject}</span>
+                    </button>
+                  ) : null;
+                })()}
+
                 <div className="mt-1 flex items-center gap-2">
                   <div className="flex-1 min-w-0 px-2.5 py-2 bg-slate-900/70 rounded-lg border border-slate-800">
                     {exp.fileName ? (
