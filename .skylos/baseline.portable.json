@@ -299,7 +299,7 @@
   "SKY-Q306:{ROOT}/scripts/eval_segments.py:105",
   "SKY-Q306:{ROOT}/scripts/eval_segments.py:206",
   "SKY-Q306:{ROOT}/scripts/eval_segments.py:292",
-  "SKY-Q402:{ROOT}/src/app/api/audio/proxy/route.ts:87",
+  "SKY-Q402:{ROOT}/src/app/api/audio/proxy/route.ts:115",
   "SKY-Q402:{ROOT}/src/app/video-creator/page.tsx:1421",
   "SKY-Q402:{ROOT}/src/app/video-creator/page.tsx:1425",
   "SKY-Q402:{ROOT}/src/components/StyleConfigPanel.tsx:196",
