@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRange } from '@/lib/quranCorpus';
-import { versesFromReciterSegments, ReciterVerseTiming } from '@/lib/reciterSegments';
-import { RECITERS } from '@/lib/quranData';
-import { timingPair } from '@/lib/timingAudit';
+import { versesFromReciterSegments, timingsByVerse, type QuranComTiming } from '@/lib/reciterSegments';
+import { quranComFits } from '@/lib/timingAudit';
+
+/** The request's numbers, or null when one it cannot do without is missing. */
+function requested(searchParams: URLSearchParams) {
+  const number = (name: string, fallback = '') => parseInt(searchParams.get(name) || fallback, 10);
+  const params = { surah: number('surah'), start: number('start', '1'), end: number('end'), reciter: number('reciter') };
+  return Number.isFinite(params.surah) && Number.isFinite(params.end) && params.reciter ? params : null;
+}
 
 /**
  * A timeline from the reciter's own published word timings.
@@ -16,29 +22,15 @@ import { timingPair } from '@/lib/timingAudit';
  */
 export const revalidate = 86400;
 
-interface ApiTiming {
-  verse_key?: string;
-  timestamp_from?: number;
-  timestamp_to?: number;
-  segments?: number[][];
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const surah = parseInt(searchParams.get('surah') || '', 10);
-    const start = parseInt(searchParams.get('start') || '1', 10);
-    const end = parseInt(searchParams.get('end') || '', 10);
-    const reciter = parseInt(searchParams.get('reciter') || '', 10);
-
-    if (!Number.isFinite(surah) || !Number.isFinite(end) || !reciter) {
+    const params = requested(new URL(req.url).searchParams);
+    if (!params) {
       return NextResponse.json({ success: false, error: 'bad request' }, { status: 400 });
     }
-    // quran.com's timings are used only where the audit found they fit their
-    // own recording -- see `timingAudit`.
-    const reciterId = RECITERS.find(r => r.quranApiId === reciter)?.id;
-    const pair = reciterId ? timingPair(reciterId, surah) : undefined;
-    if (pair !== undefined && (pair?.timings !== 'quran.com' || pair.audioUrl)) {
+    const { surah, start, end, reciter } = params;
+    // Only where the audit found quran.com's timings fit their own recording.
+    if (!quranComFits(reciter, surah)) {
       return NextResponse.json({ success: false, error: `quran.com's timings for this surah do not match its recording` }, { status: 422 });
     }
 
@@ -52,17 +44,9 @@ export async function GET(req: NextRequest) {
 
     const data = await res.json();
     const file = data?.audio_files?.[0];
-    const list: ApiTiming[] = Array.isArray(file?.verse_timings) ? file.verse_timings : [];
+    const list: QuranComTiming[] = Array.isArray(file?.verse_timings) ? file.verse_timings : [];
 
-    const timings = new Map<string, ReciterVerseTiming>();
-    for (const entry of list) {
-      if (!entry?.verse_key) continue;
-      timings.set(entry.verse_key, {
-        from: entry.timestamp_from ?? 0,
-        to: entry.timestamp_to ?? 0,
-        segments: Array.isArray(entry.segments) ? entry.segments : undefined
-      });
-    }
+    const timings = timingsByVerse(list);
 
     // The words and their text come from the corpus, which is the same source
     // a normal load uses -- so the captions read identically and only their

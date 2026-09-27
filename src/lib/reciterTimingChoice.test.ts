@@ -90,3 +90,25 @@ describe('chooseReciterTiming with an audited pairing', () => {
     expect(chooseReciterTiming(keys, quranCom(keys), qul(keys), undefined).provider).toBe('quran.com');
   });
 });
+
+describe('timingPair', () => {
+  it('reads the audited table, including a pairing on the other source’s file', async () => {
+    const { timingPair } = await import('./timingAudit');
+    expect(timingPair('sudais', 5)).toEqual({
+      timings: 'qul',
+      audioUrl: 'https://download.quranicaudio.com/qdc/abdurrahmaan_as_sudais/murattal/5.mp3',
+    });
+    expect(timingPair('sudais', 3)).toEqual({ timings: 'qul' });
+    expect(timingPair('sudais', 1)).toEqual({ timings: 'quran.com' });
+    expect(timingPair('nobody', 1)).toBeUndefined();
+  });
+
+  it("lets quran.com's own button use its timings only where they fit its recording", async () => {
+    const { quranComFits } = await import('./timingAudit');
+    // Sudais is quran.com reciter 3.
+    expect(quranComFits(3, 1)).toBe(true);
+    expect(quranComFits(3, 3)).toBe(false);
+    expect(quranComFits(3, 5)).toBe(false);
+    expect(quranComFits(9999, 5)).toBe(true);
+  });
+});

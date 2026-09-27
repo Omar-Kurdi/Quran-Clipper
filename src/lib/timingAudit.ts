@@ -15,9 +15,18 @@
  */
 import pairs from './timingPairs.json';
 import type { TimingPair } from './reciterTimingChoice';
+import { RECITERS } from './quranData';
 
-type Entry = 'quran.com' | 'qul' | ['quran.com' | 'qul', string] | null;
-const TABLE = pairs as unknown as Record<string, Record<string, Entry>>;
+type Source = 'quran.com' | 'qul';
+const isSource = (value: unknown): value is Source => value === 'quran.com' || value === 'qul';
+
+/** One table entry, read without trusting its shape. */
+function readEntry(entry: unknown): TimingPair | undefined {
+  if (entry === null) return null;
+  if (isSource(entry)) return { timings: entry };
+  if (Array.isArray(entry) && isSource(entry[0]) && typeof entry[1] === 'string') return { timings: entry[0], audioUrl: entry[1] };
+  return undefined;
+}
 
 /**
  * The audited pairing for one reciter's surah: `undefined` when it was never
@@ -25,8 +34,17 @@ const TABLE = pairs as unknown as Record<string, Record<string, Entry>>;
  * recording (none are used).
  */
 export function timingPair(reciterId: string, surah: number): TimingPair | undefined {
-  const entry = TABLE[reciterId]?.[String(surah)];
-  if (entry === undefined) return undefined;
-  if (entry === null) return null;
-  return typeof entry === 'string' ? { timings: entry } : { timings: entry[0], audioUrl: entry[1] };
+  const surahs: Record<string, unknown> | undefined = (pairs as Record<string, Record<string, unknown>>)[reciterId];
+  return readEntry(surahs?.[String(surah)]);
+}
+
+/**
+ * Whether quran.com's timings for this surah may be used as they come, with
+ * quran.com's own recording: where the audit found they fit it, or where it
+ * never looked.
+ */
+export function quranComFits(quranApiId: number, surah: number): boolean {
+  const reciterId = RECITERS.find(r => r.quranApiId === quranApiId)?.id;
+  const pair = reciterId ? timingPair(reciterId, surah) : undefined;
+  return pair === undefined || (pair?.timings === 'quran.com' && !pair.audioUrl);
 }

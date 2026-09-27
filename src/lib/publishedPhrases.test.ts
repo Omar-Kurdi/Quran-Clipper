@@ -121,3 +121,22 @@ describe('timedFromPublished', () => {
     expect(timedFromPublished(partial, aligner)).toEqual({ result: aligner, pausesFromAudio: false });
   });
 });
+
+describe('an export with a word after the last', () => {
+  it('drops a trailing word that never gets back to the last one, rather than reading it as a repeat', () => {
+    // Sudais's 5:40 as QUL publishes its end: word 19, then word 11 over the silence before 5:41.
+    const tail = new Map([['5:40', { from: 889123, to: 909568, segments: [
+      [1, 889320, 889870], [2, 889920, 890630], [3, 890680, 908040], [4, 908040, 908460], [2, 908460, 909568],
+    ] }]]);
+    const captions = phrasesFromPublished([{ verseKey: '5:40', wordCount: 4 }], tail, [])!;
+    expect(captions.map(words)).toEqual([['5:40', 0, 3]]);
+  });
+
+  it('keeps a real repeat at the end of an ayah, which says it through to the last word again', () => {
+    const repeated = new Map([['5:40', { from: 0, to: 9000, segments: [
+      [1, 0, 1000], [2, 1000, 2000], [3, 2000, 3000], [4, 3000, 4000], [3, 5000, 6000], [4, 6000, 9000],
+    ] }]]);
+    const captions = phrasesFromPublished([{ verseKey: '5:40', wordCount: 4 }], repeated, [])!;
+    expect(captions.map(words)).toEqual([['5:40', 0, 3], ['5:40', 2, 3]]);
+  });
+});

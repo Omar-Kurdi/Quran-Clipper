@@ -53,6 +53,14 @@ interface RecitedWord {
  * it -- Ghamdi's 97:3 opens with a word 4 timed during the end of 97:2 -- and,
  * read as a repeat, that made a caption of its own before the ayah proper.
  * Reciters start an ayah at its beginning, so those are dropped.
+ *
+ * Nor does anything come after its last word, unless it gets back there. QUL
+ * closes some ayahs with one more entry: a word from the middle stretched over
+ * the silence before the next ayah -- Sudais's 5:40 ends on word 19 and then
+ * lists word 11 for the last 1.1s, 5:48 word 38 for 0.26s. Read as a repeat,
+ * each flashed up as a caption of its own. A reciter who really goes back at
+ * the end of an ayah says it through to the last word again, so a tail that
+ * never reaches it is dropped.
  */
 function recitedWords(timing: ReciterVerseTiming, wordCount: number): RecitedWord[] {
   const listed = (timing.segments || [])
@@ -60,7 +68,8 @@ function recitedWords(timing: ReciterVerseTiming, wordCount: number): RecitedWor
     .filter(word => Number.isInteger(word.index) && word.index >= 1 && word.index <= wordCount && word.end > word.start)
     .sort((a, b) => a.start - b.start);
   const first = listed.findIndex(word => word.index === 1);
-  const words = first > 0 ? listed.slice(first) : listed;
+  const lastWord = listed.map(word => word.index).lastIndexOf(wordCount);
+  const words = listed.slice(Math.max(first, 0), lastWord >= 0 ? lastWord + 1 : listed.length);
   return words.reduce<RecitedWord[]>((merged, word) => {
     const previous = merged[merged.length - 1];
     if (previous?.index === word.index) previous.end = Math.max(previous.end, word.end);
