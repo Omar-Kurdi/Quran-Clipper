@@ -71,6 +71,13 @@ asr-service/app/align.py  SKY-D260  1
 # a security check duplicated is a security check that drifts.
 src/app/api/audio/proxy/route.ts  SKY-U001  1
 
+# `requested` in the reciter-timings route, the same blind spot. GET calls it
+# once, to read and check the query's numbers, and Skylos reports it unused;
+# reproduced with the file scanned on its own, and on the 4.36.1 CI pins. Here
+# for the same reason as `hostAllowed`: a name in the baseline would excuse an
+# unused `requested` anywhere in the repo, this excuses one in this file.
+src/app/api/quran/segments/route.ts  SKY-U001  1
+
 # SKY-D280 on the four mutating handlers of the background renderer
 # (src/app/api/render/route.ts POST and DELETE, src/app/api/render/worker/route.ts
 # PATCH and PUT). Not allowed here -- they are in baseline.portable.json, beside
