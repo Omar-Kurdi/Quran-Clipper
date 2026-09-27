@@ -7,13 +7,13 @@ type Upstream = PassThrough & { statusCode: number; headers: Record<string, stri
 
 /** Each call to `https.request` is answered by the next of these, in order. */
 const upstreams: Array<{ status: number; headers: Record<string, string> }> = [];
-const requested: Array<{ url: string; headers?: Record<string, string> }> = [];
+const upstreamRequests: Array<{ url: string; headers?: Record<string, string> }> = [];
 const responses: Upstream[] = [];
 
 vi.mock('node:https', () => ({
   default: {
     request(url: URL, opts: { headers?: Record<string, string> }, onResponse: (res: Upstream) => void) {
-      requested.push({ url: url.href, headers: opts.headers });
+      upstreamRequests.push({ url: url.href, headers: opts.headers });
       const next = upstreams.shift();
       if (!next) throw new Error(`unexpected upstream request to ${url.href}`);
       const req = new EventEmitter() as EventEmitter & { end(): void };
@@ -37,7 +37,7 @@ const proxied = (range?: string) =>
 
 afterEach(() => {
   upstreams.length = 0;
-  requested.length = 0;
+  upstreamRequests.length = 0;
   responses.length = 0;
 });
 
@@ -47,7 +47,7 @@ describe('audio proxy', () => {
     const res = await GET(proxied('bytes=0-99'));
     responses[0].end(Buffer.alloc(100));
 
-    expect(requested[0].headers).toEqual({ Range: 'bytes=0-99' });
+    expect(upstreamRequests[0].headers).toEqual({ Range: 'bytes=0-99' });
     expect(res.status).toBe(206);
     expect(res.headers.get('content-range')).toBe('bytes 0-99/38326543');
     expect((await res.arrayBuffer()).byteLength).toBe(100);
@@ -73,7 +73,7 @@ describe('audio proxy', () => {
     );
     const res = await GET(proxied());
 
-    expect(requested.map(r => r.url)).toEqual([recording, 'https://audio.qurancdn.com/5.mp3']);
+    expect(upstreamRequests.map(r => r.url)).toEqual([recording, 'https://audio.qurancdn.com/5.mp3']);
     expect(res.status).toBe(400);
   });
 });
