@@ -238,9 +238,11 @@ export const en = {
     trimRangeFailed: 'Could not trim this file. Try the Trim audio dialog, which reports what went wrong.',
     alignLostAyahs: (count: number, keys: string) =>
       `Ayahs loaded with their published timings. Reading the recording was tried too, but it lost ${count} ayah(s) (${keys}), so the loaded timings were kept instead \u2014 use \u201cAlign to audio\u201d if you want the phrase-level split anyway.`,
-    publishedTimed: (captions: number, source: string, pauses: boolean) =>
-      pauses
+    publishedTimed: (captions: number, source: string, split: 'pauses' | 'skipped' | 'unheard') =>
+      split === 'pauses'
         ? `Timed from ${source}\u2019s published word timings \u2014 ${captions} caption(s), split only where the reciter pauses or repeats.`
+        : split === 'skipped'
+        ? `Timed from ${source}\u2019s published word timings alone, as set under Local + QUL \u2014 ${captions} caption(s): one per ayah, and another wherever the reciter repeats. Use Split to divide a long ayah.`
         : `Timed from ${source}\u2019s published word timings \u2014 ${captions} caption(s), one per ayah: the reciter\u2019s pauses could not be read from the recording, so a long ayah is not split. Use Split to divide one, or check that the local aligner is running.`,
     noAlignerOnLoad:
       'Ayahs loaded, but the boundaries are estimates \u2014 the local aligner is not running, so the recording could not be read. Start it with ./start.sh and press \u201cAlign to audio\u201d, or set the boundaries yourself on the timeline.',
@@ -645,10 +647,10 @@ export const en = {
       'qpc-v2': 'Madani Mushaf',
       DigitalKhatt: 'Digital Khatt',
       DigitalKhattIndoPak: 'Digital Khatt IndoPak',
-      IndopakNastaleeq: 'Indopak Nastaleeq',
-      amiri: 'Amiri (built in)'
+      IndopakNastaleeq: 'Indopak Nastaleeq'
     },
     fontNotInstalled: 'Greyed-out fonts are not installed on this server. They come from the QUL archives -- see “Mushaf fonts” in the README.',
+    fontFallback: 'The chosen font is not installed on this server, so the Arabic is drawn in Amiri until it is.',
     arabicFontSize: 'Arabic Font Size:',
     translationFontSize: 'Translation Font Size:',
     ayahNumberSize: 'Ayah Number Size:',

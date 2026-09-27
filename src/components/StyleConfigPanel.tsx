@@ -22,7 +22,8 @@ import {
   BACKGROUND_VIDEOS, 
   FONTS_ARABIC, 
   ASPECT_RATIOS,
-  usableArabicFont
+  usableArabicFont,
+  FONT_ARABIC_BUILTIN
 } from '@/lib/quranData';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { 
@@ -1031,6 +1032,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
             {missingFonts.size > 0 && (
               <p className="mt-2 text-[11px] text-slate-400">{t.style.fontNotInstalled}</p>
+            )}
+            {/* The chosen face is missing and none is selected above: say what
+                is drawing instead, in that face. */}
+            {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
+              <p className="mt-1.5 text-[11px] text-amber-300/90">
+                {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
+              </p>
             )}
             {/* Only the mushaf face knows where the printed lines break. */}
             {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (

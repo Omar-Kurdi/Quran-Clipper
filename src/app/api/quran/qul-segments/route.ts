@@ -3,6 +3,7 @@ import { getRange } from '@/lib/quranCorpus';
 import { versesFromReciterSegments } from '@/lib/reciterSegments';
 import { qulReciters, qulSurah } from '@/lib/qulRecitations';
 import { plausibleWords } from '@/lib/reciterTimingChoice';
+import { timingPair } from '@/lib/timingAudit';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
 /**
@@ -32,6 +33,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'bad request' }, { status: 400 });
   }
 
+  // QUL's timings are used only where the audit found they fit a recording,
+  // and with that recording -- see `timingAudit`.
+  const pair = timingPair(reciter, surah);
+  if (pair !== undefined && pair?.timings !== 'qul') {
+    return NextResponse.json({ success: false, error: `QUL's timings for this surah do not match any recording` }, { status: 422 });
+  }
   const held = qulSurah(reciter, surah);
   if (!held) {
     return NextResponse.json({ success: false, error: 'no QUL export for this reciter and surah' }, { status: 404 });
@@ -54,7 +61,7 @@ export async function GET(req: NextRequest) {
       verses: built.verses,
       // Through the app like every other recording: QUL's CDNs publish AAAA
       // records too, and the export and waveform read the audio with fetch.
-      audioUrl: proxiedAudioUrl(held.audioUrl),
+      audioUrl: proxiedAudioUrl(pair?.audioUrl ?? held.audioUrl),
       totalSeconds: held.lastMs / 1000,
       coverage: { timedWords: built.timedWords, boundsOnly: built.boundsOnly, missing: built.missing }
     });

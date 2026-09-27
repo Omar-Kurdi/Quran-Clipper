@@ -49,6 +49,15 @@ describe('usableArabicFont', () => {
 
   it('resolves a retired face before checking, and never marks the built-in face missing', () => {
     expect(usableArabicFont('Amiri', new Set(['qpc-v2']))).toBe(FONT_ARABIC_BUILTIN);
-    expect(FONTS_ARABIC.find(font => font.id === FONT_ARABIC_BUILTIN)?.file).toBeNull();
+  });
+
+  it('does not offer the built-in face, but still draws it as the fallback', () => {
+    expect(FONTS_ARABIC.some(font => font.id === FONT_ARABIC_BUILTIN)).toBe(false);
+    expect(arabicFontFamily(FONT_ARABIC_BUILTIN)).toBe('Amiri');
+    // A project saved when it could be chosen opens in the mushaf, and falls
+    // back to Amiri only where the mushaf is not installed.
+    expect(resolveArabicFont(FONT_ARABIC_BUILTIN)).toBe(FONT_ARABIC_DEFAULT);
+    expect(usableArabicFont(FONT_ARABIC_BUILTIN, new Set())).toBe(FONT_ARABIC_DEFAULT);
+    expect(usableArabicFont(FONT_ARABIC_BUILTIN, new Set([FONT_ARABIC_DEFAULT]))).toBe(FONT_ARABIC_BUILTIN);
   });
 });

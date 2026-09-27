@@ -109,3 +109,25 @@ export function versesFromReciterSegments(
 
   return { verses, timedWords, boundsOnly, missing };
 }
+
+/** One ayah as quran.com's `verse_timings` lists it. */
+export interface QuranComTiming {
+  verse_key?: string;
+  timestamp_from?: number;
+  timestamp_to?: number;
+  segments?: number[][];
+}
+
+/** quran.com's timing list, keyed by verse. */
+export function timingsByVerse(list: QuranComTiming[]): Map<string, ReciterVerseTiming> {
+  const timings = new Map<string, ReciterVerseTiming>();
+  for (const entry of list) {
+    if (!entry?.verse_key) continue;
+    timings.set(entry.verse_key, {
+      from: entry.timestamp_from ?? 0,
+      to: entry.timestamp_to ?? 0,
+      segments: Array.isArray(entry.segments) ? entry.segments : undefined
+    });
+  }
+  return timings;
+}

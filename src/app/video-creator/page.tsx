@@ -1043,7 +1043,11 @@ export default function VideoCreatorPage() {
       const confirmRange = data.provider === 'align' || data.provider === 'qul';
       setMatchStatus({
         text: data.timedFrom
-          ? t.match.publishedTimed((data.verses || []).length, data.timedFrom === 'qul' ? 'QUL' : 'quran.com', Boolean(data.pausesFromAudio))
+          ? t.match.publishedTimed(
+              (data.verses || []).length,
+              data.timedFrom === 'qul' ? 'QUL' : 'quran.com',
+              data.pausesFromAudio ? 'pauses' : data.alignerSkipped ? 'skipped' : 'unheard'
+            )
           : (data.warning ? `⚠ ${data.warning} ` : '') +
             t.match.detected(detectedLabel, (data.verses || []).length) +
             (confirmRange ? t.match.confirmRange : t.match.reviewTimings),

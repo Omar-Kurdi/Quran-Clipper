@@ -645,6 +645,23 @@ QUL-only one says so. Many more QUL recitations are tagged *With segments* but t
 words -- 18 of 24 checked on 2026-09-26, among them a second Yasser ad-Dussary (351) -- and the
 importer turns those away rather than install them.
 
+**Which timings go with which recording** is not taken on trust. quran.com's file for Sudais's
+Al-Ma'idah was replaced after it was timed, so from 5:41 on every caption played 12-36 seconds
+ahead of its ayah; QUL's timings for that surah fit the quranicaudio file, not the tarteel one its
+export names. `scripts/audit_timing_pairs.py` listens: for every reciter and surah it reads the
+opening of sampled ayahs from the recording, at the time each source gives, and checks with the
+aligner that it is that ayah. The first pairing that passes is written to
+`src/lib/timingPairs.json`, and the studio follows it -- with the aligner switched off too. As
+audited on 2026-09-27, all 1,140 reciter-surahs: QUL instead of quran.com for Sudais 3, 4, 28, 29,
+82 and 94 and Yasser 6, 37, 50, 58, 73 and 92; QUL's timings on quran.com's recording for Sudais 5;
+and no timings at all for Jalil 103-104 and Rifai 16, which the studio refuses with a message
+rather than play out of step. Re-run it when a CDN changes a file:
+
+```bash
+asr-service/.venv/bin/python scripts/audit_timing_pairs.py run sudais yasser
+asr-service/.venv/bin/python scripts/audit_timing_pairs.py table
+```
+
 Muaiqly and Ghamdi are the two that matter most: quran.com publishes no timings for them, so QUL
 is their only source. With their exports imported, **Load ayahs & audio** times them from QUL and
 plays QUL's recording, and the reciter list marks them *timed*. The other three already have

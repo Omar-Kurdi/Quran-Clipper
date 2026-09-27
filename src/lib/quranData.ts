@@ -638,12 +638,14 @@ export const BACKGROUND_VIDEOS = [
  * The others are files under `public/fonts/`, unpacked from the QUL archives
  * and never committed, so a fresh clone has none of them. Amiri comes from
  * Google Fonts with the studio's own interface, so it is always there to fall
- * back to. It was dropped as a choice once because it draws the sukun as a
- * closed ring -- the mark the mushaf keeps for a letter that is not
- * pronounced -- which is still true: it is the face that works, not the right
- * one. See `usableArabicFont`.
+ * back to. It is not offered as a choice: it draws the sukun as a closed ring
+ * -- the mark the mushaf keeps for a letter that is not pronounced -- so it is
+ * the face that works, not the right one. It is only ever drawn in when the
+ * chosen face is not installed. See `usableArabicFont`.
  */
 export const FONT_ARABIC_BUILTIN = 'amiri';
+
+const BUILTIN_ARABIC_FONT = { id: FONT_ARABIC_BUILTIN, name: 'Amiri', className: 'font-amiri', family: 'Amiri', mushaf: false, file: null };
 
 /**
  * The Arabic faces a caption can be drawn in.
@@ -654,6 +656,9 @@ export const FONT_ARABIC_BUILTIN = 'amiri';
  * because all five draw the sukun as a closed ring, which is the ring the
  * mushaf reserves for a letter that is not pronounced at all.
  *
+ * The built-in fallback is deliberately not among them -- see
+ * `FONT_ARABIC_BUILTIN`.
+ *
  * `mushaf` says the face draws `word.glyph`, the printed page's own drawing,
  * rather than composing `word.arabic` from Unicode marks. Only one face can:
  * see `mushafFonts`. `file` is one file under `public/` whose presence says
@@ -663,9 +668,7 @@ export const FONTS_ARABIC = [
   { id: QPC_V2, name: 'Madani Mushaf', className: 'font-mushaf', family: FALLBACK_ARABIC_FAMILY, mushaf: true, file: 'fonts/qcf/p1.woff2' },
   { id: 'DigitalKhatt', name: 'Digital Khatt', className: 'font-digitalkhatt', family: 'DigitalKhatt New Madina', mushaf: false, file: 'fonts/unicode/DigitalKhattV2.otf' },
   { id: 'DigitalKhattIndoPak', name: 'Digital Khatt IndoPak', className: 'font-digitalkhatt-indopak', family: 'DigitalKhatt IndoPak', mushaf: false, file: 'fonts/unicode/DigitalKhattIndoPak.otf' },
-  { id: 'IndopakNastaleeq', name: 'Indopak Nastaleeq', className: 'font-indopak-nastaleeq', family: 'AlQuran IndoPak by QuranWBW', mushaf: false, file: 'fonts/unicode/IndopakNastaleeq.woff2' },
-  // Last, and the only one with no file: see `FONT_ARABIC_BUILTIN`.
-  { id: FONT_ARABIC_BUILTIN, name: 'Amiri', className: 'font-amiri', family: 'Amiri', mushaf: false, file: null }
+  { id: 'IndopakNastaleeq', name: 'Indopak Nastaleeq', className: 'font-indopak-nastaleeq', family: 'AlQuran IndoPak by QuranWBW', mushaf: false, file: 'fonts/unicode/IndopakNastaleeq.woff2' }
 ];
 
 /**
@@ -680,7 +683,7 @@ export const FONTS_ARABIC = [
  * Digital Khatt, identically, which is the bug this exists to prevent.
  */
 export function arabicFontFamily(id: string | undefined): string {
-  return FONTS_ARABIC.find(font => font.id === id)?.family || FALLBACK_ARABIC_FAMILY;
+  return [...FONTS_ARABIC, BUILTIN_ARABIC_FONT].find(font => font.id === id)?.family || FALLBACK_ARABIC_FAMILY;
 }
 
 /**
@@ -689,7 +692,8 @@ export function arabicFontFamily(id: string | undefined): string {
  * Their ids are still in the database and in exported project files, and a
  * font id that names nothing leaves the canvas drawing in whatever the OS
  * ships. Everything maps to the mushaf: it is what each of them was an
- * imperfect attempt at.
+ * imperfect attempt at. That includes `amiri`, the built-in fallback, from
+ * the time it could be chosen: it now draws only where the mushaf cannot.
  */
 export const FONT_ARABIC_DEFAULT = QPC_V2;
 
