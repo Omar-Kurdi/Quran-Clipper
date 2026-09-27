@@ -373,6 +373,8 @@ export async function POST(req: NextRequest) {
       /** Whose published timings the captions use, or null when the aligner timed them. */
       timedFrom: published?.provider ?? null,
       pausesFromAudio,
+      /** The published timings were asked for alone, so no pauses were looked for. */
+      alignerSkipped: skipAligner,
       verses: timeline
     });
   } catch (err: unknown) {

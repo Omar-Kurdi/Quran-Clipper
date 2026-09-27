@@ -60,3 +60,33 @@ describe('chooseReciterTiming', () => {
     expect(chooseReciterTiming(keys, null, qul(keys)).published('40:14')).toEqual({ from: 12000, to: 18500 });
   });
 });
+
+describe('chooseReciterTiming with an audited pairing', () => {
+  const keys = ['5:41', '5:42'];
+
+  it("plays QUL's timings on the recording they fit, not the one QUL names (Sudais 5)", () => {
+    // quran.com's timings end 38s short of its own file, which was replaced
+    // after they were measured; QUL's end on that file to the hundredth.
+    const choice = chooseReciterTiming(keys, quranCom(keys), qul(keys), {
+      timings: 'qul',
+      audioUrl: 'https://download.quranicaudio.com/qdc/abdurrahmaan_as_sudais/murattal/5.mp3',
+    });
+    expect(choice.provider).toBe('qul');
+    expect(choice.audioUrl).toBe('https://download.quranicaudio.com/qdc/abdurrahmaan_as_sudais/murattal/5.mp3');
+    expect(choice.boundsFor('5:41')).toEqual({ start: 5, end: 11.5 });
+  });
+
+  it('uses no timings where none fit any recording, whatever the sources hold', () => {
+    expect(chooseReciterTiming(keys, quranCom(keys), qul(keys), null).provider).toBeNull();
+  });
+
+  it('never falls back to the other source when the audited one is missing', () => {
+    // A server without QUL's exports: estimated, not quran.com's unfit timings.
+    expect(chooseReciterTiming(keys, quranCom(keys), null, { timings: 'qul' }).provider).toBeNull();
+    expect(chooseReciterTiming(keys, quranCom(keys), null, { timings: 'quran.com' }).provider).toBe('quran.com');
+  });
+
+  it('keeps the old order for a surah never audited', () => {
+    expect(chooseReciterTiming(keys, quranCom(keys), qul(keys), undefined).provider).toBe('quran.com');
+  });
+});

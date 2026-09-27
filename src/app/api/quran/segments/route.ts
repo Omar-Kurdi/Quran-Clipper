@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRange } from '@/lib/quranCorpus';
 import { versesFromReciterSegments, ReciterVerseTiming } from '@/lib/reciterSegments';
+import { RECITERS } from '@/lib/quranData';
+import { timingPair } from '@/lib/timingAudit';
 
 /**
  * A timeline from the reciter's own published word timings.
@@ -31,6 +33,13 @@ export async function GET(req: NextRequest) {
 
     if (!Number.isFinite(surah) || !Number.isFinite(end) || !reciter) {
       return NextResponse.json({ success: false, error: 'bad request' }, { status: 400 });
+    }
+    // quran.com's timings are used only where the audit found they fit their
+    // own recording -- see `timingAudit`.
+    const reciterId = RECITERS.find(r => r.quranApiId === reciter)?.id;
+    const pair = reciterId ? timingPair(reciterId, surah) : undefined;
+    if (pair !== undefined && (pair?.timings !== 'quran.com' || pair.audioUrl)) {
+      return NextResponse.json({ success: false, error: `quran.com's timings for this surah do not match its recording` }, { status: 422 });
     }
 
     const res = await fetch(

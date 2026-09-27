@@ -2,6 +2,7 @@ import { RECITERS } from './quranData';
 import { getRange } from './quranCorpus';
 import { qulSurah } from './qulRecitations';
 import { chooseReciterTiming, type QuranComTimings, type TimingChoice } from './reciterTimingChoice';
+import { timingPair } from './timingAudit';
 
 /**
  * Measured per-ayah timings for a reciter's chapter recording.
@@ -63,7 +64,9 @@ export async function reciterTiming(reciterId: string, surah: number, verseKeys:
   return chooseReciterTiming(
     verseKeys,
     reciter ? await fetchReciterTimings(reciter.quranApiId, surah) : null,
-    reciter ? qulSurah(reciter.id, surah) : null
+    reciter ? qulSurah(reciter.id, surah) : null,
+    // Which of them fits which recording, as audited -- see `timingAudit`.
+    reciter ? timingPair(reciter.id, surah) : undefined
   );
 }
 

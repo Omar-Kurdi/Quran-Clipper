@@ -7,6 +7,7 @@ import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 import { qulSurah } from '@/lib/qulRecitations';
 import { chooseReciterTiming } from '@/lib/reciterTimingChoice';
 import { fetchReciterTimings } from '@/lib/publishedTiming';
+import { timingPair } from '@/lib/timingAudit';
 
 function getReciterAudioUrl(reciterId: string, surahNumber: number) {
   const reciter = RECITERS.find(r => r.id === reciterId) || RECITERS[0];
@@ -124,10 +125,12 @@ export async function GET(req: NextRequest) {
 
         // quran.com first, so a reciter it covers loads as before; QUL's export,
         // where this machine has one, for a reciter quran.com has not timed.
+        // Where the surah was audited, the pairing it found decides instead.
         const choice = chooseReciterTiming(
           filtered.map(v => v.verse_key),
           await fetchReciterTimings(reciterMeta.quranApiId, surahNumber),
-          qulSurah(reciter, surahNumber)
+          qulSurah(reciter, surahNumber),
+          timingPair(reciterMeta.id, surahNumber)
         );
         // A QUL-only reciter has no estimate to fall back on: its recording is
         // QUL's, and the timings the export has for this passage are broken.
