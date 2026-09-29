@@ -149,6 +149,11 @@ export const en = {
     matcherUses: (technical: string) => `Uses ${technical}`,
     skipAlignerTimed: 'Built-in reciters: use their published timings only, without the aligner',
     skipAlignerTimedHelp: 'Faster, and works without the alignment model. Each ayah is one caption, split only where the reciter repeats; the aligner would also split a long ayah where the reciter pauses. Uploads are still aligned.',
+    screenBreaksLabel: 'Screen breaks:',
+    screenBreaksFewer: 'Fewer',
+    screenBreaksNormal: 'Normal',
+    screenBreaksMore: 'More',
+    screenBreaksHelp: 'How short a pause inside an ayah can be and still start a new caption. An ayah end always does. Applies to the next match.',
     matcherLocal: 'Local',
     matcherLocalTechnical: 'local forced alignment',
     matcherLocalBlurb:

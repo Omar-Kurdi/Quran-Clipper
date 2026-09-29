@@ -323,6 +323,7 @@ async def align_endpoint(
     window_start: float = Form(0.0),
     window_end: float = Form(0.0),
     assist: str = Form(""),
+    breaks: str = Form(""),
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -343,8 +344,14 @@ async def align_endpoint(
     mutashabihat (see `qul`). It is the studio's "Local + QUL" option, kept
     separate so the two can be compared; it only matters when no reference is
     sent, because a known range has nothing left to detect.
+
+    ``breaks`` is the studio's "fewer / more screen breaks" setting: ``fewer``,
+    ``more``, or empty for ``normal``. See `align.BREAK_SCALES`.
     """
     started = time.perf_counter()
+    breaks = breaks or "normal"
+    if breaks not in align.BREAK_SCALES:
+        raise HTTPException(status_code=400, detail=f"breaks must be one of {', '.join(align.BREAK_SCALES)}; got {breaks!r}.")
     # Resolved before any decoding, so a missing export fails in milliseconds.
     detect_assist = _assist(assist)
 
@@ -467,7 +474,7 @@ async def align_endpoint(
             raise HTTPException(status_code=422, detail=f"Detected {summary} but found no text for it.")
 
     try:
-        result = align.align_recitation(pcm, ref_words, boundaries, decoded_phrases)
+        result = align.align_recitation(pcm, ref_words, boundaries, decoded_phrases, breaks)
     except align.AlignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

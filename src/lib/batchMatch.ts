@@ -12,6 +12,7 @@
  */
 
 import type { VerseData } from './quranData';
+import type { ScreenBreaks } from './forcedAligner';
 
 export type BatchStatus = 'waiting' | 'matching' | 'done' | 'failed';
 
@@ -93,11 +94,13 @@ export async function matchFile(
   file: File,
   provider: string,
   durationSeconds: number,
-  fallbackError: string
+  fallbackError: string,
+  breaks: ScreenBreaks = 'normal'
 ): Promise<BatchResult> {
   const form = new FormData();
   form.append('audio', file);
   form.append('provider', provider);
+  if (breaks !== 'normal') form.append('breaks', breaks);
   if (durationSeconds > 0) form.append('audioDuration', String(durationSeconds));
   const res = await fetch('/api/audio/match', { method: 'POST', body: form });
   const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;

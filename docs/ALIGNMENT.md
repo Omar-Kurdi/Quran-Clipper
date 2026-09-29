@@ -412,6 +412,12 @@ is 9/11:
 - a **repeat** after a stop ends a line wherever it happens;
 - a **held nasal** raises the bar rather than lowering it.
 
+The studio's **Screen breaks** setting (`breaks=fewer|more` on `/align`) moves all three bars by
+one factor (`BREAK_SCALES` in `align.py`: 1.75 and 0.6). It exists because the misses left at the
+bars are judgement calls: across the ground truth, "more" makes 244 captions against 229 and
+catches the quarter-second stops at 33:22 and 40:21, and "fewer" makes 217 and drops a 0.58s
+breath the ground truth ignores. Normal is unchanged.
+
 ### Detection can reach past the audio
 
 Detection reads the passage from phrase matches, so it can include an ayah at the edge that was

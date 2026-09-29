@@ -8,6 +8,7 @@ import {
   addBatchFiles, matchFile, nextBatchItem, updateBatchItem,
   type BatchItem, type BatchResult
 } from '@/lib/batchMatch';
+import type { ScreenBreaks } from '@/lib/forcedAligner';
 
 interface BatchMatchDialogProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ interface BatchMatchDialogProps {
   providerLabel: string;
   /** Whether that matcher can run now; the batch cannot start otherwise. */
   providerReady: boolean;
+  /** The studio's "fewer / more screen breaks" setting, applied to every file. */
+  breaks: ScreenBreaks;
   /** The recording's length, read the same way a single upload's is. */
   measureDuration: (file: File) => Promise<number>;
   /** Loads one result into the studio, closing the dialog. */
@@ -34,7 +37,12 @@ const ACCEPT = 'audio/*,video/*,.mp3,.wav,.m4a,.ogg,.opus,.webm,.flac,.mp4,.mov,
  * Timers rather than animation frames, which stop in a background tab -- and
  * a batch is exactly what someone leaves running there.
  */
-function useBatchRunner(provider: string, measureDuration: (file: File) => Promise<number>, failedText: string) {
+function useBatchRunner(
+  provider: string,
+  breaks: ScreenBreaks,
+  measureDuration: (file: File) => Promise<number>,
+  failedText: string
+) {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [running, setRunning] = useState(false);
   const stopRef = useRef(false);
@@ -49,12 +57,12 @@ function useBatchRunner(provider: string, measureDuration: (file: File) => Promi
       }
       setItems(current => updateBatchItem(current, item.id, { status: 'matching' }));
       measureDuration(item.file)
-        .then(duration => matchFile(item.file, provider, duration, failedText))
+        .then(duration => matchFile(item.file, provider, duration, failedText, breaks))
         .then(result => setItems(current => updateBatchItem(current, item.id, { status: 'done', result })))
         .catch((err: Error) => setItems(current => updateBatchItem(current, item.id, { status: 'failed', error: err.message })));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [running, items, provider, measureDuration, failedText]);
+  }, [running, items, provider, breaks, measureDuration, failedText]);
 
   return {
     items,
@@ -80,10 +88,10 @@ function useBatchRunner(provider: string, measureDuration: (file: File) => Promi
  * itself, which is the whole point of handing it ten at once.
  */
 export const BatchMatchDialog: React.FC<BatchMatchDialogProps> = ({
-  isOpen, onClose, provider, providerLabel, providerReady, measureDuration, onOpen, onSave
+  isOpen, onClose, provider, providerLabel, providerReady, breaks, measureDuration, onOpen, onSave
 }) => {
   const t = useT();
-  const batch = useBatchRunner(provider, measureDuration, t.match.failed);
+  const batch = useBatchRunner(provider, breaks, measureDuration, t.match.failed);
   const { items, setItems, running } = batch;
 
   // All at once: each save stores its own recording under its own key.

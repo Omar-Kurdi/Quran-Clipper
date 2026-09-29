@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { addBatchFiles, batchItems, batchResultFrom, nextBatchItem, updateBatchItem } from './batchMatch';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { addBatchFiles, batchItems, batchResultFrom, matchFile, nextBatchItem, updateBatchItem } from './batchMatch';
 
 const file = (name: string, size = 10) => new File([new Uint8Array(size)], name, { type: 'audio/mpeg' });
 
@@ -44,5 +44,28 @@ describe('batchResultFrom', () => {
     expect(batchResultFrom({ success: false, error: 'x' })).toBeNull();
     expect(batchResultFrom({ success: true, verses: [] })).toBeNull();
     expect(batchResultFrom(null)).toBeNull();
+  });
+});
+
+describe('matchFile', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const sent = async (...breaks: Parameters<typeof matchFile>[4][]) => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ success: true, verses: [{}] })));
+    vi.stubGlobal('fetch', fetchMock);
+    await matchFile(file('a.mp3'), 'align', 12, 'failed', ...breaks);
+    const body = fetchMock.mock.calls[0][1].body;
+    if (!(body instanceof FormData)) throw new Error('matchFile did not send a form');
+    return body.get('breaks');
+  };
+
+  it('carries the screen-breaks setting a batch was started with', async () => {
+    expect(await sent('more')).toBe('more');
+    expect(await sent('fewer')).toBe('fewer');
+  });
+
+  it('sends nothing for normal, as a single match does', async () => {
+    expect(await sent('normal')).toBeNull();
+    expect(await sent()).toBeNull();
   });
 });

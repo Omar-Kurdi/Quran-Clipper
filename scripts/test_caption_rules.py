@@ -116,5 +116,32 @@ check(
     ok=align._finish_before_restart(passes, other, ghafir16)[0][:2] == (9, 10),
 )
 
+# The studio's "fewer / more screen breaks" setting moves the bars, and only
+# them: at "normal" these are the calls the aligner has always made.
+print("\nfewer / more screen breaks -- the bars move with the setting")
+# test5.mp3 stops at the unmarked ٱلْأَرْضِ on about a quarter-second of quiet.
+ghafir21 = [
+    word("40:21", 18, "فِى", 0.0, 0.9),
+    word("40:21", 19, "ٱلْأَرْضِ", 1.0, 2.0),
+    word("40:21", 20, "فَأَخَذَهُمُ", 2.3, 3.0),
+    word("40:21", 21, "ٱللَّهُ", 3.1, 4.0),
+]
+for setting, want in (("normal", [("40:21", 19, 22)]), ("more", [("40:21", 19, 20), ("40:21", 21, 22)])):
+    segments, _ = align._segment_the_timeline(
+        ghafir21, [18, 19, 20, 21], 4.1, pauses=[(2.02, 2.27)], bar_scale=align.BREAK_SCALES[setting]
+    )
+    check(f"0.25s of quiet at an unmarked word, {setting}", ok=ranges(segments) == want, detail=f"got {ranges(segments)}")
+
+# test_this.mp3 carries on through مَوْلَىٰكُمْ ۖ, leaving only a 0.32s gap in the alignment.
+tahrim2 = [
+    word("66:2", 6, "وَٱللَّهُ", 0.0, 0.8),
+    word("66:2", 7, "مَوْلَىٰكُمْ ۖ", 0.9, 1.6),
+    word("66:2", 8, "وَهُوَ", 1.92, 2.4),
+    word("66:2", 9, "ٱلْعَلِيمُ", 2.5, 3.2),
+]
+for setting, want in (("normal", [("66:2", 7, 8), ("66:2", 9, 10)]), ("fewer", [("66:2", 7, 10)])):
+    segments, _ = align._segment_the_timeline(tahrim2, [6, 7, 8, 9], 3.3, pauses=[], bar_scale=align.BREAK_SCALES[setting])
+    check(f"a stop mark on the alignment's gap alone, {setting}", ok=ranges(segments) == want, detail=f"got {ranges(segments)}")
+
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

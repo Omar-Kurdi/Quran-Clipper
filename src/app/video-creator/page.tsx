@@ -11,12 +11,16 @@ import { describeGpu } from '@/lib/gpuInfo';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import type { ExportHealth } from '@/lib/exportHealth';
 import type { ExportPlan } from '@/lib/exportPresets';
-import { createBooleanPreference } from '@/lib/uiPreference';
+import { createBooleanPreference, createNumberPreference } from '@/lib/uiPreference';
+import type { ScreenBreaks } from '@/lib/forcedAligner';
 
 /** Module scope, so every render subscribes to the same store. */
 const ripplePreference = createBooleanPreference('qc-ripple-edits', true);
 /** Local + QUL: time a built-in reciter from its published timings alone, without the aligner. */
 const skipAlignerPreference = createBooleanPreference('qc-qul-skip-aligner', true);
+/** Local matchers: fewer (-1), normal (0) or more (1) captions from the pauses inside an ayah. */
+const screenBreaksPreference = createNumberPreference('qc-screen-breaks', 0, { min: -1, max: 1 });
+const SCREEN_BREAKS: ScreenBreaks[] = ['fewer', 'normal', 'more'];
 
 /**
  * Whether to show tools that only mean something next to this repository.
@@ -196,6 +200,11 @@ export default function VideoCreatorPage() {
     skipAlignerPreference.get,
     skipAlignerPreference.getServerSnapshot
   );
+  const screenBreaks = SCREEN_BREAKS[Math.round(useSyncExternalStore(
+    screenBreaksPreference.subscribe,
+    screenBreaksPreference.get,
+    screenBreaksPreference.getServerSnapshot
+  )) + 1];
   const [showTrimModal, setShowTrimModal] = useState(false);
   /** Set when the upload was a video file, so its footage can double as the background. */
   const [uploadIsVideo, setUploadIsVideo] = useState(false);
@@ -968,6 +977,7 @@ export default function VideoCreatorPage() {
     formData.append('end', String(ayahEnd));
     formData.append('reciter', selectedReciter);
     formData.append('provider', matchProvider);
+    if (matchProvider !== 'gemini' && screenBreaks !== 'normal') formData.append('breaks', screenBreaks);
     // Measured from this exact file at upload time, not read off the player.
     // Gemini only estimates duration -- on the test clip it reported 108s for a
     // 68.5s file -- and the server has no decode of its own on that path, so
@@ -2578,6 +2588,29 @@ export default function VideoCreatorPage() {
                         </span>
                       </label>
                     )}
+                    {matchProvider !== 'gemini' && (
+                      <div className="mt-2">
+                        <span id="screen-breaks-label" className="text-[11px] font-semibold text-slate-400 block mb-1">{t.source.screenBreaksLabel}</span>
+                        <div role="radiogroup" aria-labelledby="screen-breaks-label" className="grid grid-cols-3 gap-1.5">
+                          {SCREEN_BREAKS.map((level, index) => (
+                            <button
+                              key={level}
+                              role="radio"
+                              aria-checked={screenBreaks === level}
+                              onClick={() => screenBreaksPreference.set(index - 1)}
+                              className={`py-1 rounded-md border text-[11px] font-bold transition-all ${
+                                screenBreaks === level
+                                  ? 'bg-amber-500/15 border-amber-500 text-slate-100'
+                                  : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                              }`}
+                            >
+                              {level === 'fewer' ? t.source.screenBreaksFewer : level === 'more' ? t.source.screenBreaksMore : t.source.screenBreaksNormal}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">{t.source.screenBreaksHelp}</p>
+                      </div>
+                    )}
                     {!selectedMatchOption.ready && selectedMatchOption.fix && (
                       <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
                         {selectedMatchOption.fix}
@@ -3159,6 +3192,7 @@ export default function VideoCreatorPage() {
         provider="align"
         providerLabel={t.source.matcherLocal}
         providerReady={!!providerStatus?.align.configured && providerStatus.align.alignReady !== false}
+        breaks={screenBreaks}
         measureDuration={measureFileDuration}
         onOpen={openBatchResult}
         onSave={saveBatchResult}

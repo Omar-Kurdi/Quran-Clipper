@@ -148,6 +148,11 @@ export const ar: Dictionary = {
     matcherUses: technical => `تستخدم ${technical}`,
     skipAlignerTimed: 'القرّاء المدمجون: استخدم توقيتاتهم المنشورة فقط، دون أداة المحاذاة',
     skipAlignerTimedHelp: 'أسرع، ويعمل دون نموذج المحاذاة. كل آية شريحة واحدة، لا تُقسَم إلا حيث يكرّر القارئ؛ أما أداة المحاذاة فتقسم الآية الطويلة أيضًا حيث يقف القارئ. والملفات المرفوعة تُحاذى كما كانت.',
+    screenBreaksLabel: 'تقسيم الشرائح:',
+    screenBreaksFewer: 'أقل',
+    screenBreaksNormal: 'عادي',
+    screenBreaksMore: 'أكثر',
+    screenBreaksHelp: 'كم يقصر الوقف داخل الآية ويبدأ مع ذلك شريحة جديدة. أما نهاية الآية فتبدأ شريحة دائمًا. يُطبَّق على المطابقة التالية.',
     matcherLocal: 'محلي',
     matcherLocalTechnical: 'المحاذاة القسرية المحلية',
     matcherLocalBlurb:

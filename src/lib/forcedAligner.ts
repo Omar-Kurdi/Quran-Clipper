@@ -99,12 +99,16 @@ export type AlignSource =
   | { kind: 'file'; audio: File }
   | { kind: 'url'; audioUrl: string; windowStart: number; windowEnd: number };
 
-async function requestAlignment(params: {
+type AlignRequest = {
   serviceUrl: string;
   source: AlignSource;
   reference: string;
   assist?: AlignAssist;
-}): Promise<AlignResponse> {
+  breaks?: ScreenBreaks;
+};
+
+/** The sidecar's `/align` form for one request. */
+function alignmentForm(params: AlignRequest): FormData {
   const formData = new FormData();
   if (params.source.kind === 'file') {
     formData.append('audio', params.source.audio);
@@ -115,6 +119,12 @@ async function requestAlignment(params: {
   }
   formData.append('reference', params.reference);
   if (params.assist) formData.append('assist', params.assist);
+  if (params.breaks && params.breaks !== 'normal') formData.append('breaks', params.breaks);
+  return formData;
+}
+
+async function requestAlignment(params: AlignRequest): Promise<AlignResponse> {
+  const formData = alignmentForm(params);
 
   const base = params.serviceUrl.replace(/\/$/, '');
   let res: Response;
@@ -181,6 +191,18 @@ export function referenceToken(word: { arabic: string }): string {
 /** A detection assist the sidecar can be asked for. */
 export type AlignAssist = 'qul';
 
+/**
+ * The studio's "fewer / more screen breaks" setting. It moves how much silence
+ * the sidecar needs before it calls a pause a stop and ends a caption there;
+ * ayah ends and restarts still break either way. See `align.BREAK_SCALES`.
+ */
+export type ScreenBreaks = 'fewer' | 'normal' | 'more';
+
+/** Reads the setting off a request, where anything unrecognised is `normal`. */
+export function screenBreaksFrom(value: unknown): ScreenBreaks {
+  return value === 'fewer' || value === 'more' ? value : 'normal';
+}
+
 export async function runForcedAlignMatch(params: {
   serviceUrl: string;
   source: AlignSource;
@@ -195,6 +217,7 @@ export async function runForcedAlignMatch(params: {
    * it, so it makes no difference when a range is given.
    */
   assist?: AlignAssist;
+  breaks?: ScreenBreaks;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
   /** Set when auto-detect was asked for but the sidecar couldn't do it. */
@@ -225,7 +248,8 @@ export async function runForcedAlignMatch(params: {
       serviceUrl: params.serviceUrl,
       source: params.source,
       reference,
-      assist: params.assist
+      assist: params.assist,
+      breaks: params.breaks
     });
   } catch (err) {
     // Retry with the user's range only when the sidecar said auto-detection is
@@ -256,7 +280,8 @@ export async function runForcedAlignMatch(params: {
       reference: selected
         .map(verse => `${verse.verseKey}\t${verse.words.map(referenceToken).join(' ')}`)
         .join('\n'),
-      assist: params.assist
+      assist: params.assist,
+      breaks: params.breaks
     });
     fellBackToSelected = true;
   }

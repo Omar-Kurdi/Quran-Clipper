@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { referenceToken } from './forcedAligner';
+import { referenceToken, screenBreaksFrom } from './forcedAligner';
 
 describe('referenceToken', () => {
   it('spends one reference word per rendered word', () => {
@@ -19,5 +19,16 @@ describe('referenceToken', () => {
   it('keeps every letter, so the alignment target is unchanged', () => {
     expect(referenceToken({ arabic: 'بَعْدَ مَا' })).toBe('بَعْدَمَا');
     expect(referenceToken({ arabic: 'رَيْبَ ۛ' })).toBe('رَيْبَۛ');
+  });
+});
+
+describe('screenBreaksFrom', () => {
+  it('passes the two settings the sidecar knows', () => {
+    expect(screenBreaksFrom('fewer')).toBe('fewer');
+    expect(screenBreaksFrom('more')).toBe('more');
+  });
+
+  it('reads anything else as normal, so a stray value never reaches the sidecar', () => {
+    for (const value of [null, '', 'normal', 'MORE', 'lots', 1]) expect(screenBreaksFrom(value)).toBe('normal');
   });
 });

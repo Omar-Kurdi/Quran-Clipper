@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sidecarStatus } from '@/lib/sidecarHealth';
 import { SURAHS_LIST } from '@/lib/quranData';
 import { runGeminiMatch } from '@/lib/geminiMatcher';
-import { runForcedAlignMatch } from '@/lib/forcedAligner';
+import { runForcedAlignMatch, screenBreaksFrom } from '@/lib/forcedAligner';
 import {
   fetchVersesByDetectedSegments,
   enforceTimelineOrder,
@@ -234,7 +234,8 @@ export async function POST(req: NextRequest) {
           surah: selectedSurah,
           start: selectedStart,
           end: selectedEnd,
-          assist: provider === 'qul' ? 'qul' : undefined
+          assist: provider === 'qul' ? 'qul' : undefined,
+          breaks: screenBreaksFrom(formData.get('breaks'))
         }), {
           // On a public studio each visitor holds only a small share of the
           // queue, and a visitor who closes the tab gives up their place.

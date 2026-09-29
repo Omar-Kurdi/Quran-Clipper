@@ -2609,6 +2609,21 @@ MIN_MARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_MARKED_PAUSE_SEC", "0.18"))
 #: two disagree, so the bar is kept above them.
 MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.34"))
 
+#: The studio's "fewer / more screen breaks" setting: how far it moves every
+#: bar for calling a pause a stop -- both pause bars and the stop mark's gap.
+#:
+#: A setting rather than a better rule, because the misses left at the bars are
+#: judgement calls the audio does not settle. test.mp3 stops at the unmarked
+#: وَرَسُولُهُۥ on 0.22s of quiet and test5 at ٱلْأَرْضِ on 0.24s, while other
+#: clips run straight on over 0.24-0.26s; the WhatsApp voice note takes a 0.58s
+#: breath at جَعَلَ that its ground truth does not count as a stop.
+#:
+#: Measured over the 18 ground-truth clips (229 captions, 212/230 exact):
+#: "more" makes 244 captions and catches both of those stops, at 209/230;
+#: "fewer" makes 217 and drops the breath, at 197/230. The ground truth is one
+#: person's taste, so a lower score here is the setting working, not failing.
+BREAK_SCALES = {"fewer": 1.75, "normal": 1.0, "more": 0.6}
+
 #: How much more silence it takes to call a stop where tajweed already holds a
 #: nasal across the join. Enough to cover the ghunnah itself and no more: on one
 #: clip the held nasals measure 0.00s and 0.30s of quiet where the reciter did
@@ -2836,6 +2851,7 @@ def _segment_the_timeline(
     pauses: list[tuple[float, float]] | None = None,
     repeated: list[bool] | None = None,
     hush: list[tuple[float, float]] | None = None,
+    bar_scale: float = 1.0,
 ) -> tuple[list[Segment], list[list[AlignedWord]]]:
     """Cut the aligned word sequence into on-screen segments.
 
@@ -2880,7 +2896,11 @@ def _segment_the_timeline(
     )
     # What "no pause" costs this reciter, from the clip's own timing.
     typical = statistics.median(gaps[: max(1, len(gaps) // 2)]) if gaps else 0.0
-    waqf_pause = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * typical)
+    # `bar_scale` is the studio's setting -- see `BREAK_SCALES`. The pause bars
+    # never go below `MIN_PAUSE_SEC`, since no shorter quiet is ever measured.
+    waqf_pause = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * typical) * bar_scale
+    marked_bar = max(MIN_PAUSE_SEC, MIN_MARKED_PAUSE_SEC * bar_scale)
+    unmarked_bar = max(MIN_PAUSE_SEC, MIN_UNMARKED_PAUSE_SEC * bar_scale)
 
     def stopped_between(word: AlignedWord, nxt: AlignedWord) -> bool:
         """Did the reciter actually fall silent around this junction?
@@ -2959,7 +2979,7 @@ def _segment_the_timeline(
     # needed to mean it. A reciter may stop anywhere, marked or not.
     for pause_start, pause_end in pauses:
         length = pause_end - pause_start
-        if length < MIN_MARKED_PAUSE_SEC:
+        if length < marked_bar:
             continue
         # The word the reciter had reached when the silence began. Chosen by
         # where each word *started*, so a word stretched over the silence is
@@ -2993,7 +3013,7 @@ def _segment_the_timeline(
             # `_CANNOT_END_A_PHRASE`. Nothing but the mushaf's own mark
             # overrides this, and a mark never falls here.
             continue
-        bar = MIN_MARKED_PAUSE_SEC if marked else MIN_UNMARKED_PAUSE_SEC
+        bar = marked_bar if marked else unmarked_bar
         gap = aligned[i + 1].start - aligned[i].end
         held = gap <= MAX_NASAL_JOIN_SEC
         if _sustained_junction(aligned[i].text, aligned[i + 1].text) and not marked and held:
@@ -3103,6 +3123,7 @@ def align_recitation(
     ref_words: list[tuple[str, int, str]],
     boundaries: list[float] | None = None,
     decoded_phrases: list[str] | None = None,
+    breaks: str = "normal",
 ) -> RecitationResult:
     """Full pipeline: decide *what* was recited, then align it, then group it.
 
@@ -3132,7 +3153,7 @@ def align_recitation(
 
     `boundaries` and `decoded_phrases` may be passed in when the caller has
     already computed them -- range auto-detection needs the same decodes, and
-    they are the expensive part.
+    they are the expensive part. `breaks` is a key of `BREAK_SCALES`.
     """
     duration = len(pcm) / SAMPLE_RATE
     emission = compute_emission(pcm)
@@ -3179,7 +3200,9 @@ def align_recitation(
     # this placed all 177 words with a mean ayah-start error of 0.48s.
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
-    segments, spans = _segment_the_timeline(aligned, script, duration, quiet_spans(pcm), repeated, hushes(pcm))
+    segments, spans = _segment_the_timeline(
+        aligned, script, duration, quiet_spans(pcm), repeated, hushes(pcm), BREAK_SCALES[breaks]
+    )
     segments = _close_gaps(
         _extend_over_repeated_tail(segments, spans, ref_words, pcm), duration, quiet_spans(pcm)
     )
