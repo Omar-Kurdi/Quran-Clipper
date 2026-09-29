@@ -1,3 +1,6 @@
+import type { IncomingMessage } from 'node:http';
+import https from 'node:https';
+import { Readable } from 'node:stream';
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -70,24 +73,52 @@ function resolveTarget(req: NextRequest): URL | null {
 const MAX_HOPS = 3;
 
 /**
+ * One upstream request, over `node:https` rather than `fetch`.
+ *
+ * Measured in this server against download.quranicaudio.com: `fetch` drained a
+ * 38 MB recording in about 21 s, `node:https` in about 2 s, same process and
+ * same file. The sidecar's ffmpeg reads a surah linearly up to the window it
+ * wants, so that throughput was the whole cost of an aligner match on a
+ * built-in reciter.
+ *
+ * `signal` is the caller's: when the browser or ffmpeg drops the connection,
+ * the upstream request goes with it instead of pulling the rest of the file.
+ */
+function requestOnce(
+  url: URL,
+  method: 'GET' | 'HEAD',
+  headers: Record<string, string> | undefined,
+  signal: AbortSignal
+): Promise<IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, { method, headers, signal }, resolve);
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/**
  * Fetches `target`, following redirects **only** to hosts on the allowlist.
  *
- * `fetch` follows redirects itself by default, and that quietly undoes the
- * allowlist: an allowed host answering `302 Location: http://169.254.169.254/`
- * would be followed, and this server would fetch it and stream the body back.
- * The check has to be applied to every hop, not just the one the caller named,
- * which means doing the following here rather than letting fetch do it.
+ * Following redirects blindly quietly undoes the allowlist: an allowed host
+ * answering `302 Location: http://169.254.169.254/` would be followed, and this
+ * server would fetch it and stream the body back. The check has to be applied
+ * to every hop, not just the one the caller named, which means doing the
+ * following here (`node:https` never follows on its own).
  */
 async function fetchAllowedOnly(
   target: URL,
-  init: { method: 'GET' | 'HEAD'; headers?: Record<string, string> }
-): Promise<Response | null> {
+  init: { method: 'GET' | 'HEAD'; headers?: Record<string, string>; signal: AbortSignal }
+): Promise<IncomingMessage | null> {
   let url = target;
   for (let hop = 0; hop <= MAX_HOPS; hop++) {
-    const res = await fetch(url, { ...init, cache: 'no-store', redirect: 'manual' });
-    if (res.status < 300 || res.status >= 400) return res;
+    const res = await requestOnce(url, init.method, init.headers, init.signal);
+    const status = res.statusCode ?? 502;
+    if (status < 300 || status >= 400) return res;
 
-    const location = res.headers.get('location');
+    // A redirect's own body is never used; drain it so its socket is freed.
+    res.resume();
+    const location = res.headers.location;
     if (!location) return res;
     let next: URL;
     try {
@@ -112,7 +143,8 @@ async function forward(req: NextRequest, method: 'GET' | 'HEAD') {
   const range = req.headers.get('range');
   const upstream = await fetchAllowedOnly(target, {
     method,
-    headers: range ? { Range: range } : undefined
+    headers: range ? { Range: range } : undefined,
+    signal: req.signal
   });
   if (!upstream) {
     return NextResponse.json({ error: 'Unsupported audio source.' }, { status: 400 });
@@ -120,14 +152,19 @@ async function forward(req: NextRequest, method: 'GET' | 'HEAD') {
 
   const headers = new Headers();
   for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag']) {
-    const value = upstream.headers.get(name);
-    if (value) headers.set(name, value);
+    const value = upstream.headers[name];
+    if (typeof value === 'string') headers.set(name, value);
   }
   if (!headers.has('accept-ranges')) headers.set('accept-ranges', 'bytes');
   headers.set('cache-control', 'public, max-age=86400');
 
-  return new NextResponse(method === 'HEAD' ? null : upstream.body, {
-    status: upstream.status,
+  // Cancelling the web stream destroys `upstream`, which ends the request.
+  let body: ReadableStream<Uint8Array> | null = null;
+  if (method === 'HEAD') upstream.resume();
+  else body = Readable.toWeb(upstream) as ReadableStream<Uint8Array>;
+
+  return new NextResponse(body, {
+    status: upstream.statusCode ?? 502,
     headers
   });
 }
