@@ -9,15 +9,20 @@ Run from the repo root:
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "asr-service"))
 
-import eval_segments  # noqa: E402
 from app import corpus  # noqa: E402
+
+# Loaded from its path rather than imported by name: a bare `import
+# eval_segments` reads as a package to install, and it is a script beside this one.
+_spec = importlib.util.spec_from_file_location("eval_segments", os.path.join(os.path.dirname(__file__), "eval_segments.py"))
+eval_segments = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(eval_segments)
 
 FAILED: list[str] = []
 
