@@ -1683,6 +1683,51 @@ def _carries_a_word(token: str, ref_words=None, expected: int | None = None) -> 
     return True
 
 
+def _halves_of(tail: str, head: str, word: str) -> bool:
+    """Are these the two halves a boundary left when it landed inside `word`?
+
+    Compared unskeletoned, because the skeleton drops the very letters a cut
+    leaves behind: `يَوَدّ` and `يَوَدُّوا۟` both reduce to `يود`. Each half on its
+    own reads as a word, so it takes both -- the head of the word ending one
+    window and its remainder opening the next -- to show the word was cut.
+    """
+    whole, first, second = (normalize_for_vocab(text) for text in (word, tail, head))
+    if len(first) < 2 or not second or whole in (first, second):
+        return False
+    return whole.startswith(first) and whole.endswith(second)
+
+
+def _cut_behind_the_reading(tail: list[str], following: str, after: int, ref_words=None, match_from=None) -> bool:
+    """Did a boundary halve a word the reciter had gone back to?
+
+    A restart puts the cut word behind the reading, where `_carries_a_word`
+    never looks. Al-Ahzab 33:20: the reciter went back to يَوَدُّوا۟, a boundary
+    fell inside it, and one window ended `يَوَدّ` while the next opened `وَدُّوا`
+    and matched from لَوْ on -- so the restart was scripted a word late. The
+    word a cut halved is the one just before where the next window's own match
+    begins.
+    """
+    head = following.split()
+    if not (tail and head and ref_words is not None and match_from is not None):
+        return False
+    resumed = match_from(following, after)
+    return bool(resumed) and resumed[0] > 0 and _halves_of(tail[-1], head[0], ref_words[resumed[0] - 1][2])
+
+
+def _join_cuts_a_word(tail: list[str], following: str, after: int, ref_words=None, match_from=None) -> bool:
+    """Is the join between a window ending in `tail` and the next one, reading `following`, inside a word?
+
+    Either side may be debris the cut left (see `_carries_a_word`), or, where
+    the reciter had gone back, the two sides may be the halves of one word.
+    """
+    head = following.split()
+    if tail and not _carries_a_word(tail[-1], ref_words, after):
+        return True
+    if head and not _carries_a_word(head[0], ref_words, after):
+        return True
+    return _cut_behind_the_reading(tail, following, after, ref_words, match_from)
+
+
 def _cuts_a_word(decode, i: int, j: int, cursor: int, ref_words=None, match_from=None) -> bool:
     """Does a boundary inside [i, j] look like it landed inside a word?
 
@@ -1705,10 +1750,8 @@ def _cuts_a_word(decode, i: int, j: int, cursor: int, ref_words=None, match_from
         # `فَضَّلْتُكُمْ`, two words along from where that window began.
         match = match_from(window, at) if match_from is not None else None
         after = (match[1] + 1) if match else at
-        head = decode(step + 1, step + 2, after).split() if step + 1 < j else []
-        if tail and not _carries_a_word(tail[-1], ref_words, after):
-            return True
-        if head and not _carries_a_word(head[0], ref_words, after):
+        following = decode(step + 1, step + 2, after) if step + 1 < j else ""
+        if _join_cuts_a_word(tail, following, after, ref_words, match_from):
             return True
         at = after
     # The window opening the *next* phrase is the other half of the last cut.

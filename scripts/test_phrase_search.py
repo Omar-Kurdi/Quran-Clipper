@@ -73,5 +73,21 @@ ayahs = [int(yusuf[word][0].split(":")[1]) for word in scripted]
 check("no word of 12:4 is scripted inside 12:3", ok=ayahs == sorted(ayahs), detail=f"got {claimed}")
 check("and عَلَيْكَ, which was recited there, is scripted", ok=2 in scripted, detail=f"got {claimed}")
 
+# The read-outs either side of the boundary at 122.37s of the _1443 Al-Ahzab
+# clip. The reciter had said 33:20 up to ٱلْأَعْرَابِ and went back to يَوَدُّوا۟;
+# the boundary fell inside it, so the restart was scripted from لَوْ and the
+# caption lost its first word. Merging the two windows reads 8-16 whole.
+print("\na cut word -- found behind the reading as well as ahead of it")
+ahzab = corpus.words_for_range(33, 20, 20)
+halves = {(0, 1): "ِ يَوَدّ", (1, 2): "وَدُّوا لَوْ أَنَّهُم بَادُونَ فِي الْأَعْرَابِ يَسْأَلُونَ عَنْ أَنبَئِكُمْ"}
+match_from = lambda text, at: align.match_decoded_to_range(text, ahzab, at)  # noqa: E731
+check(
+    "a restart's first word cut in two lets the search merge its halves",
+    ok=align._cuts_a_word(lambda i, j, _: halves[(i, j)], 0, 2, 13, ahzab, match_from),
+)
+check("the head and the remainder are the two halves of it", ok=align._halves_of("يَوَدّ", "وَدُّوا", "يَوَدُّوا۟"))
+check("the whole word and the next are not", ok=not align._halves_of("يَوَدُّوا", "لَوْ", "يَوَدُّوا۟"))
+check("nor is a head with nothing of the word after it", ok=not align._halves_of("يَوَدّ", "لَوْ", "يَوَدُّوا۟"))
+
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)
