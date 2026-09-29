@@ -1590,6 +1590,62 @@ def _absorb_orphan_words(
     return repaired
 
 
+def _unmatched_tail(decoded: str, ref_words: list[tuple[str, int, str]], start: int, end: int) -> list[str]:
+    """The read-out's tokens after the last one that matched a word of `start`..`end`."""
+    tokens = [t for t in (_skeleton(x) for x in decoded.split()) if t]
+    window = [_skeleton(ref_words[w][2]) for w in range(start, end + 1)]
+    blocks = difflib.SequenceMatcher(None, tokens, window).get_matching_blocks()
+    return tokens[max((b.a + b.size for b in blocks if b.size), default=0) :]
+
+
+def _garbled_tail(decoded: str, ref_words: list[tuple[str, int, str]], start: int, end: int, limit: int) -> int:
+    """How many words after `end`, up to `limit`, the read-out's unmatched tail spells -- 0 if none."""
+    trailing = _unmatched_tail(decoded, ref_words, start, end)
+    extra = min(len(trailing), limit - end)
+    if not extra or ref_words[end + extra][0] != ref_words[end][0]:
+        return 0
+    spelled = "".join(_skeleton(ref_words[w][2]) for w in range(end + 1, end + 1 + extra))
+    ratio = difflib.SequenceMatcher(None, "".join(trailing[:extra]), spelled).ratio()
+    return extra if ratio >= MIN_REPEAT_TAIL_MATCH else 0
+
+
+def _finish_before_restart(
+    assignments: list[tuple[int, int, float, float, float]],
+    decodes: list[str],
+    ref_words: list[tuple[str, int, str]],
+) -> list[tuple[int, int, float, float, float]]:
+    """Carry a pass the reciter then went back over to the words its read-out garbled at its end.
+
+    A garbled last word matches nothing, so the pass stops a word short, and
+    the restart that follows covers that word -- so no word is stranded and
+    `_absorb_orphan_words` never sees it. Ghafir 40:16 read `لِمَنِ الْمُلْكُ
+    الْيَوُونَ` and was scripted 10-11; with no text for the first ٱلْيَوْمَ, the
+    restart's لِّمَنِ was stretched four seconds back over it, and the caption
+    for the first pass lost its last word.
+
+    Judged by letters, as `_extend_over_repeated_tail` does, since a garbled
+    word shares most of its letters with what was said but no whole token.
+    Only a pass the next one goes back over and past, which is what makes the
+    reciter's having said those words already the likely reading.
+    """
+    repaired = list(assignments)
+    for i in range(len(repaired) - 1):
+        start, end, _, phrase_start, phrase_end = repaired[i]
+        next_start, next_end = repaired[i + 1][:2]
+        extra = _garbled_tail(decodes[i], ref_words, start, end, next_end) if next_start <= end < next_end else 0
+        if not extra:
+            continue
+        log.info(
+            "phrase %.2f-%.2fs ends %d garbled word(s) later than it matched, before the restart: %r",
+            phrase_start,
+            phrase_end,
+            extra,
+            " ".join(ref_words[w][2] for w in range(end + 1, end + 1 + extra)),
+        )
+        repaired[i] = (start, end + extra, _match_ratio(decodes[i], ref_words, start, end + extra), phrase_start, phrase_end)
+    return repaired
+
+
 #: Why an ayah goes missing, and why nothing downstream notices.
 #:
 #: `assign_phrase_ranges_by_decode` gives each phrase window one range of
@@ -1969,7 +2025,7 @@ def assign_phrase_ranges_by_decode(
         )
         furthest = max(furthest, end)
 
-    return _absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries)
+    return _finish_before_restart(_absorb_orphan_words(assignments, decodes, ref_words, decode, boundaries), decodes, ref_words)
 
 
 #: The mushaf's own annotation of where a reciter may stop, which is the
@@ -2119,6 +2175,27 @@ def _phrase_said_twice(
     return best
 
 
+def _ayah_said_again(script: list[int], k: int, ref_words: list[tuple[str, int, str]]) -> list[list[int]]:
+    """The ayah from its first word up to `script[k]`, as a repeat candidate longer than `MAX_REPEAT_WORDS`.
+
+    Going back a word or two is one way to resume; the other is to start the
+    ayah again, and that can be longer than any word-or-two limit. Ghafir 40:23
+    is recited twice whole, six words, and capped at four the second pass was
+    heard as مُوسَىٰ onwards and its caption lost وَلَقَدْ أَرْسَلْنَا. Only the run
+    back to the ayah's own start is offered, so the cap still stops a hole from
+    being explained by whatever run happens to fit.
+    """
+    last = script[k]
+    first = last - ref_words[last][1]
+    length = last - first + 1
+    if not MAX_REPEAT_WORDS < length <= MAX_PHRASE_REPEAT_WORDS or k + 1 < length or first < 0:
+        return []
+    if ref_words[first][0] != ref_words[last][0] or ref_words[first][1] != 0:
+        return []
+    run = list(range(first, last + 1))
+    return [run] if script[k + 1 - length : k + 1] == run else []
+
+
 def _fill_gaps_with_repeats(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -2184,6 +2261,8 @@ def _fill_gaps_with_repeats(
                     runs.append(script[k + 1 - length : k + 1])
                 if k + 1 + length <= len(script):  # a run-up to the words about to be recited
                     runs.append(script[k + 1 : k + 1 + length])
+                if length == MAX_REPEAT_WORDS:
+                    runs += _ayah_said_again(script, k, ref_words)
                 for sequence in runs:
                     spelled = "".join(spelling[i] for i in sequence)
                     if len(spelled) < MIN_REPEAT_CHARS:
@@ -2700,6 +2779,56 @@ def _close_gaps(
     return segments
 
 
+def _joins_forward(aligned: list[AlignedWord], script: list[int], i: int) -> bool:
+    """Does word `i` run straight on into the next one of the same ayah?"""
+    return (
+        0 <= i < len(aligned) - 1
+        and aligned[i].verse_key == aligned[i + 1].verse_key
+        and script[i + 1] == script[i] + 1
+    )
+
+
+def _stop_at(aligned: list[AlignedWord], i: int, pauses: list[tuple[float, float]]) -> tuple[float, float]:
+    """How firmly the reciter stopped after word `i`: the longest quiet at the join, then the gap."""
+    begin, end = aligned[i].end - MAX_PAUSE_INSET, aligned[i + 1].start + MAX_PAUSE_INSET
+    quiet = max((b - a for a, b in pauses if a < end and b > begin), default=0.0)
+    return quiet, aligned[i + 1].start - aligned[i].end
+
+
+def _lone_word_cuts(
+    aligned: list[AlignedWord], script: list[int], cuts: set[int], pauses: list[tuple[float, float]]
+) -> set[int]:
+    """The cuts to take back so that no word is left alone on a caption inside its ayah.
+
+    Of 230 ground-truth captions the only one of a single word is an ayah that
+    is one word long, وَٱلطُّورِ. A caption of one word inside an ayah is a pause
+    the reciter took within a phrase, not a phrase: At-Tahrim 66:12 stops for
+    0.74s before وَصَدَّقَتْ and then 0.40s after it, and the second is enough
+    for a line of its own on the bar for an unmarked stop, which left the word
+    on screen by itself. It goes with the side it was said with -- the weaker
+    of its two stops.
+
+    Only a word with its ayah running straight on at both sides. One at an
+    ayah's edge is left to the stop rules, and so is one a restart said again:
+    Al-Mu'minun 23:96 in test2.mp3 repeats ٱلسَّيِّئَةَ ۚ on its own, and carried
+    forward it swallowed the نَحْنُ أَعْلَمُ بِمَا يَصِفُونَ that follows.
+    """
+    remaining, dropped = set(cuts), set()
+    while True:
+        lone = None
+        first = 0
+        for cut in sorted(remaining):
+            if cut == first and _joins_forward(aligned, script, first - 1) and _joins_forward(aligned, script, cut):
+                lone = (first - 1, cut)
+                break
+            first = cut + 1
+        if lone is None:
+            return dropped
+        weaker = min(lone, key=lambda i: _stop_at(aligned, i, pauses))
+        remaining.discard(weaker)
+        dropped.add(weaker)
+
+
 def _segment_the_timeline(
     aligned: list[AlignedWord],
     script: list[int],
@@ -2889,6 +3018,7 @@ def _segment_the_timeline(
     on_mark_alone = mark_breaks - cuts
     cuts |= mark_breaks
     cuts.add(len(aligned) - 1)
+    cuts -= _lone_word_cuts(aligned, script, cuts, pauses)
 
     segments: list[Segment] = []
     spans: list[list[AlignedWord]] = []
