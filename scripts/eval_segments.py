@@ -63,26 +63,35 @@ def fetch_words(surah: int, start: int, end: int) -> list[tuple[str, int, str]]:
 
 
 def resolve_expected(ref_words: list[tuple[str, int, str]], expected_path: str) -> list[tuple[str, int, int, str]]:
-    """Map each expected line onto the corpus as (verse_key, start_word, end_word)."""
+    """Map each expected line onto the corpus as (verse_key, start_word, end_word).
+
+    A phrase the passage contains twice goes to the occurrence nearest where
+    the previous line left off, because the lines are in recitation order.
+    Taking the first one put Ghafir 40:22's `فَأَخَذَهُمُ ٱللَّهُ ۚ` on the same
+    two words in 40:21, and scored a caption the aligner had right as a miss.
+    """
     corpus = [match_skeleton(w[2]) for w in ref_words]
     resolved: list[tuple[str, int, int, str]] = []
 
     with open(expected_path, encoding="utf-8") as handle:
         lines = [ln.strip() for ln in handle if ln.strip() and not ln.strip().startswith("#")]
 
+    cursor = 0
     for line in lines:
         wanted = [match_skeleton(t) for t in line.split()]
         wanted = [w for w in wanted if w]
-        best, best_score = None, -1.0
+        best, best_key = None, None
         for start in range(len(corpus) - len(wanted) + 1):
             window = corpus[start : start + len(wanted)]
             score = sum(1 for a, b in zip(wanted, window) if a == b) / len(wanted)
-            if score > best_score:
-                best, best_score = start, score
-        if best is None or best_score < 0.6:
+            key = (score, -abs(start - cursor))
+            if best_key is None or key > best_key:
+                best, best_key = start, key
+        if best is None or best_key[0] < 0.6:
             raise SystemExit(f"Could not resolve expected segment to the corpus: {line!r}")
         verse_key = ref_words[best][0]
         resolved.append((verse_key, ref_words[best][1] + 1, ref_words[best + len(wanted) - 1][1] + 1, line))
+        cursor = best + len(wanted)
     return resolved
 
 
