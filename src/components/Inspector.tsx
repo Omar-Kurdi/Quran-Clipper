@@ -271,7 +271,7 @@ export const Inspector: React.FC<InspectorProps> = ({
             // already draws it that way, and typing into a box that does not
             // is its own small misery.
             dir={box.option.rtl ? 'rtl' : 'ltr'}
-            rows={3}
+            rows={6}
             className="w-full resize-y bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 leading-relaxed"
           />
         </div>
@@ -453,7 +453,7 @@ const WordPicker: React.FC<{
               key={`${word.arabic}-${wi}`}
               onClick={() => onToggleWord(wi)}
               aria-pressed={!word.excluded}
-              className={`px-2.5 py-0.5 rounded-lg border font-quran text-2xl leading-loose transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+              className={`px-2 py-0.5 rounded-md border font-quran text-xl leading-[1.8] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
                 word.excluded
                   ? 'border-red-500/40 bg-red-500/10 text-red-300 line-through'
                   : 'border-slate-700 bg-slate-800/70 text-parchment hover:border-slate-500'

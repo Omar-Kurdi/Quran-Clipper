@@ -54,7 +54,7 @@ import {
   backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName, trimLane,
   BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
-import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
+import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY, NEW_PROJECT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
 import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
 import { nextToCheck, captionChecks } from '@/lib/captionChecks';
@@ -450,7 +450,7 @@ export default function VideoCreatorPage() {
     showWaveform: true,
     showSurahBadge: true,
     badgeStyle: DEFAULT_BADGE_STYLE,
-    badgeOpacity: DEFAULT_BADGE_OPACITY,
+    badgeOpacity: NEW_PROJECT_BADGE_OPACITY,
     layout: DEFAULT_FRAME_LAYOUT,
     surahBadgeText: '',
     surahBadgeSubtitleText: '',

@@ -150,8 +150,11 @@ function drawStack(
   }
 }
 
-/** How opaque the plate behind the badge is when a project does not say: today's badge. */
+/** How opaque the plate behind the badge is when a project does not say: the badge it was drawn with before the setting existed. */
 export const DEFAULT_BADGE_OPACITY = 74;
+
+/** How opaque the plate starts in a new project: enough to read the badge without it weighing on the frame. */
+export const NEW_PROJECT_BADGE_OPACITY = 35;
 
 const plate = (input: BadgeInput) => `rgba(6, 9, 16, ${input.plateOpacity})`;
 const SUBTITLE_INK = 'rgba(237, 241, 247, 0.92)';
