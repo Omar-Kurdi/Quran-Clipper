@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo, type ReactNode } from 'react';
+import { useOffsetBox } from '@/hooks/useOffsetBox';
 import { VerseData, arabicFontFamily, usableArabicFont } from '@/lib/quranData';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import {
@@ -194,6 +195,13 @@ interface VideoCanvasProps {
    * background to be discarded after a trim.
    */
   backgroundTimeOffset?: number;
+  /**
+   * Drawn over the canvas, exactly over its picture and never into it -- the
+   * platform safe-area guide. Nothing here can reach an export.
+   */
+  overlay?: ReactNode;
+  /** The render loop's frame rate and paint time, for development. */
+  showStats?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,13 +346,16 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   ayahEnd,
   syncBackgroundVideo = false,
   isPlaying = false,
-  backgroundTimeOffset = 0
+  backgroundTimeOffset = 0,
+  overlay,
+  showStats = false
 }, ref) => {
   // The face this installation can actually draw -- see `usableArabicFont`.
   const { missingFonts } = useStudioConfig();
   const arabicFontId = usableArabicFont(config.fontArabic, missingFonts);
   const badgeStyle = usableBadgeStyle(config.badgeStyle, missingFonts);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayBox = useOffsetBox(canvasRef, !!overlay);
   const bgMediaRef = useRef<BackgroundMedia | null>(null);
   const isExportingRef = useRef<boolean>(false);
   /**
@@ -1658,33 +1669,31 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
   return (
     <div className="relative flex flex-col items-center justify-center w-full h-full group">
-      {/* One row rather than two independently-anchored corners. Pinned to
-          opposite edges of the same pane, these overlapped by 141px whenever
-          the preview was narrow -- the resolution pill sat on top of half the
-          render stats. `justify-between` makes that impossible, and the stats
-          truncate rather than push. */}
-      <div className="absolute top-3 inset-x-3 z-20 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
-        <div className="flex items-center gap-2 shrink-0 whitespace-nowrap bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-emerald-500/30 text-xs font-mono text-emerald-400 shadow-lg">
-          <span className="relative flex h-2 w-2 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
+      {/* The render loop's own numbers, for development only: in a
+          published studio they were the first thing on the video and meant
+          nothing to the person making it. The frame size is in the bar above
+          the preview now. */}
+      {showStats && (
+        <div className="absolute top-3 start-3 z-20 pointer-events-none flex items-center gap-2 whitespace-nowrap bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-emerald-500/30 text-xs font-mono text-emerald-400 shadow-lg">
           <span>{fpsDisplay} FPS</span>
           <span className="text-slate-400">|</span>
-          {/* Short unit: the pane is narrow and "ms/frame" is what pushed this
-              badge into truncating mid-word. */}
           <span>{renderMs} ms</span>
         </div>
-        <div className="shrink-0 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-300 border border-slate-700/50">
-          {dimensions.width} x {dimensions.height} ({config.aspectRatio})
-        </div>
-      </div>
+      )}
       <div className="relative w-full h-full flex items-center justify-center p-2">
         <canvas
           ref={canvasRef}
-          className="max-h-[72vh] max-w-full object-contain rounded-xl shadow-2xl border border-slate-800 bg-slate-950 transition-all duration-300"
+          className="max-h-[var(--preview-max-h,72vh)] max-w-full object-contain rounded-xl shadow-2xl border border-slate-800 bg-slate-950 transition-all duration-300"
           style={{ aspectRatio: dimensions.width / dimensions.height }}
         />
+        {overlayBox && (
+          <div
+            className="absolute pointer-events-none"
+            style={{ left: overlayBox.left, top: overlayBox.top, width: overlayBox.width, height: overlayBox.height }}
+          >
+            {overlay}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -21,6 +21,14 @@ const skipAlignerPreference = createBooleanPreference('qc-qul-skip-aligner', tru
 /** Local matchers: fewer (-1), normal (0) or more (1) captions from the pauses inside an ayah. */
 const screenBreaksPreference = createNumberPreference('qc-screen-breaks', 0, { min: -1, max: 1 });
 const SCREEN_BREAKS: ScreenBreaks[] = ['fewer', 'normal', 'more'];
+/**
+ * The platform the frame is shaped for, as an index into `EXPORT_PRESETS`.
+ * Per browser rather than per project: the project keeps its shape, and a
+ * shape that no longer matches the platform falls back -- see `framePreset`.
+ */
+const framePreference = createNumberPreference('qc-frame-platform', 0, { min: 0, max: EXPORT_PRESETS.length - 1 });
+/** Whether the preview outlines what a vertical feed's own buttons cover. */
+const safeAreaPreference = createBooleanPreference('qc-safe-area', false);
 
 /**
  * Whether to show tools that only mean something next to this repository.
@@ -33,6 +41,9 @@ const SHOW_DEV_TOOLS =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEV_TOOLS === '1';
 import { PaletteList } from '@/components/PaletteSwitcher';
 import { PanelTabs, type PanelTab } from '@/components/PanelTabs';
+import { FrameBar, SafeAreaOverlay } from '@/components/FrameBar';
+import { framePreset, coveredAreas } from '@/lib/frame';
+import { EXPORT_PRESETS } from '@/lib/exportPresets';
 import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
@@ -1820,6 +1831,17 @@ export default function VideoCreatorPage() {
     setPanelTab(index === 0 ? 'source' : 'style');
   };
 
+  const frameIndex = useSyncExternalStore(framePreference.subscribe, framePreference.get, framePreference.getServerSnapshot);
+  const showSafeArea = useSyncExternalStore(safeAreaPreference.subscribe, safeAreaPreference.get, safeAreaPreference.getServerSnapshot);
+  const frame = framePreset(Math.round(frameIndex), canvasConfig.aspectRatio);
+  const frameAreas = showSafeArea ? coveredAreas(frame.id) : [];
+  /** Choosing a platform sets the frame's shape, through the same config undo covers. */
+  const chooseFrame = (index: number) => {
+    framePreference.set(index);
+    const ratio = EXPORT_PRESETS[index].aspectRatio;
+    setCanvasConfig(prev => (prev.aspectRatio === ratio ? prev : { ...prev, aspectRatio: ratio }));
+  };
+
   /** Help: learning the studio, kept apart from the tools in the ⋯ menu. */
   const helpItems: OverflowItem[] = [
     {
@@ -3035,8 +3057,23 @@ export default function VideoCreatorPage() {
               mobileSurface === 'preview' ? 'flex' : 'hidden'
             } lg:flex`}
           >
-          {/* Main Video Canvas WYSIWYG Renderer */}
-          <div className="flex-1 w-full flex items-center justify-center relative">
+          <FrameBar
+            aspectRatio={canvasConfig.aspectRatio}
+            chosenIndex={Math.round(frameIndex)}
+            onChoose={chooseFrame}
+            safeArea={showSafeArea}
+            onSafeArea={safeAreaPreference.set}
+          />
+          {/* Main Video Canvas WYSIWYG Renderer.
+
+              Sized to the space left under the frame bar rather than to the
+              window: a size container, whose height the canvas reads through
+              `--preview-max-h` (less the frame's own padding). Sized to 72vh,
+              the canvas pushed the bar out of the top of the pane. */}
+          <div
+            className="flex-1 min-h-0 w-full flex items-center justify-center relative [container-type:size]"
+            style={{ '--preview-max-h': 'calc(100cqh - 2.75rem)' } as React.CSSProperties}
+          >
             {/* Click-to-play is scoped to the video itself, not the whole
                 preview area, so clicking the surrounding background doesn't
                 toggle playback. */}
@@ -3060,6 +3097,13 @@ export default function VideoCreatorPage() {
                 syncBackgroundVideo={uploadIsVideo && useVideoAsBackground && canvasConfig.bgUrl === videoBgUrl}
                 isPlaying={isPlaying}
                 backgroundTimeOffset={videoBgOffset}
+                showStats={SHOW_DEV_TOOLS}
+                overlay={frameAreas.length > 0 ? (
+                  <SafeAreaOverlay
+                    areas={frameAreas}
+                    platform={t.exportModal.presets[frame.id as keyof typeof t.exportModal.presets]}
+                  />
+                ) : undefined}
               />
               </div>
             </div>

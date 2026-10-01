@@ -21,13 +21,11 @@ import {
 import { 
   BACKGROUND_VIDEOS, 
   FONTS_ARABIC, 
-  ASPECT_RATIOS,
   usableArabicFont,
   FONT_ARABIC_BUILTIN
 } from '@/lib/quranData';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { 
-  Layout, 
   Type, 
   Image as ImageIcon, 
   Sliders, 
@@ -473,37 +471,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         />
       )}
 
-      {/* Layout & Text, section 1: format */}
+      {/* The frame shape used to be chosen here as well as in Export, and
+          the two could disagree. It is one setting now, above the preview. */}
       {activeTab === 'design' && (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
-            <Layout className="w-3.5 h-3.5 text-amber-400" />
-            {t.style.headingFormat}
-          </h3>
-          <label className="font-semibold text-slate-200 text-sm">{t.style.aspectRatioLabel}</label>
-          <div className="grid grid-cols-2 gap-2.5">
-            {ASPECT_RATIOS.map((ar) => (
-              <button
-                key={ar.id}
-                onClick={() => updateConfig('aspectRatio', ar.id)}
-                className={`p-3 rounded-xl border text-start flex flex-col gap-1 transition-all ${
-                  config.aspectRatio === ar.id
-                    ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-100" dir="ltr">{ar.id}</span>
-                  {config.aspectRatio === ar.id && <Check className="w-4 h-4 text-amber-400" />}
-                </div>
-                <span className="text-[11px] text-slate-400">
-                  {t.style.aspectRatios[ar.id as keyof typeof t.style.aspectRatios] ?? ar.name}
-                </span>
-                <span className="text-[11px] font-mono text-slate-400" dir="ltr">{ar.width}x{ar.height}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <p className="text-xs leading-relaxed text-slate-400">{t.frame.setAbove}</p>
       )}
 
       {/* Background */}

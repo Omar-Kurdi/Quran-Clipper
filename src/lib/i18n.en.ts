@@ -117,6 +117,13 @@ export const en = {
     switchView: 'Switch view'
   },
 
+  frame: {
+    label: 'Frame',
+    safeArea: 'Show what the app covers',
+    covered: (platform: string) => `${platform}'s caption and buttons`,
+    setAbove: 'The frame shape is set above the preview, and Export opens on the same setting.'
+  },
+
   panel: {
     label: 'Workflow',
     source: 'Source',
@@ -561,20 +568,11 @@ export const en = {
     tabBackgroundHint: 'Background image, video and overlay',
     tabCardHint: 'The card behind the text, its shadow and effects',
 
-    headingFormat: 'Format',
     headingTypography: 'Typography',
     mushafLines: 'Follow the mushaf’s lines',
     mushafLinesHint:
       'Break the Arabic where the printed page breaks it, instead of wherever the card runs out of room. A long line gets smaller type rather than a new break.',
     headingBranding: 'Branding',
-
-    aspectRatioLabel: 'Select Video Aspect Ratio:',
-    aspectRatios: {
-      '9:16': '9:16 Vertical (Shorts / TikTok / Reels)',
-      '16:9': '16:9 Widescreen (YouTube)',
-      '1:1': '1:1 Square (Instagram Feed)',
-      '4:5': '4:5 Portrait (Instagram Post)'
-    },
 
     bgModeLabel: 'How backgrounds are used:',
     bgModes: {

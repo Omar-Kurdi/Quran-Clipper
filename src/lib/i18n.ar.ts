@@ -116,6 +116,13 @@ export const ar: Dictionary = {
     switchView: 'تبديل العرض'
   },
 
+  frame: {
+    label: 'الإطار',
+    safeArea: 'أظهر ما يغطيه التطبيق',
+    covered: platform => `تعليق ${platform} وأزراره`,
+    setAbove: 'شكل الإطار يُحدَّد فوق المعاينة، ويفتح التصدير على الإعداد نفسه.'
+  },
+
   panel: {
     label: 'سير العمل',
     source: 'المصدر',
@@ -552,20 +559,11 @@ export const ar: Dictionary = {
     tabBackgroundHint: 'صورة الخلفية والفيديو والطبقة',
     tabCardHint: 'البطاقة خلف النص وظلّها ومؤثراتها',
 
-    headingFormat: 'الصيغة',
     headingTypography: 'الخطوط',
     mushafLines: 'اتّبع أسطر المصحف',
     mushafLinesHint:
       'اكسر النص العربي حيث تكسره الصفحة المطبوعة، لا حيث تضيق البطاقة. والسطر الطويل يصغر خطه بدل أن يُكسر من جديد.',
     headingBranding: 'الهوية',
-
-    aspectRatioLabel: 'اختر نسبة أبعاد الفيديو:',
-    aspectRatios: {
-      '9:16': '9:16 عمودي (Shorts / TikTok / Reels)',
-      '16:9': '16:9 عريض (YouTube)',
-      '1:1': '1:1 مربّع (Instagram)',
-      '4:5': '4:5 طولي (منشور Instagram)'
-    },
 
     bgModeLabel: 'طريقة استخدام الخلفيات:',
     bgModes: {
