@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "asr-service"))
 
 import numpy as np  # noqa: E402
 
-from app import align, corpus  # noqa: E402
+from app import align, corpus, regroup  # noqa: E402
 from app.audio import SAMPLE_RATE  # noqa: E402
 
 FAILED: list[str] = []
@@ -187,6 +187,35 @@ check(
     "two ayah ends are too few to judge a room by",
     ok=align.calibrated_drop(pcm, words) == align.QUIET_DROP_DB,
 )
+
+# Fewer / More re-cut a match the sidecar still holds, through the one grouping
+# function `/align` itself calls -- so a re-cut cannot drift from a fresh match.
+print("\nre-cutting a held match -- the same grouping a match makes")
+
+held_pcm, held_words = recitation(-25.0)
+held = align.prepare_grouping(held_pcm, held_words, list(range(len(held_words))), [False] * len(held_words), [])
+duration = len(held_pcm) / SAMPLE_RATE
+for setting, scale in align.BREAK_SCALES.items():
+    direct, _ = align._segment_the_timeline(
+        held.aligned, held.script, duration, held.quiet, held.repeated, held.hush, scale
+    )
+    check(
+        f"a re-cut at {setting} groups exactly as the match would",
+        ok=ranges(align.group_recitation(held, setting)) == ranges(align._close_gaps(direct, duration, held.quiet)),
+    )
+
+minute = align.Grouping(np.zeros(60 * SAMPLE_RATE, dtype=np.float32), [], [], [], [], [], [])
+kept_before = regroup.MAX_KEPT_SECONDS
+regroup.MAX_KEPT_SECONDS = 150
+first = regroup.keep(regroup.Kept(minute, {}, 0.0))
+second = regroup.keep(regroup.Kept(minute, {}, 0.0))
+third = regroup.keep(regroup.Kept(minute, {}, 0.0))
+check(
+    "the oldest held match makes room for a new one, by length of audio",
+    ok=regroup.find(first) is None and regroup.find(second) is not None and regroup.find(third) is not None,
+)
+check("an id nobody was given finds nothing", ok=regroup.find("not-an-id") is None)
+regroup.MAX_KEPT_SECONDS = kept_before
 
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

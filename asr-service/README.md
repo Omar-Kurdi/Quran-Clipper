@@ -5,12 +5,19 @@
 A small FastAPI service that answers *when* each word of a recitation was spoken. The main
 app talks to it over HTTP; it knows nothing about the app's data model.
 
-It has two endpoints doing very different jobs.
+It has two endpoints doing very different jobs, and a third that follows on from `/align`.
 
 **`POST /align` — forced alignment. This is the one to use.** You supply the audio *and* the
 Quran text; it decides only the timing. Because the text is a fixed constraint rather than
 something to guess, a word cannot go missing, come back garbled, or land in the wrong surah.
 Consumed by the app's `align` provider -- "Local" in the studio.
+
+**`POST /regroup` — the same match, cut at another screen-break setting.** Each `/align`
+answer carries a `regroupId`; sending it back with `breaks` (`fewer`, `normal`, `more`) repeats
+only the grouping into captions, not the decode or the alignment, and answers as `/align` did.
+That is what lets the studio's Fewer / More act at once. Matches are kept in memory, the oldest
+going first past `REGROUP_KEPT_SECONDS` of audio in all; an id that has gone answers 404 with
+code `regroup_expired`, and the remedy is to match again.
 
 **`POST /transcribe` — free decode plus pause detection.** Answers "which Arabic words were
 spoken, when, and where were the pauses?" with no reference text, for the app's `asr`
@@ -156,6 +163,7 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ALIGN_MIN_REFERENCE_COVERAGE` | `0.75` | Below this fraction of the supplied text being recited at all, `/align` sets `warning`. |
 | `ALIGN_DIP_PERCENTILE` | `15` | Energy percentile treated as a phrase boundary. |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit. |
+| `REGROUP_KEPT_SECONDS` | `1800` | Audio kept for `/regroup`, in seconds across all held matches (about 115 MB). |
 | `MAX_CHUNK_SECONDS` | `25` | Max decode chunk length for `/transcribe`. |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allow-list. |
 | `ALIGN_ALLOWED_AUDIO_HOSTS` | the two recitation CDNs | Hosts `/align` will fetch a recording from. An entry starting with a dot matches any subdomain. |

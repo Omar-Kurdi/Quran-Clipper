@@ -84,6 +84,8 @@ type AlignResponse = {
   warning: string | null;
   /** `qul` when detection ran with QUL's text data; absent on the default path. */
   assist?: AlignAssist | null;
+  /** Asks the sidecar to cut this same alignment again at another setting; see `runRegroup`. */
+  regroupId?: string;
 };
 
 /**
@@ -124,12 +126,15 @@ function alignmentForm(params: AlignRequest): FormData {
 }
 
 async function requestAlignment(params: AlignRequest): Promise<AlignResponse> {
-  const formData = alignmentForm(params);
+  return askSidecar(params.serviceUrl, '/align', alignmentForm(params));
+}
 
-  const base = params.serviceUrl.replace(/\/$/, '');
+/** Call the sidecar -- POSTing `formData` when there is one -- turning its error bodies into an `AlignRequestError`. */
+async function askSidecar(serviceUrl: string, path: string, formData?: FormData): Promise<AlignResponse> {
+  const base = serviceUrl.replace(/\/$/, '');
   let res: Response;
   try {
-    res = await fetch(`${base}/align`, { method: 'POST', body: formData });
+    res = await fetch(`${base}${path}`, formData ? { method: 'POST', body: formData } : undefined);
   } catch {
     throw new Error(`Could not reach the alignment service at ${base}. Is it running? See asr-service/README.md.`);
   }
@@ -160,7 +165,7 @@ async function requestAlignment(params: AlignRequest): Promise<AlignResponse> {
 }
 
 /** Carries the sidecar's machine-readable error code, when it sent one. */
-class AlignRequestError extends Error {
+export class AlignRequestError extends Error {
   constructor(message: string, readonly code?: string) {
     super(message);
     this.name = 'AlignRequestError';
@@ -286,99 +291,156 @@ export async function runForcedAlignMatch(params: {
     fellBackToSelected = true;
   }
 
-  const detected = result.detectedRange;
-  const surah = detected?.surah ?? params.surah!;
-  const startAyah = detected?.start_ayah ?? params.start!;
-  const endAyah = detected?.end_ayah ?? params.end!;
+  return matchFromAlignment(result, params, fellBackToSelected);
+}
 
-  // Display text comes from the app's corpus. Fetch *every* passage that was
-  // aligned, not just the primary one -- a recitation that opens with
-  // Al-Fatihah before the main surah otherwise leaves those segments with no
-  // text at all.
-  const ranges = detected?.ranges?.length
-    ? detected.ranges.map(r => ({ surah: r.surah, start: r.start_ayah, end: r.end_ayah }))
-    : [{ surah, start: startAyah, end: endAyah }];
-  const verses = (await Promise.all(ranges.map(r => getRange(r.surah, r.start, r.end).catch(() => [])))).flat();
+/**
+ * Cut a match the sidecar still holds into captions again at another setting.
+ *
+ * Only the grouping is repeated -- see `regroup.py` in the sidecar -- so this
+ * is what lets Fewer / More act at once. An `AlignRequestError` with code
+ * `regroup_expired` means the sidecar no longer has it, and only a new match
+ * can answer.
+ */
+export async function runRegroup(params: {
+  serviceUrl: string;
+  regroupId: string;
+  breaks: ScreenBreaks;
+  surah: number;
+  start: number;
+  end: number;
+}): Promise<MatchResult> {
+  const query = new URLSearchParams({ id: params.regroupId, breaks: params.breaks });
+  const result = await askSidecar(params.serviceUrl, `/regroup?${query}`);
+  return matchFromAlignment(result, params, false);
+}
 
-  if (!result.words?.length) {
-    throw new Error('The alignment service returned no aligned words.');
-  }
+type AlignedSegment = AlignResponse['segments'][number];
+type Verse = Awaited<ReturnType<typeof getRange>>[number];
 
+/**
+ * The aligned times of the words this segment actually covers.
+ *
+ * Filtered by *time* before being keyed by word index, which is the whole
+ * point: when a reciter restarts a phrase, the same (verse, word index)
+ * appears twice in the aligned stream with different times. Keying by index
+ * alone would let the later utterance overwrite the earlier one, and the
+ * first of the two segments would show the second one's timings.
+ *
+ * Containment is tested on each word's midpoint, so a word straddling a
+ * segment edge by a few milliseconds of rounding still lands in the segment
+ * that holds most of it, and never in both.
+ */
+function timingsFor(wordsByVerse: Map<string, AlignedWord[]>, segment: AlignedSegment) {
+  return (wordsByVerse.get(segment.verse_key) || [])
+    .filter(word => {
+      const middle = (word.start + word.end) / 2;
+      return middle >= segment.start && middle <= segment.end;
+    })
+    .map(word => ({ index: word.word_index, start: word.start, end: word.end }));
+}
+
+/** One sidecar segment as a caption of the studio's timeline. */
+function toMatchSegment(segment: AlignedSegment, verses: Verse[], wordsByVerse: Map<string, AlignedWord[]>): MatchSegment {
+  const [surahStr, verseStr] = segment.verse_key.split(':');
+  const verse = verses.find(v => v.verseKey === segment.verse_key);
+  const recited = (verse?.words || []).slice(segment.start_word, segment.end_word + 1);
+  return {
+    verseKey: segment.verse_key,
+    surahNumber: Number(surahStr),
+    verseNumber: Number(verseStr),
+    startTime: segment.start,
+    endTime: segment.end,
+    confidence: Math.max(0, Math.min(1, segment.score)),
+    checks: segment.checks?.length ? segment.checks : undefined,
+    displayTextUthmani: recited.map(word => word.arabic).join(' '),
+    // No translation of its own. This used to copy the ayah's translation
+    // into every segment on the reasoning that per-word glosses are
+    // grammatical fragments -- "(is) with Allah", "even though" -- that do
+    // not compose into a sentence, and reading them in a row is worse than
+    // reading the whole ayah.
+    //
+    // That reasoning stands, but it is not this function's to enforce. The
+    // caption already carries the ayah's translation in `translation`, so
+    // the copy changed nothing about what was drawn -- while
+    // `displayTranslation` means "a line chosen for this segment
+    // specifically" and outranks everything, including the word-by-word
+    // option the studio now offers. Pre-filling it therefore did nothing
+    // except make that option impossible on every aligned timeline. Left
+    // empty, the caption falls through to the same ayah translation as
+    // before, and someone who asks for word-by-word gets it.
+    //
+    // Gemini is different and keeps its own: it writes a real translation of
+    // just the words it selected, which is not the ayah's.
+    displayTranslation: '',
+    // Exact word range, so the timeline doesn't have to re-derive which words
+    // were recited by matching text -- which picks the wrong occurrence when
+    // a word repeats inside one ayah.
+    startWordIndex: segment.start_word,
+    endWordIndex: segment.end_word,
+    // Per-word times, so splitting a caption cuts between real words rather
+    // than assuming every word took an equal share of the segment.
+    wordTimings: timingsFor(wordsByVerse, segment),
+    notes: segment.is_restart ? 'restarted phrase' : undefined
+  };
+}
+
+/** Every caption of an alignment, with the text its words come from. */
+export function alignedSegments(result: Pick<AlignResponse, 'words' | 'segments'>, verses: Verse[]): MatchSegment[] {
   const wordsByVerse = new Map<string, AlignedWord[]>();
   for (const word of result.words) {
     const bucket = wordsByVerse.get(word.verse_key);
     if (bucket) bucket.push(word);
     else wordsByVerse.set(word.verse_key, [word]);
   }
+  return (result.segments || []).map(segment => toMatchSegment(segment, verses, wordsByVerse));
+}
 
-  /**
-   * The aligned times of the words this segment actually covers.
-   *
-   * Filtered by *time* before being keyed by word index, which is the whole
-   * point: when a reciter restarts a phrase, the same (verse, word index)
-   * appears twice in the aligned stream with different times. Keying by index
-   * alone would let the later utterance overwrite the earlier one, and the
-   * first of the two segments would show the second one's timings.
-   *
-   * Containment is tested on each word's midpoint, so a word straddling a
-   * segment edge by a few milliseconds of rounding still lands in the segment
-   * that holds most of it, and never in both.
-   */
-  const timingsFor = (segment: AlignResponse['segments'][number]) =>
-    (wordsByVerse.get(segment.verse_key) || [])
-      .filter(word => {
-        const middle = (word.start + word.end) / 2;
-        return middle >= segment.start && middle <= segment.end;
-      })
-      .map(word => ({ index: word.word_index, start: word.start, end: word.end }));
+/** What the studio is told about how this timeline was made. */
+function alignmentNotes(result: AlignResponse, rangeLabel: string, fellBackToSelected: boolean, restarts: number): string {
+  const detected = result.detectedRange;
+  const repeatNote = restarts ? ` ${restarts} restarted phrase(s) detected.` : '';
+  return (
+    (result.warning ? `⚠ ${result.warning} ` : '') +
+    (detected
+      ? `Detected ${rangeLabel} from the audio itself${result.assist === 'qul' ? ' with QUL\'s morphology and mutashabihat' : ''} (${Math.round(detected.confidence * 100)}% match on ` +
+        `${detected.matched_phrases}/${detected.total_phrases} phrases) and force-aligned it`
+      : fellBackToSelected
+        ? `This sidecar can't detect the range from audio, so the selected range ${rangeLabel} was force-aligned instead — confirm it matches the recording`
+        : `Force-aligned the selected text of ${rangeLabel}`) +
+    ` (${result.model}). Every reference word has a timestamp by construction.${repeatNote}`
+  );
+}
 
-  const segments: MatchSegment[] = (result.segments || []).map(segment => {
-    const [surahStr, verseStr] = segment.verse_key.split(':');
-    const verse = verses.find(v => v.verseKey === segment.verse_key);
-    const recited = (verse?.words || []).slice(segment.start_word, segment.end_word + 1);
-    return {
-      verseKey: segment.verse_key,
-      surahNumber: Number(surahStr),
-      verseNumber: Number(verseStr),
-      startTime: segment.start,
-      endTime: segment.end,
-      confidence: Math.max(0, Math.min(1, segment.score)),
-      checks: segment.checks?.length ? segment.checks : undefined,
-      displayTextUthmani: recited.map(word => word.arabic).join(' '),
-      // No translation of its own. This used to copy the ayah's translation
-      // into every segment on the reasoning that per-word glosses are
-      // grammatical fragments -- "(is) with Allah", "even though" -- that do
-      // not compose into a sentence, and reading them in a row is worse than
-      // reading the whole ayah.
-      //
-      // That reasoning stands, but it is not this function's to enforce. The
-      // caption already carries the ayah's translation in `translation`, so
-      // the copy changed nothing about what was drawn -- while
-      // `displayTranslation` means "a line chosen for this segment
-      // specifically" and outranks everything, including the word-by-word
-      // option the studio now offers. Pre-filling it therefore did nothing
-      // except make that option impossible on every aligned timeline. Left
-      // empty, the caption falls through to the same ayah translation as
-      // before, and someone who asks for word-by-word gets it.
-      //
-      // Gemini is different and keeps its own: it writes a real translation of
-      // just the words it selected, which is not the ayah's.
-      displayTranslation: '',
-      // Exact word range, so the timeline doesn't have to re-derive which words
-      // were recited by matching text -- which picks the wrong occurrence when
-      // a word repeats inside one ayah.
-      startWordIndex: segment.start_word,
-      endWordIndex: segment.end_word,
-      // Per-word times, so splitting a caption cuts between real words rather
-      // than assuming every word took an equal share of the segment.
-      wordTimings: timingsFor(segment),
-      notes: segment.is_restart ? 'restarted phrase' : undefined
-    };
-  });
+/**
+ * Every passage the alignment covers. Display text comes from the app's
+ * corpus, and *every* aligned passage has to be fetched, not just the primary
+ * one -- a recitation that opens with Al-Fatihah before the main surah
+ * otherwise leaves those segments with no text at all.
+ */
+function alignedRanges(result: AlignResponse, params: { surah?: number; start?: number; end?: number }) {
+  const detected = result.detectedRange;
+  return detected?.ranges?.length
+    ? detected.ranges.map(r => ({ surah: r.surah, start: r.start_ayah, end: r.end_ayah }))
+    : [{ surah: detected?.surah ?? params.surah!, start: detected?.start_ayah ?? params.start!, end: detected?.end_ayah ?? params.end! }];
+}
 
+/** A sidecar alignment as the studio's match result, the same for a first match and a regroup. */
+async function matchFromAlignment(
+  result: AlignResponse,
+  params: { surah?: number; start?: number; end?: number },
+  fellBackToSelected: boolean
+): Promise<MatchResult> {
+  const detected = result.detectedRange;
+  const ranges = alignedRanges(result, params);
+  const verses = (await Promise.all(ranges.map(r => getRange(r.surah, r.start, r.end).catch(() => [])))).flat();
+
+  if (!result.words?.length) {
+    throw new Error('The alignment service returned no aligned words.');
+  }
+  const segments = alignedSegments(result, verses);
   const meanScore = result.meanScore ?? 0;
   const restarts = (result.segments || []).filter(segment => segment.is_restart).length;
-  const repeatNote = restarts ? ` ${restarts} restarted phrase(s) detected.` : '';
 
   // Forced alignment fits whatever text it's handed, so a wrong ayah range
   // produces a complete, plausible-looking, entirely wrong timeline. The
@@ -391,7 +453,7 @@ export async function runForcedAlignMatch(params: {
   // Label every block that was aligned, not just the first -- an auto-detected
   // run routinely covers Al-Fatihah plus another surah, and a single-range
   // label would silently under-report what the timeline contains.
-  const rangeLabel = ranges.map(r => `${r.surah}:${r.start}-${r.end}`).join(', ') || `${surah}:${startAyah}-${endAyah}`;
+  const rangeLabel = ranges.map(r => `${r.surah}:${r.start}-${r.end}`).join(', ');
   console.log(
     `[forcedAligner] aligned ${result.words.length} word(s) from ${rangeLabel} ` +
       `(${detected ? 'auto-detected' : 'selected'}) into ${segments.length} segment(s); ${restarts} restart(s); ` +
@@ -405,14 +467,7 @@ export async function runForcedAlignMatch(params: {
     transcript: result.words.map(word => word.text).join(' '),
     segments,
     warning: result.warning || undefined,
-    notes:
-      (result.warning ? `⚠ ${result.warning} ` : '') +
-      (detected
-        ? `Detected ${rangeLabel} from the audio itself${result.assist === 'qul' ? ' with QUL\'s morphology and mutashabihat' : ''} (${Math.round(detected.confidence * 100)}% match on ` +
-          `${detected.matched_phrases}/${detected.total_phrases} phrases) and force-aligned it`
-        : fellBackToSelected
-          ? `This sidecar can't detect the range from audio, so the selected range ${rangeLabel} was force-aligned instead — confirm it matches the recording`
-          : `Force-aligned the selected text of ${rangeLabel}`) +
-      ` (${result.model}). Every reference word has a timestamp by construction.${repeatNote}`
+    notes: alignmentNotes(result, rangeLabel, fellBackToSelected, restarts),
+    regroupId: result.regroupId
   };
 }

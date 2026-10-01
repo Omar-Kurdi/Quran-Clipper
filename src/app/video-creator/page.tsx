@@ -102,6 +102,8 @@ import { exportRangeFor } from '@/lib/exportRange';
 import { saveProject } from '@/lib/projectStore';
 import { newMatchTicket, watchQueue, roughWait } from '@/lib/queueWatch';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
+import { useRegroup } from '@/hooks/useRegroup';
+import { ScreenBreaksRecut } from '@/components/ScreenBreaksRecut';
 import { withAspect } from '@/lib/exportQueue';
 
 import { 
@@ -394,6 +396,10 @@ export default function VideoCreatorPage() {
   const [sourceEditing, setSourceEditing] = useState(false);
   /** Advanced (screen breaks) opens itself when the clip's source is reopened to re-match. */
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  /** Fewer / More re-cut a match the aligner still holds -- see `useRegroup`. */
+  const regroup = useRegroup();
+  /** A screen-break level waiting on a yes, because the captions were edited since the match. */
+  const [recutConfirm, setRecutConfirm] = useState<ScreenBreaks | null>(null);
   const [isProjectsDrawerOpen, setIsProjectsDrawerOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
 
@@ -963,6 +969,24 @@ export default function VideoCreatorPage() {
    */
   const MAX_ALIGN_SPAN_SEC = 2400;
 
+  /** Put a match's answer on screen -- a first match and a re-cut alike. */
+  const applyMatchData = (data: any) => {
+    if (data.surahNameArabic) setSurahNameArabic(data.surahNameArabic);
+    if (data.surahNameEnglish) setSurahNameEnglish(data.surahNameEnglish);
+    if (typeof data.surahNumber === 'number') setSelectedSurah(data.surahNumber);
+    if (typeof data.ayahStart === 'number') {
+      setAyahStart(data.ayahStart);
+      setAyahStartInput(String(data.ayahStart));
+    }
+    if (typeof data.ayahEnd === 'number') {
+      setAyahEnd(data.ayahEnd);
+      setAyahEndInput(String(data.ayahEnd));
+    }
+    if (typeof data.audioDuration === 'number') setAudioDuration(data.audioDuration);
+    setVerses(data.verses || verses);
+    setIsSampleProject(false);
+  };
+
   const runAutoMatch = async (
     source: { kind: 'file'; file: File } | { kind: 'url'; url: string; start: number; end: number; skipAligner?: boolean },
     /**
@@ -1042,20 +1066,15 @@ export default function VideoCreatorPage() {
         return;
       }
 
-      if (data.surahNameArabic) setSurahNameArabic(data.surahNameArabic);
-      if (data.surahNameEnglish) setSurahNameEnglish(data.surahNameEnglish);
-      if (typeof data.surahNumber === 'number') setSelectedSurah(data.surahNumber);
-      if (typeof data.ayahStart === 'number') {
-        setAyahStart(data.ayahStart);
-        setAyahStartInput(String(data.ayahStart));
-      }
-      if (typeof data.ayahEnd === 'number') {
-        setAyahEnd(data.ayahEnd);
-        setAyahEndInput(String(data.ayahEnd));
-      }
-      if (typeof data.audioDuration === 'number') setAudioDuration(data.audioDuration);
-      setVerses(data.verses || verses);
-      setIsSampleProject(false);
+      applyMatchData(data);
+      regroup.remember(data, {
+        audioUrl,
+        provider: data.provider,
+        surah: data.surahNumber ?? selectedSurah,
+        start: data.ayahStart ?? ayahStart,
+        end: data.ayahEnd ?? ayahEnd,
+        audioDuration: data.audioDuration ?? audioDuration
+      });
       const providerLabel =
         data.provider === 'qul' ? 'Forced alignment + QUL' : data.provider === 'align' ? 'Forced alignment' : 'Gemini';
       // Kept user-facing and short: what was found, and what to do next. The
@@ -1086,6 +1105,34 @@ export default function VideoCreatorPage() {
       setMatchStatus({ text: t.match.failed, tone: 'error' });
       setIsMatching(false);
     }
+  };
+
+  const screenBreaksName = (level: ScreenBreaks) =>
+    level === 'fewer' ? t.source.screenBreaksFewer : level === 'more' ? t.source.screenBreaksMore : t.source.screenBreaksNormal;
+
+  /** Re-cut the match on screen at `level`, without matching again -- see `useRegroup`. */
+  const runRecut = async (level: ScreenBreaks) => {
+    setRecutConfirm(null);
+    screenBreaksPreference.set(SCREEN_BREAKS.indexOf(level) - 1);
+    const outcome = await regroup.recut(level);
+    if (!outcome) return;
+    if (!outcome.ok) {
+      setMatchStatus({ text: outcome.expired ? t.match.recutExpired : t.match.recutFailed(outcome.error), tone: 'error' });
+      return;
+    }
+    applyMatchData(outcome.data);
+    regroup.recutApplied(outcome.data);
+    setMatchStatus({ text: t.match.recutDone(screenBreaksName(level), outcome.data.verses?.length ?? 0), tone: 'info' });
+  };
+
+  /** A level picked on the summary: applied at once, or asked about first if the captions were edited. */
+  const chooseScreenBreaks = (level: ScreenBreaks) => {
+    if (level === screenBreaks && !recutConfirm) return;
+    if (regroup.edited(verses)) {
+      setRecutConfirm(level);
+      return;
+    }
+    void runRecut(level);
   };
 
   const handleAutoMatchUploadedAudio = () => {
@@ -2640,6 +2687,16 @@ export default function VideoCreatorPage() {
                         <dt className="text-slate-400">{t.source.captionsLabel}</dt>
                         <dd className="text-slate-200">{verses.length}</dd>
                       </dl>
+                      {regroup.available(audioUrl) && (
+                        <ScreenBreaksRecut
+                          value={screenBreaks}
+                          busy={regroup.busy}
+                          confirming={recutConfirm}
+                          onChoose={chooseScreenBreaks}
+                          onConfirm={() => recutConfirm && void runRecut(recutConfirm)}
+                          onCancel={() => setRecutConfirm(null)}
+                        />
+                      )}
                       {matchStatusBlock}
                 {hasClip && loadResult && (
                   <div

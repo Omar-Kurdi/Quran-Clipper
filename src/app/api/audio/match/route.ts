@@ -63,7 +63,7 @@ function needsReview(provider: Provider, confidence: number, warned: boolean): b
   }
 }
 
-function defaultAsrServiceUrl() {
+export function defaultAsrServiceUrl() {
   return process.env.ASR_SERVICE_URL || 'http://127.0.0.1:8000';
 }
 
@@ -111,6 +111,88 @@ export function timelineDuration(params: {
   if (params.provider === 'gemini') return client || params.reported || 0;
   if (!params.reported) return client;
   return params.windowStart > 0 ? params.windowStart + params.reported : params.reported;
+}
+
+/** The verses a match result's segments become, clamped to the audio they play against. */
+async function timelineOf(
+  result: MatchResult,
+  params: { provider: string; selectedSurah: number; windowStart: number; clientDuration: number }
+) {
+  const segments = result.segments;
+  // Order matters, because the timeline gets clamped to this value and a
+  // wrong one silently truncates a correct result. See `timelineDuration`.
+  const audioDuration =
+    timelineDuration({
+      provider: params.provider,
+      reported: Number(result.audioDuration || 0),
+      windowStart: params.windowStart,
+      client: params.clientDuration
+    }) ||
+    estimateDurationFromSegments(segments) ||
+    segments.length * 5;
+  const rawTimeline = await fetchVersesByDetectedSegments({ segments, selectedSurah: params.selectedSurah, audioDuration });
+  return { audioDuration, rawTimeline, timeline: enforceTimelineOrder(rawTimeline, audioDuration) };
+}
+
+/** The provider's own confidence where it gave one, otherwise the timeline's average. */
+function matchConfidence(result: MatchResult, timeline: { matchConfidence?: number }[]): number {
+  if (typeof result.confidence === 'number') return Math.max(0, Math.min(1, result.confidence));
+  return timeline.length ? timeline.reduce((sum, verse) => sum + (verse.matchConfidence || 0), 0) / timeline.length : 0;
+}
+
+/**
+ * The timeline a match result plays as, or why it has none.
+ *
+ * Shared with `/api/audio/regroup`, which re-cuts an alignment the sidecar
+ * still holds and has to answer exactly as a first match does.
+ */
+export async function timelineBody(
+  result: MatchResult,
+  params: { provider: string; selectedSurah: number; windowStart: number; clientDuration: number }
+): Promise<{ error: string; status: number } | { confidence: number; body: Record<string, unknown> }> {
+  const { provider, selectedSurah } = params;
+  const segments = result.segments;
+  if (segments.length === 0) {
+    const providerLabel = provider === 'gemini' ? 'Gemini' : 'The forced aligner';
+    return { status: 422, error: `${providerLabel} did not return any detected ayah segments. Try a clearer/shorter audio clip or use manual matching.` };
+  }
+  const { audioDuration, rawTimeline, timeline } = await timelineOf(result, params);
+
+  // `enforceTimelineOrder` drops segments that start past the end of the
+  // audio. If that emptied a timeline that had rows going in, the duration is
+  // far more likely wrong than every segment -- say so instead of returning
+  // `success: true` with nothing to show.
+  if (rawTimeline.length > 0 && timeline.length === 0) {
+    return {
+      status: 422,
+      error:
+        `Every detected segment starts after the ${audioDuration}s end of the audio, so the timeline is empty. ` +
+        `The audio duration and the segment times disagree -- try re-uploading the file, or use manual matching.`
+    };
+  }
+
+  const summary = getPrimaryTimelineSummary(segments, selectedSurah);
+  const confidence = matchConfidence(result, timeline);
+
+  return {
+    confidence,
+    body: {
+      confidence,
+      warning: result.warning || null,
+      transcript: result.transcript || '',
+      notes: result.notes || '',
+      timelineTitle: summary.timelineTitle,
+      surahNumber: summary.surahNumber,
+      surahNameArabic: summary.surahNameArabic,
+      surahNameEnglish: summary.surahNameEnglish,
+      ayahStart: summary.ayahStart,
+      ayahEnd: summary.ayahEnd,
+      audioDuration,
+      /** Lets Fewer / More re-cut this alignment without matching again; null where it cannot. */
+      regroupId: result.regroupId ?? null,
+      verses: timeline
+    }
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -299,84 +381,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const segments = result.segments;
-    if (segments.length === 0) {
-      const providerLabel = isLocal(provider) ? 'The forced aligner' : 'Gemini';
-      return NextResponse.json(
-        { success: false, provider, error: `${providerLabel} did not return any detected ayah segments. Try a clearer/shorter audio clip or use manual matching.` },
-        { status: 422 }
-      );
+    // A timing that came partly from published data cannot be re-cut from the
+    // aligner's grouping alone, so only a pure alignment offers it.
+    if (published) result = { ...result, regroupId: undefined };
+    const built = await timelineBody(result, {
+      provider,
+      selectedSurah,
+      windowStart: hasWindow ? windowStart : 0,
+      clientDuration: Number(formData.get('audioDuration') || 0)
+    });
+    if ('error' in built) {
+      return NextResponse.json({ success: false, provider, error: built.error }, { status: built.status });
     }
-
-    // Order matters, because the timeline gets clamped to this value and a
-    // wrong one silently truncates a correct result.
-    //
-    // `align` runs through the sidecar, which actually decodes the file -- that
-    // duration is a measurement and wins outright.
-    // Gemini only *estimates* it (108s for a 68.5s clip on the test file) and
-    // stretches its segment times to match, so there the client's value, taken
-    // from the browser's own decode of the uploaded file, is the better source.
-    const clientDuration = Number(formData.get('audioDuration') || 0);
-    const audioDuration =
-      timelineDuration({
-        provider,
-        reported: Number(result.audioDuration || 0),
-        windowStart: hasWindow ? windowStart : 0,
-        client: clientDuration
-      }) ||
-      estimateDurationFromSegments(segments) ||
-      segments.length * 5;
-    const rawTimeline = await fetchVersesByDetectedSegments({ segments, selectedSurah, audioDuration });
-    const timeline = enforceTimelineOrder(rawTimeline, audioDuration);
-
-    // `enforceTimelineOrder` drops segments that start past the end of the
-    // audio. If that emptied a timeline that had rows going in, the duration is
-    // far more likely wrong than every segment -- say so instead of returning
-    // `success: true` with nothing to show.
-    if (rawTimeline.length > 0 && timeline.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          provider,
-          error:
-            `Every detected segment starts after the ${audioDuration}s end of the audio, so the timeline is empty. ` +
-            `The audio duration and the segment times disagree -- try re-uploading the file, or use manual matching.`
-        },
-        { status: 422 }
-      );
-    }
-
-    const summary = getPrimaryTimelineSummary(segments, selectedSurah);
-    const confidence =
-      typeof result.confidence === 'number'
-        ? Math.max(0, Math.min(1, result.confidence))
-        : timeline.length
-          ? timeline.reduce((sum, verse) => sum + (verse.matchConfidence || 0), 0) / timeline.length
-          : 0;
 
     return NextResponse.json({
       success: true,
       method: isLocal(provider) ? 'ctc_forced_alignment' : 'gemini_quran_audio_timeline_alignment',
       provider,
       model: provider === 'gemini' ? geminiModel() : undefined,
-      confidence,
-      needsReview: needsReview(provider, confidence, Boolean(result.warning)),
-      warning: result.warning || null,
-      transcript: result.transcript || '',
-      notes: result.notes || '',
-      timelineTitle: summary.timelineTitle,
-      surahNumber: summary.surahNumber,
-      surahNameArabic: summary.surahNameArabic,
-      surahNameEnglish: summary.surahNameEnglish,
-      ayahStart: summary.ayahStart,
-      ayahEnd: summary.ayahEnd,
-      audioDuration,
+      needsReview: needsReview(provider, built.confidence, Boolean(result.warning)),
+      ...built.body,
       /** Whose published timings the captions use, or null when the aligner timed them. */
       timedFrom: published?.provider ?? null,
       pausesFromAudio,
       /** The published timings were asked for alone, so no pauses were looked for. */
-      alignerSkipped: skipAligner,
-      verses: timeline
+      alignerSkipped: skipAligner
     });
   } catch (err: unknown) {
     const error = err as Error;

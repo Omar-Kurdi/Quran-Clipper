@@ -779,10 +779,13 @@ Source shows one way in at a time, chosen at the top: **Built-in reciter** or **
      the passage. See [QUL data](#mushaf-fonts-and-qul-data).
    - **Online** works with nothing installed, but the timing is estimated rather than measured.
    - Options that need something you do not have say so, and say what to do about it.
-   - **Screen breaks** (fewer / normal / more caption breaks inside an ayah) is under *Advanced*.
+   - **Screen breaks** (fewer / normal / more caption breaks inside an ayah) is under *Advanced*,
+     and on a matched recording's summary as well, where it re-cuts the captions at once —
+     about half a second, with no new match. If the captions were edited since, it asks first,
+     and Ctrl+Z brings the previous cut back.
    - Once a passage is loaded or matched, Source becomes a summary of the clip — passage, audio,
      length, how it was timed — with **Edit source and match** to reopen the form with the
-     recording kept and *Advanced* open, to re-match or change the screen breaks, and a
+     recording kept and *Advanced* open, to re-match, and a
      *Next: review captions* card counting the captions marked for checking.
    - **Trim audio** is in the header's ⋯ menu and available at any point — before matching,
      after styling, even after a first export. Existing segment times are adjusted for you, so

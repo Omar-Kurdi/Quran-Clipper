@@ -189,7 +189,12 @@ export const en = {
     screenBreaksFewer: 'Fewer',
     screenBreaksNormal: 'Normal',
     screenBreaksMore: 'More',
-    screenBreaksHelp: 'Fewer: a new caption only at long pauses. More: at short ones too. An ayah end always starts one. Applies to the next match.',
+    screenBreaksHelp: 'Fewer: a new caption only at long pauses. More: at short ones too. An ayah end always starts one. Applies to the next match, and at once to a recording already matched.',
+    recutHelp: 'Re-cuts this match at once, without matching again. Fewer breaks only at long pauses, More at short ones too.',
+    recutting: 'Re-cutting…',
+    recut: 'Re-cut',
+    recutCancel: 'Keep my edits',
+    recutReplacesEdits: (level: string) => `Re-cutting at ${level} replaces your caption edits. Ctrl+Z brings them back.`,
     screenBreaksUploadsOnly: 'With published timings only, this applies to uploads, not built-in reciters.',
     matcherLocal: 'Local',
     matcherLocalTechnical: 'local forced alignment',
@@ -262,6 +267,9 @@ export const en = {
   },
 
   match: {
+    recutDone: (level: string, count: number) => `Re-cut at ${level}: ${count} caption${count === 1 ? '' : 's'}.`,
+    recutExpired: 'The aligner no longer holds this match, so it cannot be re-cut. Match the recording again with Edit source and match.',
+    recutFailed: (error: string) => `Could not re-cut: ${error}`,
     videoUploaded:
       'Video uploaded — its audio will be used for matching, and its footage as the background. Choose Match recording to find and time the ayahs, or Time it by hand to set the captions yourself.',
     audioUploaded:

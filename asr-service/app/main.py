@@ -15,10 +15,10 @@ import sys
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import align, asr, corpus, detect, qul
+from . import align, asr, corpus, detect, qul, regroup
 from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, decode_url_window, duration_seconds
 from .vad import VoicedRegion, detect_voiced_regions
 
@@ -315,6 +315,65 @@ async def transcribe(
     }
 
 
+def _shifted(entry: dict, window_offset: float) -> dict:
+    """An entry's times against the whole recording rather than the window read -- see `/align`."""
+    if not window_offset:
+        return entry
+    moved = dict(entry)
+    for key in ("start", "end"):
+        if isinstance(moved.get(key), (int, float)):
+            moved[key] = round(moved[key] + window_offset, 3)
+    return moved
+
+
+def _alignment_warning(
+    agreement: float | None,
+    coverage: float,
+    ref_words: list[tuple[str, int, str]],
+    segments: list[align.Segment],
+    mean_score: float,
+) -> str | None:
+    """What the caller should be told about this timeline, or None -- see `/align`.
+
+    Shared with `/regroup`, because a caption left without its ayah is a
+    property of the grouping, and a re-cut has to be checked for it too.
+    """
+    warning = None
+    if agreement is not None and agreement < MIN_DECODE_AGREEMENT:
+        warning = (
+            f"What this recording says and the supplied text only agree {agreement:.0%} of the way. "
+            "The ayah range probably does not match the recording."
+        )
+        log.warning("%s (reference was %d words, mean score %.4f)", warning, len(ref_words), mean_score)
+    else:
+        # An ayah with captions on both sides of it but none of its own is the
+        # failure this must never repeat quietly. On Al-Muddaththir 74:11-30 it
+        # took four of them -- 13, 18, 21 and 29 -- and the only sign was a
+        # coverage of 0.87, comfortably inside the threshold below, while the
+        # video jumped from 12 straight to 14 and the caption before each hole
+        # was stretched over its audio.
+        #
+        # `align._restore_skipped_ayahs` should leave this unreachable. If it
+        # fires, that recovery has a case it does not yet cover -- so say which
+        # ayahs, because otherwise they are found by watching the video.
+        skipped = align.skipped_ayahs(ref_words, segments)
+        if skipped:
+            warning = (
+                f"No caption was produced for {', '.join(skipped)}, "
+                f"though {'they were' if len(skipped) > 1 else 'it was'} recited "
+                "between ayahs that did get one. The timeline is incomplete."
+            )
+            log.warning("%s (reference was %d words, coverage %.4f)", warning, len(ref_words), coverage)
+
+    if warning is None and coverage < MIN_REFERENCE_COVERAGE:
+        warning = (
+            f"Only {coverage:.0%} of the supplied text was given any time in this recording. "
+            "The range is probably wider than the audio."
+        )
+        log.warning("%s (reference was %d words)", warning, len(ref_words))
+    return warning
+
+
 @app.post("/align")
 async def align_endpoint(
     audio: UploadFile | None = File(None),
@@ -483,7 +542,6 @@ async def align_endpoint(
     mean_score = result.mean_score
     coverage = result.reference_coverage
     agreement = result.decode_agreement
-    warning = None
 
     # Detection reads the passage from phrase matches, so it can reach one ayah
     # past what was actually recited -- on one clip it reported 2:121-125 for a
@@ -548,38 +606,7 @@ async def align_endpoint(
     # each second, against what the aligner put there. Measured across two
     # clips, 0.888 and 0.873 for the correct range against 0.010-0.121 for six
     # wrong ones, and 0.479 for a reference covering only part of its audio.
-    if agreement is not None and agreement < MIN_DECODE_AGREEMENT:
-        warning = (
-            f"What this recording says and the supplied text only agree {agreement:.0%} of the way. "
-            "The ayah range probably does not match the recording."
-        )
-        log.warning("%s (reference was %d words, mean score %.4f)", warning, len(ref_words), mean_score)
-    else:
-        # An ayah with captions on both sides of it but none of its own is the
-        # failure this must never repeat quietly. On Al-Muddaththir 74:11-30 it
-        # took four of them -- 13, 18, 21 and 29 -- and the only sign was a
-        # coverage of 0.87, comfortably inside the threshold below, while the
-        # video jumped from 12 straight to 14 and the caption before each hole
-        # was stretched over its audio.
-        #
-        # `align._restore_skipped_ayahs` should leave this unreachable. If it
-        # fires, that recovery has a case it does not yet cover -- so say which
-        # ayahs, because otherwise they are found by watching the video.
-        skipped = align.skipped_ayahs(ref_words, segments)
-        if skipped:
-            warning = (
-                f"No caption was produced for {', '.join(skipped)}, "
-                f"though {'they were' if len(skipped) > 1 else 'it was'} recited "
-                "between ayahs that did get one. The timeline is incomplete."
-            )
-            log.warning("%s (reference was %d words, coverage %.4f)", warning, len(ref_words), coverage)
-
-    if warning is None and coverage < MIN_REFERENCE_COVERAGE:
-        warning = (
-            f"Only {coverage:.0%} of the supplied text was given any time in this recording. "
-            "The range is probably wider than the audio."
-        )
-        log.warning("%s (reference was %d words)", warning, len(ref_words))
+    warning = _alignment_warning(agreement, coverage, ref_words, segments, mean_score)
     elapsed = time.perf_counter() - started
     log.info(
         "aligned %d reference word(s) into %d segment(s) (%d restart(s)) over %.1fs of audio in %.1fs, "
@@ -598,16 +625,7 @@ async def align_endpoint(
     # recording, because that is the file the caller is playing. Safe to do by
     # addition: the seek was measured as sample-exact, so there is no drift to
     # accumulate. Zero for an upload, which is its own whole recording.
-    def shifted(entry: dict) -> dict:
-        if not window_offset:
-            return entry
-        moved = dict(entry)
-        for key in ("start", "end"):
-            if isinstance(moved.get(key), (int, float)):
-                moved[key] = round(moved[key] + window_offset, 3)
-        return moved
-
-    return {
+    response = {
         "success": True,
         "backend": align.align_backend(),
         "model": align.align_model_name(),
@@ -618,10 +636,50 @@ async def align_endpoint(
         # window apart from a clip that happens to start at zero.
         "windowStart": round(window_offset, 3) if window_offset else 0,
         "processingSeconds": round(elapsed, 2),
-        "words": [shifted(word.to_dict()) for word in aligned],
-        "segments": [shifted(segment.to_dict()) for segment in segments],
+        "words": [_shifted(word.to_dict(), window_offset) for word in aligned],
+        "segments": [_shifted(segment.to_dict(), window_offset) for segment in segments],
         "meanScore": round(mean_score, 4),
         "referenceCoverage": coverage,
         "decodeAgreement": agreement,
         "warning": warning,
     }
+    # Held so Fewer / More can re-cut this match without reading the audio
+    # again -- see `regroup`. Only an id goes back; the studio asks with it.
+    if result.grouping is not None:
+        response["regroupId"] = regroup.keep(regroup.Kept(result.grouping, dict(response), window_offset))
+    return response
+
+
+@app.get("/regroup")
+async def regroup_endpoint(regroup_id: str = Query(..., alias="id"), breaks: str = "") -> dict:
+    """Cut a match `/align` returned into captions again, at another screen-break setting.
+
+    Answers exactly as `/align` did, with only the segments and the warning
+    that depends on them recomputed: the words, their times and the passage
+    are the same alignment. A GET, because it changes nothing: the same id and
+    setting always give the same captions. Asynchronous like `/align`, so the two take turns
+    on the model rather than running over each other (a phrase recited twice
+    at its own end is read from the audio again).
+    """
+    breaks = breaks or "normal"
+    if breaks not in align.BREAK_SCALES:
+        raise HTTPException(status_code=400, detail=f"breaks must be one of {', '.join(align.BREAK_SCALES)}; got {breaks!r}.")
+    kept = regroup.find(regroup_id)
+    if kept is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "regroup_expired", "message": "This match is no longer held -- match the recording again."},
+        )
+    segments = align.group_recitation(kept.grouping, breaks)
+    response = dict(kept.response)
+    response["segments"] = [_shifted(segment.to_dict(), kept.window_offset) for segment in segments]
+    response["warning"] = _alignment_warning(
+        response["decodeAgreement"],
+        response["referenceCoverage"],
+        kept.grouping.ref_words,
+        segments,
+        response["meanScore"],
+    )
+    response["regroupId"] = regroup_id
+    log.info("regrouped %s at %s screen breaks into %d segment(s)", regroup_id[:6], breaks, len(segments))
+    return response

@@ -57,4 +57,9 @@ export type MatchResult = {
    * the route can act on it instead of parsing a sentence.
    */
   warning?: string;
+  /**
+   * Where the forced aligner still holds this match, so it can be cut again
+   * at another screen-break setting without matching again. See `runRegroup`.
+   */
+  regroupId?: string;
 };

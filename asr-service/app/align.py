@@ -1069,6 +1069,9 @@ class RecitationResult:
     #: cases mean score was *higher* for wrong ranges than the right one
     #: (0.947 against 0.696) and coverage read 1.000 for two of them.
     decode_agreement: float | None = None
+    #: What the grouping step read, so the same alignment can be cut again at
+    #: another screen-break setting. See `group_recitation`.
+    grouping: "Grouping | None" = field(default=None, repr=False)
 
 
 
@@ -3180,6 +3183,60 @@ def decode_agreement(
     return round(float(np.mean(ratios)), 4) if ratios else None
 
 
+@dataclass
+class Grouping:
+    """Everything that decides where captions break, once the words are placed.
+
+    None of it depends on the screen-break setting, so a match can be cut again
+    at another setting from this alone, without decoding or aligning a second
+    time -- which is what lets the studio's Fewer / More act at once. The
+    recording itself is kept because a phrase recited twice at its own end is
+    read from the audio (`_extend_over_repeated_tail`).
+    """
+
+    pcm: np.ndarray
+    aligned: list[AlignedWord]
+    script: list[int]
+    repeated: list[bool]
+    ref_words: list[tuple[str, int, str]]
+    quiet: list[tuple[float, float]]
+    hush: list[tuple[float, float]]
+
+
+def prepare_grouping(
+    pcm: np.ndarray,
+    aligned: list[AlignedWord],
+    script: list[int],
+    repeated: list[bool],
+    ref_words: list[tuple[str, int, str]],
+) -> Grouping:
+    """Measure this recording's pauses, at its own stop depth -- see `calibrated_drop`.
+
+    Asked once the words are placed, because the ayah ends are where this
+    clip's stops are known to be.
+    """
+    drop = calibrated_drop(pcm, aligned)
+    if drop < QUIET_DROP_DB:
+        log.info("stops in this recording reach only %.1f dB down -- reading pauses at that depth", drop + STOP_LEVEL_MARGIN_DB)
+    return Grouping(pcm, aligned, script, repeated, ref_words, quiet_spans(pcm, drop=drop), hushes(pcm))
+
+
+def group_recitation(grouping: Grouping, breaks: str = "normal") -> list[Segment]:
+    """Cut the placed words into captions at one screen-break setting (a key of `BREAK_SCALES`)."""
+    duration = len(grouping.pcm) / SAMPLE_RATE
+    segments, spans = _segment_the_timeline(
+        grouping.aligned,
+        grouping.script,
+        duration,
+        grouping.quiet,
+        grouping.repeated,
+        grouping.hush,
+        BREAK_SCALES[breaks],
+    )
+    segments = _extend_over_repeated_tail(segments, spans, grouping.ref_words, grouping.pcm)
+    return _close_gaps(segments, duration, grouping.quiet)
+
+
 def align_recitation(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -3262,16 +3319,8 @@ def align_recitation(
     # this placed all 177 words with a mean ayah-start error of 0.48s.
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
-    # Asked once the words are placed, because the ayah ends are where this
-    # clip's stops are known to be. See `calibrated_drop`.
-    drop = calibrated_drop(pcm, aligned)
-    if drop < QUIET_DROP_DB:
-        log.info("stops in this recording reach only %.1f dB down -- reading pauses at that depth", drop + STOP_LEVEL_MARGIN_DB)
-    quiet = quiet_spans(pcm, drop=drop)
-    segments, spans = _segment_the_timeline(
-        aligned, script, duration, quiet, repeated, hushes(pcm), BREAK_SCALES[breaks]
-    )
-    segments = _close_gaps(_extend_over_repeated_tail(segments, spans, ref_words, pcm), duration, quiet)
+    grouping = prepare_grouping(pcm, aligned, script, repeated, ref_words)
+    segments = group_recitation(grouping, breaks)
 
     if decoded_phrases is None and align_backend() == "nemo":
         # Not free, but this is the only check that can catch a wrong ayah
@@ -3303,5 +3352,6 @@ def align_recitation(
         mean_score=mean_score,
         reference_coverage=round(coverage, 4),
         decode_agreement=agreement,
+        grouping=grouping,
     )
 
