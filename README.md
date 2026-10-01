@@ -540,18 +540,18 @@ Segmentation has to decide whether a given silence ends a phrase, and some of th
 be made from the audio alone. **Split** cuts the selected caption at the playhead and **Merge**
 joins it to the next one, so a wrong boundary is a two-second fix rather than a bug report.
 
-**Check next** on the timeline toolbar (or <kbd>N</kbd>) steps through the captions a match was
+**N to check · Next** on the timeline toolbar (or <kbd>N</kbd>) steps through the captions a match was
 least sure of, each marked with an amber dot: a line the aligner ended at a stop mark with no
 pause heard there, or a caption scoring under 50%. It is about one caption in ten, and across our
 ground-truth clips four of the ten wrong ones were among them -- a place to start, not a
 guarantee. The Captions tab says why each is marked; **Looks right**, or splitting or merging it,
 clears the mark.
 
-**Linked / Unlinked** on the timeline toolbar decides what a drag affects. Linked (the default,
-and how this always behaved) is a *ripple* edit: moving a segment's end shifts every segment after
+**Shift later captions when I drag**, a checkbox on the timeline toolbar, decides what a drag
+affects. Ticked (the default, and how this always behaved) is a *ripple* edit: moving a segment's end shifts every segment after
 it, each keeping its length, so one drag re-seats the whole timeline. That is the wrong tool for
 fixing a single boundary — shortening a segment drags everything after it earlier, and opening a
-gap then extending the previous segment closes the gap again. Unlinked moves one edge at a time,
+gap then extending the previous segment closes the gap again. Unticked moves one edge at a time,
 and an end stops where the next segment begins. The choice is remembered per browser.
 
 Once a timeline is right, **Ground truth** in the header's ⋯ menu (development builds) downloads it as a scoring file. Drop it
@@ -757,14 +757,20 @@ step: every tab is reachable at any time, and you can change which words are sho
 and the styling in any order, which is how the work actually goes.
 
 **Source — what you are making**
-1. Choose a reciter, surah and ayah range, then **Load ayahs & audio**.
-2. Or upload your own recitation — audio **or video**. For a video, its audio drives the timing
-   and a checkbox offers the footage as the background, synced to playback.
+Source shows one way in at a time, chosen at the top: **Built-in reciter** or **My recording**.
+1. **Built-in reciter**: choose a surah, an ayah range and a reciter, then **Load ayahs & audio**.
+2. **My recording**: drop or choose your own recitation — audio **or video** — pick a timing
+   engine, then **Match recording** (or **Time it by hand**). For a video, its audio drives the
+   timing and a checkbox offers the footage as the background, synced to playback.
    - **Local** detects the passage from the audio and times every word locally.
    - **Local + QUL** does the same, and also uses QUL's word roots and repeated phrases to find
      the passage. See [QUL data](#mushaf-fonts-and-qul-data).
    - **Online** works with nothing installed, but the timing is estimated rather than measured.
    - Options that need something you do not have say so, and say what to do about it.
+   - **Screen breaks** (fewer / normal / more caption breaks inside an ayah) is under *Advanced*.
+   - Once a passage is loaded or matched, Source becomes a summary of the clip — passage, audio,
+     length, how it was timed — with **Change passage** to go back to the form, and a
+     *Next: review captions* card counting the captions marked for checking.
    - **Trim audio** is in the header's ⋯ menu and available at any point — before matching,
      after styling, even after a first export. Existing segment times are adjusted for you, so
      your timeline edits survive a re-trim.
@@ -789,8 +795,9 @@ and the styling in any order, which is how the work actually goes.
    renumbering its ayah are under **More**.
 
 **Style — how it looks**
-9. Presets, the [translations](#translations) that appear under the Arabic, typography,
-   background, card and watermark.
+9. A row of presets (**All 6** shows the rest), then four sections — **Text** (the
+   [translations](#translations) under the Arabic, fonts, sizes, colours), **Card** (layout and
+   badge), **Background** and **Watermark**. Each says what it is set to while closed.
 
 **Above the preview**
 10. **Frame** chooses the platform, and with it the shape: 9:16, 16:9, 1:1 or 4:5. Export opens on
@@ -981,7 +988,7 @@ src/app/                     Next.js pages and API routes
   api/audio/match/           Matcher endpoint and provider dispatch
   video-creator/             The studio page
 src/components/              VideoCanvas, Timeline, Inspector (the Captions tab),
-                             StyleConfigPanel, PanelTabs, FrameBar, GpuExportModal,
+                             StyleConfigPanel, StyleSection, PanelTabs, FrameBar, GpuExportModal,
                              ExportChoices, SavedProjectsDrawer, AudioTrimModal,
                              TranslationPicker, TranslationChooser, ShortcutsDialog,
                              HealthStrip, ColorField, Dialog, ConfirmDialog, Button, Status,
