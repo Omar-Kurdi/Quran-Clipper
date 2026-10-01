@@ -377,8 +377,6 @@ export const ar: Dictionary = {
   exportQueue: {
     label: 'طابور التصدير',
     heading: count => `الطابور · ${count} تصدير`,
-    add: what => `أضف إلى الطابور: ${what}`,
-    addTitle: 'ضع هذا التصدير في الطابور واختر غيره. مفيد لمقطع واحد بعدة أشكال: كل تصدير يحوّل الاستوديو إلى شكله ثم يعيده في النهاية.',
     run: count => `صدّر الطابور (${count})`,
     cancel: 'أوقف الطابور',
     clear: 'امسح المنتهي',
@@ -391,8 +389,6 @@ export const ar: Dictionary = {
   serverRender: {
     label: 'تصديرات في الخلفية',
     heading: count => `تصديرات في الخلفية · ${count}`,
-    add: 'صدّر في الخلفية',
-    addTitle: 'يصدّره خادم الاستوديو نفسه. يمكنك إغلاق هذا التبويب والعودة إلى الملف لاحقًا.',
     sending: 'يُرسل إلى الخادم…',
     note: 'يستمر التصدير بعد إغلاق هذا التبويب.',
     queued: 'في الانتظار',
@@ -803,21 +799,26 @@ export const ar: Dictionary = {
 
   exportModal: {
     dialogLabel: 'تصدير الفيديو',
-    title: 'تصدير الفيديو',
+    title: 'تصدير',
     subtitle: encoder => `يرمّز إطارًا بإطار عبر WebCodecs (${encoder})`,
     subtitleRecorder: encoder => `يسجّل اللوحة في الزمن الحقيقي عبر MediaRecorder (${encoder})`,
     detectedGpu: 'كرت الرسوميات المكتشف',
     gpuNotReported: 'المتصفح لا يفصح عن كرت الرسوميات',
-    frameRateLabel: 'معدل الإطارات المستهدف:',
-    fps60: '60 إطارًا — فائق',
-    fps30: '30 إطارًا — قياسي',
-    resolutionLabel: 'دقة المخرجات:',
+    frameRateLabel: 'معدل الإطارات',
 
     beforeYouPublish: 'قبل النشر:',
     beforeYouPublishBody:
       'راجع بنفسك كل آية وتوقيتها وترجمتها. أنت المسؤول عمّا تنشره.',
 
     presetLabel: 'إلى أين سيُنشر؟',
+    destinationsHint: 'اختر وجهة أو أكثر',
+    relaidOut: ratio => `يُعاد ترتيبه إلى ${ratio}`,
+    tooLong: 'أطول مما تقبله هذه المنصة',
+    fpsValue: fps => `${fps} إطارًا/ث`,
+    videos: count => (count === 1 ? 'فيديو واحد' : `${count} فيديوهات`),
+    noDestination: 'اختر إلى أين سيُنشر الفيديو',
+    renderVideos: count => (count > 1 ? `صدّر ${count} فيديوهات` : 'صدّر الفيديو'),
+    renderOnServer: 'صدّر على الخادم ليمكن إغلاق هذا التبويب',
     presets: {
       tiktok: 'TikTok',
       reels: 'Instagram Reels',
@@ -827,14 +828,10 @@ export const ar: Dictionary = {
       youtube: 'YouTube',
       facebook: 'Facebook Reels'
     },
-    presetLimit: seconds =>
-      seconds >= 60 ? `حتى ${Math.round(seconds / 60)} دقيقة` : `حتى ${seconds} ثانية`,
-    presetNoLimit: 'بلا حدّ للمدة',
-    qualityLabel: 'الجودة:',
+    qualityLabel: 'الجودة',
     qualityNames: { standard: '1080p', high: '1440p', max: '4K' },
     qualityHelp:
       'الأعلى يعني ملفًا أكبر وزمن إخراج أطول، ويستحق ذلك حين تُشاهَد التلاوة بملء الشاشة. و1080p هي ما تعرضه كل هذه المنصات.',
-    estimatedSize: 'حجم الملف المتوقع:',
     steppedDown: (asked, used) =>
       `${asked} لا تتّسع في ملف واحد لمقطع بهذا الطول، فيجري الإخراج بدقة ${used}.`,
     bitrateReduced: 'مقطع طويل — خُفّض معدل البت ليتّسع الملف الناتج في الذاكرة.',
@@ -844,16 +841,12 @@ export const ar: Dictionary = {
       `أطول بـ ${seconds} ثانية مما تقبله ${platform} — سيُقتطع هناك أو يُرفض.`,
     recorderOnly:
       'يُسجَّل هذا المشروع في الزمن الحقيقي، وهو لا يلتقط سوى إطار المعاينة بدقة 1080p. والدقات الأعلى تحتاج مسار الترميز إطارًا بإطار.',
-    clipTitle: 'عنوان المقطع:',
-    clipLength: 'مدة المقطع:',
     aspectFormat: 'نسبة الأبعاد:',
-    bitrateTarget: 'معدل البت المستهدف:',
     encoding: 'جارٍ ترميز الإطارات...',
     speed: speed => `السرعة: ${speed}`,
     realtimeCapture: 'تسجيل بالزمن الحقيقي',
     realtimeCaptureTitle:
       'يسجّل التصدير التشغيل في الزمن الحقيقي، فيستغرق المقطع وقتًا قريبًا من مدته.',
-    startRender: fps => `ابدأ التصدير بمعدل ${fps} إطارًا`,
     complete: 'اكتمل تصدير الفيديو',
     renderedIn: 'اكتمل في',
     renderedOn: gpu => ` على ${gpu}.`,

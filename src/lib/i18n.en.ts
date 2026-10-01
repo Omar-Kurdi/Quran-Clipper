@@ -384,8 +384,6 @@ export const en = {
   exportQueue: {
     label: 'Export queue',
     heading: (count: number) => `Queue · ${count} render${count === 1 ? '' : 's'}`,
-    add: (what: string) => `Add to queue: ${what}`,
-    addTitle: 'Queue this render and choose another. Handy for one clip in several shapes: each render switches the studio to its shape and back again at the end.',
     run: (count: number) => `Render queue (${count})`,
     cancel: 'Stop the queue',
     clear: 'Clear finished',
@@ -398,8 +396,6 @@ export const en = {
   serverRender: {
     label: 'Background renders',
     heading: (count: number) => `Background renders · ${count}`,
-    add: 'Render in the background',
-    addTitle: "Rendered by the studio's own server. You can close this tab and come back for the file later.",
     sending: 'Sending to the server…',
     note: 'These keep rendering after this tab is closed.',
     queued: 'Waiting',
@@ -822,21 +818,26 @@ export const en = {
 
   exportModal: {
     dialogLabel: 'Export video',
-    title: 'Video Export',
+    title: 'Export',
     subtitle: (encoder: string) => `Encodes frame by frame with WebCodecs (${encoder})`,
     subtitleRecorder: (encoder: string) => `Records the canvas in real time via MediaRecorder (${encoder})`,
     detectedGpu: 'Detected GPU',
     gpuNotReported: 'GPU not reported by browser',
-    frameRateLabel: 'Target Frame Rate:',
-    fps60: '60 FPS Ultra',
-    fps30: '30 FPS Standard',
-    resolutionLabel: 'Output Resolution:',
+    frameRateLabel: 'Frame rate',
 
     beforeYouPublish: 'Before you publish:',
     beforeYouPublishBody:
       'review every ayah, its timing and its translation yourself. You are responsible for what you publish.',
 
-    presetLabel: 'Where is this going?',
+    presetLabel: 'Where is it going?',
+    destinationsHint: 'Pick one or more',
+    relaidOut: (ratio: string) => `Re-laid out to ${ratio}`,
+    tooLong: 'Longer than this platform accepts',
+    fpsValue: (fps: number) => `${fps} fps`,
+    videos: (count: number) => (count === 1 ? '1 video' : `${count} videos`),
+    noDestination: 'Pick where the video is going',
+    renderVideos: (count: number) => (count > 1 ? `Render ${count} videos` : 'Render video'),
+    renderOnServer: 'Render on the server, so this tab can be closed',
     presets: {
       tiktok: 'TikTok',
       reels: 'Instagram Reels',
@@ -846,14 +847,10 @@ export const en = {
       youtube: 'YouTube',
       facebook: 'Facebook Reels'
     },
-    presetLimit: (seconds: number) =>
-      seconds >= 60 ? `up to ${Math.round(seconds / 60)} min` : `up to ${seconds}s`,
-    presetNoLimit: 'no length limit',
-    qualityLabel: 'Quality:',
+    qualityLabel: 'Quality',
     qualityNames: { standard: '1080p', high: '1440p', max: '4K' },
     qualityHelp:
       'Higher is a bigger file and a longer render, and is worth it when the recitation will be watched full-screen. 1080p is what every one of these platforms shows.',
-    estimatedSize: 'Estimated file:',
     steppedDown: (asked: string, used: string) =>
       `${asked} would not fit in one file for a clip this long, so it renders at ${used}.`,
     bitrateReduced:
@@ -864,16 +861,12 @@ export const en = {
       `${seconds}s longer than ${platform} accepts — it will be cut short or refused there.`,
     recorderOnly:
       'This project records in real time, which can only capture the preview’s own 1080p frame. Higher resolutions need the frame-by-frame path.',
-    clipTitle: 'Clip Title:',
-    clipLength: 'Clip Length:',
     aspectFormat: 'Aspect Format:',
-    bitrateTarget: 'Bitrate Target:',
     encoding: 'GPU Encoding Frames...',
     speed: (speed: string) => `Speed: ${speed}`,
     realtimeCapture: 'Real-time capture',
     realtimeCaptureTitle:
       'Export records playback in real time, so a clip takes about as long as its duration.',
-    startRender: (fps: number) => `Start ${fps} FPS Video Render`,
     complete: 'Video Render Complete!',
     renderedIn: 'Rendered in',
     renderedOn: (gpu: string) => ` on ${gpu}.`,

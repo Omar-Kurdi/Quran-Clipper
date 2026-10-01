@@ -54,6 +54,18 @@ export function addJob(jobs: ExportJob[], job: ExportJob): ExportJob[] {
 }
 
 /** Removes a job that has not started. A running job is cancelled, not removed. */
+/**
+ * Several renders queued at once -- one per destination ticked in the export
+ * dialog -- each through `addJob`, so a render already waiting is not queued
+ * twice.
+ */
+export function addJobs(
+  jobs: ExportJob[],
+  inputs: Pick<ExportJob, 'presetId' | 'aspectRatio' | 'tier' | 'fps'>[]
+): ExportJob[] {
+  return inputs.reduce((current, input) => addJob(current, newJob(input)), jobs);
+}
+
 export function removeJob(jobs: ExportJob[], id: string): ExportJob[] {
   return jobs.filter(job => job.id !== id || job.status === 'rendering');
 }

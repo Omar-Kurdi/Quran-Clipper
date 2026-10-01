@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ExportHealth } from '@/lib/exportHealth';
 import { planExport, presetById, type ExportPlan, type QualityTier } from '@/lib/exportPresets';
 import {
-  addJob, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect,
+  addJob, addJobs, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect,
   type ExportJob
 } from '@/lib/exportQueue';
 
@@ -122,6 +122,17 @@ export function useExportQueue(deps: QueueDeps) {
     move: (id: string, direction: -1 | 1) => setJobs(current => moveJob(current, id, direction)),
     run: () => {
       if (nextJob(jobs)) runner.start();
+    },
+    /**
+     * Queues these renders and starts the queue. The runner reacts to the
+     * committed job list, so adding and starting in one go is safe here where
+     * `run` -- which reads the list as it was -- would see nothing to run.
+     */
+    runAll: (inputs: { presetId: string; tier: QualityTier; fps: number }[]) => {
+      setJobs(current =>
+        addJobs(current, inputs.map(input => ({ ...input, aspectRatio: presetById(input.presetId).aspectRatio })))
+      );
+      runner.start();
     },
     cancel: () => {
       if (queueBusy(jobs)) deps.onCancelExport();

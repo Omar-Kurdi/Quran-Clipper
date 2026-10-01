@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  addJob, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect, type ExportJob
+  addJob, addJobs, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect, type ExportJob
 } from './exportQueue';
 
 const job = (presetId: string, aspectRatio = '9:16') => newJob({ presetId, aspectRatio, tier: 'standard', fps: 30 });
@@ -25,6 +25,20 @@ describe('addJob', () => {
   it('does queue it again once the first has run', () => {
     const ran = [{ ...job('reels'), status: 'done' as const }];
     expect(addJob(ran, job('reels'))).toHaveLength(2);
+  });
+});
+
+describe('addJobs', () => {
+  const input = (presetId: string, aspectRatio = '9:16') => ({ presetId, aspectRatio, tier: 'standard' as const, fps: 30 });
+
+  it('queues one render per destination, in the order given', () => {
+    const jobs = addJobs([], [input('shorts'), input('ig-feed', '1:1')]);
+    expect(jobs.map(j => [j.presetId, j.status])).toEqual([['shorts', 'queued'], ['ig-feed', 'queued']]);
+  });
+
+  it('still refuses a render that is already waiting', () => {
+    const once = addJobs([], [input('shorts')]);
+    expect(addJobs(once, [input('shorts'), input('reels')]).map(j => j.presetId)).toEqual(['shorts', 'reels']);
   });
 });
 

@@ -3228,6 +3228,7 @@ export default function VideoCreatorPage() {
         ayahStart={clipPassage.start}
         ayahEnd={clipPassage.end}
         aspectRatio={canvasConfig.aspectRatio}
+        framePresetId={frame.id}
         onAspectRatio={(ratio: string) => setCanvasConfig(prev => ({ ...prev, aspectRatio: ratio }))}
         exportSeconds={exportRange.span}
         onSaveExportRecord={handleSaveExportRecord}
