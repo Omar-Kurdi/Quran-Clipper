@@ -781,7 +781,8 @@ Source shows one way in at a time, chosen at the top: **Built-in reciter** or **
    - Options that need something you do not have say so, and say what to do about it.
    - **Screen breaks** (fewer / normal / more caption breaks inside an ayah) is under *Advanced*.
    - Once a passage is loaded or matched, Source becomes a summary of the clip — passage, audio,
-     length, how it was timed — with **Change passage** to go back to the form, and a
+     length, how it was timed — with **Edit source and match** to reopen the form with the
+     recording kept and *Advanced* open, to re-match or change the screen breaks, and a
      *Next: review captions* card counting the captions marked for checking.
    - **Trim audio** is in the header's ⋯ menu and available at any point — before matching,
      after styling, even after a first export. Existing segment times are adjusted for you, so

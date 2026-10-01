@@ -390,8 +390,10 @@ export default function VideoCreatorPage() {
   const [panelTab, setPanelTab] = useState<PanelTab>('source');
   /** Which way into a clip the Source tab shows: a built-in reciter, or the user's own recording. */
   const [sourceMode, setSourceMode] = useState<'reciter' | 'recording'>('reciter');
-  /** Set while the passage is being changed; otherwise a loaded clip shows as a summary. */
+  /** Set while the source is being edited; otherwise a loaded clip shows as a summary. */
   const [sourceEditing, setSourceEditing] = useState(false);
+  /** Advanced (screen breaks) opens itself when the clip's source is reopened to re-match. */
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [isProjectsDrawerOpen, setIsProjectsDrawerOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
 
@@ -2320,7 +2322,7 @@ export default function VideoCreatorPage() {
                       </label>
                     )}
       {matchProvider !== 'gemini' && (
-        <details className="text-[13px]">
+        <details className="text-[13px]" open={advancedOpen} onToggle={e => setAdvancedOpen(e.currentTarget.open)}>
           <summary className="cursor-pointer select-none text-slate-400 hover:text-slate-200">
             {t.source.advanced(screenBreaks === 'fewer' ? t.source.screenBreaksFewer : screenBreaks === 'more' ? t.source.screenBreaksMore : t.source.screenBreaksNormal)}
           </summary>
@@ -2617,7 +2619,9 @@ export default function VideoCreatorPage() {
               <div className="flex flex-col gap-4 text-[13px]">
                 {/* A loaded clip shows as a summary: the form has done its
                     job, and what matters now is what the clip is and where to
-                    go next. "Change passage" brings the form back. */}
+                    go next. "Edit source and match" brings the form back,
+                    with the screen breaks open, since a re-match is usually
+                    for those. */}
                 {hasClip && !sourceEditing && !awaitingAudio ? (
                   <>
                     <section aria-label={t.source.summaryLabel} className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 flex flex-col gap-3">
@@ -2753,8 +2757,8 @@ export default function VideoCreatorPage() {
                   )}
 
                       <div className="flex flex-wrap gap-2">
-                        <Button onClick={() => { setSourceMode(customAudioFile ? 'recording' : 'reciter'); setSourceEditing(true); }}>
-                          {t.source.changePassage}
+                        <Button onClick={() => { setSourceMode(customAudioFile ? 'recording' : 'reciter'); setAdvancedOpen(true); setSourceEditing(true); }}>
+                          {t.source.editSource}
                         </Button>
                         {customAudioFile && (
                           <Button icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />} onClick={() => setShowTrimModal(true)}>

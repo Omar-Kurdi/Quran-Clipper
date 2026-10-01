@@ -151,7 +151,7 @@ export const en = {
     yourRecording: 'Your recording',
     lengthLabel: 'Length',
     captionsLabel: 'Captions',
-    changePassage: 'Change passage',
+    editSource: 'Edit source and match',
     backToClip: 'Back to this clip',
     nextReview: 'Next: review captions',
     nextReviewBody: (count: number) =>

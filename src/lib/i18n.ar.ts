@@ -150,7 +150,7 @@ export const ar: Dictionary = {
     yourRecording: 'تسجيلك',
     lengthLabel: 'المدة',
     captionsLabel: 'المقاطع',
-    changePassage: 'غيّر المقطع',
+    editSource: 'عدّل المصدر والمطابقة',
     backToClip: 'عُد إلى هذا المقطع',
     nextReview: 'التالي: راجِع المقاطع',
     nextReviewBody: count =>
