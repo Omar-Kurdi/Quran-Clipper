@@ -3016,7 +3016,6 @@ export default function VideoCreatorPage() {
                     isActive={selectedIndex === activeVerseIndex}
                     onText={edit.text}
                     translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
-                    onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
                     onTranslationText={edit.translationText}
                     translationFollowsWords={!!canvasConfig.translationFollowsWords}
                     onTranslationFollowsWords={follows =>
@@ -3029,6 +3028,10 @@ export default function VideoCreatorPage() {
                     onDelete={edit.remove}
                     onAdd={edit.add}
                     currentTime={currentTime}
+                    onSelect={i => {
+                      setSelectedIndex(i);
+                      handleSeek(verses[i].startTime);
+                    }}
                     onSplit={() => edit.split(currentTime)}
                     onMerge={edit.merge}
                     onChecked={edit.checked}

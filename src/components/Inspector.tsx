@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { wordFace, pagesUsedBy, ensureQpcPages, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Trash2, Copy, Plus, ChevronUp, ChevronDown, Eye, EyeOff, Minus, PlusCircle, SplitSquareHorizontal, Combine, Languages } from 'lucide-react';
+import { Trash2, Copy, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, SplitSquareHorizontal, Combine, AlertTriangle } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import {
@@ -12,7 +12,6 @@ import {
   type TranslationOption, type CaptionTextSource
 } from '@/lib/translations';
 import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
-import { TranslationPicker } from './TranslationPicker';
 import { Button } from './Button';
 import { Status } from './Status';
 import { captionChecks } from '@/lib/captionChecks';
@@ -44,13 +43,13 @@ interface InspectorProps {
   onChecked: () => void;
   /** Where the playhead is, so the split control can say whether it would work. */
   currentTime: number;
+  /** Moves to another caption: the panel's previous / next. */
+  onSelect: (index: number) => void;
   /**
-   * Which translations the card carries, chosen here rather than in the Style
-   * panel: this is the panel about the words, and the choice is read straight
-   * after it in the boxes below.
+   * Which translations the card carries, for the boxes below. They are chosen
+   * in Style, since the choice is the same for every caption.
    */
   translationIds: string[];
-  onTranslationIds: (ids: string[]) => void;
   /**
    * Edits one of the *additional* translations for this caption.
    *
@@ -82,24 +81,19 @@ interface InspectorProps {
 export const Inspector: React.FC<InspectorProps> = ({
   verses, index, isActive,
   onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onAdd,
-  onSplit, onMerge, onChecked, currentTime,
-  translationIds, onTranslationIds, onTranslationText,
+  onSplit, onMerge, onChecked, currentTime, onSelect,
+  translationIds, onTranslationText,
   translationFollowsWords, onTranslationFollowsWords
 }) => {
   const t = useT();
   const verse = verses[index];
 
   /**
-   * Which translations the card carries.
-   *
-   * The list itself is a dialog -- 130 editions across 40 languages is not a
-   * panel section -- so what sits here is the answer: a chip each and a way
-   * back into the list. The catalogue is only fetched once the picker has been
-   * opened, so a name it does not know yet falls back to the two this studio
+   * Which translations the card carries, named from the catalogue once Style's
+   * picker has fetched it; until then a name falls back to the two this studio
    * ships defaults for, and then to the id, which is at least not a claim.
    */
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const { options: catalogue } = useTranslationCatalogue(isPickerOpen);
+  const { options: catalogue } = useTranslationCatalogue(false);
   const chosen = selectedOptions(translationIds, catalogue);
   const nameOf = (option: { id: string; name: string; language: string; rtl?: boolean }) =>
     option.language ? option.name : knownTranslationName(option.id);
@@ -168,42 +162,6 @@ export const Inspector: React.FC<InspectorProps> = ({
     return () => { cancelled = true; };
   }, [asked]);
 
-  /**
-   * Rendered above the early return below, so it is reachable before a
-   * timeline exists -- which is exactly when someone picks the translation
-   * they want the captions built in.
-   */
-  const chooser = (
-    <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-      <label className="font-semibold text-slate-200 mb-1 flex items-center gap-1.5 text-xs">
-        <Languages className="w-3.5 h-3.5 text-amber-400" />
-        <span>{t.translations.panelLabel}</span>
-      </label>
-      <p className="text-[11px] text-slate-400 mb-2">{t.translations.panelHelp}</p>
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {chosen.map((option, position) => (
-          <span
-            key={option.id}
-            className="flex items-center gap-1.5 rounded-full bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] text-slate-200"
-          >
-            <span className="font-mono text-[10px] text-amber-400">{position + 1}</span>
-            <span className="truncate max-w-44">{nameOf(option)}</span>
-            {option.language && <span className="text-slate-500">· {option.language}</span>}
-          </span>
-        ))}
-      </div>
-      <Button icon={<Languages className="w-3.5 h-3.5" />} onClick={() => setIsPickerOpen(true)}>
-        {t.translations.choose}
-      </Button>
-      <TranslationPicker
-        isOpen={isPickerOpen}
-        onClose={() => setIsPickerOpen(false)}
-        value={translationIds}
-        onChange={onTranslationIds}
-      />
-    </div>
-  );
-
   // Mirrors what `splitSegment` and `mergeWithNext` will actually do, so a
   // control that would be a no-op is disabled rather than silently ignored.
   // That includes the word count: a caption showing one word has nothing to
@@ -228,12 +186,7 @@ export const Inspector: React.FC<InspectorProps> = ({
   }, [shownPages]);
 
   if (!verse) {
-    return (
-      <div className="flex flex-col gap-3 p-3">
-        {chooser}
-        <p className="text-[11px] text-slate-400 text-center">{t.inspector.empty}</p>
-      </div>
-    );
+    return <p className="p-4 text-[13px] text-slate-400 text-center">{t.inspector.empty}</p>;
   }
 
   const words = ensureWords(verse);
@@ -241,102 +194,38 @@ export const Inspector: React.FC<InspectorProps> = ({
   const checks = captionChecks(verse);
 
   return (
-    <div className="flex flex-col gap-3 p-3 text-xs">
-      {chooser}
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-mono text-[11px] text-gold" dir="ltr">{verse.verseKey}</span>
+    <div className="flex flex-col gap-4 p-4 text-[13px]">
+      <CaptionHeader
+        index={index}
+        total={verses.length}
+        span={t.inspector.ayahSpan(verse.verseKey, formatTime(verse.startTime), formatTime(verse.endTime), formatTime(duration))}
+        onSelect={onSelect}
+      >
         {isActive && <Status tone="live">{t.common.playing}</Status>}
         {typeof verse.matchConfidence === 'number' && (
           <Status tone={verse.matchConfidence >= 0.75 ? 'success' : 'warning'}>
             {t.inspector.matchConfidence(Math.round(verse.matchConfidence * 100))}
           </Status>
         )}
-        <span className="flex-1" />
-        <span className="font-mono text-[11px] text-slate-400 tabular-nums">{formatTime(duration)}</span>
-      </div>
+      </CaptionHeader>
 
-      {/* Why this caption is marked on the timeline, and the way to unmark it. */}
+      {/* Why this caption is marked on the timeline, and the two ways to
+          settle it, right where the caption is being read. */}
       {checks.length > 0 && (
-        <div role="note" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 flex flex-col gap-1.5">
-          <span className="font-semibold text-amber-300">{t.inspector.checkTitle}</span>
-          {checks.includes('stop_mark') && <p className="text-slate-200">{t.inspector.checkStopMark}</p>}
+        <CheckNote onChecked={onChecked} onMerge={canMerge ? onMerge : undefined}>
+          {checks.includes('stop_mark') && <p>{t.inspector.checkStopMark}</p>}
           {checks.includes('low_match') && (
-            <p className="text-slate-200">{t.inspector.checkLowMatch(Math.round((verse.matchConfidence ?? 0) * 100))}</p>
+            <p>{t.inspector.checkLowMatch(Math.round((verse.matchConfidence ?? 0) * 100))}</p>
           )}
-          <button
-            onClick={onChecked}
-            className="self-start px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-          >
-            {t.inspector.looksRight}
-          </button>
-        </div>
+        </CheckNote>
       )}
-
-      {/* Timing. Fine adjustment lives here; coarse adjustment is dragging the
-          block on the timeline. Both write through the same functions. */}
-      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5">
-        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
-          <span>{t.inspector.starts(formatTime(verse.startTime))}</span>
-          <span>{t.inspector.ends(formatTime(verse.endTime))}</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {(['startTime', 'endTime'] as const).map(edge => (
-            <div key={edge} className="flex items-center gap-1">
-              <button
-                onClick={() => onNudge(edge, -0.2)}
-                aria-label={edge === 'startTime' ? t.inspector.moveStartEarlier : t.inspector.moveEndEarlier}
-                className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-200 flex items-center justify-center"
-              >
-                <Minus className="w-3 h-3" />
-              </button>
-              <span className="text-[10px] text-slate-400 w-10 text-center">
-                {edge === 'startTime' ? t.inspector.edgeStart : t.inspector.edgeEnd}
-              </span>
-              <button
-                onClick={() => onNudge(edge, 0.2)}
-                aria-label={edge === 'startTime' ? t.inspector.moveStartLater : t.inspector.moveEndLater}
-                className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-200 flex items-center justify-center"
-              >
-                <PlusCircle className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="insp-ayah-number" className="text-[11px] font-semibold text-slate-400 block mb-1">
-          {t.inspector.ayahNumber}
-        </label>
-        <input
-          id="insp-ayah-number"
-          type="number"
-          min={1}
-          value={verse.verseNumber}
-          onChange={e => onVerseNumber(parseInt(e.target.value, 10))}
-          dir="ltr"
-          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono"
-        />
-      </div>
 
       {/* The Arabic is shown, never edited: it is the corpus's text for this
           verse key, and the Quran text may not be modified. Which of its words
-          are on screen is the one thing a caption chooses, through the word
-          chips further down. */}
-      <div>
-        <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2">
-          <span id="insp-arabic-label">{t.inspector.arabic}</span>
-          <span className="font-normal text-slate-400">{t.inspector.arabicReadOnly}</span>
-        </div>
-        <p
-          aria-labelledby="insp-arabic-label"
-          dir="rtl"
-          className="w-full min-h-20 bg-slate-950/60 border border-slate-800 rounded-lg px-2.5 py-2 text-base text-parchment font-quran leading-loose select-text"
-        >
-          {verse.displayTextUthmani || verse.textUthmani}
-        </p>
-      </div>
+          are on screen is the one thing a caption chooses -- so the words
+          themselves are the control, rather than a read-only copy of the ayah
+          above a second row of chips. */}
+      <WordPicker words={words} glyphs={glyphs} onToggleWord={onToggleWord} />
 
       {/* A box for every translation on the card, resolved through the same
           function the canvas draws with -- so the box and the video cannot
@@ -344,33 +233,19 @@ export const Inspector: React.FC<InspectorProps> = ({
           caption's own slot writes `translation`; the rest write into
           `displayTranslations`, which outranks the fetched text. */}
       {boxes.map(box => (
-        <div key={box.option.id}>
-          <label
-            htmlFor={`insp-translation-${box.option.id}`}
-            className="text-[11px] font-semibold text-slate-400 mb-1 flex items-baseline justify-between gap-2"
-          >
+        <div key={box.option.id} className="flex flex-col gap-1.5">
+          <label htmlFor={`insp-translation-${box.option.id}`} className="text-xs font-semibold text-slate-300">
             {/* The label follows what the box is drawing, not what was
                 chosen. With the mask on, that is quran.com's own word-by-word
-                edition -- a separate work from every translation in the picker
-                -- and naming the chosen translator over it was putting their
-                name to words they never wrote. A box someone has since edited
-                is their own text for that edition, so it takes the edition's
-                name back. */}
-            <span>
-              {box.source === 'words' ? t.inspector.wordByWord : t.inspector.translation}
-              {box.source === 'words' ? (
-                <span className="ms-1.5 font-normal text-slate-500">
-                  {t.inspector.wordByWordFrom(WORD_BY_WORD_LANGUAGE, WORD_BY_WORD_PROVIDER)}
-                </span>
-              ) : (
-                // Named once there is more than one, so the boxes below are
-                // telling apart rather than guessing at.
-                chosen.length > 1 && (
-                  <span className="ms-1.5 font-normal text-slate-500">{nameOf(box.option)}</span>
-                )
-              )}
+                edition -- a separate work from every translation in the
+                picker -- and naming the chosen translator over it was putting
+                their name to words they never wrote. */}
+            {box.source === 'words' ? t.inspector.wordByWord : t.inspector.translation}
+            <span className="ms-1.5 font-normal text-slate-400">
+              {box.source === 'words'
+                ? t.inspector.wordByWordFrom(WORD_BY_WORD_LANGUAGE, WORD_BY_WORD_PROVIDER)
+                : nameOf(box.option)}
             </span>
-            <span className="font-normal text-slate-400">{t.inspector.dragToResize}</span>
           </label>
           <textarea
             id={`insp-translation-${box.option.id}`}
@@ -384,20 +259,35 @@ export const Inspector: React.FC<InspectorProps> = ({
             // already draws it that way, and typing into a box that does not
             // is its own small misery.
             dir={box.option.rtl ? 'rtl' : 'ltr'}
-            rows={5}
-            className="w-full min-h-38 resize-y bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 leading-relaxed"
+            rows={3}
+            className="w-full resize-y bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 leading-relaxed"
           />
         </div>
       ))}
 
+      {/* Beside the translation because that is what it changes, though it
+          applies to every caption rather than this one. */}
+      <label className="flex items-start gap-2 text-[13px] text-slate-300 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={translationFollowsWords}
+          onChange={e => onTranslationFollowsWords(e.target.checked)}
+          className="mt-0.5 w-4 h-4 accent-amber-500"
+        />
+        <span>
+          {t.inspector.translationFollowsWords}
+          <span className="block text-xs text-slate-400">{t.inspector.translationFollowsWordsHint}</span>
+        </span>
+      </label>
+
       {collapsed > 0 && (
-        <p className="rounded-lg border border-slate-800 bg-slate-950 p-2 text-[11px] leading-relaxed text-slate-400">
+        <p className="rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-xs leading-relaxed text-slate-400">
           {t.inspector.oneGlossLine(collapsed)}
         </p>
       )}
 
       {similar.length > 0 && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-200">
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-relaxed text-amber-200">
           {t.inspector.alsoAppears(
             verseKey,
             similar[0].elsewhere.length,
@@ -406,61 +296,18 @@ export const Inspector: React.FC<InspectorProps> = ({
         </p>
       )}
 
-      <div>
-        <span className="text-[11px] font-semibold text-slate-400 block mb-1">
-          {t.inspector.wordsOnScreen}
-          <span className="block font-normal text-[11px] text-slate-400">{t.inspector.wordsHint}</span>
-        </span>
+      {/* Timing. Fine adjustment lives here; coarse adjustment is dragging the
+          block on the timeline. Both write through the same functions. */}
+      <TimingNudge start={verse.startTime} end={verse.endTime} onNudge={onNudge} />
 
-        {/* Beside the mask because that is what it follows, though it applies
-            to every caption rather than this one. */}
-        <label className="mb-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={translationFollowsWords}
-            onChange={e => onTranslationFollowsWords(e.target.checked)}
-            className="mt-0.5 accent-amber-500"
-          />
-          <span>
-            {t.inspector.translationFollowsWords}
-            <span className="block text-slate-400">{t.inspector.translationFollowsWordsHint}</span>
-          </span>
-        </label>
-        <div className="flex flex-wrap gap-1.5" dir="rtl">
-          {words.map((word, wi) => (
-            <button
-              key={`${word.arabic}-${wi}`}
-              onClick={() => onToggleWord(wi)}
-              aria-pressed={!word.excluded}
-              className={`flex items-center gap-1 px-2 py-1 rounded-md border font-quran text-sm transition-colors ${
-                word.excluded
-                  ? 'bg-red-500/10 border-red-500/30 text-red-300 line-through'
-                  : 'bg-slate-800 border-slate-700 text-parchment'
-              }`}
-            >
-              <span style={wordFace(word, glyphs).family ? { fontFamily: wordFace(word, glyphs).family } : undefined}>
-                {wordFace(word, glyphs).text}
-              </span>
-              {word.excluded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3 opacity-50" />}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800">
+      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800">
         <Button
           icon={<SplitSquareHorizontal className="w-3.5 h-3.5" />}
           onClick={onSplit}
           disabled={!canSplit}
-          title={
-            canSplit
-              ? t.inspector.splitHint
-              : onScreen < 2
-                ? t.inspector.splitOneWord
-                : t.inspector.splitTooShort
-          }
+          title={canSplit ? t.inspector.splitHint : onScreen < 2 ? t.inspector.splitOneWord : t.inspector.splitTooShort}
         >
-          {t.inspector.split}
+          {t.inspector.splitHere}
         </Button>
         <Button
           icon={<Combine className="w-3.5 h-3.5" />}
@@ -470,16 +317,170 @@ export const Inspector: React.FC<InspectorProps> = ({
         >
           {t.inspector.merge}
         </Button>
+        <Button icon={<Copy className="w-3.5 h-3.5" />} onClick={onDuplicate}>{t.common.duplicate}</Button>
+        <span className="flex-1" />
+        <Button variant="danger" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={onDelete} disabled={verses.length <= 1}>
+          {t.inspector.delete}
+        </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800">
-        <Button icon={<ChevronUp className="w-3.5 h-3.5" />} onClick={() => onReorder(index - 1)} disabled={index === 0} aria-label={t.inspector.moveAyahEarlier} />
-        <Button icon={<ChevronDown className="w-3.5 h-3.5" />} onClick={() => onReorder(index + 1)} disabled={index === verses.length - 1} aria-label={t.inspector.moveAyahLater} />
-        <Button icon={<Copy className="w-3.5 h-3.5" />} onClick={onDuplicate}>{t.common.duplicate}</Button>
-        <Button icon={<Plus className="w-3.5 h-3.5" />} onClick={onAdd}>{t.common.add}</Button>
-        <span className="flex-1" />
-        <Button variant="danger" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={onDelete} disabled={verses.length <= 1} aria-label={t.inspector.deleteAyah} />
+      {/* Rarer edits, kept rather than dropped: reordering, adding a caption,
+          and renumbering one the matcher labelled wrong. */}
+      <details className="text-[13px] text-slate-300">
+        <summary className="cursor-pointer select-none text-slate-400 hover:text-slate-200">{t.inspector.moreActions}</summary>
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button icon={<ChevronUp className="w-3.5 h-3.5" />} onClick={() => onReorder(index - 1)} disabled={index === 0}>
+              {t.inspector.moveAyahEarlier}
+            </Button>
+            <Button icon={<ChevronDown className="w-3.5 h-3.5" />} onClick={() => onReorder(index + 1)} disabled={index === verses.length - 1}>
+              {t.inspector.moveAyahLater}
+            </Button>
+            <Button icon={<Plus className="w-3.5 h-3.5" />} onClick={onAdd}>{t.inspector.addCaption}</Button>
+          </div>
+          <label className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-slate-300">{t.inspector.ayahNumber}</span>
+            <input
+              type="number"
+              min={1}
+              value={verse.verseNumber}
+              onChange={e => onVerseNumber(parseInt(e.target.value, 10))}
+              dir="ltr"
+              className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-100 font-mono"
+            />
+          </label>
+        </div>
+      </details>
+    </div>
+  );
+};
+
+const ICON_BUTTON =
+  'w-9 h-9 shrink-0 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold';
+
+/** "Caption 5 of 7", its ayah and times, and the way to the captions either side. */
+const CaptionHeader: React.FC<{
+  index: number;
+  total: number;
+  span: string;
+  onSelect: (index: number) => void;
+  children?: React.ReactNode;
+}> = ({ index, total, span, onSelect, children }) => {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-2">
+      <button onClick={() => onSelect(index - 1)} disabled={index === 0} aria-label={t.inspector.previous} title={t.inspector.previous} className={ICON_BUTTON}>
+        <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[15px] font-semibold text-slate-100">{t.inspector.captionOf(index + 1, total)}</span>
+          {children}
+        </div>
+        <div className="text-xs text-slate-400 tabular-nums">{span}</div>
       </div>
+      <button onClick={() => onSelect(index + 1)} disabled={index >= total - 1} aria-label={t.inspector.next} title={t.inspector.next} className={ICON_BUTTON}>
+        <ChevronRight className="w-4 h-4 rtl:rotate-180" />
+      </button>
+    </div>
+  );
+};
+
+/** Why a caption is marked for checking, with "Looks right" and, where it can apply, the merge that usually fixes it. */
+const CheckNote: React.FC<{ onChecked: () => void; onMerge?: () => void; children: React.ReactNode }> = ({ onChecked, onMerge, children }) => {
+  const t = useT();
+  return (
+    <div role="note" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 flex flex-col gap-2.5">
+      <div className="flex gap-2.5 items-start">
+        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" aria-hidden="true" />
+        <div className="flex flex-col gap-1 text-amber-100 leading-relaxed">
+          <span className="font-semibold text-amber-200">{t.inspector.checkTitle}</span>
+          {children}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={onChecked}
+          className="h-8 px-3 rounded-lg border border-amber-500/60 text-amber-100 font-semibold hover:bg-amber-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+        >
+          {t.inspector.looksRight}
+        </button>
+        {onMerge && (
+          <button
+            onClick={onMerge}
+            className="h-8 px-3 rounded-lg border border-slate-700 text-slate-100 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          >
+            {t.inspector.mergeWithNext}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/** The caption's words in the mushaf's own drawing: tap one to take it off screen or put it back. */
+const WordPicker: React.FC<{
+  words: ReturnType<typeof ensureWords>;
+  glyphs: boolean;
+  onToggleWord: (wordIndex: number) => void;
+}> = ({ words, glyphs, onToggleWord }) => {
+  const t = useT();
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="font-semibold text-slate-300">{t.inspector.onScreen}</span>
+        <span className="text-slate-400">{t.inspector.tapToHide}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5" dir="rtl">
+        {words.map((word, wi) => {
+          const face = wordFace(word, glyphs);
+          return (
+            <button
+              key={`${word.arabic}-${wi}`}
+              onClick={() => onToggleWord(wi)}
+              aria-pressed={!word.excluded}
+              className={`px-2.5 py-0.5 rounded-lg border font-quran text-2xl leading-loose transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+                word.excluded
+                  ? 'border-dashed border-slate-700 text-slate-500 line-through'
+                  : 'border-slate-700 bg-slate-800/70 text-parchment hover:border-slate-500'
+              }`}
+            >
+              <span style={face.family ? { fontFamily: face.family } : undefined}>{face.text}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/** Start and end in steps of 0.2s, beside the times they change. */
+const TimingNudge: React.FC<{ start: number; end: number; onNudge: (edge: 'startTime' | 'endTime', delta: number) => void }> = ({
+  start, end, onNudge
+}) => {
+  const t = useT();
+  const rows = [
+    { edge: 'startTime' as const, label: t.inspector.startsLabel, time: start, earlier: t.inspector.moveStartEarlier, later: t.inspector.moveStartLater },
+    { edge: 'endTime' as const, label: t.inspector.endsLabel, time: end, earlier: t.inspector.moveEndEarlier, later: t.inspector.moveEndLater }
+  ];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-semibold text-slate-300">{t.inspector.timing}</span>
+      <div className="grid grid-cols-[4rem_1fr_2.25rem_2.25rem] items-center gap-2">
+        {rows.map(row => (
+          <React.Fragment key={row.edge}>
+            <span className="text-slate-400">{row.label}</span>
+            <span className="font-mono tabular-nums text-slate-100" dir="ltr">{formatTime(row.time)}</span>
+            <button onClick={() => onNudge(row.edge, -0.2)} aria-label={row.earlier} title={row.earlier} className={ICON_BUTTON}>
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onNudge(row.edge, 0.2)} aria-label={row.later} title={row.later} className={ICON_BUTTON}>
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+      <p className="text-xs text-slate-400">{t.inspector.nudgeHint}</p>
     </div>
   );
 };
