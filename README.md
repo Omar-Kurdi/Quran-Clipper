@@ -110,18 +110,22 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   Saved *projects* still reference backgrounds by URL, so a project that used an uploaded file
   will not find it again in a later session — the background list will have it, but the project
   will not re-select it.
+
 <p align="center">
   <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The Background section of the Style tab: the four ways backgrounds are used, and the gallery with each clip’s length under its label.">
 </p>
+
 - **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
   waveform of the recitation. Drag an edge to retime it, or tap **B** at each boundary while
   the audio plays (SPACE plays and pauses). Changes cascade so the timeline stays contiguous.
   Drag a block by its middle to move it elsewhere in the order; the captions are laid end to end
   again in the new order, each keeping its length.
+
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Timeline.png" alt="The timeline: transport controls with Mark caption end, the captions-to-check button and the drag setting, a time ruler, the background lane, and one block per caption drawn over the waveform.">
 </p>
 <p align="center"><sub>The lane above the ayah blocks names the background and marks each repeat — <code>×2.4</code> here means the clip plays through twice and a bit.</sub></p>
+
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
   ruler show exactly where you are, zoom (up to 16×) resolves the waveform for fine cuts, and
   start/end are entered as timecodes (`3:31.7`). Drag the handles, or park the playhead and
@@ -134,9 +138,11 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   ruler; drag either handle and the playhead follows it, so the preview shows the frame and
   the sound at the cut while you place it. **Keep 0:09.0** applies it — the same edit the
   dialog makes, without covering the thing being trimmed.
+
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The trim editor: a waveform with drag handles, a time ruler, and start, end and selected length as timecodes.">
 </p>
+
 - **Upload video as well as audio** (MP4 / MOV / WebM / MKV). The audio track drives the
   timing, and the footage can double as the clip background — kept frame-synced to playback
   rather than looped, so a recorded recitation stays in sync. Trimming the audio offsets the
@@ -200,12 +206,14 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   the surah being recited on each caption. The calligraphic heading needs the surah-name font
   (see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data)); without it the option is greyed
   out and a project that asks for it draws the pill.
+
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Text section of the Style tab: the Arabic calligraphy face, text sizes and the colour fields." width="30%">
 </p>
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and Watermark sections of the Style tab: layout, badge, card opacity and border, the audio visualiser and the watermark." width="30%">
 </p>
+
 - **Export aimed at a platform, not at a fixed frame** — seven platforms, ticked one or several
   at a time, three resolution tiers and two frame rates, described under [Export](#export).
   The save dialog offers `[Surah]_[surah]_[first]-[last].mp4` — for example
