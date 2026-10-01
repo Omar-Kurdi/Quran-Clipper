@@ -16,9 +16,9 @@ only for timing. A word cannot go missing, come back garbled, or land in the wro
 those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio: the source column on the left, the video preview in the middle, the inspector on the right, and the timeline across the bottom.">
+  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio with a matched recording: the Captions tab on the left showing a caption marked for checking and its words, the preview with the frame bar above it, and the timeline across the bottom with the captions to check marked.">
 </p>
-<p align="center"><sub>One screen: source, preview, inspector, timeline. Five themes ship, switchable at runtime from the header's ⋯ menu.</sub></p>
+<p align="center"><sub>One screen: the working panel (Source, Captions, Style), the preview, the timeline. Five themes ship, switchable at runtime from the header's ⋯ menu.</sub></p>
 
 ---
 
@@ -111,7 +111,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   will not find it again in a later session — the background list will have it, but the project
   will not re-select it.
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The background panel: the four ways backgrounds are used, the sequence in play order, and the gallery with each clip's length under its label.">
+  <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The Background section of the Style tab: the four ways backgrounds are used, and the gallery with each clip’s length under its label.">
 </p>
 - **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
   waveform of the recitation. Drag an edge to retime it, or tap **B** at each boundary while
@@ -119,7 +119,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   Drag a block by its middle to move it elsewhere in the order; the captions are laid end to end
   again in the new order, each keeping its length.
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Timeline.png" alt="The timeline: transport controls, a time ruler, the background lane naming its clip and marking where it repeats, and one block per ayah drawn over the waveform.">
+  <img src="docs/screenshots/QuranClipper_Timeline.png" alt="The timeline: transport controls with Mark caption end, the captions-to-check button and the drag setting, a time ruler, the background lane, and one block per caption drawn over the waveform.">
 </p>
 <p align="center"><sub>The lane above the ayah blocks names the background and marks each repeat — <code>×2.4</code> here means the clip plays through twice and a bit.</sub></p>
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
@@ -148,8 +148,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   aspect ratio, the translations, the badge text or the watermark, and applying one is a single undo.
 - **The frame is chosen as a platform**, above the preview: YouTube Shorts · 9:16, Instagram
   Feed · 1:1 and so on, in 9:16, 16:9, 1:1 and 4:5. Export opens on the same platform, so the
-  shape is decided once. For the vertical feeds, *Show what the app covers* outlines roughly where
-  the feed draws its own header, caption and buttons, so the ayah can be kept clear of them.
+  shape is decided once. For the vertical feeds, *Show what the app covers* outlines where each one
+  — Shorts, TikTok, Reels, Facebook Reels — draws its own header, caption and buttons, from
+  published safe-zone guides, so the ayah can be kept clear of them.
 - 11 Pexels video backgrounds, plus any video or image you paste a link to or upload — stills
   render exactly like footage.
 - **Undo and redo** across the timeline, the selection and the styling, with
@@ -173,7 +174,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   blur against a WebGL one and keeps whichever is quicker in this browser. Where Chrome already
   draws canvases on the GPU the two are within a millisecond and the canvas blur stays; where it
   does not, the WebGL blur saves most of a frame (11 ms down to 5–7 ms at 1080×1920, measured).
-- **The interface in English or Arabic**, switched from the header's ⋯ menu. The choice is a cookie, so
+- **The interface in English or Arabic**, switched from the header (from its ⋯ menu on a phone). The choice is a cookie, so
   the server renders the page in the right language and direction from the first paint rather
   than flashing English and correcting itself. Arabic gets a real RTL layout and its own
   interface face; the timeline and the trim waveform stay left-to-right, because time does. The
@@ -200,10 +201,10 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   (see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data)); without it the option is greyed
   out and a project that asks for it draws the pill.
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Layout and Text panel: aspect ratio, Arabic calligraphy face, text sizes, the chosen translations, and the colour fields." width="30%">
+  <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Text section of the Style tab: the Arabic calligraphy face, text sizes and the colour fields." width="30%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and FX panel: card opacity and border, the surah badge, the watermark and the audio visualiser." width="30%">
+  <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and Watermark sections of the Style tab: layout, badge, card opacity and border, the audio visualiser and the watermark." width="30%">
 </p>
 - **Export aimed at a platform, not at a fixed frame** — seven platforms, ticked one or several
   at a time, three resolution tiers and two frame rates, described under [Export](#export).
@@ -485,7 +486,7 @@ they can be swapped freely and compared on the same clip.
 | **Online** (`gemini`) | API key | you | Approximate |
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Matching.png" alt="The upload panel with a recitation loaded: the two matchers with their current state, the trim button showing the clip length, and the auto-match and manual match choices." width="30%">
+  <img src="docs/screenshots/QuranClipper_Matching.png" alt="The Source tab in My recording mode with a recitation chosen: the timing engines and their state, Match recording, Time it by hand and Trim audio." width="30%">
 </p>
 <p align="center"><sub>Each matcher says whether it can run right now, and why not if it cannot — here the local sidecar has not been started.</sub></p>
 
@@ -680,8 +681,8 @@ reciter's export is read once per process.
 
 ## Translations
 
-The line under the Arabic is a choice, not a constant. **Choose translations**, in
-Style › Layout & Text, opens every edition the configured upstream publishes — 126 of them on
+The line under the Arabic is a choice, not a constant. **Translations › Change**, in the Captions
+tab right above the translation boxes, opens every edition the configured upstream publishes — 126 of them on
 the open API — grouped by language and searchable by translator, because the question is rarely "where is English", it is
 which of the eight Urdu translations this one is.
 
@@ -793,13 +794,15 @@ Source shows one way in at a time, chosen at the top: **Built-in reciter** or **
    why, with **Looks right** and, where it applies, **Merge with next**. The badge on the tab
    counts how many are left.
 8. The Arabic, read-only — it is always the corpus's text for that ayah — word by word: tap a word
-   to hide it from the video. Then the translation, fine timing nudges (±0.2 s), and
+   to hide it from the video. Then **Translations** — which editions every caption carries — and
+   the caption's translation, fine timing nudges (±0.2 s), and
    **Split at playhead**, **Merge**, **Duplicate** and **Delete**. Moving a caption, adding one and
-   renumbering its ayah are under **More**.
+   renumbering its ayah are under **More**; an added caption takes the gap before the next one, or
+   the second half of the caption it follows, so it never overlaps another.
 
 **Style — how it looks**
-9. A row of presets (**All 6** shows the rest), then four sections — **Text** (the
-   [translations](#translations) under the Arabic, fonts, sizes, colours), **Card** (layout and
+9. A row of presets (**All 6** shows the rest), then four sections — **Text** (fonts, sizes,
+   colours), **Card** (layout and
    badge), **Background** and **Watermark**. Each says what it is set to while closed.
 
 **Above the preview**
@@ -814,7 +817,7 @@ Source shows one way in at a time, chosen at the top: **Built-in reciter** or **
     **Save to Projects** beside it saves the clip to the projects list.
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Shortcuts.png" alt="The keyboard shortcuts dialog, listing space, B, undo, redo, question mark and escape." width="52%">
+  <img src="docs/screenshots/QuranClipper_Shortcuts.png" alt="The keyboard shortcuts dialog, listing space, B, N, undo, redo, question mark and escape." width="52%">
 </p>
 
 Then save the project and export.
@@ -843,7 +846,7 @@ attached rather than quietly producing something smaller than was asked for.
 **Chrome or Chromium is recommended**, and is what gets you the first path.
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Export.png" alt="The export dialog: the detected GPU and codecs, the seven platform presets, frame rate and quality tiers, and the resulting resolution, bitrate and estimated file size." width="52%">
+  <img src="docs/screenshots/QuranClipper_Export.png" alt="The export dialog: the platforms to render for, each with its shape and any re-layout or length note, quality and frame rate, a one-line summary, and Render video." width="52%">
 </p>
 
 ### Before and after a render
