@@ -169,7 +169,7 @@ export const en = {
     howItWorksNoteBefore: 'Note: reciters marked',
     howItWorksNoteTimed: 'timed',
     howItWorksNoteMiddle:
-      'come with ayah boundaries measured from the recording; the rest are estimates you set yourself on the timeline. Auto-matching only works on',
+      'come with ayah boundaries measured from the recording; the rest are estimates you set yourself on the timeline. Matching a recording only works on',
     howItWorksNoteUploaded: 'uploaded',
     howItWorksNoteEnd: 'files.',
 
@@ -257,9 +257,9 @@ export const en = {
 
   match: {
     videoUploaded:
-      'Video uploaded — its audio will be used for matching, and its footage as the background. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.',
+      'Video uploaded — its audio will be used for matching, and its footage as the background. Choose Match recording to find and time the ayahs, or Time it by hand to set the captions yourself.',
     audioUploaded:
-      'Audio uploaded. Choose AI Auto-match to detect and sync ayahs, or Manual Match to time segments yourself.',
+      'Audio uploaded. Choose Match recording to find and time the ayahs, or Time it by hand to set the captions yourself.',
     audioRestored:
       'Recitation restored, cut to the same stretch this project was saved with — the timeline below already matches it.',
     awaitingAudio: (name: string) =>
@@ -267,7 +267,7 @@ export const en = {
     translationsRemoved: (ids: string) =>
       `A translation this project used (${ids}) is no longer published, so it was taken out. The card now shows the translations that remain, or the default if none do.`,
     trimmed: (length: string) =>
-      `Trimmed to ${length}. Re-run AI Auto-match for the trimmed clip, or review the adjusted timeline below.`,
+      `Trimmed to ${length}. Match the recording again for the trimmed clip, or review the adjusted timeline below.`,
     trimmingRange: 'Trimming the audio to the clip you marked…',
     trimRangeFailed: 'Could not trim this file. Try the Trim audio dialog, which reports what went wrong.',
     alignLostAyahs: (count: number, keys: string) =>
@@ -301,7 +301,7 @@ export const en = {
         bounds > 0 ? `, ${bounds} with the ayah’s bounds only` : ''
       }. Now playing QUL’s recording, which those timings were measured on.`,
     segmentsUnavailable:
-      'This reciter has no published timings — their recording is not one of the measured ones. Use AI Auto-match instead.',
+      'This reciter has no published timings — their recording is not one of the measured ones. Use Align to audio instead.',
     segmentsNone:
       'No published timings came back for this passage. The other two ways of timing it are unaffected.',
     segmentsDone: (ayahs: number, timed: number, bounds: number) =>
@@ -310,22 +310,22 @@ export const en = {
         : `Timed ${ayahs} ayah${ayahs === 1 ? '' : 's'} from the reciter’s own recording, every word included.`,
     alignReciterTitle:
       'Read the reciter\u2019s own recording and place every word, instead of estimating where the ayahs fall.',
-    needUpload: 'Upload an audio file before running AI auto-match.',
+    needUpload: 'Choose a recording before matching it.',
     queued: (position: number, wait: string | null) =>
       `In the queue, number ${position}${wait ? ` -- about ${wait}` : ''}. Other people are matching first.`,
     aligning:
       'Force-aligning the selected ayah range against your audio (first run loads the model — may take longer)...',
     timingPublished: 'Timing the passage from the reciter\u2019s published word timings...',
     sendingToGemini: 'Sending audio to Gemini for analysis...',
-    notConfigured: 'AI matcher is not configured. Use manual matching for this audio.',
-    failed: 'AI matcher failed. Use manual matching, or configure the server-side AI matcher and try again.',
+    notConfigured: 'The matcher is not configured. Time this recording by hand instead.',
+    failed: 'Matching failed. Time it by hand, or check the timing engine and try again.',
     detected: (label: string, segments: number) => `Detected ${label} — ${segments} segment(s). `,
     fallbackSurahLabel: (number: number) => `Surah ${number}`,
     confirmRange:
       'Check that this is the right surah and ayah range for your audio, then review the timings below before publishing.',
     reviewTimings: 'Review the timings and text below before publishing.',
     manualMode:
-      'Manual matching mode: assign ayah numbers and adjust start/end times for each audio segment.'
+      'Timing by hand: set where each caption starts and ends on the timeline, and its ayah under Captions › More.'
   },
 
   audioErrors: {
