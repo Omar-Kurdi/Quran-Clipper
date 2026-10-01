@@ -18,7 +18,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio: the source column on the left, the video preview in the middle, the inspector on the right, and the timeline across the bottom.">
 </p>
-<p align="center"><sub>One screen: source, preview, inspector, timeline. Five themes ship, switchable at runtime from the header.</sub></p>
+<p align="center"><sub>One screen: source, preview, inspector, timeline. Five themes ship, switchable at runtime from the header's ⋯ menu.</sub></p>
 
 ---
 
@@ -129,7 +129,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   matched timeline down); the segment times adjust to the new clip automatically either way.
   Preview plays the decoded buffer the cut is taken from, not the original container, so what
   you hear is sample-for-sample what you get. Runs entirely in the browser, no upload or server
-  round-trip, and is reachable from the top toolbar at any step.
+  round-trip, and is reachable from the header's ⋯ menu at any step.
 - **Trim from the timeline too.** With an uploaded file loaded, a clip lane sits above the
   ruler; drag either handle and the playhead follows it, so the preview shows the frame and
   the sound at the cut while you place it. **Keep 0:09.0** applies it — the same edit the
@@ -146,7 +146,10 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - **Presets**: six complete looks (font, colours, card, layout, badge, background and its dimming) at the top of
   the Style tab, each shown as a miniature of the frame it makes. A preset never changes the
   aspect ratio, the translations, the badge text or the watermark, and applying one is a single undo.
-- Aspect ratios 9:16, 16:9, 1:1, 4:5.
+- **The frame is chosen as a platform**, above the preview: YouTube Shorts · 9:16, Instagram
+  Feed · 1:1 and so on, in 9:16, 16:9, 1:1 and 4:5. Export opens on the same platform, so the
+  shape is decided once. For the vertical feeds, *Show what the app covers* outlines roughly where
+  the feed draws its own header, caption and buttons, so the ayah can be kept clear of them.
 - 11 Pexels video backgrounds, plus any video or image you paste a link to or upload — stills
   render exactly like footage.
 - **Undo and redo** across the timeline, the selection and the styling, with
@@ -157,17 +160,17 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   files cannot survive a reload, so their names are kept instead, which at least says what to
   pick again.
 - **<kbd>?</kbd> lists every keyboard shortcut.**
-- **A three-step tour** on the first visit points at the source panel, the timeline and the Style
-  tab in turn. It is offered once; *Take the tour* under *How it works*, or in the menu, brings it
-  back.
+- **A three-step tour** on the first visit points at the Source tab, the timeline and the Style
+  tab in turn. It is offered once; *Take the tour* under *How it works*, or in the header's Help
+  menu, brings it back.
 - **Works on a phone.** Below tablet width one surface shows at a time (Source, Preview, Edit),
-  the header keeps Undo and Export in reach and moves the rest, language included, into its menu,
+  the header keeps Undo and Export in reach and moves the rest, Help included, into its ⋯ menu,
   and the timeline's edge handles are wider under a finger.
 - **Background blur on the GPU where that is faster.** The first blurred frame times the canvas
   blur against a WebGL one and keeps whichever is quicker in this browser. Where Chrome already
   draws canvases on the GPU the two are within a millisecond and the canvas blur stays; where it
   does not, the WebGL blur saves most of a frame (11 ms down to 5–7 ms at 1080×1920, measured).
-- **The interface in English or Arabic**, switched from the header. The choice is a cookie, so
+- **The interface in English or Arabic**, switched from the header's ⋯ menu. The choice is a cookie, so
   the server renders the page in the right language and direction from the first paint rather
   than flashing English and correcting itself. Arabic gets a real RTL layout and its own
   interface face; the timeline and the trim waveform stay left-to-right, because time does. The
@@ -199,8 +202,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and FX panel: card opacity and border, the surah badge, the watermark and the audio visualiser." width="30%">
 </p>
-- **Export aimed at a platform, not at a fixed frame** — seven presets, three resolution
-  tiers and two frame rates, described under [Export](#export).
+- **Export aimed at a platform, not at a fixed frame** — seven platforms, ticked one or several
+  at a time, three resolution tiers and two frame rates, described under [Export](#export).
   The save dialog offers `[Surah]_[surah]_[first]-[last].mp4` — for example
   `Al-Fatihah_1_1-7.mp4`. There is deliberately no timestamp: re-exporting the same passage
   gives the same name, and the browser appends its own counter rather than overwriting. The
@@ -541,7 +544,7 @@ joins it to the next one, so a wrong boundary is a two-second fix rather than a 
 least sure of, each marked with an amber dot: a line the aligner ended at a stop mark with no
 pause heard there, or a caption scoring under 50%. It is about one caption in ten, and across our
 ground-truth clips four of the ten wrong ones were among them -- a place to start, not a
-guarantee. The Inspector says why each is marked; **Looks right**, or splitting or merging it,
+guarantee. The Captions tab says why each is marked; **Looks right**, or splitting or merging it,
 clears the mark.
 
 **Linked / Unlinked** on the timeline toolbar decides what a drag affects. Linked (the default,
@@ -551,7 +554,7 @@ fixing a single boundary — shortening a segment drags everything after it earl
 gap then extending the previous segment closes the gap again. Unlinked moves one edge at a time,
 and an end stops where the next segment begins. The choice is remembered per browser.
 
-Once a timeline is right, **Ground truth** in the header downloads it as a scoring file. Drop it
+Once a timeline is right, **Ground truth** in the header's ⋯ menu (development builds) downloads it as a scoring file. Drop it
 in `scripts/` and run:
 
 ```bash
@@ -747,10 +750,11 @@ when it is older than seven days.
 
 ## Using the studio
 
-The studio is one screen: **Source** on the left, the **preview** in the middle, the
-**inspector** on the right, and the **timeline** running the full width beneath them. Nothing is
-hidden behind a step — you can change which words are shown, the timing and the styling in any
-order, which is how the work actually goes.
+The studio is one screen: a **working panel** on the left with three tabs — **Source**,
+**Captions** and **Style** — the **preview** in the middle, and the **timeline** running the full
+width beneath them. The tabs follow the order a clip is made, but nothing is hidden behind a
+step: every tab is reachable at any time, and you can change which words are shown, the timing
+and the styling in any order, which is how the work actually goes.
 
 **Source — what you are making**
 1. Choose a reciter, surah and ayah range, then **Load ayahs & audio**.
@@ -761,9 +765,9 @@ order, which is how the work actually goes.
      the passage. See [QUL data](#mushaf-fonts-and-qul-data).
    - **Online** works with nothing installed, but the timing is estimated rather than measured.
    - Options that need something you do not have say so, and say what to do about it.
-   - **Trim audio** is in the top toolbar and available at any point — before matching, after
-     styling, even after a first export. Existing segment times are adjusted for you, so your
-     timeline edits survive a re-trim.
+   - **Trim audio** is in the header's ⋯ menu and available at any point — before matching,
+     after styling, even after a first export. Existing segment times are adjusted for you, so
+     your timeline edits survive a re-trim.
 
 **Timeline — when each ayah happens**
 3. Each ayah is a block whose width is its real duration, drawn over the waveform of the audio.
@@ -771,20 +775,33 @@ order, which is how the work actually goes.
    boundary and move to the next one — the recitation keeps playing while you do.
 5. Drag either edge of a block to adjust it. Moving an end pushes the following ayahs along so
    the timeline stays contiguous.
-6. Click a block to select it. Zoom in when a boundary needs to land between two words.
+6. Click a block to select it; it opens in the Captions tab, unless you are on Style, where
+   clicking through captions is how a look is checked against each of them. Zoom in when a
+   boundary needs to land between two words.
 
-**Inspector — what each ayah says**
-7. **Ayah** shows the Arabic (read-only — it is always the corpus's text for that ayah), the
-   translation, the ayah number, and a chip per word — tap a word to hide it from the video.
-   Fine timing nudges (±0.2 s) are here too.
-8. **Style** holds the aspect ratio, background, typography, card and watermark, and the
-   [translations](#translations) that appear under the Arabic.
+**Captions — what each caption says**
+7. *Caption 3 of 7*, its ayah and times, and previous / next. A caption marked for checking says
+   why, with **Looks right** and, where it applies, **Merge with next**. The badge on the tab
+   counts how many are left.
+8. The Arabic, read-only — it is always the corpus's text for that ayah — word by word: tap a word
+   to hide it from the video. Then the translation, fine timing nudges (±0.2 s), and
+   **Split at playhead**, **Merge**, **Duplicate** and **Delete**. Moving a caption, adding one and
+   renumbering its ayah are under **More**.
+
+**Style — how it looks**
+9. Presets, the [translations](#translations) that appear under the Arabic, typography,
+   background, card and watermark.
+
+**Above the preview**
+10. **Frame** chooses the platform, and with it the shape: 9:16, 16:9, 1:1 or 4:5. Export opens on
+    the same platform.
 
 **Throughout**
-9. <kbd>Ctrl</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> undo and redo
-   across the timeline, the selection and the styling. <kbd>?</kbd> lists every shortcut.
-10. The working project is saved to this browser a couple of seconds after it stops changing and
-    offered back next visit — offered, not applied.
+11. <kbd>Ctrl</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> undo and redo
+    across the timeline, the selection and the styling. <kbd>?</kbd> lists every shortcut.
+12. The working project is saved to this browser a couple of seconds after it stops changing and
+    offered back next visit — offered, not applied. The header says when it was last kept, and
+    **Save to Projects** beside it saves the clip to the projects list.
 
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Shortcuts.png" alt="The keyboard shortcuts dialog, listing space, B, undo, redo, question mark and escape." width="52%">
@@ -838,21 +855,23 @@ since it reads the whole file.
 server, where it is saved as the job is sent — as a project of its own named after the
 file (`… Clip → Al-Fatihah_1_1-7.mp4`), so any exported video can be reopened and rendered
 again. It never overwrites a project you saved yourself, and rendering the same thing twice
-saves it once. Under *Saved clips → Rendered videos*, **Open the project it was rendered from**
+saves it once. Under *Projects → Rendered videos*, **Open the project it was rendered from**
 opens it. On a public studio the project goes to the visitor's browser like any other.
 
 ### Several renders in a row
 
-*Add to queue* keeps the current choice (platform, quality, frame rate) and lets you choose
-another; *Render queue* then runs them one after another, switching the studio to each one's
-shape and back to yours at the end. Finished files stay in the list to download, named with their
+Tick more than one platform under *Where is it going?* and **Render N videos** queues one render
+each and runs them one after another, switching the studio to each one's shape and back to yours
+at the end. A single platform in the studio's own shape renders straight away instead, which is
+what keeps the result screen with its downloads, caption and render check. Finished files stay in the list to download, named with their
 shape (`…_9x16.mp4`, `…_1x1.mp4`) so they do not overwrite each other. Waiting renders can be
 reordered or removed, and stopping the queue stops the one rendering. Like a single render it
 runs in the open tab.
 
 ### Rendering in the background
 
-*Render in the background* hands the render to the studio's own server instead, so it carries on
+*Render on the server, so this tab can be closed* hands the renders to the studio's own server
+instead, so it carries on
 after the tab is closed — or the laptop lid, or the phone screen. The studio sends the project, the
 recording and any uploaded backgrounds; the server opens its own headless Chrome on a hidden render
 page, which draws the clip with the same canvas code and the same frame-by-frame encoder as the
@@ -861,7 +880,7 @@ picture as AAC (a headless Chrome can encode H.264 but not AAC). Renders run one
 listed in the export dialog with their progress, and wait there to download the next time it is
 opened. A render the server was in the middle of when it stopped is run again when it comes back.
 
-It needs Chrome or Chromium and ffmpeg on the machine the studio runs on; the button only appears
+It needs Chrome or Chromium and ffmpeg on the machine the studio runs on; the option only appears
 when both are found. It is **off in production** unless `RENDER_ENABLED=1`, because each render
 occupies the machine for its length. Jobs and their files are kept under `data/renders/`
 (gitignored); removing one from the list deletes its folder. Measured on the development machine:
@@ -869,11 +888,13 @@ occupies the machine for its length. Jobs and their files are kept under `data/r
 
 ### Where the clip is going
 
-A preset sets the frame shape, the resolution and the bitrate together. Resolution used to be
+A platform sets the frame shape, the resolution and the bitrate together. Each one in the list says,
+before anything renders, whether it will be re-laid out to its shape and whether the clip runs
+longer than it accepts. Resolution used to be
 welded to the aspect ratio, so "make this look good on Reels" and "make this look good on a
 television" produced the same file; they are now different renders.
 
-| Preset | Ratio | Frame rate | Platform ceiling |
+| Platform | Ratio | Frame rate | Platform ceiling |
 |---|---|---|---|
 | **YouTube Shorts** | 9:16 | 30 | 3 minutes |
 | TikTok | 9:16 | 30 | 10 minutes |
@@ -959,11 +980,12 @@ curl -s -X POST http://127.0.0.1:8000/align \
 src/app/                     Next.js pages and API routes
   api/audio/match/           Matcher endpoint and provider dispatch
   video-creator/             The studio page
-src/components/              VideoCanvas, Timeline, Inspector, StyleConfigPanel,
-                             GpuExportModal, SavedProjectsDrawer, AudioTrimModal,
-                             TranslationPicker, ShortcutsDialog, HealthStrip, ColorField,
-                             Dialog, ConfirmDialog, Button, Status, OverflowMenu,
-                             PaletteSwitcher, LocaleProvider, LanguageSwitcher
+src/components/              VideoCanvas, Timeline, Inspector (the Captions tab),
+                             StyleConfigPanel, PanelTabs, FrameBar, GpuExportModal,
+                             ExportChoices, SavedProjectsDrawer, AudioTrimModal,
+                             TranslationPicker, TranslationChooser, ShortcutsDialog,
+                             HealthStrip, ColorField, Dialog, ConfirmDialog, Button, Status,
+                             OverflowMenu, PaletteSwitcher, LocaleProvider, LanguageSwitcher
 src/hooks/                   useAudioPlayback, useTimelineEditing, useTransportKeys,
                              useVideoExport, useEditHistory, useAutoSaveDraft,
                              useMediaDurations, useTranslationCatalogue
@@ -991,6 +1013,8 @@ src/lib/
   mediaDuration.ts           Clip lengths, and how many times one repeats in a block
   exportPresets.ts           Platform, tier and frame rate -> one export plan
   exportQueue.ts             Several renders in a row: order, cancel, per-shape file names
+  exportRoute.ts             Whether an export renders now, through the queue, or on the server
+  frame.ts                   The platform the frame is shaped for, and what its app covers
   stylePresets.ts            The Style tab's whole-look presets
   batchMatch.ts              Matching several recordings, one after another
   glBlur.ts                  The background blur in WebGL, used where it is the faster one
