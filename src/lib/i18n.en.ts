@@ -59,7 +59,8 @@ export const en = {
       graphite: 'Graphite',
       verdigris: 'Verdigris',
       maghrib: 'Maghrib',
-      qahwa: 'Qahwa'
+      qahwa: 'Qahwa',
+      parchment: 'Parchment'
     },
     notes: {
       nocturne: 'Navy and moonlight',
@@ -68,7 +69,8 @@ export const en = {
       graphite: 'Neutral grey',
       verdigris: 'Green and brass',
       maghrib: 'Plum dusk and sunset coral',
-      qahwa: 'Roasted brown and cardamom'
+      qahwa: 'Roasted brown and cardamom',
+      parchment: 'Light: paper and ink'
     }
   },
 

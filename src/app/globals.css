@@ -3,8 +3,13 @@
 /* ---------------------------------------------------------------------------
    Palettes.
 
-   Each block sets the same eleven variables and nothing else, so adding a
-   scheme means adding one block -- no utility classes change. The active one is
+   Each block sets the same eleven variables, so adding a scheme means adding
+   one block -- no utility classes change. Two more are set once, on the
+   default, and inherited by every dark scheme: `--p-lift`, what a colour is
+   mixed towards to read as *stronger* on the background (white on a dark
+   page, ink on a light one), and `color-scheme`, which is what the browser's
+   own scrollbars, date pickers and form controls follow. Only a light scheme
+   overrides them. The active one is
    chosen by `data-palette` on <html>, written by the picker in the studio
    header and restored before first paint by the inline script in layout.tsx.
 
@@ -26,6 +31,8 @@
   --p-live-bright: #6ee7b7;
   --p-success: #34d399;
   --p-error: #ef4444;
+  --p-lift: white;
+  color-scheme: dark;
 }
 
 [data-palette="nocturne"] {
@@ -112,6 +119,26 @@
   --p-error: #cf6a52;
 }
 
+/* The one light scheme. The muted text, accent, live, success and error
+   colours are all darker than a dark scheme's would be, each at 4.5:1 or
+   better on the paper, and the "bright" accent is the darker of the two:
+   it is the one used for text, and on paper stronger means darker. */
+[data-palette="parchment"] {
+  --p-bg: #f5efe3;
+  --p-surface: #fffaf0;
+  --p-edge: #e2d7c2;
+  --p-muted: #6f6656;
+  --p-text: #241f17;
+  --p-accent: #8a5d0c;
+  --p-accent-bright: #74500a;
+  --p-live: #2f6f8f;
+  --p-live-bright: #245a75;
+  --p-success: #3a7449;
+  --p-error: #b23a2a;
+  --p-lift: #241f17;
+  color-scheme: light;
+}
+
 /* ---------------------------------------------------------------------------
    Tailwind ramp, mapped onto whichever palette is live.
 
@@ -145,26 +172,29 @@
   --color-slate-300: color-mix(in srgb, var(--p-muted) 45%, var(--p-text));
   --color-slate-200: color-mix(in srgb, var(--p-muted) 18%, var(--p-text));
   --color-slate-100: var(--p-text);
-  --color-slate-50: color-mix(in srgb, var(--p-text) 82%, white);
+  --color-slate-50: color-mix(in srgb, var(--p-text) 82%, var(--p-lift));
 
-  --color-amber-200: color-mix(in srgb, var(--p-accent-bright) 55%, white);
-  --color-amber-300: color-mix(in srgb, var(--p-accent-bright) 78%, white);
+  --color-amber-100: color-mix(in srgb, var(--p-accent-bright) 35%, var(--p-lift));
+  --color-amber-200: color-mix(in srgb, var(--p-accent-bright) 55%, var(--p-lift));
+  --color-amber-300: color-mix(in srgb, var(--p-accent-bright) 78%, var(--p-lift));
   --color-amber-400: var(--p-accent-bright);
   --color-amber-500: var(--p-accent);
   --color-amber-600: color-mix(in srgb, var(--p-accent) 82%, black);
   --color-amber-700: color-mix(in srgb, var(--p-accent) 64%, black);
 
-  --color-emerald-200: color-mix(in srgb, var(--p-success) 50%, white);
-  --color-emerald-300: color-mix(in srgb, var(--p-success) 74%, white);
-  --color-emerald-400: color-mix(in srgb, var(--p-success) 90%, white);
+  --color-emerald-100: color-mix(in srgb, var(--p-success) 30%, var(--p-lift));
+  --color-emerald-200: color-mix(in srgb, var(--p-success) 50%, var(--p-lift));
+  --color-emerald-300: color-mix(in srgb, var(--p-success) 74%, var(--p-lift));
+  --color-emerald-400: color-mix(in srgb, var(--p-success) 90%, var(--p-lift));
   --color-emerald-500: var(--p-success);
   --color-emerald-600: color-mix(in srgb, var(--p-success) 80%, black);
 
   --color-blue-400: var(--p-live-bright);
   --color-blue-500: var(--p-live);
 
-  --color-red-300: color-mix(in srgb, var(--p-error) 62%, white);
-  --color-red-400: color-mix(in srgb, var(--p-error) 84%, white);
+  --color-red-200: color-mix(in srgb, var(--p-error) 45%, var(--p-lift));
+  --color-red-300: color-mix(in srgb, var(--p-error) 62%, var(--p-lift));
+  --color-red-400: color-mix(in srgb, var(--p-error) 84%, var(--p-lift));
   --color-red-500: var(--p-error);
 
   /* Radius, collapsed to three roles.
@@ -311,15 +341,17 @@
   width: 6px;
   height: 6px;
 }
+/* In the palette's own colours: these were Mushaf's purple and gold in every
+   scheme, and a dark track down the side of a light one. */
 ::-webkit-scrollbar-track {
-  background: rgba(18, 16, 26, 0.6);
+  background: color-mix(in srgb, var(--p-bg) 60%, transparent);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(54, 47, 71, 0.8);
+  background: var(--color-slate-700);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(201, 162, 39, 0.7);
+  background: color-mix(in srgb, var(--p-accent) 70%, transparent);
 }
 
 @keyframes pulse-subtle {

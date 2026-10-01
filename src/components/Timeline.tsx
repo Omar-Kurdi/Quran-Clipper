@@ -15,6 +15,7 @@ import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { useT } from './LocaleProvider';
 import { TimelineSkeleton } from './Skeleton';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
+import { usePalette, paletteColor } from '@/hooks/usePalette';
 
 interface TimelineProps {
   /** Selects and plays from the next caption marked for checking; the button shows only while one is. */
@@ -901,6 +902,7 @@ const Waveform = React.memo(function Waveform({ peaks, first, last, zoom }: {
   // is stretched by the browser, so zooming in used to magnify the same coarse
   // drawing rather than reveal anything.
   const width = Math.min(MAX_WAVEFORM_CANVAS, Math.round(1800 * zoom));
+  const palette = usePalette();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -910,7 +912,10 @@ const Waveform = React.memo(function Waveform({ peaks, first, last, zoom }: {
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
     if (!peaks || peaks.length === 0) return;
-    ctx.fillStyle = 'rgba(148, 138, 168, 0.45)';
+    // The scheme's muted text, faded: it was a fixed purple-grey, which on a
+    // light scheme's paper all but vanished.
+    ctx.fillStyle = paletteColor('--p-muted', '#948aa8');
+    ctx.globalAlpha = 0.45;
     const mid = height / 2;
 
     // One filled column per canvas pixel, each the loudest of the buckets that
@@ -930,7 +935,8 @@ const Waveform = React.memo(function Waveform({ peaks, first, last, zoom }: {
       const h = Math.max(0.5, peak * mid * 0.92);
       ctx.fillRect(x, mid - h, 1, h * 2);
     }
-  }, [peaks, first, last, width]);
+    ctx.globalAlpha = 1;
+  }, [peaks, first, last, width, palette]);
 
   return <canvas ref={canvasRef} width={width} height={80} className="absolute inset-0 w-full h-full" />;
 });

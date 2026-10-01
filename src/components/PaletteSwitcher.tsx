@@ -22,7 +22,8 @@ export const PALETTES = [
   { id: 'graphite', swatches: ['#131315', '#b9975b', '#6f9bc4'] },
   { id: 'verdigris', swatches: ['#0d1412', '#b8944d', '#5eb39b'] },
   { id: 'maghrib', swatches: ['#150f17', '#e8916f', '#9d8fe0'] },
-  { id: 'qahwa', swatches: ['#15110d', '#d9a55b', '#7fb8a4'] }
+  { id: 'qahwa', swatches: ['#15110d', '#d9a55b', '#7fb8a4'] },
+  { id: 'parchment', swatches: ['#f5efe3', '#8a5d0c', '#2f6f8f'] }
 ] as const;
 
 const STORAGE_KEY = 'qc-palette';

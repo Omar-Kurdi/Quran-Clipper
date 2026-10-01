@@ -58,7 +58,8 @@ export const ar: Dictionary = {
       graphite: 'جرافيت',
       verdigris: 'زنجاري',
       maghrib: 'مغرب',
-      qahwa: 'قهوة'
+      qahwa: 'قهوة',
+      parchment: 'رَقّ'
     },
     notes: {
       nocturne: 'كحلي وضوء القمر',
@@ -67,7 +68,8 @@ export const ar: Dictionary = {
       graphite: 'رمادي محايد',
       verdigris: 'أخضر ونحاسي',
       maghrib: 'بنفسجي الغسق ومرجاني الغروب',
-      qahwa: 'بنّي محمَّص وهيل'
+      qahwa: 'بنّي محمَّص وهيل',
+      parchment: 'فاتح: ورق وحبر'
     }
   },
 
