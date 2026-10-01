@@ -16,6 +16,7 @@ import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, Backgrou
 import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
 import { frameLayout, blockTop, textFits, splitFits } from '@/lib/frameLayout';
 import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
+import { fillArabicLine } from '@/lib/waqfMarks';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
@@ -1125,7 +1126,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         }
         for (const line of layout.arabicLines) {
           ctx.font = arabicFontIn(line.family, layout.arabicSize);
-          ctx.fillText(line.text.trim(), textX, y);
+          fillArabicLine(ctx, line.text.trim(), textX, y, layout.arabicSize);
           y += layout.arabicLineHeight;
         }
         ctx.direction = 'ltr';
