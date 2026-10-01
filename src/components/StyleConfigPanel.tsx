@@ -43,6 +43,8 @@ import { PresetGallery } from './PresetGallery';
 import { StyleSection } from './StyleSection';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 import { FRAME_LAYOUTS, asFrameLayout } from '@/lib/frameLayout';
+import { CAPTION_TRANSITIONS, WORD_EFFECTS, MOTION_SPEEDS, asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour } from '@/lib/captionMotion';
+import { PRESETS as COLOUR_PRESETS } from './ColorField';
 import { BADGE_STYLES, SURAH_NAME_FONT_ID, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 
 interface StyleConfigPanelProps {
@@ -284,6 +286,11 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   const backgroundSummary = config.bgMode && config.bgMode !== 'single'
     ? t.style.bgModes[config.bgMode as keyof typeof t.style.bgModes]
     : gallery.find(bg => bg.url === config.bgUrl)?.title ?? '';
+  const transition = asCaptionTransition(config.captionTransition);
+  const wordEffect = asWordEffect(config.wordEffect);
+  const motionSummary = wordEffect === 'none'
+    ? t.style.transitions[transition]
+    : `${t.style.transitions[transition]} · ${t.style.wordEffects[wordEffect]}`;
   const brandingSummary = config.watermarkText ? `“${config.watermarkText}”` : '—';
 
   /**
@@ -1258,6 +1265,58 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
       </StyleSection>
 
+      <StyleSection id="motion" title={t.style.tabMotion} summary={motionSummary} open={openSections.includes('motion')} onToggle={() => toggleSection('motion')}>
+        <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
+          <div>
+            <label htmlFor="style-transition" className="font-semibold text-slate-200 block mb-1">{t.style.transitionLabel}</label>
+            <select
+              id="style-transition"
+              value={transition}
+              onChange={(e) => updateConfig('captionTransition', e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+            >
+              {CAPTION_TRANSITIONS.map(id => <option key={id} value={id}>{t.style.transitions[id]}</option>)}
+            </select>
+            {transition !== 'cut' && <p className="mt-1 text-xs text-slate-400">{t.style.transitionHelp}</p>}
+          </div>
+          {transition !== 'cut' && (
+            <fieldset className="min-w-0">
+              <legend className="font-semibold text-slate-200 block mb-1">{t.style.motionSpeedLabel}</legend>
+              <div className="grid grid-cols-3 gap-1.5">
+                {MOTION_SPEEDS.map(id => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={asMotionSpeed(config.motionSpeed) === id}
+                    onClick={() => updateConfig('motionSpeed', id)}
+                    className={`py-1.5 rounded-md border text-center text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                      asMotionSpeed(config.motionSpeed) === id
+                        ? 'bg-amber-500/15 border-amber-500 text-slate-100'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    {t.style.motionSpeeds[id]}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          <div className="pt-2 border-t border-slate-800">
+            <label htmlFor="style-word-effect" className="font-semibold text-slate-200 block mb-1">{t.style.wordEffectLabel}</label>
+            <select
+              id="style-word-effect"
+              value={wordEffect}
+              onChange={(e) => updateConfig('wordEffect', e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+            >
+              {WORD_EFFECTS.map(id => <option key={id} value={id}>{t.style.wordEffects[id]}</option>)}
+            </select>
+            {wordEffect !== 'none' && <p className="mt-1 text-xs text-slate-400">{t.style.wordEffectHelp}</p>}
+          </div>
+          {wordEffect === 'highlight' && <HighlightSwatches config={config} onChange={hex => updateConfig('highlightColor', hex)} />}
+        </div>
+      </StyleSection>
+
       <StyleSection id="branding" title={t.style.headingBranding} summary={brandingSummary} open={openSections.includes('branding')} onToggle={() => toggleSection('branding')}>
       {/* Card & FX, section 2: branding. It belongs with the other things
           stamped on top of the frame rather than with the ayah's typography. */}
@@ -1292,5 +1351,44 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         </div>
       </StyleSection>
     </div>
+  );
+};
+
+/** Red, which the general swatches leave out and a highlight is often wanted in. */
+const HIGHLIGHT_RED = '#ef4444';
+
+/**
+ * Quick colours for the word being recited, under *Words* when it is the
+ * highlight. The accent comes first and is what an unchanged project uses;
+ * picking it again goes back to following the accent rather than fixing
+ * today's accent in place.
+ */
+const HighlightSwatches: React.FC<{ config: VideoCanvasConfig; onChange: (hex: string) => void }> = ({ config, onChange }) => {
+  const t = useT();
+  const chosen = asHighlightColour(config.highlightColor);
+  const options = [
+    { value: '', colour: config.accentColor || '#b8c7dc', label: t.style.highlightAccent },
+    ...[...COLOUR_PRESETS, HIGHLIGHT_RED].map(hex => ({ value: hex, colour: hex, label: hex })),
+  ];
+  return (
+    <fieldset className="min-w-0">
+      <legend className="font-semibold text-slate-200 block mb-1">{t.style.highlightColourLabel}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(option => (
+          <button
+            key={option.value || 'accent'}
+            type="button"
+            title={option.label}
+            aria-label={option.label}
+            aria-pressed={chosen === option.value}
+            onClick={() => onChange(option.value)}
+            style={{ backgroundColor: option.colour }}
+            className={`w-7 h-7 rounded-md border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+              chosen === option.value ? 'border-slate-100 ring-2 ring-amber-500' : 'border-slate-700 hover:border-slate-400'
+            }`}
+          />
+        ))}
+      </div>
+    </fieldset>
   );
 };

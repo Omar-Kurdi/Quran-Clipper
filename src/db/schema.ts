@@ -69,6 +69,13 @@ export const projects = pgTable('projects', {
   badgeOpacity: integer('badge_opacity').notNull().default(74),
   /** Where the text sits on the frame (`frameLayout.ts`). Every older row reads as the centred card. */
   layout: text('layout').notNull().default('card'),
+  /** How one ayah gives way to the next (`captionMotion.ts`). Every older row reads as the cut it was drawn with. */
+  captionTransition: text('caption_transition').notNull().default('cut'),
+  /** Words revealed or picked out as they are recited. Every older row reads as neither. */
+  wordEffect: text('word_effect').notNull().default('none'),
+  motionSpeed: text('motion_speed').notNull().default('normal'),
+  /** The highlighted word's colour; empty is the accent. */
+  highlightColor: text('highlight_color').notNull().default(''),
   surahBadgeText: text('surah_badge_text').default(''),
   surahBadgeSubtitleText: text('surah_badge_subtitle_text').default(''),
   

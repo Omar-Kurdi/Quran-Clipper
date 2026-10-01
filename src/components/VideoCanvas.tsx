@@ -17,6 +17,11 @@ import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations'
 import { frameLayout, blockTop, textFits, splitFits } from '@/lib/frameLayout';
 import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { fillArabicLine } from '@/lib/waqfMarks';
+import {
+  captionLayers, leadingLayer, revealedWords, recitedWord, asCaptionTransition, asWordEffect, asMotionSpeed,
+  type CaptionLayer, type CaptionMotion
+} from '@/lib/captionMotion';
+import { drawnWordTimes, fillLineByWord } from '@/lib/arabicWords';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
@@ -91,6 +96,14 @@ export interface VideoCanvasConfig {
   surahBadgeSubtitleText: string;
   /** Where the text sits on the frame: see `FRAME_LAYOUTS`. Absent reads as the centred card. */
   layout?: string;
+  /** How one ayah gives way to the next: see `CAPTION_TRANSITIONS`. Absent reads as the cut every older project has. */
+  captionTransition?: string;
+  /** Words revealed or picked out as they are recited: see `WORD_EFFECTS`. Absent reads as neither. */
+  wordEffect?: string;
+  /** How quickly a caption gives way to the next: see `MOTION_SPEEDS`. */
+  motionSpeed?: string;
+  /** The colour of the word being recited under the highlight. Absent or empty is the accent. */
+  highlightColor?: string;
   bgType: string;
   bgUrl: string;
   /** Extra backgrounds for the non-single modes. `bgUrl` stays the single-background case. */
@@ -174,6 +187,12 @@ interface VideoCanvasProps {
   config: VideoCanvasConfig;
   verses: VerseData[];
   currentTime: number;
+  /**
+   * The playback position as of now, read once per painted frame while
+   * playing. `currentTime` arrives a few times a second, which is plenty to
+   * pick the caption but would make every fade between two of them step.
+   */
+  playhead?: () => number;
   audioAnalyser?: AnalyserNode | null;
   surahNameArabic: string;
   surahNameEnglish: string;
@@ -220,6 +239,8 @@ const LABEL_FAMILY = 'Amiri';
 
 const MIN_ARABIC_PX = 16;
 const MIN_TRANSLATION_PX = 10;
+/** How faint the words still to come are under the highlight. */
+const HIGHLIGHT_REST = 0.35;
 
 // Handed to `document.fonts.load` so the subsets a webfont actually needs are
 // the ones fetched. Google splits a family by unicode range, and the card
@@ -339,6 +360,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   config,
   verses,
   currentTime,
+  playhead,
   audioAnalyser,
   surahNameArabic,
   surahNameEnglish,
@@ -391,12 +413,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
   // Active verse
   const sortedVerses = useMemo(() => [...verses].sort((a, b) => a.startTime - b.startTime), [verses]);
-  const activeVerse = useMemo(
-    () => [...sortedVerses].reverse().find(v => currentTime >= v.startTime)
-      || sortedVerses[0]
-      || { verseNumber: 1, textUthmani: '', translation: '' } as unknown as VerseData,
-    [sortedVerses, currentTime]
-  );
+  const motion = useMemo<CaptionMotion>(() => ({
+    transition: asCaptionTransition(config.captionTransition),
+    words: asWordEffect(config.wordEffect),
+    speed: asMotionSpeed(config.motionSpeed),
+  }), [config.captionTransition, config.wordEffect, config.motionSpeed]);
   /**
    * Backgrounds in play, in order.
    *
@@ -717,7 +738,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     };
   }, []);
 
-  const getDisplayArabic = useCallback((verse: VerseData | typeof activeVerse) => {
+  const getDisplayArabic = useCallback((verse: VerseData) => {
     if ('words' in verse && verse.words?.length && verse.words.some(word => word.excluded)) {
       const visibleWords = verse.words.filter(word => !word.excluded).map(word => word.arabic).filter(Boolean);
       if (visibleWords.length > 0) return visibleWords.join(' ');
@@ -769,21 +790,25 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
    * animation frame with whatever the player and the analyser currently hold;
    * the offline encoder calls it thousands of times with values it computes
    * itself. Everything time-dependent arrives as an argument for that reason --
-   * reaching for `activeVerse` or the analyser in here would silently tie the
+   * reaching for the playhead or the analyser in here would silently tie the
    * drawing back to the present moment and make offline rendering impossible.
    */
   const paintFrame = useCallback((
     ctx: CanvasRenderingContext2D,
     frame: {
-      /** The caption to show, already resolved for this frame's time. */
-      activeVerse: VerseData | null;
+      /** The frame's moment on the recording, for the words recited by then. */
+      time: number;
+      /** The captions to show, bottom up, already resolved for that moment by `captionLayers`. */
+      captions: CaptionLayer<VerseData>[];
       /** Frequency magnitudes for the bars, or null to leave them out. */
       spectrum: Uint8Array | null;
       /** Background to paint under it, already positioned for this frame. */
       media: BackgroundMedia | null;
     }
   ) => {
-    const { activeVerse, media } = frame;
+    const { captions, media } = frame;
+    // The badge follows whichever ayah the frame is showing more of.
+    const leading = leadingLayer(captions)?.verse ?? null;
       const { width, height } = dimensions;
 
       // The offline encoder hands in a detached canvas of its own, so sizing
@@ -910,7 +935,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           height,
           y: arrangement.badgeY,
           accent: goldAccent,
-          surah: badgeSurah(activeVerse?.verseKey, { number: surahNumber, nameArabic: surahNameArabic, nameEnglish: surahNameEnglish }),
+          surah: badgeSurah(leading?.verseKey, { number: surahNumber, nameArabic: surahNameArabic, nameEnglish: surahNameEnglish }),
           range: badgeRange(verses[0]?.verseKey, verses[verses.length - 1]?.verseKey, { surah: surahNumber, start: ayahStart, end: ayahEnd }),
           customTitle: config.surahBadgeText?.trim() || '',
           subtitle: config.surahBadgeSubtitleText?.trim() || '',
@@ -948,19 +973,29 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       const textX = config.textAlignment === 'right' ? cardX + cardWidth - 40
         : config.textAlignment === 'left' ? cardX + 40 : width / 2;
 
-      const displayArabic = activeVerse ? getDisplayArabic(activeVerse) : '';
-      // The mushaf draws each word as one glyph from its page's own font, so
-      // the text and the family change together or not at all. Glyphs are
-      // space-separated characters, which is why everything below -- wrapping,
-      // measuring, the shrink-to-fit search -- needs no other change.
-      const mushaf = activeVerse ? mushafCaption(activeVerse.words, arabicFontId) : null;
-      // Rows as the page prints them, when asked for and the words carry their
-      // lines. They take precedence over `mushaf`, and unlike it they can span
-      // a page break: each row is on one page and brings that page's family.
-      const pageRows = activeVerse && config.mushafLines ? mushafRows(activeVerse.words, arabicFontId) : null;
-      const arabicText = pageRows ? pageRows.map(row => row.text).join('\n') : mushaf ? mushaf.text : displayArabic;
-      const arabicFamily = mushaf ? mushaf.family : arabicFontFamily(arabicFontId);
-      if (activeVerse && displayArabic) {
+      for (const layer of captions) {
+        const activeVerse = layer.verse;
+        const displayArabic = getDisplayArabic(activeVerse);
+        if (!displayArabic || (layer.opacity <= 0 && layer.translationOpacity <= 0)) continue;
+        // The mushaf draws each word as one glyph from its page's own font, so
+        // the text and the family change together or not at all. Glyphs are
+        // space-separated characters, which is why everything below -- wrapping,
+        // measuring, the shrink-to-fit search -- needs no other change.
+        const mushaf = mushafCaption(activeVerse.words, arabicFontId);
+        // Rows as the page prints them, when asked for and the words carry their
+        // lines. They take precedence over `mushaf`, and unlike it they can span
+        // a page break: each row is on one page and brings that page's family.
+        const pageRows = config.mushafLines ? mushafRows(activeVerse.words, arabicFontId) : null;
+        const arabicText = pageRows ? pageRows.map(row => row.text).join('\n') : mushaf ? mushaf.text : displayArabic;
+        const arabicFamily = mushaf ? mushaf.family : arabicFontFamily(arabicFontId);
+        ctx.save();
+        // Moved and sized about the middle of the text's own box, so a zoom
+        // grows from where the text sits rather than from the frame's corner.
+        const centreY = arrangement.text.y + arrangement.text.height / 2;
+        ctx.translate(width / 2, centreY + layer.dy * height);
+        ctx.scale(layer.scale, layer.scale);
+        ctx.translate(-width / 2, -centreY);
+        ctx.globalAlpha = layer.opacity;
         // One block per chosen translation, in the order they were chosen. A
         // language whose text has not arrived yet is absent rather than blank,
         // so the card never reserves space for nothing.
@@ -1124,11 +1159,35 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           ctx.shadowBlur = 12;
           ctx.shadowOffsetY = 4;
         }
-        for (const line of layout.arabicLines) {
+        // Each drawn word's recited time, when a word effect is on and the
+        // drawing lines up with the word list; otherwise the lines are drawn
+        // whole, as with no effect.
+        const wordTimes = motion.words === 'none'
+          ? null : drawnWordTimes(activeVerse.words, layout.arabicLines.map(line => line.text));
+        const allTimes = wordTimes?.flat() ?? [];
+        // The highlight is the reveal with the words to come left faint
+        // rather than gone, and the one being recited in the accent.
+        const shown = wordTimes ? revealedWords(allTimes, activeVerse.startTime, frame.time) : null;
+        const rest = motion.words === 'highlight' ? HIGHLIGHT_REST : 0;
+        const recited = motion.words === 'highlight' ? recitedWord(allTimes, activeVerse.endTime, frame.time) : -1;
+        const highlight = config.highlightColor || goldAccent;
+        let firstWord = 0;
+        layout.arabicLines.forEach((line, index) => {
           ctx.font = arabicFontIn(line.family, layout.arabicSize);
-          fillArabicLine(ctx, line.text.trim(), textX, y, layout.arabicSize);
+          const text = line.text.trim();
+          const count = wordTimes?.[index].length ?? 0;
+          if (shown) {
+            const from = firstWord;
+            fillLineByWord(ctx, text, { x: textX, y, size: layout.arabicSize }, word => ({
+              amount: rest + (1 - rest) * shown[from + word],
+              colour: from + word === recited ? highlight : undefined,
+            }));
+          } else {
+            fillArabicLine(ctx, text, textX, y, layout.arabicSize);
+          }
+          firstWord += count;
           y += layout.arabicLineHeight;
-        }
+        });
         ctx.direction = 'ltr';
         ctx.shadowColor = 'transparent';
         ctx.shadowOffsetY = 0;
@@ -1155,19 +1214,20 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           y += ayahFontSize + 24;
 
           ctx.strokeStyle = goldAccent;
-          ctx.globalAlpha = 0.4;
+          ctx.globalAlpha = layer.opacity * 0.4;
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.moveTo(width / 2 - 120, y);
           ctx.lineTo(width / 2 + 120, y);
           ctx.stroke();
-          ctx.globalAlpha = 1.0;
+          ctx.globalAlpha = layer.opacity;
           y += 24;
         }
 
         if (withTranslation) {
           if (translationBox) y = blockTop(translationBox, layout.stackHeight - arabicHeight, cardPadding);
           ctx.fillStyle = config.translationColor || '#e2e8f0';
+          ctx.globalAlpha = layer.translationOpacity;
           if (config.textShadow) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 8; }
           layout.blocks.forEach((block, index) => {
             if (index > 0) {
@@ -1181,7 +1241,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
               ctx.save();
               ctx.shadowColor = 'transparent';
               ctx.strokeStyle = config.translationColor || '#e2e8f0';
-              ctx.globalAlpha = 0.45;
+              ctx.globalAlpha *= 0.45;
               ctx.lineWidth = 2;
               ctx.beginPath();
               ctx.moveTo(centre - half, mid);
@@ -1203,6 +1263,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           ctx.direction = 'ltr';
         }
         ctx.textBaseline = 'alphabetic';
+        ctx.restore();
       }
       ctx.restore();
 
@@ -1223,7 +1284,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
 
   }, [config, verses, surahNameArabic, surahNameEnglish, dimensions,
-      getDisplayArabic, surahNumber, ayahStart, ayahEnd, arabicFontId, badgeStyle]);
+      getDisplayArabic, surahNumber, ayahStart, ayahEnd, arabicFontId, badgeStyle, motion]);
 
   // ---- LIVE PREVIEW LOOP ----
   useEffect(() => {
@@ -1240,8 +1301,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
       const renderStart = performance.now();
       if (audioAnalyser) audioAnalyser.getByteFrequencyData(spectrum);
+      // While playing, the element's own position, read now; paused, the
+      // position the studio holds, which is where a scrub left it.
+      const time = isPlaying && playhead ? playhead() : currentTime;
       paintFrame(ctx, {
-        activeVerse: activeVerse ?? null,
+        time,
+        captions: captionLayers(sortedVerses, time, motion, 'show'),
         spectrum: audioAnalyser ? spectrum : null,
         media: bgMediaRef.current,
       });
@@ -1262,7 +1327,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     return () => cancelAnimationFrame(animationFrameId);
     // Everything the drawing itself depends on now lives inside `paintFrame`,
     // so this loop only needs the things it feeds in.
-  }, [paintFrame, audioAnalyser, activeVerse]);
+  }, [paintFrame, audioAnalyser, sortedVerses, currentTime, isPlaying, playhead, motion]);
 
   // ---- EXPORT ----
   useImperativeHandle(ref, () => ({
@@ -1363,12 +1428,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           onProgress,
           signal: { get aborted() { return !isExportingRef.current; } },
           paint: async (ctx, frame) => {
-            const verse = [...verses]
-              .sort((a, b) => a.startTime - b.startTime)
-              .reverse()
-              .find(v => frame.atSeconds >= v.startTime) ?? null;
             paintFrame(ctx, {
-              activeVerse: verse,
+              time: frame.atSeconds,
+              // Nothing before the first caption, as before: it arrives.
+              captions: captionLayers(sortedVerses, frame.atSeconds, motion, 'hide'),
               spectrum: frame.spectrum,
               media: await backgroundFor(frame.atSeconds),
             });

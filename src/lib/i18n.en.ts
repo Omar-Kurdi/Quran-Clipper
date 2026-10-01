@@ -699,6 +699,32 @@ export const en = {
       'top-left': 'Top Left'
     },
 
+    tabMotion: 'Motion',
+    transitionLabel: 'Between captions:',
+    transitions: {
+      cut: 'Cut',
+      crossfade: 'Cross-fade',
+      fadeThrough: 'Fade through',
+      slide: 'Slide up',
+      zoom: 'Zoom'
+    },
+    motionSpeedLabel: 'Speed:',
+    motionSpeeds: {
+      slow: 'Slow',
+      normal: 'Normal',
+      quick: 'Quick'
+    },
+    transitionHelp: 'Runs in the pause before the next caption when there is one; where captions run straight on, it is centred on the join.',
+    highlightColourLabel: 'Highlight colour:',
+    highlightAccent: 'Accent',
+    wordEffectLabel: 'Words:',
+    wordEffects: {
+      none: 'All at once',
+      reveal: 'Appear as recited',
+      highlight: 'Highlight as recited'
+    },
+    wordEffectHelp: 'Needs the time of each word, which a match or a built-in reciter gives. A caption without it is drawn whole.',
+
     layoutLabel: 'Layout:',
     layouts: {
       card: 'Centred card',

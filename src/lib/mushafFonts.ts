@@ -268,6 +268,9 @@ export function withGlyphs<W extends Glyphable, V extends { verseKey: string; wo
  */
 const MARK_ONLY = /^[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]+$/;
 
+/** Whether a token is only such a mark, which `wrapCaption` draws joined to the word before it. */
+export const isMarkOnly = (token: string) => MARK_ONLY.test(token);
+
 /**
  * Wrap one caption to `limit`, greedily, dropping nothing.
  *

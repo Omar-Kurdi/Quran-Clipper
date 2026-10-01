@@ -56,6 +56,10 @@ import {
 } from '@/lib/backgroundTimeline';
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY, NEW_PROJECT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
+import {
+  asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour,
+  DEFAULT_CAPTION_TRANSITION, DEFAULT_WORD_EFFECT, DEFAULT_MOTION_SPEED
+} from '@/lib/captionMotion';
 import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
 import { nextToCheck, captionChecks } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
@@ -344,6 +348,7 @@ export default function VideoCreatorPage() {
     analyserNode: audioAnalyserNode,
     isPlaying, setIsPlaying,
     currentTime, setCurrentTime,
+    playhead,
     duration: audioDuration,
     setDuration: setAudioDuration,
     isMuted, setIsMuted,
@@ -452,6 +457,10 @@ export default function VideoCreatorPage() {
     badgeStyle: DEFAULT_BADGE_STYLE,
     badgeOpacity: NEW_PROJECT_BADGE_OPACITY,
     layout: DEFAULT_FRAME_LAYOUT,
+    captionTransition: DEFAULT_CAPTION_TRANSITION,
+    wordEffect: DEFAULT_WORD_EFFECT,
+    motionSpeed: DEFAULT_MOTION_SPEED,
+    highlightColor: '',
     surahBadgeText: '',
     surahBadgeSubtitleText: '',
     bgType: 'video',
@@ -2288,6 +2297,10 @@ export default function VideoCreatorPage() {
       badgeStyle: asBadgeStyle(proj.badgeStyle),
       badgeOpacity: proj.badgeOpacity ?? DEFAULT_BADGE_OPACITY,
       layout: asFrameLayout(proj.layout),
+      captionTransition: asCaptionTransition(proj.captionTransition),
+      wordEffect: asWordEffect(proj.wordEffect),
+      motionSpeed: asMotionSpeed(proj.motionSpeed),
+      highlightColor: asHighlightColour(proj.highlightColor),
       surahBadgeText: proj.surahBadgeText || '',
       surahBadgeSubtitleText: proj.surahBadgeSubtitleText || '',
       bgType: proj.bgType || 'video',
@@ -3193,6 +3206,7 @@ export default function VideoCreatorPage() {
                 config={canvasConfig}
                 verses={verses}
                 currentTime={currentTime}
+                playhead={playhead}
                 audioAnalyser={audioAnalyserNode}
                 surahNameArabic={surahNameArabic}
                 surahNameEnglish={surahNameEnglish}

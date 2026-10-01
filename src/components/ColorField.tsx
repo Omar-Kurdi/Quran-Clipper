@@ -34,7 +34,7 @@ interface ColorFieldProps {
  * Eleven quick picks and, in the twelfth cell of the grid, the system colour
  * picker -- the swatches are a shortcut, never the whole offering.
  */
-const PRESETS = [
+export const PRESETS = [
   '#ffffff', '#f5eee0', '#e8eef7', '#b8c7dc',
   '#d4af37', '#f59e0b', '#c9a227', '#5fb59b',
   '#7fd3dd', '#d5dfec', '#94a3b8'

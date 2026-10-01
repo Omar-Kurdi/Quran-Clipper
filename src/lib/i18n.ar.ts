@@ -683,6 +683,32 @@ export const ar: Dictionary = {
       'top-left': 'أعلى اليسار'
     },
 
+    tabMotion: 'الحركة',
+    transitionLabel: 'بين المقاطع:',
+    transitions: {
+      cut: 'قطع مباشر',
+      crossfade: 'تلاشٍ متداخل',
+      fadeThrough: 'تلاشٍ متتابع',
+      slide: 'انزلاق للأعلى',
+      zoom: 'تكبير'
+    },
+    motionSpeedLabel: 'السرعة:',
+    motionSpeeds: {
+      slow: 'بطيئة',
+      normal: 'عادية',
+      quick: 'سريعة'
+    },
+    transitionHelp: 'يجري في الوقفة التي تسبق المقطع التالي إن وُجدت؛ وحيث تتصل المقاطع يتوسّط موضع الالتقاء.',
+    highlightColourLabel: 'لون الإبراز:',
+    highlightAccent: 'لون التمييز',
+    wordEffectLabel: 'الكلمات:',
+    wordEffects: {
+      none: 'كلها معًا',
+      reveal: 'تظهر مع التلاوة',
+      highlight: 'تُبرز مع التلاوة'
+    },
+    wordEffectHelp: 'يحتاج إلى توقيت كل كلمة، وتعطيه المطابقة أو القارئ المدمج. أما المقطع الذي لا توقيت له فيُعرض كاملًا.',
+
     layoutLabel: 'التخطيط:',
     layouts: {
       card: 'بطاقة في الوسط',

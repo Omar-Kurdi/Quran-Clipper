@@ -113,6 +113,13 @@ export function useAudioPlayback() {
     setCurrentTime(pending.time);
   }, []);
 
+  /**
+   * The element's position right now. `currentTime` follows `timeupdate`,
+   * which fires only a few times a second; whatever animates with playback
+   * reads this once per frame instead.
+   */
+  const playhead = useCallback(() => elementRef.current?.currentTime ?? 0, []);
+
   const onTimeUpdate = useCallback(() => {
     if (elementRef.current) setCurrentTime(elementRef.current.currentTime);
   }, []);
@@ -146,6 +153,7 @@ export function useAudioPlayback() {
     analyserNode,
     isPlaying, setIsPlaying,
     currentTime, setCurrentTime,
+    playhead,
     duration, setDuration,
     isMuted, setIsMuted,
     volume, setVolume,

@@ -4,6 +4,7 @@ import { desc, eq, isNull, lt, or } from 'drizzle-orm';
 import { BACKGROUND_MODES } from '@/lib/backgroundTimeline';
 import { asBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout } from '@/lib/frameLayout';
+import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour } from '@/lib/captionMotion';
 import { describeDbError } from '@/lib/dbError';
 import { needsContentSync, syncProjectContent, CONTENT_SYNC_MAX_AGE_MS } from '@/lib/contentSync';
 
@@ -183,6 +184,10 @@ export async function POST(req: NextRequest) {
       badgeStyle: asBadgeStyle(body.badgeStyle),
       badgeOpacity: Number.isFinite(body.badgeOpacity) ? Math.min(100, Math.max(0, Math.round(body.badgeOpacity))) : DEFAULT_BADGE_OPACITY,
       layout: asFrameLayout(body.layout),
+      captionTransition: asCaptionTransition(body.captionTransition),
+      wordEffect: asWordEffect(body.wordEffect),
+      motionSpeed: asMotionSpeed(body.motionSpeed),
+      highlightColor: asHighlightColour(body.highlightColor),
       surahBadgeText: body.surahBadgeText || '',
       surahBadgeSubtitleText: body.surahBadgeSubtitleText || '',
       bgType: body.bgType || 'video',

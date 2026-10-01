@@ -21,6 +21,9 @@ const WAQF_SIGNS = /[ۖ-ۜ]+(?=\s|$)/g;
 /** How far over the end of its word a moved sign sits, as a share of the type size. */
 const OVER_THE_WORD = 0.3;
 
+/** The part of a canvas that drawing a line of text needs. */
+export type TextCanvas = Pick<CanvasRenderingContext2D, 'textAlign' | 'globalAlpha' | 'fillStyle' | 'measureText' | 'fillText'>;
+
 export interface DetachedSign {
   sign: string;
   /** The line, without its signs, up to the end of the word this one follows. */
@@ -42,7 +45,7 @@ export function detachWaqfSigns(line: string): { bare: string; signs: DetachedSi
 }
 
 /** Where a right-to-left line drawn at `x` ends on the right, whichever way it is aligned. */
-function rightEdge(x: number, width: number, align: CanvasTextAlign): number {
+export function rightEdge(x: number, width: number, align: CanvasTextAlign): number {
   if (align === 'right' || align === 'start') return x;
   if (align === 'left' || align === 'end') return x + width;
   return x + width / 2;
@@ -54,7 +57,7 @@ function rightEdge(x: number, width: number, align: CanvasTextAlign): number {
  * Expects `ctx.direction` to be `rtl` and `ctx.font` already set. In every face
  * that places the signs itself this is exactly `fillText`.
  */
-export function fillArabicLine(ctx: CanvasRenderingContext2D, line: string, x: number, y: number, size: number): void {
+export function fillArabicLine(ctx: TextCanvas, line: string, x: number, y: number, size: number): void {
   const { bare, signs } = detachWaqfSigns(line);
   const probe = signs.length ? ctx.measureText(signs[0].sign) : null;
   // A sign with width of its own, or one that already reaches back over its

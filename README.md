@@ -206,6 +206,15 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   the surah being recited on each caption. The calligraphic heading needs the surah-name font
   (see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data)); without it the option is greyed
   out and a project that asks for it draws the pill.
+- **Motion**, under *Style → Motion*: how one caption gives way to the next (a **cut**, a
+  **cross-fade**, a **fade through** the empty card, a **slide up** or a gentle **zoom**, at three
+  speeds), and the words of an ayah **appearing as recited** or **highlighted as recited**, the
+  highlight in the accent or a colour of its own. A change runs in the pause before the next
+  caption when the reciter leaves one, so that caption is fully in by its first word; where
+  captions run straight on, it is centred on the join. The word effects follow each word's
+  recited time, which a match or a built-in reciter gives, and draw each word whole, so the
+  Arabic keeps its joined letters and a mushaf glyph keeps the ink that reaches past it. The export times every
+  frame the same way the preview does. A project saved before motion existed opens with a cut.
 
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Text section of the Style tab: the Arabic calligraphy face, text sizes and the colour fields." width="30%">
