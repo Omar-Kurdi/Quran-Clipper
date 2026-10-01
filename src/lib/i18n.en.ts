@@ -70,7 +70,6 @@ export const en = {
 
   header: {
     wordmark: 'Quran Clipper',
-    wordmarkSuffix: 'Studio',
     pageTitle: (surah: string, number: number, start: number, end: number) =>
       `Quran Clipper Studio — ${surah} ${number}:${start}–${end}`,
     undo: 'Undo',
@@ -112,7 +111,6 @@ export const en = {
   surfaces: {
     source: 'Source',
     preview: 'Preview',
-    inspector: 'Inspector',
     edit: 'Edit',
     switchView: 'Switch view'
   },
@@ -148,10 +146,10 @@ export const en = {
     step3After: 'at the end of each ayah to set its boundary.',
     step4Strong: 'Drag the edge',
     step4: 'of any block on the timeline to fine-tune it.',
-    step5: 'Click a block to choose its words and edit its translation in the panel on the right.',
-    step6Before: 'Switch that panel to',
+    step5: 'Click a block to choose its words and edit its translation in the Captions tab.',
+    step6Before: 'Open the',
     step6Strong: 'Style',
-    step6After: ', then export.',
+    step6After: ' tab, then export.',
     howItWorksNoteBefore: 'Note: reciters marked',
     howItWorksNoteTimed: 'timed',
     howItWorksNoteMiddle:
@@ -438,7 +436,7 @@ export const en = {
       'Each ayah is a block on the timeline, as long as it is recited. Press play, then tap \u26a1 as each ayah ends to mark it, or drag a block\u2019s edges.',
     styleTitle: 'Style it, then export',
     styleBody:
-      'The Style tab holds the look: aspect ratio, presets, fonts, colours, background and card. When it looks right, Export at the top renders the video.'
+      'The Style tab holds the look: presets, fonts, colours, translations, background and card. The frame shape is chosen above the preview. When it looks right, Export at the top renders the video.'
   },
   shortcuts: {
     open: 'Shortcuts',
