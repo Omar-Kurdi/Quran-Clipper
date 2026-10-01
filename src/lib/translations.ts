@@ -65,8 +65,20 @@ export const isRtlLanguage = (language: string): boolean =>
 /** Arabic, Urdu, Persian, Pashto, Sindhi, Uyghur -- one script, and Hebrew beside it. */
 const RTL_SCRIPT = /[֐-׿؀-ۿݐ-ݿࢠ-ࣿיִ-﷿ﹰ-﻿]/;
 
-/** True when this text is written right to left, judged by the script it is in. */
-export const isRtlText = (text: string): boolean => RTL_SCRIPT.test(text);
+const RTL_LETTERS = new RegExp(RTL_SCRIPT.source, 'g');
+const LETTERS = /\p{L}/gu;
+
+/**
+ * True when this text is written right to left, judged by the script most of
+ * its letters are in. Not by whether any one letter is Arabic: English
+ * translations carry the honorific ﷺ, and Saheeh International's 39:36 was
+ * drawn as right-to-left for that one sign -- in the Arabic label face, with
+ * its brackets and full stop flipped to the wrong ends.
+ */
+export const isRtlText = (text: string): boolean => {
+  const rtl = text.match(RTL_LETTERS)?.length ?? 0;
+  return rtl > 0 && rtl * 2 > (text.match(LETTERS)?.length ?? 0);
+};
 
 /** `english` -> `English`, leaving names that are already capitalised alone. */
 export const displayLanguage = (language: string): string =>

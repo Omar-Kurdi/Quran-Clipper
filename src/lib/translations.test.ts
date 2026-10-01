@@ -89,6 +89,13 @@ describe('what a caption shows', () => {
     expect(isRtlText('Au nom d’Allah')).toBe(false);
   });
 
+  it('keeps an English translation left to right when it carries ﷺ or a word of Arabic', () => {
+    // Saheeh International, 39:36: drawn right to left for the one sign.
+    expect(isRtlText('Is not Allāh sufficient for His Servant [i.e., Prophet Muḥammad (ﷺ)]?')).toBe(false);
+    expect(isRtlText('He said, "بسم الله", and went on.')).toBe(false);
+    expect(isRtlText('کیا اللہ اپنے بندے (محمد ﷺ) کو کافی نہیں؟ (Quran 39:36)')).toBe(true);
+  });
+
   it('skips a translation that has not arrived yet rather than drawing a gap', () => {
     expect(captionTranslations(verse, ['20', '85'])).toHaveLength(1);
   });
