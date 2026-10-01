@@ -25,7 +25,7 @@ export const PanelTabs: React.FC<{ value: PanelTab; onChange: (tab: PanelTab) =>
     document.getElementById(`panel-tab-${next}`)?.focus();
   };
   return (
-    <div role="tablist" aria-label={t.panel.label} className="grid grid-cols-3 shrink-0 border-b border-slate-800">
+    <div role="tablist" aria-label={t.panel.label} className="hidden lg:grid grid-cols-3 shrink-0 border-b border-slate-800">
       {TABS.map((tab, i) => (
         <button
           key={tab}

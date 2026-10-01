@@ -109,10 +109,7 @@ export const en = {
   },
 
   surfaces: {
-    source: 'Source',
     preview: 'Preview',
-    edit: 'Edit',
-    switchView: 'Switch view'
   },
 
   frame: {
@@ -430,27 +427,6 @@ export const en = {
       'madinah-green': { name: 'Madinah Green', note: 'The Prophet’s Mosque with green accents, the calligraphic surah heading, and the Arabic and translation on cards of their own.' },
       indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq on a card under a moonlit minaret, a small corner tag, amber accents.' }
     }
-  },
-  tour: {
-    open: 'Take the tour',
-    progress: (step: number, total: number) => `Step ${step} of ${total}`,
-    skip: 'Skip',
-    back: 'Back',
-    next: 'Next',
-    done: 'Start creating',
-    sourceTitle: 'Choose what to make',
-    sourceBody:
-      'Pick a reciter, a surah and the ayahs, then Load ayahs & audio. Or upload your own recitation, audio or video, and let the matcher find the passage and time every word.',
-    sourceBodyCompact:
-      'Pick a reciter, a surah and the ayahs, then tap Load ayahs & audio \u2014 or upload your own recitation and let the matcher find the passage. The tabs below switch between Source, Preview and Edit.',
-    timelineTitle: 'Tap to sync',
-    timelineBody:
-      'Each ayah is a block on the timeline, as long as it is recited. Press Space to play and B at the end of each ayah to set its boundary, or drag a block’s edges.',
-    timelineBodyCompact:
-      'Each ayah is a block on the timeline, as long as it is recited. Press play, then tap \u26a1 as each ayah ends to mark it, or drag a block\u2019s edges.',
-    styleTitle: 'Style it, then export',
-    styleBody:
-      'The Style tab holds the look: presets, fonts, colours, translations, background and card. The frame shape is chosen above the preview. When it looks right, Export at the top renders the video.'
   },
   shortcuts: {
     open: 'Shortcuts',
@@ -922,12 +898,28 @@ export const en = {
   },
 
   projects: {
-    dialogLabel: 'Saved projects and exports',
-    heading: 'Saved Projects & Exports',
+    dialogLabel: 'Projects',
+    heading: 'Projects',
     tabProjects: (count: number) => `Projects (${count})`,
-    tabExports: (count: number) => `Rendered Videos (${count})`,
+    tabExports: (count: number) => `Rendered videos (${count})`,
     loading: 'Loading saved items...',
-    noProjects: 'No saved projects yet. Click “Save Project” in the studio!',
+    noProjects: 'No saved projects yet.',
+    emptyBody: 'The clip you’re working on is kept in this browser automatically. Save it here to keep it alongside your other clips.',
+    saveCurrent: 'Save the current clip',
+    searchPlaceholder: 'Search surah, reciter or file',
+    newClip: 'New clip',
+    noMatches: (query: string) => `No project matches “${query}”.`,
+    footerNote: 'The clip you’re working on is also kept in this browser automatically.',
+    colPassage: 'Passage',
+    colAudio: 'Audio',
+    colLength: 'Length',
+    colFrame: 'Frame',
+    colRendered: 'Rendered',
+    colEdited: 'Last edited',
+    colActions: 'Actions',
+    open: 'Open',
+    notRendered: 'Not yet',
+    yourRecording: (file: string) => `Your recording · ${file}`,
     noExports: 'No exported video clips yet. Click “Export Video” to render your first clip.',
     openRenderedProject: 'Open the project it was rendered from',
     openInStudio: 'Open in Studio',

@@ -93,8 +93,7 @@ import { applyContentSync } from '@/lib/contentSyncCore';
 import type { CorpusVerse } from '@/lib/quranCorpus';
 import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
 import { InspectorSkeleton } from '@/components/Skeleton';
-import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
-import { tourSeen, rememberTourSeen } from '@/lib/tourSeen';
+import { HowItWorksDialog } from '@/components/HowItWorksDialog';
 import { BatchMatchDialog } from '@/components/BatchMatchDialog';
 import type { BatchResult } from '@/lib/batchMatch';
 import { buildRenderForm } from '@/lib/serverRenderForm';
@@ -121,7 +120,6 @@ import {
   AlertTriangle,
   Loader2,
   Film,
-  ChevronDown,
   ClipboardCheck,
   Undo2,
   Redo2,
@@ -1031,7 +1029,6 @@ export default function VideoCreatorPage() {
         // status code or a service, and translating it would make it
         // unsearchable.
         setMatchStatus({ text: data?.error || t.match.notConfigured, tone: 'error' });
-        setMobileSurface('preview');
         setIsMatching(false);
         return;
       }
@@ -1039,7 +1036,6 @@ export default function VideoCreatorPage() {
       const rejection = accept?.(data.verses || []);
       if (rejection) {
         setMatchStatus({ text: rejection, tone: 'error' });
-        setMobileSurface('preview');
         setIsMatching(false);
         return;
       }
@@ -1083,11 +1079,9 @@ export default function VideoCreatorPage() {
             (confirmRange ? t.match.confirmRange : t.match.reviewTimings),
         tone: 'info'
       });
-      setMobileSurface('preview');
       setIsMatching(false);
     } catch {
       setMatchStatus({ text: t.match.failed, tone: 'error' });
-      setMobileSurface('preview');
       setIsMatching(false);
     }
   };
@@ -1280,7 +1274,6 @@ export default function VideoCreatorPage() {
         t.match.detected(result.title, result.verses.length) + t.match.confirmRange,
       tone: 'info'
     });
-    setMobileSurface('preview');
   };
 
   /**
@@ -1354,7 +1347,6 @@ export default function VideoCreatorPage() {
   const handleManualMatchUploadedAudio = () => {
     setSourceEditing(false);
     setMatchStatus({ text: t.match.manualMode, tone: 'info' });
-    setMobileSurface('preview');
   };
 
   // Audio Play / Pause Sync with Web Audio API Analyser
@@ -1793,51 +1785,10 @@ export default function VideoCreatorPage() {
   ];
   const selectedMatchOption = matchOptions.find(o => o.id === matchProvider) ?? matchOptions[0];
 
-  /**
-   * On a phone the panel and the preview each got half the height, which
-   * served neither: the panel was too short to work in and the preview -- a
-   * 9:16 video, on the one device shaped for it -- overflowed its pane by
-   * about 180px. Below `md` one surface is shown at a time instead. It opens
-   * on Source, where making a clip starts.
-   */
-  const [mobileSurface, setMobileSurface] = useState<'panel' | 'preview'>('panel');
 
-  /**
-   * The first-visit walkthrough. Offered once per interface language, on its
-   * own, the first time the studio opens in this browser -- and again the first
-   * time it is switched to Arabic; after that only when asked for, from "How
-   * it works" or the menu. The flag is a per-browser convenience, so storage
-   * that is blocked simply means the tour is offered again.
-   */
-  const [isTourOpen, setIsTourOpen] = useState(false);
-  useEffect(() => {
-    if (tourSeen(locale)) return;
-    // After the studio has painted, so the steps have something to point at.
-    const timer = window.setTimeout(() => setIsTourOpen(true), 800);
-    return () => window.clearTimeout(timer);
-  }, [locale]);
-  const closeTour = () => {
-    setIsTourOpen(false);
-    rememberTourSeen(locale);
-    // Finished or skipped, a phone is left where the first step said to start,
-    // not on whichever surface the tour last showed.
-    setMobileSurface('panel');
-    setPanelTab('source');
-  };
-  const tourSteps: TourStep[] = [
-    { target: 'panel', tab: 'tab-source', title: t.tour.sourceTitle, body: t.tour.sourceBody, compactBody: t.tour.sourceBodyCompact },
-    { target: 'timeline', title: t.tour.timelineTitle, body: t.tour.timelineBody, compactBody: t.tour.timelineBodyCompact },
-    { target: 'panel', tab: 'tab-inspect', title: t.tour.styleTitle, body: t.tour.styleBody }
-  ];
-  /** On a phone one surface shows at a time: bring each step's into view. */
-  const showTourStep = (index: number) => {
-    if (index === 1) {
-      setMobileSurface('preview');
-      return;
-    }
-    setMobileSurface('panel');
-    setPanelTab(index === 0 ? 'source' : 'style');
-  };
+
+  /** "How it works", from the Help menu -- the studio no longer tours itself on a first visit. */
+  const [isHowOpen, setIsHowOpen] = useState(false);
 
   const frameIndex = useSyncExternalStore(framePreference.subscribe, framePreference.get, framePreference.getServerSnapshot);
   const showSafeArea = useSyncExternalStore(safeAreaPreference.subscribe, safeAreaPreference.get, safeAreaPreference.getServerSnapshot);
@@ -1850,13 +1801,19 @@ export default function VideoCreatorPage() {
     setCanvasConfig(prev => (prev.aspectRatio === ratio ? prev : { ...prev, aspectRatio: ratio }));
   };
 
+  /** "New clip" in Projects: the Source tab, on its form rather than the current clip's summary. */
+  const startNewClip = () => {
+    setPanelTab('source');
+    setSourceEditing(true);
+  };
+
   /** Help: learning the studio, kept apart from the tools in the ⋯ menu. */
   const helpItems: OverflowItem[] = [
     {
-      key: 'tour',
-      label: t.tour.open,
+      key: 'how',
+      label: t.source.howItWorks,
       icon: <BookOpen className="w-4 h-4" />,
-      onSelect: () => setIsTourOpen(true)
+      onSelect: () => setIsHowOpen(true)
     },
     {
       key: 'shortcuts',
@@ -2349,7 +2306,7 @@ export default function VideoCreatorPage() {
       </fieldset>
       <p className="text-xs leading-relaxed text-slate-400">{selectedMatchOption.blurb}</p>
                     {matchProvider === 'qul' && (
-                      <label className="flex items-start gap-2 mt-1.5 text-[11px] text-slate-300 cursor-pointer">
+                      <label className="flex items-start gap-2 mt-1.5 text-xs text-slate-300 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={skipAlignerSetting}
@@ -2369,12 +2326,12 @@ export default function VideoCreatorPage() {
           </summary>
           <div className="mt-2">
                       <fieldset className="min-w-0">
-                        <legend className="text-[11px] font-semibold text-slate-400 block mb-1">{t.source.screenBreaksLabel}</legend>
+                        <legend className="text-xs font-semibold text-slate-400 block mb-1">{t.source.screenBreaksLabel}</legend>
                         <div className="grid grid-cols-3 gap-1.5">
                           {SCREEN_BREAKS.map((level, index) => (
                             <label
                               key={level}
-                              className={`py-1 rounded-md border text-center text-[11px] font-bold transition-all cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
+                              className={`py-1 rounded-md border text-center text-xs font-bold transition-all cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
                                 screenBreaks === level
                                   ? 'bg-amber-500/15 border-amber-500 text-slate-100'
                                   : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
@@ -2392,35 +2349,35 @@ export default function VideoCreatorPage() {
                             </label>
                           ))}
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">{t.source.screenBreaksHelp}</p>
+                        <p className="text-xs text-slate-400 mt-1">{t.source.screenBreaksHelp}</p>
                         {/* Built-in reciters timed from published timings alone
                             never reach the aligner, so the setting cannot touch them. */}
                         {matchProvider === 'qul' && skipAlignerSetting && (
-                          <p className="text-[11px] text-slate-300 mt-1">{t.source.screenBreaksUploadsOnly}</p>
+                          <p className="text-xs text-slate-300 mt-1">{t.source.screenBreaksUploadsOnly}</p>
                         )}
                       </fieldset>
           </div>
         </details>
       )}
                     {!selectedMatchOption.ready && selectedMatchOption.fix && (
-                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                      <p className="text-xs text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
                         {selectedMatchOption.fix}
                       </p>
                     )}
                     {/* Kept because they are diagnostics with a fix, not descriptions:
                         the blurb above already says what the option does. */}
                     {matchProvider !== 'gemini' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
-                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                      <p className="text-xs text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
                         {t.source.matcherDetectionOffBefore}{' '}
                         <code className="font-mono">ASR_ALIGN_BACKEND</code>{' '}
                         {t.source.matcherDetectionOffAfter}
                       </p>
                     )}
                     {matchProvider !== 'gemini' && providerStatus?.align.alignReady === false && (
-                      <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
+                      <div className="text-xs text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
                         <p className="font-semibold">{t.source.matcherEngineFailedTitle}</p>
                         <p>{t.source.matcherEngineFailedBody}</p>
-                        <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[11px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
+                        <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-xs text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
                         {providerStatus.align.alignError && (
                           <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
                         )}
@@ -2589,15 +2546,14 @@ export default function VideoCreatorPage() {
           Source column and an Inspector column, which kept the once-per-clip
           Source form on screen for good and left the preview the least room. */}
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-        <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Below `lg` the preview sits above the panel (hence the reverse) and
+            the bottom bar picks the panel's tab. */}
+        <div className="flex-1 flex flex-col-reverse lg:flex-row overflow-hidden min-h-0">
 
           {/* Working panel */}
           <aside
-            data-tour="panel"
             aria-label={t.panel.label}
-            className={`w-full lg:w-[400px] shrink-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
-              mobileSurface === 'panel' ? 'flex' : 'hidden'
-            } lg:flex`}
+            className="w-full lg:w-[400px] flex-1 lg:flex-none min-h-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex flex-col overflow-hidden"
           >
             <PanelTabs value={panelTab} onChange={setPanelTab} toCheck={toCheckCount} />
             {/* Source stays mounted while hidden, so a half-filled form or a
@@ -2610,7 +2566,7 @@ export default function VideoCreatorPage() {
               className="flex-1 overflow-y-auto p-3"
             >
               {pendingDraft && (
-                <div className="mb-3 rounded-lg border border-lapis-bright/40 bg-lapis-bright/10 p-2.5 text-[11px] text-slate-200 flex flex-col gap-2">
+                <div className="mb-3 rounded-lg border border-lapis-bright/40 bg-lapis-bright/10 p-2.5 text-xs text-slate-200 flex flex-col gap-2">
                   <div className="flex items-start gap-2">
                     <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5 text-lapis-bright" />
                     <div className="min-w-0">
@@ -2677,7 +2633,7 @@ export default function VideoCreatorPage() {
                 {hasClip && loadResult && (
                   <div
                     role="status"
-                    className={`mt-2 rounded-lg border p-2.5 text-[11px] ${
+                    className={`mt-2 rounded-lg border p-2.5 text-xs ${
                       !loadResult.ok
                         ? 'bg-red-500/10 border-red-500/30 text-red-200'
                         : loadResult.againstUpload
@@ -2690,7 +2646,7 @@ export default function VideoCreatorPage() {
                     </span>
                     {loadResult.ok && (
                       <button
-                        onClick={() => { setSelectedIndex(0); setMobileSurface('preview'); }}
+                        onClick={() => setSelectedIndex(0)}
                         className="ms-1.5 underline underline-offset-2 hover:text-emerald-100"
                       >
                         {t.source.showOnTimeline}
@@ -2758,7 +2714,7 @@ export default function VideoCreatorPage() {
                   </div>
                 )}
                   {uploadIsVideo && videoBgUrl && (
-                    <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                    <label className="mt-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={useVideoAsBackground}
@@ -2778,7 +2734,7 @@ export default function VideoCreatorPage() {
                       />
                       <span>
                         {t.source.useVideoAsBackground}
-                        <span className="block text-[11px] text-slate-300">
+                        <span className="block text-xs text-slate-300">
                           {t.source.useVideoAsBackgroundHelp}
                           {videoBgOffset > 0
                             ? t.source.useVideoAsBackgroundOffset(formatDuration(videoBgOffset))
@@ -2944,12 +2900,12 @@ export default function VideoCreatorPage() {
                       {(selectedReciterMeta.quranApiId > 0 || qulTimedReciters.includes(selectedReciterMeta.id)) && (
                         <span
                           title={t.source.reciterTimedTitle}
-                          className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
+                          className="text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
                         >
                           {t.source.reciterTimed}
                         </span>
                       )}
-                      <span className="text-[11px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
+                      <span className="text-xs text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
                         {t.source.reciterStyles[selectedReciterMeta.style as keyof typeof t.source.reciterStyles] ?? selectedReciterMeta.style}
                       </span>
                     </div>
@@ -3029,7 +2985,7 @@ export default function VideoCreatorPage() {
                           )}
                         </div>
                   {uploadIsVideo && videoBgUrl && (
-                    <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                    <label className="mt-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={useVideoAsBackground}
@@ -3049,7 +3005,7 @@ export default function VideoCreatorPage() {
                       />
                       <span>
                         {t.source.useVideoAsBackground}
-                        <span className="block text-[11px] text-slate-300">
+                        <span className="block text-xs text-slate-300">
                           {t.source.useVideoAsBackgroundHelp}
                           {videoBgOffset > 0
                             ? t.source.useVideoAsBackgroundOffset(formatDuration(videoBgOffset))
@@ -3073,46 +3029,6 @@ export default function VideoCreatorPage() {
                   </>
                 )}
 
-                {/* Workflow instructions.
-
-                    Collapsible and closed. It took about 40% of the panel when
-                    it opened by itself, pushing the controls it describes below
-                    the fold -- including for the first-run visitor it was open
-                    for, who cannot see the thing being described while reading
-                    about it. */}
-                <details
-                  className="group pt-3 border-t border-slate-800"
-                >
-                  <summary className="text-[13px] font-semibold text-amber-300 cursor-pointer list-none flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded">
-                    <span>{t.source.howItWorks}</span>
-                    <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed mt-1.5">
-                    <li><strong>{t.source.step1Strong}</strong> {t.source.step1}</li>
-                    <li>{t.source.step2Before} <strong>{t.source.step2Button}</strong>. {t.source.step2After}</li>
-                    <li>
-                      {t.source.step3Before}{' '}
-                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd>{' '}
-                      {t.source.step3Middle}{' '}
-                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">B</kbd>{' '}
-                      {t.source.step3After}
-                    </li>
-                    <li><strong>{t.source.step4Strong}</strong> {t.source.step4}</li>
-                    <li>{t.source.step5}</li>
-                    <li>{t.source.step6Before} <strong>{t.source.step6Strong}</strong>{t.source.step6After}</li>
-                  </ol>
-                  <p className="text-[11px] text-slate-400 mt-2">
-                    {t.source.howItWorksNoteBefore} <strong>{t.source.howItWorksNoteTimed}</strong>{' '}
-                    {t.source.howItWorksNoteMiddle} <strong>{t.source.howItWorksNoteUploaded}</strong>{' '}
-                    {t.source.howItWorksNoteEnd}
-                  </p>
-                  <button
-                    onClick={() => setIsTourOpen(true)}
-                    className="mt-2 text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2"
-                  >
-                    {t.tour.open}
-                  </button>
-                </details>
 
               </div>
             </div>
@@ -3167,17 +3083,24 @@ export default function VideoCreatorPage() {
           {/* Preview */}
           <main
             aria-label={t.surfaces.preview}
-            className={`flex-1 flex-col items-center justify-center p-4 bg-slate-950 relative overflow-hidden min-w-0 ${
-              mobileSurface === 'preview' ? 'flex' : 'hidden'
+            // On a phone: pinned above the panel while captions or style are
+            // being worked on, so what changes is in view; on Source there is
+            // nothing to look at yet, and the form gets the height.
+            className={`lg:flex-1 flex-col items-center justify-center p-2 lg:p-4 bg-slate-950 relative overflow-hidden min-w-0 max-lg:h-[36vh] max-lg:shrink-0 ${
+              panelTab === 'source' ? 'hidden' : 'flex'
             } lg:flex`}
           >
-          <FrameBar
-            aspectRatio={canvasConfig.aspectRatio}
-            chosenIndex={Math.round(frameIndex)}
-            onChoose={chooseFrame}
-            safeArea={showSafeArea}
-            onSafeArea={safeAreaPreference.set}
-          />
+          {/* On a phone the frame is chosen from the Style tab, where its
+              bar still sits over the preview. */}
+          <div className={`w-full ${panelTab === 'style' ? '' : 'max-lg:hidden'}`}>
+            <FrameBar
+              aspectRatio={canvasConfig.aspectRatio}
+              chosenIndex={Math.round(frameIndex)}
+              onChoose={chooseFrame}
+              safeArea={showSafeArea}
+              onSafeArea={safeAreaPreference.set}
+            />
+          </div>
           {/* Main Video Canvas WYSIWYG Renderer.
 
               Sized to the space left under the frame bar rather than to the
@@ -3240,6 +3163,8 @@ export default function VideoCreatorPage() {
 
         </div>
 
+        {/* Not on a phone's Source tab, which has nothing on it yet worth timing. */}
+        <div className={panelTab === 'source' ? 'max-lg:hidden' : ''}>
         <Timeline
           verses={verses}
           audioUrl={customAudioUrl || audioUrl}
@@ -3280,48 +3205,35 @@ export default function VideoCreatorPage() {
             setIsMuted(v === 0);
           }}
         />
+        </div>
       </div>
 
-      {/* Mobile surface switch.
-
-          Sits at the bottom because that is where a thumb rests. Three
-          surfaces now, matching the three columns above -- a phone can show
-          exactly one of them usefully at a time. Hidden from `lg` up, where all
-          three are visible at once and the switch would mean nothing. */}
+      {/* The panel's tabs, where a thumb rests. The same three as on a desktop,
+          in the same order, so one way of working holds on both. */}
       <nav
-        aria-label={t.surfaces.switchView}
-        className="lg:hidden shrink-0 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md p-1.5 flex gap-1.5 z-30"
+        aria-label={t.panel.label}
+        className="lg:hidden shrink-0 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md p-1.5 grid grid-cols-3 gap-1.5 z-30"
       >
         {([
-          ['source', t.surfaces.source, BookOpen],
-          ['preview', t.surfaces.preview, Film],
-          ['inspect', t.surfaces.edit, Sliders]
-        ] as const).map(([id, label, Icon]) => {
-          // Source and Edit are the working panel on its Source tab or on
-          // either of the others; the panel's own tabs switch between those.
-          const active = id === 'preview'
-            ? mobileSurface === 'preview'
-            : mobileSurface === 'panel' && (id === 'source') === (panelTab === 'source');
-          const show = () => {
-            if (id === 'preview') { setMobileSurface('preview'); return; }
-            setMobileSurface('panel');
-            setPanelTab(tab => (id === 'source' ? 'source' : tab === 'source' ? 'captions' : tab));
-          };
-          return (
-            <button
-              key={id}
-              data-tour={`tab-${id}`}
-              onClick={show}
-              aria-pressed={active}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
-                active ? 'bg-gold text-ink' : 'text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{label}</span>
-            </button>
-          );
-        })}
+          ['source', t.panel.source, BookOpen],
+          ['captions', t.panel.captions, Film],
+          ['style', t.panel.style, Sliders]
+        ] as const).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            onClick={() => setPanelTab(id)}
+            aria-current={panelTab === id ? 'page' : undefined}
+            className={`min-h-11 flex items-center justify-center gap-1.5 rounded-lg text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+              panelTab === id ? 'bg-gold text-ink' : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            <span>{label}</span>
+            {id === 'captions' && toCheckCount > 0 && (
+              <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-500/90 text-ink text-[11px] font-bold flex items-center justify-center">{toCheckCount}</span>
+            )}
+          </button>
+        ))}
       </nav>
 
       {/* Export Modal */}
@@ -3361,7 +3273,7 @@ export default function VideoCreatorPage() {
 
       {/* Saved Projects Drawer */}
       <ShortcutsDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
-      <OnboardingTour steps={tourSteps} isOpen={isTourOpen} onClose={closeTour} onStep={showTourStep} />
+      <HowItWorksDialog isOpen={isHowOpen} onClose={() => setIsHowOpen(false)} />
       <BatchMatchDialog
         isOpen={isBatchOpen}
         onClose={() => setIsBatchOpen(false)}
@@ -3378,6 +3290,8 @@ export default function VideoCreatorPage() {
         isOpen={isProjectsDrawerOpen}
         onClose={() => setIsProjectsDrawerOpen(false)}
         onLoadProject={handleLoadSavedProject}
+        onNewClip={startNewClip}
+        onSaveCurrent={handleSaveProject}
       />
 
       {/* Audio Trim Modal */}

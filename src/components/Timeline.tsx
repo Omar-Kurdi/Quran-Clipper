@@ -410,7 +410,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   const clipIsWhole = clipRange.start <= 0.05 && clipRange.end >= duration - 0.05;
 
   return (
-    <section data-tour="timeline" aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
+    <section aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
       {/* Transport. Everything that controls time is on this bar, so there is
           one clock rather than a scrubber here and nudge buttons elsewhere. */}
       <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-slate-800/70">
@@ -431,7 +431,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           <RotateCcw className="w-4 h-4" />
         </button>
 
-        <span className="font-mono text-[11px] text-slate-300 tabular-nums px-1 whitespace-nowrap">
+        <span className="font-mono text-xs text-slate-300 tabular-nums px-1 whitespace-nowrap">
           {formatTime(currentTime)} <span className="text-slate-400">/ {formatTime(duration)}</span>
         </span>
 
@@ -440,11 +440,11 @@ export const Timeline: React.FC<TimelineProps> = ({
         <button
           onClick={onMarkHere}
           title={t.timeline.markAyahEndTitle}
-          className="ms-1 flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          className="ms-1 flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
         >
           <Zap className="w-3.5 h-3.5 text-amber-400" />
           <span className="hidden sm:inline">{t.timeline.markAyahEnd}</span>
-          <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">B</kbd>
+          <kbd className="hidden md:inline font-mono text-[11px] text-slate-400 border border-slate-600 rounded px-1">B</kbd>
         </button>
 
         {/* Reviewing a match starts with the few captions it was least sure of,
@@ -458,7 +458,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden sm:inline">{t.timeline.nextToCheck(toCheck)}</span>
             <span className="sm:hidden tabular-nums">{toCheck}</span>
-            <kbd className="hidden md:inline font-mono text-[10px] text-slate-400 border border-slate-600 rounded px-1">N</kbd>
+            <kbd className="hidden md:inline font-mono text-[11px] text-slate-400 border border-slate-600 rounded px-1">N</kbd>
           </button>
         )}
 
@@ -489,11 +489,11 @@ export const Timeline: React.FC<TimelineProps> = ({
           <button
             onClick={onTrim}
             title={t.timeline.trimAudioTitle}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
           >
             <Scissors className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden sm:inline">{t.timeline.trimAudio}</span>
-            {trimHint && <span className="hidden md:inline font-mono text-[10px] text-slate-400" dir="ltr">{trimHint}</span>}
+            {trimHint && <span className="hidden md:inline font-mono text-[11px] text-slate-400" dir="ltr">{trimHint}</span>}
           </button>
         )}
 
@@ -504,7 +504,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             <button
               onClick={() => onTrimRange(clipRange.start, clipRange.end)}
               title={t.timeline.cutDownTo(formatTime(clipRange.start), formatTime(clipRange.end))}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-[11px] font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-xs font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
             >
               <Scissors className="w-3.5 h-3.5" />
               <span>{t.timeline.keep(formatTime(clipRange.end - clipRange.start))}</span>
@@ -512,7 +512,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             <button
               onClick={() => setClip(null)}
               title={t.timeline.resetClip}
-              className="px-2 py-1.5 text-[11px] font-semibold text-slate-300 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
+              className="px-2 py-1.5 text-xs font-semibold text-slate-300 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
             >
               {t.common.reset}
             </button>
@@ -541,7 +541,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           className="hidden sm:block w-16 accent-amber-500"
         />
 
-        <span className="hidden md:inline text-[11px] text-slate-400">
+        <span className="hidden md:inline text-xs text-slate-400">
           {waveformState === 'loading' && t.timeline.readingAudio}
           {waveformState === 'unavailable' && t.timeline.waveformUnavailable}
         </span>
@@ -553,7 +553,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
-        <span className="hidden sm:inline font-mono text-[11px] text-slate-400 w-7 text-center" dir="ltr">{zoom}x</span>
+        <span className="hidden sm:inline font-mono text-xs text-slate-400 w-7 text-center" dir="ltr">{zoom}x</span>
         <button
           onClick={() => setZoom(ZOOMS[zoomIndex + 1])}
           disabled={zoomIndex >= ZOOMS.length - 1}
@@ -660,10 +660,12 @@ export const Timeline: React.FC<TimelineProps> = ({
               read-only -- the times come from the ayahs or a timer, so there is
               nothing to drag. Once a block is dragged the layout is baked to a
               hand-cut lane and stays where it is put. Empty space is a real
-              gap: nothing plays there and the frame falls back to its gradient. */}
+              gap: nothing plays there and the frame falls back to its gradient.
+              Not on a phone, where the timeline is a slim strip under the
+              pinned preview and the blocks are too small to place by touch. */}
           {lane.length > 0 && (
             <div
-              className="relative h-7 border-b border-slate-800/70 bg-slate-950/40"
+              className="relative h-7 border-b border-slate-800/70 bg-slate-950/40 max-lg:hidden"
               aria-label={t.timeline.backgrounds}
               onPointerDown={e => { if (e.target === e.currentTarget) onSelectBackground?.(null); }}
             >
@@ -765,7 +767,7 @@ export const Timeline: React.FC<TimelineProps> = ({
 
           {/* Waveform + ayah blocks. Clicking empty track seeks. */}
           <div
-            className="relative h-20 touch-none cursor-text"
+            className="relative h-14 lg:h-20 touch-none cursor-text"
             onPointerDown={e => { if (e.target === e.currentTarget) onSeek(xToTime(e.clientX)); }}
           >
             <Waveform peaks={waveform?.peaks ?? null} first={waveSlice?.first ?? 0} last={waveSlice?.last ?? 0} zoom={zoom} />

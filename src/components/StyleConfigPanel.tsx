@@ -436,7 +436,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     // `p-3` matches the Inspector tab beside it. Without it this panel's cards,
     // sliders and section headings all sat flush against the column border,
     // because the container in page.tsx only scrolls -- it does not pad.
-    <div className="flex flex-col gap-4 text-xs p-3">
+    <div className="flex flex-col gap-4 text-[13px] p-3">
       {/* Whole looks first: the quickest way to a finished frame, and the
           fields they set are all edited in the sections below. */}
       {/* Whole looks first: the quickest way to a finished frame, and the
@@ -492,18 +492,18 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               ))}
             </div>
             {missingFonts.size > 0 && (
-              <p className="mt-2 text-[11px] text-slate-400">{t.style.fontNotInstalled}</p>
+              <p className="mt-2 text-xs text-slate-400">{t.style.fontNotInstalled}</p>
             )}
             {/* The chosen face is missing and none is selected above: say what
                 is drawing instead, in that face. */}
             {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
-              <p className="mt-1.5 text-[11px] text-amber-300/90">
+              <p className="mt-1.5 text-xs text-amber-300/90">
                 {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
               </p>
             )}
             {/* Only the mushaf face knows where the printed lines break. */}
             {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
-              <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+              <label className="mt-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={!!config.mushafLines}
@@ -661,7 +661,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               </div>
             </div>
             {missingFonts.has(SURAH_NAME_FONT_ID) && (
-              <p className="-mt-1 text-[11px] text-slate-400">{t.style.badgeFontMissing}</p>
+              <p className="-mt-1 text-xs text-slate-400">{t.style.badgeFontMissing}</p>
             )}
             {/* Its own control, not the card's: a no-card layout sets the card
                 to nothing, and the badge still has to read over the footage. */}
@@ -706,7 +706,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 placeholder={t.style.badgeTextPlaceholder}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
+              <p className="text-xs text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
             </div>
 
             <div className="pt-2 border-t border-slate-800">
@@ -718,7 +718,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 placeholder={t.style.badgeSubtitlePlaceholder}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
+              <p className="text-xs text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
@@ -797,7 +797,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     onSelectBackground?.(null);
                     onChangeConfig({ ...config, bgMode: mode, bgSegments: [] });
                   }}
-                  className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                  className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                     !customBackground && (config.bgMode || 'single') === mode
                       ? 'bg-amber-500 text-slate-950 border-amber-500'
                       : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
@@ -824,7 +824,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 onChangeConfig({ ...config, bgMode: 'custom', bgSegments: laneBlocks });
               }}
               title={t.style.bgModeHints.custom}
-              className={`mt-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+              className={`mt-1.5 w-full px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                 customBackground
                   ? 'bg-lapis-bright text-slate-950 border-lapis-bright'
                   : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
@@ -852,7 +852,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
             {customBackground && (
               <div className="mt-3">
-                <p className="text-[11px] text-slate-300 bg-lapis-bright/10 border border-lapis-bright/30 rounded-lg p-2">
+                <p className="text-xs text-slate-300 bg-lapis-bright/10 border border-lapis-bright/30 rounded-lg p-2">
                   {t.style.laneSummary(laneSegments.length)} {t.style.laneHelp}
                 </p>
                 {laneSegments.length > 0 && (
@@ -891,9 +891,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                           aria-hidden="true"
                           className="w-3.5 h-3.5 shrink-0 text-slate-500 cursor-grab active:cursor-grabbing"
                         />
-                        <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
-                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{nameOf(seg.url)}</span>
-                        <span className="shrink-0 text-[10px] font-mono text-slate-400 tabular-nums" dir="ltr">
+                        <span className="w-4 shrink-0 text-xs font-mono text-amber-400">{i + 1}</span>
+                        <span className="flex-1 min-w-0 truncate text-xs text-slate-200">{nameOf(seg.url)}</span>
+                        <span className="shrink-0 text-[11px] font-mono text-slate-400 tabular-nums" dir="ltr">
                           {seg.start.toFixed(1)}–{seg.end.toFixed(1)}s
                         </span>
                         {/* No confirmation, for the reason taking a clip out of
@@ -927,10 +927,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
 
             {multiBackground && (
               bgSequence.length === 0 ? (
-                <p className="text-[11px] text-slate-400 mt-2">{t.style.sequenceEmpty}</p>
+                <p className="text-xs text-slate-400 mt-2">{t.style.sequenceEmpty}</p>
               ) : (
                 <div className="mt-3">
-                  <p className="text-[11px] text-slate-400 mb-1.5">
+                  <p className="text-xs text-slate-400 mb-1.5">
                     {t.style.sequenceCount(bgSequence.length)} {t.style.sequenceReorder}
                   </p>
                   <ol className="flex flex-col gap-1">
@@ -965,8 +965,8 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                           aria-hidden="true"
                           className="w-3.5 h-3.5 shrink-0 text-slate-500 cursor-grab active:cursor-grabbing"
                         />
-                        <span className="w-4 shrink-0 text-[11px] font-mono text-amber-400">{i + 1}</span>
-                        <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">{nameOf(url)}</span>
+                        <span className="w-4 shrink-0 text-xs font-mono text-amber-400">{i + 1}</span>
+                        <span className="flex-1 min-w-0 truncate text-xs text-slate-200">{nameOf(url)}</span>
                         <button
                           onClick={() => moveInSequence(i, i - 1)}
                           disabled={i === 0}
@@ -1012,7 +1012,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   ? t.style.galleryLabelSingle
                   : t.style.galleryLabelMulti}
             </label>
-            <p className="text-[11px] text-slate-400 mb-2">{t.style.galleryHelp}</p>
+            <p className="text-xs text-slate-400 mb-2">{t.style.galleryHelp}</p>
             {/* No inner scroller. Capping this at 224px put a second scrollbar
                 inside a panel that was already scrolling, and showed four
                 thumbnails above a screen of empty space. */}
@@ -1044,7 +1044,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     >
                       {/* Play order, so a multi-background sequence is readable at a glance. */}
                       {multiBackground && bg.url && bgSequence.includes(bg.url) && (
-                        <span className="absolute top-1 start-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shadow">
+                        <span className="absolute top-1 start-1 z-10 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-slate-950 text-xs font-bold flex items-center justify-center shadow">
                           {(() => {
                             const uses = bgSequence.filter(u => u === bg.url).length;
                             return uses > 1 ? `x${uses}` : bgSequence.indexOf(bg.url) + 1;
@@ -1079,7 +1079,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                         />
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent flex flex-col justify-end p-2 text-start">
-                        <span className="text-[11px] font-semibold text-slate-100 leading-tight line-clamp-2">{bg.title}</span>
+                        <span className="text-xs font-semibold text-slate-100 leading-tight line-clamp-2">{bg.title}</span>
                         <span className={`text-[9px] uppercase tracking-wider flex items-center gap-1 ${
                           bg.missing ? 'text-slate-400' : 'text-amber-400'
                         }`}>
@@ -1145,7 +1145,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>{t.style.browsePexels}</span>
               </a>
-              <p className="text-[11px] text-slate-400 mt-1">{t.style.browsePexelsHelp}</p>
+              <p className="text-xs text-slate-400 mt-1">{t.style.browsePexelsHelp}</p>
             </div>
           </div>
 
@@ -1173,11 +1173,11 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 {t.common.apply}
               </button>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1.5">{t.style.pasteLinkHelp}</p>
+            <p className="text-xs text-slate-400 mt-1.5">{t.style.pasteLinkHelp}</p>
             {urlStatus && (
               <p
                 role="status"
-                className={`text-[11px] mt-1.5 rounded-md p-2 border ${
+                className={`text-xs mt-1.5 rounded-md p-2 border ${
                   urlStatus.kind === 'error'
                     ? 'text-red-300 bg-red-500/10 border-red-500/25'
                     : urlStatus.kind === 'ok'
@@ -1215,11 +1215,11 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 </span>
               </div>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1.5">{t.style.uploadHelp}</p>
+            <p className="text-xs text-slate-400 mt-1.5">{t.style.uploadHelp}</p>
             {uploadStatus && (
               <p
                 role="status"
-                className={`text-[11px] mt-1.5 rounded-md p-2 border ${
+                className={`text-xs mt-1.5 rounded-md p-2 border ${
                   uploadStatus.kind === 'error'
                     ? 'text-red-300 bg-red-500/10 border-red-500/25'
                     : 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'

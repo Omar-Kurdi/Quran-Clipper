@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, FolderOpen, Play, Trash2, Loader2 } from 'lucide-react';
+import { X, Play, Trash2, Loader2, Search, Plus } from 'lucide-react';
 import { ListSkeleton } from './Skeleton';
 import { Dialog } from './Dialog';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -11,17 +11,25 @@ import { formatBytes } from '@/lib/exportPresets';
 import { formatTime } from '@/lib/verseEdits';
 import { listProjects, deleteProject as removeProject } from '@/lib/projectStore';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
+import { ProjectListHeader, ProjectListRow } from './ProjectList';
+import { matchesProject, renderedShapes } from '@/lib/projectSearch';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onLoadProject: (project: unknown) => void;
+  /** Starts another clip: the Source tab, on its form. */
+  onNewClip: () => void;
+  /** Saves the clip being worked on, from the empty list. */
+  onSaveCurrent: () => void;
 }
 
 export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   isOpen,
   onClose,
-  onLoadProject
+  onLoadProject,
+  onNewClip,
+  onSaveCurrent
 }) => {
   const t = useT();
   // A public studio keeps projects in this browser and records no exports.
@@ -34,6 +42,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string; kind: 'project' | 'export' } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -129,49 +138,58 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       label={t.projects.dialogLabel}
-      placement="right"
       // Escape belongs to the confirmation while one is up: without this the
       // drawer takes the key first and the whole thing closes, which is a
       // startling answer to "are you sure?".
       dismissible={pendingDelete === null}
-      panelClassName="w-full max-w-md bg-slate-900 border-s border-slate-800 h-full flex flex-col shadow-2xl p-5 overflow-hidden"
+      panelClassName="w-full max-w-5xl max-h-[88vh] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-2xl p-5 sm:p-6 overflow-hidden"
     >
       <div className="contents">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <FolderOpen className="w-5 h-5 text-amber-400" />
-            <h3 className="font-bold text-slate-100 text-base">{t.projects.heading}</h3>
-          </div>
+        {/* One name for one thing: the header button, this dialog and the
+            save link all say Projects. */}
+        <div className="flex flex-wrap items-center gap-3 pb-4">
+          <h3 className="me-auto text-xl font-bold text-slate-100">{t.projects.heading}</h3>
+          <label className="flex items-center gap-2 h-10 w-full sm:w-72 rounded-lg border border-slate-700 bg-slate-950 px-3 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold">
+            <Search className="w-4 h-4 text-slate-400" aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder={t.projects.searchPlaceholder}
+              aria-label={t.projects.searchPlaceholder}
+              className="flex-1 min-w-0 bg-transparent text-[13px] text-slate-100 focus:outline-none"
+            />
+          </label>
+          <button
+            onClick={() => { onNewClip(); onClose(); }}
+            className="h-10 px-4 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[13px] font-bold flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            {t.projects.newClip}
+          </button>
           <button
             onClick={onClose}
             aria-label={t.common.close}
-            className="p-1.5 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
+            className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex bg-slate-950 p-1 rounded-xl my-4 border border-slate-800">
-          <button
-            onClick={() => setActiveTab('projects')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === 'projects' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {t.projects.tabProjects(projectsList.length)}
-          </button>
-          {mode !== 'public' && (
+        <div role="tablist" className="flex gap-6 border-b border-slate-800 mb-3">
+          {(['projects', ...(mode !== 'public' ? ['exports'] : [])] as const).map(tab => (
             <button
-              onClick={() => setActiveTab('exports')}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-                activeTab === 'exports' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
+              key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              onClick={() => setActiveTab(tab as 'projects' | 'exports')}
+              className={`h-10 -mb-px border-b-2 text-[13px] font-semibold ${
+                activeTab === tab ? 'border-amber-500 text-slate-100' : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              {t.projects.tabExports(exportsList.length)}
+              {tab === 'projects' ? t.projects.tabProjects(projectsList.length) : t.projects.tabExports(exportsList.length)}
             </button>
-          )}
+          ))}
         </div>
 
         {deleteError && (
@@ -189,57 +207,36 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
             </div>
           ) : activeTab === 'projects' ? (
             projectsList.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-xs">{t.projects.noProjects}</div>
-            ) : (
-              projectsList.map((proj) => (
-                <div
-                  key={proj.id}
-                  className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-amber-500/40 transition-all flex flex-col gap-2 group"
+              <div className="py-12 flex flex-col items-center gap-3 text-center">
+                <p className="text-sm font-semibold text-slate-200">{t.projects.noProjects}</p>
+                <p className="max-w-md text-[13px] leading-relaxed text-slate-400">{t.projects.emptyBody}</p>
+                <button
+                  onClick={onSaveCurrent}
+                  className="mt-1 h-10 px-4 rounded-lg border border-slate-700 text-[13px] font-semibold text-slate-100 hover:bg-slate-800"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-200 text-sm group-hover:text-amber-300 transition-colors">
-                      {proj.title}
-                    </span>
-                    <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded" dir="ltr">
-                      {proj.aspectRatio}
-                    </span>
-                  </div>
-
-                  <div className="text-xs text-slate-400 flex items-center justify-between">
-                    <span>
-                      {t.projects.passage(proj.surahNameEnglish, proj.surahNumber, proj.ayahStart, proj.ayahEnd)}
-                    </span>
-                    <span className="text-[11px] font-mono">{proj.reciterName}</span>
-                  </div>
-
-                  <div className="mt-1 flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        onLoadProject(proj);
-                        onClose();
-                      }}
-                      className="flex-1 py-2 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>{t.projects.openInStudio}</span>
-                    </button>
-                    {/* Deliberately not the wide, inviting button beside it: a
-                        project is the only copy of an edit, and this is the one
-                        control here that cannot be undone. */}
-                    <button
-                      onClick={() => setPendingDelete({ id: proj.id, title: proj.title, kind: 'project' })}
-                      disabled={deletingId === proj.id}
-                      title={t.projects.deleteTitle(proj.title)}
-                      aria-label={t.projects.deleteAria(proj.title)}
-                      className="shrink-0 p-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-300 rounded-lg border border-slate-700 hover:border-red-500/40 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-                    >
-                      {deletingId === proj.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-              ))
+                  {t.projects.saveCurrent}
+                </button>
+              </div>
+            ) : (
+              <div role="table" aria-label={t.projects.heading}>
+                <ProjectListHeader />
+                {projectsList.filter(proj => matchesProject(proj, query)).map(proj => (
+                  <ProjectListRow
+                    key={proj.id}
+                    row={proj}
+                    rendered={renderedShapes(exportsList, proj.id)}
+                    deleting={deletingId === proj.id}
+                    onOpen={() => {
+                      onLoadProject(proj);
+                      onClose();
+                    }}
+                    onDelete={() => setPendingDelete({ id: proj.id, title: proj.title, kind: 'project' })}
+                  />
+                ))}
+                {projectsList.filter(proj => matchesProject(proj, query)).length === 0 && (
+                  <p className="py-8 text-center text-[13px] text-slate-400">{t.projects.noMatches(query.trim())}</p>
+                )}
+              </div>
             )
           ) : exportsList.length === 0 ? (
             <div className="text-center py-12 text-slate-400 text-xs">{t.projects.noExports}</div>
@@ -326,6 +323,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
             ))
           )}
         </div>
+        <p className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-400">{t.projects.footerNote}</p>
       </div>
     </Dialog>
 
