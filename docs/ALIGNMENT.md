@@ -155,6 +155,12 @@ The route that declined the jump claims `أَحْسَنَ ٱلْقَصَصِ ...
 far more, and `عَلَيْكَ` is then one stranded word between two parts of its own ayah, which is
 what orphan absorption is for.
 
+Orphan absorption caps how many words it takes back, because at the edges a reference range may
+simply run past what was recited. Between two claimed phrases that cannot be the case, so the cap
+there is larger (`MAX_INTERIOR_ORPHAN_WORDS`). At 4 it dropped the whole of
+`وَٱللَّهُ عَلَىٰ كُلِّ شَىْءٍ قَدِيرٌ` from Ali 'Imran 3:189, which shared a window with the start of
+3:190.
+
 "Mostly" is deliberate. A window the decoder garbled leaves a few words of the first pass
 unclaimed, and a reciter going back over them is still repeating.
 
@@ -191,6 +197,17 @@ Silence is found by rank (`ALIGN_QUIET_PERCENTILE`) rather than by an absolute d
 quiet a recording gets between phrases is largely a property of the room: at the same absolute
 threshold two clips here yielded 28 pauses and 4, and the second was not the one that paused
 less — it was the reverberant one.
+
+Even measured against the clip's own speech level, one drop does not fit every room. On
+`Abdullah_Almusa.mp3` (Ali 'Imran 3:187-195) the stops at ayah ends, which the reciter
+certainly took, fall only 8.4 dB under the speech level, while every other clip here stops
+12.7 dB down or further. At the usual 10 dB not one pause inside an ayah could register, and four
+real stops ran together. Lowering the drop for every clip helped that one and broke stops in
+three others. So each clip is first asked how quiet its own ayah ends get (`calibrated_drop`).
+Where they don't reach the usual drop, the drop follows them down, to within
+`ALIGN_STOP_LEVEL_MARGIN_DB` (0.5 dB) of their level. That takes three ayah ends at least, and
+the drop never goes below 6 dB. This happens inside the match, once the words are placed:
+nothing is run beforehand. It took that clip from 20 to 25 of 28 and changed no other clip.
 
 Two further rules fall out of getting this wrong once each. Quiet lying wholly inside a word is
 that word's own stop consonant, not a break. And silence must actually *separate* two words —

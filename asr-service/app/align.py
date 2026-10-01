@@ -978,6 +978,16 @@ BEAM_WIDTH = 10
 #: the audio from having whole ayahs swept into the nearest segment.
 MAX_ORPHAN_WORDS = 4
 
+#: The same, for words stranded *between* two claimed phrases. Those cannot be
+#: a reference range running past the audio -- recitation was heard on both
+#: sides of them -- so the cap above has nothing to protect there, and at four
+#: it dropped a whole recited clause: Ali 'Imran 3:189 ends وَٱللَّهُ عَلَىٰ كُلِّ شَىْءٍۢ
+#: قَدِيرٌ in the same window as the start of 3:190, the window was labelled
+#: 3:190 alone because a phrase never spans an ayah, and the five words left
+#: over vanished from the timeline while فِى was stretched across their audio.
+#: Still bounded by `MAX_PHRASE_WORDS` and by the same-ayah rule.
+MAX_INTERIOR_ORPHAN_WORDS = 8
+
 #: A phrase whose decoded text matches the reference this poorly is not part of
 #: the passage being aligned -- it is silence, an intro, a du'a, or a surah the
 #: caller isn't aligning. Emitting it anyway produced segments captioned with
@@ -1484,7 +1494,7 @@ def _absorb_orphan_words(
         next_start, next_end, next_score, next_phrase_start, next_phrase_end = repaired[i + 1]
 
         first, last = end + 1, next_start - 1
-        if last < first or last - first + 1 > MAX_ORPHAN_WORDS:
+        if last < first or last - first + 1 > MAX_INTERIOR_ORPHAN_WORDS:
             continue
         # A phrase never spans an ayah boundary, so only a neighbour in the
         # orphans' own ayah may take them.
@@ -2530,6 +2540,26 @@ MIN_WAQF_PAUSE_SEC = float(os.getenv("ALIGN_MIN_WAQF_PAUSE_SEC", "0.30"))
 #: of how much was kept.
 QUIET_DROP_DB = float(os.getenv("ALIGN_QUIET_DROP_DB", "10"))
 
+#: The drop above is how far a reciter's stops fall in most rooms, not in
+#: every one. In a reverberant recording they never get that quiet: on
+#: Abdullah_Almusa.mp3 (Ali 'Imran 3:187-195) the ayah-end stops -- stops the
+#: reciter certainly took -- bottom out 8.4 dB under the speech level, so not
+#: one pause inside an ayah could register and four real stops were run
+#: together. Every other clip here stops 12.7 dB down or further. So each clip
+#: is first asked how quiet its own ayah ends get, and where that is shallower
+#: than the drop, the drop follows it down to this margin above it. Where the
+#: ayah ends do reach the drop, nothing changes: lowering it for every clip
+#: instead (to 8 or 9 dB) helped this one and broke stops in three others.
+STOP_LEVEL_MARGIN_DB = float(os.getenv("ALIGN_STOP_LEVEL_MARGIN_DB", "0.5"))
+
+#: The fewest ayah ends a clip's stop level is read from. Fewer, and one odd
+#: join -- a reciter running straight on into the next ayah -- would set it.
+MIN_CALIBRATION_STOPS = 3
+
+#: However shallow a clip's stops, a pause still has to be this far under its
+#: speech level. Above it, the dips inside words would start to count.
+MIN_QUIET_DROP_DB = 6.0
+
 #: Quiet either side of a brief interruption is one pause. Drawing breath in
 #: the middle of a silence is audible, so the run of quiet frames breaks in two
 #: -- on one clip a plain 0.88s pause came back as 24 quiet frames out of 46
@@ -2685,7 +2715,7 @@ def _completed_by_what_follows(text: str) -> bool:
     return normalize_for_vocab(text) in _CANNOT_END_A_PHRASE
 
 
-def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
+def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02, drop: float = QUIET_DROP_DB) -> list[tuple[float, float]]:
     """Stretches where the reciter is not making sound.
 
     An unmarked break is corroborated against *this*, not against holes in the
@@ -2708,7 +2738,7 @@ def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, 
     if not len(frames):
         return []
     db = 20 * np.log10(frames + 1e-12)
-    threshold = float(np.percentile(db, 70)) - QUIET_DROP_DB
+    threshold = float(np.percentile(db, 70)) - drop
 
     runs: list[tuple[float, float]] = []
     run: int | None = None
@@ -2729,6 +2759,38 @@ def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, 
         else:
             merged.append([begin, end])
     return [(a, b) for a, b in merged if b - a >= MIN_PAUSE_SEC]
+
+
+def calibrated_drop(pcm: np.ndarray, aligned: list[AlignedWord], window_sec: float = 0.02) -> float:
+    """How far under this clip's speech level its own stops fall -- see `STOP_LEVEL_MARGIN_DB`.
+
+    Read at the ayah ends, from shortly before the last word is placed to end
+    until just after the next begins, since the aligner often stretches a word
+    over the silence that follows it. A stop's level is the one its quietest
+    0.2s stays under, which is the shortest pause `quiet_spans` keeps.
+    """
+    hop = max(1, int(window_sec * SAMPLE_RATE))
+    frames = np.array(
+        [np.sqrt(np.mean(pcm[i : i + hop] ** 2) + 1e-12) for i in range(0, max(1, len(pcm) - hop), hop)]
+    )
+    if not len(frames):
+        return QUIET_DROP_DB
+    db = 20 * np.log10(frames + 1e-12)
+    speech = float(np.percentile(db, 70))
+    quietest = int(round(MIN_PAUSE_SEC / window_sec))
+    levels = []
+    for word, nxt in zip(aligned, aligned[1:]):
+        if word.verse_key == nxt.verse_key:
+            continue
+        lo = max(0, int((word.end - 0.3) / window_sec))
+        hi = max(int((nxt.start + 0.1) / window_sec), lo + quietest + 5)
+        stop = np.sort(db[lo:hi])
+        if len(stop) >= quietest:
+            levels.append(float(stop[quietest - 1]) - speech)
+    if len(levels) < MIN_CALIBRATION_STOPS:
+        return QUIET_DROP_DB
+    reached = -float(np.median(levels)) - STOP_LEVEL_MARGIN_DB
+    return max(MIN_QUIET_DROP_DB, min(QUIET_DROP_DB, reached))
 
 
 def hushes(pcm: np.ndarray, window_sec: float = 0.02) -> list[tuple[float, float]]:
@@ -3200,12 +3262,16 @@ def align_recitation(
     # this placed all 177 words with a mean ayah-start error of 0.48s.
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
+    # Asked once the words are placed, because the ayah ends are where this
+    # clip's stops are known to be. See `calibrated_drop`.
+    drop = calibrated_drop(pcm, aligned)
+    if drop < QUIET_DROP_DB:
+        log.info("stops in this recording reach only %.1f dB down -- reading pauses at that depth", drop + STOP_LEVEL_MARGIN_DB)
+    quiet = quiet_spans(pcm, drop=drop)
     segments, spans = _segment_the_timeline(
-        aligned, script, duration, quiet_spans(pcm), repeated, hushes(pcm), BREAK_SCALES[breaks]
+        aligned, script, duration, quiet, repeated, hushes(pcm), BREAK_SCALES[breaks]
     )
-    segments = _close_gaps(
-        _extend_over_repeated_tail(segments, spans, ref_words, pcm), duration, quiet_spans(pcm)
-    )
+    segments = _close_gaps(_extend_over_repeated_tail(segments, spans, ref_words, pcm), duration, quiet)
 
     if decoded_phrases is None and align_backend() == "nemo":
         # Not free, but this is the only check that can catch a wrong ayah

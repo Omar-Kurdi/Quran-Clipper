@@ -89,5 +89,48 @@ check("the head and the remainder are the two halves of it", ok=align._halves_of
 check("the whole word and the next are not", ok=not align._halves_of("يَوَدُّوا", "لَوْ", "يَوَدُّوا۟"))
 check("nor is a head with nothing of the word after it", ok=not align._halves_of("يَوَدّ", "لَوْ", "يَوَدُّوا۟"))
 
+# ---------------------------------------------------------------------------
+# Words stranded between two phrases are recitation, however many
+# ---------------------------------------------------------------------------
+#
+# Ali 'Imran 3:189-190 recited by Abdullah Al-Mousa: one window held the end of
+# 3:189 and the start of 3:190, and was labelled 3:190 alone because a phrase
+# never spans an ayah. The five words of 3:189 it also held were claimed by
+# nothing, and five is one more than an edge may take back, so
+# وَٱللَّهُ عَلَىٰ كُلِّ شَىْءٍۢ قَدِيرٌ never reached the timeline.
+
+print("\n_absorb_orphan_words -- a clause stranded between two phrases")
+
+imran = corpus.words_for_range(3, 189, 190)
+spans = align._ayah_bounds(imran)
+first_189, last_189 = spans["3:189"]
+first_190 = spans["3:190"][0]
+stranded = [
+    (first_189, first_189 + 3, 1.0, 45.4, 53.0),  # 3:189:1-4
+    (first_190, first_190 + 10, 0.74, 53.0, 70.6),  # 3:190:1-11
+]
+decodes = [
+    "وَلِلَّهِ مُلْكُ السَّمَاوَاتِ وَالْأَرْضِ",
+    "وَاللَّهُ عَلَى كُلِّ شَيْءٍ قَدِيرٌ إِنَّ فِي خَلْقِ السَّمَاوَاتِ وَالْأَرْضِ وَاخْتِلَافِ اللَّيْلِ وَالنَّهَارِ لَآيَاتٍ لِأُولِي الْأَلْبَابِ",
+]
+repaired = align._absorb_orphan_words(stranded, decodes, imran)
+check(
+    "the five words of 3:189 go to the phrase of their own ayah",
+    ok=repaired[0][1] == last_189,
+    detail=f"3:189 phrase now ends at word {repaired[0][1] - first_189 + 1} of {last_189 - first_189 + 1}",
+)
+check(
+    "and 3:190 keeps exactly what it had",
+    ok=repaired[1][:2] == (first_190, first_190 + 10),
+)
+
+# The edge keeps its tighter cap: there the reference may simply run past what
+# was recited, which is the case `MAX_ORPHAN_WORDS` exists for.
+late = [(first_189 + 5, first_189 + 8, 1.0, 0.0, 5.0)]
+check(
+    "five words before the first phrase are still not swept in",
+    ok=align._absorb_orphan_words(late, decodes[1:], imran)[0][0] == first_189 + 5,
+)
+
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

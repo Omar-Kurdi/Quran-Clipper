@@ -13,7 +13,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "asr-service"))
 
+import numpy as np  # noqa: E402
+
 from app import align, corpus  # noqa: E402
+from app.audio import SAMPLE_RATE  # noqa: E402
 
 FAILED: list[str] = []
 
@@ -142,6 +145,48 @@ tahrim2 = [
 for setting, want in (("normal", [("66:2", 7, 8), ("66:2", 9, 10)]), ("fewer", [("66:2", 7, 10)])):
     segments, _ = align._segment_the_timeline(tahrim2, [6, 7, 8, 9], 3.3, pauses=[], bar_scale=align.BREAK_SCALES[setting])
     check(f"a stop mark on the alignment's gap alone, {setting}", ok=ranges(segments) == want, detail=f"got {ranges(segments)}")
+
+# A room whose stops never go quiet. Abdullah_Almusa.mp3 stops at every ayah
+# end only 8.4 dB under its speech level, short of the usual 10 dB, so no pause
+# inside an ayah could register at all. The clip's own ayah ends set the depth.
+print("\nhow quiet a stop is -- read from the clip's own ayah ends")
+
+
+def recitation(stop_db: float, ayahs: int = 5) -> tuple[np.ndarray, list[align.AlignedWord]]:
+    """Speech at a steady level, with a 0.6s stop at every ayah end `stop_db` under it."""
+    rng = np.random.default_rng(0)
+    speech, stop = 0.3, 0.3 * 10 ** (stop_db / 20)
+    parts, words, t = [], [], 0.0
+    for ayah in range(1, ayahs + 1):
+        parts.append(rng.normal(0, speech, int(2.0 * SAMPLE_RATE)))
+        words.append(word(f"1:{ayah}", 0, "كَلِمَة", t, t + 2.0))
+        parts.append(rng.normal(0, stop, int(0.6 * SAMPLE_RATE)))
+        t += 2.6
+    return np.concatenate(parts), words
+
+
+pcm, words = recitation(-25.0)
+check(
+    "a room whose stops reach the usual depth keeps it",
+    ok=align.calibrated_drop(pcm, words) == align.QUIET_DROP_DB,
+)
+pcm, words = recitation(-8.4)
+drop = align.calibrated_drop(pcm, words)
+check(
+    "a reverberant one is read at its own stops' depth",
+    ok=7.0 < drop < align.QUIET_DROP_DB,
+    detail=f"drop {drop:.1f} dB",
+)
+check(
+    "and those stops now count as pauses, where the usual drop finds none",
+    ok=len(align.quiet_spans(pcm, drop=drop)) >= 4 and not align.quiet_spans(pcm),
+    detail=f"{len(align.quiet_spans(pcm, drop=drop))} with the clip's drop, {len(align.quiet_spans(pcm))} without",
+)
+pcm, words = recitation(-8.4, ayahs=2)
+check(
+    "two ayah ends are too few to judge a room by",
+    ok=align.calibrated_drop(pcm, words) == align.QUIET_DROP_DB,
+)
 
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)
