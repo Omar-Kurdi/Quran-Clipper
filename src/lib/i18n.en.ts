@@ -153,7 +153,8 @@ export const en = {
     screenBreaksFewer: 'Fewer',
     screenBreaksNormal: 'Normal',
     screenBreaksMore: 'More',
-    screenBreaksHelp: 'How short a pause inside an ayah can be and still start a new caption. An ayah end always does. Applies to the next match.',
+    screenBreaksHelp: 'Fewer: a new caption only at long pauses. More: at short ones too. An ayah end always starts one. Applies to the next match.',
+    screenBreaksUploadsOnly: 'With published timings only, this applies to uploads, not built-in reciters.',
     matcherLocal: 'Local',
     matcherLocalTechnical: 'local forced alignment',
     matcherLocalBlurb:

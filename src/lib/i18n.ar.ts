@@ -152,7 +152,8 @@ export const ar: Dictionary = {
     screenBreaksFewer: 'أقل',
     screenBreaksNormal: 'عادي',
     screenBreaksMore: 'أكثر',
-    screenBreaksHelp: 'كم يقصر الوقف داخل الآية ويبدأ مع ذلك شريحة جديدة. أما نهاية الآية فتبدأ شريحة دائمًا. يُطبَّق على المطابقة التالية.',
+    screenBreaksHelp: '«أقل»: شريحة جديدة عند الوقفات الطويلة فقط. «أكثر»: عند القصيرة أيضًا. نهاية الآية تبدأ شريحة دائمًا. يُطبَّق على المطابقة التالية.',
+    screenBreaksUploadsOnly: 'مع التوقيتات المنشورة وحدها، يُطبَّق هذا على الملفات المرفوعة لا على القرّاء المدمجين.',
     matcherLocal: 'محلي',
     matcherLocalTechnical: 'المحاذاة القسرية المحلية',
     matcherLocalBlurb:

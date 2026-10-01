@@ -2542,26 +2542,37 @@ export default function VideoCreatorPage() {
 
                   {/* AI Matcher Provider */}
                   <div className="mb-3">
-                    <label id="matcher-label" className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.source.matcherLabel}</label>
-                    <div role="radiogroup" aria-labelledby="matcher-label" className="grid grid-cols-2 gap-2">
+                    {/* Native radios rather than buttons with role="radio": arrow
+                        keys, one Tab stop and the checked state come with them. */}
+                    <fieldset className="min-w-0">
+                    <legend className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.source.matcherLabel}</legend>
+                    <div className="grid grid-cols-2 gap-2">
                       {matchOptions.map(opt => {
                         const selected = matchProvider === opt.id;
+                        // A public studio offers no Gemini: the key is the
+                        // owner's, and the route refuses it anyway.
+                        const offline = studio.mode === 'public' && opt.id === 'gemini';
                         return (
-                          <button
+                          <label
                             key={opt.id}
-                            role="radio"
-                            aria-checked={selected}
-                            onClick={() => setMatchProvider(opt.id)}
-                            // A public studio offers no Gemini: the key is the
-                            // owner's, and the route refuses it anyway.
-                            disabled={studio.mode === 'public' && opt.id === 'gemini'}
-                            title={studio.mode === 'public' && opt.id === 'gemini' ? t.source.matcherOnlinePublic : t.source.matcherUses(opt.technical)}
-                            className={`py-2 px-2.5 rounded-lg border text-start flex items-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                            title={offline ? t.source.matcherOnlinePublic : t.source.matcherUses(opt.technical)}
+                            className={`py-2 px-2.5 rounded-lg border text-start flex items-center gap-1.5 transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
+                              offline ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                            } ${
                               selected
                                 ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
                                 : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
                             }`}
                           >
+                            <input
+                              type="radio"
+                              name="matcher"
+                              value={opt.id}
+                              checked={selected}
+                              disabled={offline}
+                              onChange={() => setMatchProvider(opt.id)}
+                              className="sr-only"
+                            />
                             <opt.Icon className={`w-3.5 h-3.5 shrink-0 ${opt.ready ? 'text-emerald-400' : 'text-slate-400'}`} />
                             <span className="flex-1 min-w-0">
                               <span className="block text-[11px] font-bold truncate">{opt.label}</span>
@@ -2569,10 +2580,11 @@ export default function VideoCreatorPage() {
                                 {opt.status}
                               </span>
                             </span>
-                          </button>
+                          </label>
                         );
                       })}
                     </div>
+                    </fieldset>
                     <p className="text-[11px] text-slate-400 mt-1.5">{selectedMatchOption.blurb}</p>
                     {matchProvider === 'qul' && (
                       <label className="flex items-start gap-2 mt-1.5 text-[11px] text-slate-300 cursor-pointer">
@@ -2589,27 +2601,37 @@ export default function VideoCreatorPage() {
                       </label>
                     )}
                     {matchProvider !== 'gemini' && (
-                      <div className="mt-2">
-                        <span id="screen-breaks-label" className="text-[11px] font-semibold text-slate-400 block mb-1">{t.source.screenBreaksLabel}</span>
-                        <div role="radiogroup" aria-labelledby="screen-breaks-label" className="grid grid-cols-3 gap-1.5">
+                      <fieldset className="mt-2 min-w-0">
+                        <legend className="text-[11px] font-semibold text-slate-400 block mb-1">{t.source.screenBreaksLabel}</legend>
+                        <div className="grid grid-cols-3 gap-1.5">
                           {SCREEN_BREAKS.map((level, index) => (
-                            <button
+                            <label
                               key={level}
-                              role="radio"
-                              aria-checked={screenBreaks === level}
-                              onClick={() => screenBreaksPreference.set(index - 1)}
-                              className={`py-1 rounded-md border text-[11px] font-bold transition-all ${
+                              className={`py-1 rounded-md border text-center text-[11px] font-bold transition-all cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
                                 screenBreaks === level
                                   ? 'bg-amber-500/15 border-amber-500 text-slate-100'
                                   : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
                               }`}
                             >
+                              <input
+                                type="radio"
+                                name="screen-breaks"
+                                value={level}
+                                checked={screenBreaks === level}
+                                onChange={() => screenBreaksPreference.set(index - 1)}
+                                className="sr-only"
+                              />
                               {level === 'fewer' ? t.source.screenBreaksFewer : level === 'more' ? t.source.screenBreaksMore : t.source.screenBreaksNormal}
-                            </button>
+                            </label>
                           ))}
                         </div>
                         <p className="text-[11px] text-slate-400 mt-1">{t.source.screenBreaksHelp}</p>
-                      </div>
+                        {/* Built-in reciters timed from published timings alone
+                            never reach the aligner, so the setting cannot touch them. */}
+                        {matchProvider === 'qul' && skipAlignerSetting && (
+                          <p className="text-[11px] text-slate-300 mt-1">{t.source.screenBreaksUploadsOnly}</p>
+                        )}
+                      </fieldset>
                     )}
                     {!selectedMatchOption.ready && selectedMatchOption.fix && (
                       <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
