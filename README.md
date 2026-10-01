@@ -160,12 +160,15 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   files cannot survive a reload, so their names are kept instead, which at least says what to
   pick again.
 - **<kbd>?</kbd> lists every keyboard shortcut.**
-- **A three-step tour** on the first visit points at the Source tab, the timeline and the Style
-  tab in turn. It is offered once; *Take the tour* under *How it works*, or in the header's Help
-  menu, brings it back.
-- **Works on a phone.** Below tablet width one surface shows at a time (Source, Preview, Edit),
-  the header keeps Undo and Export in reach and moves the rest, Help included, into its ⋯ menu,
-  and the timeline's edge handles are wider under a finger.
+- **No tour to sit through.** The panel's tabs are in working order and the sample says what to
+  do; *How it works*, in the header's Help menu, lays the six steps out for whoever asks.
+- **Works on a phone.** The bottom bar is the same Source / Captions / Style as on a desktop. On
+  Captions and Style the preview stays pinned above the panel, over a slimmer timeline; on Source
+  the form gets the whole height. The header keeps Undo and Export in reach and moves the rest,
+  Help included, into its ⋯ menu, and the timeline's edge handles are wider under a finger.
+- **Projects** is a dialog of its own: search by surah, reciter or file, **New clip**, and a row
+  per clip with its frame shape, passage, audio, length, the shapes it was rendered in and when
+  it was last edited. Rendered videos are a tab of the same dialog.
 - **Background blur on the GPU where that is faster.** The first blurred frame times the canvas
   blur against a WebGL one and keeps whichever is quicker in this browser. Where Chrome already
   draws canvases on the GPU the two are within a millisecond and the canvas blur stays; where it
@@ -989,7 +992,7 @@ src/app/                     Next.js pages and API routes
   video-creator/             The studio page
 src/components/              VideoCanvas, Timeline, Inspector (the Captions tab),
                              StyleConfigPanel, StyleSection, PanelTabs, FrameBar, GpuExportModal,
-                             ExportChoices, SavedProjectsDrawer, AudioTrimModal,
+                             ExportChoices, SavedProjectsDrawer (Projects), ProjectList, HowItWorksDialog, AudioTrimModal,
                              TranslationPicker, TranslationChooser, ShortcutsDialog,
                              HealthStrip, ColorField, Dialog, ConfirmDialog, Button, Status,
                              OverflowMenu, PaletteSwitcher, LocaleProvider, LanguageSwitcher
@@ -1021,6 +1024,7 @@ src/lib/
   exportPresets.ts           Platform, tier and frame rate -> one export plan
   exportQueue.ts             Several renders in a row: order, cancel, per-shape file names
   exportRoute.ts             Whether an export renders now, through the queue, or on the server
+  projectSearch.ts           Finding a saved clip, and the shapes it was rendered in
   frame.ts                   The platform the frame is shaped for, and what its app covers
   stylePresets.ts            The Style tab's whole-look presets
   batchMatch.ts              Matching several recordings, one after another
