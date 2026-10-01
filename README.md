@@ -18,7 +18,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio with a matched recording: the Captions tab on the left showing a caption marked for checking and its words, the preview with the frame bar above it, and the timeline across the bottom with the captions to check marked.">
 </p>
-<p align="center"><sub>One screen: the working panel (Source, Captions, Style), the preview, the timeline. Five themes ship, switchable at runtime from the header's ⋯ menu.</sub></p>
+<p align="center"><sub>One screen: the working panel (Source, Captions, Style), the preview, the timeline. Seven themes ship, switchable at runtime from the header's ⋯ menu.</sub></p>
 
 ---
 

@@ -57,14 +57,18 @@ export const en = {
       slate: 'Slate & Amber',
       mushaf: 'Mushaf',
       graphite: 'Graphite',
-      verdigris: 'Verdigris'
+      verdigris: 'Verdigris',
+      maghrib: 'Maghrib',
+      qahwa: 'Qahwa'
     },
     notes: {
-      nocturne: 'Navy and pearl',
+      nocturne: 'Navy and moonlight',
       slate: 'The original',
       mushaf: 'Gold and lapis',
       graphite: 'Neutral grey',
-      verdigris: 'Green and brass'
+      verdigris: 'Green and brass',
+      maghrib: 'Plum dusk and sunset coral',
+      qahwa: 'Roasted brown and cardamom'
     }
   },
 

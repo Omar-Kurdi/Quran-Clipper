@@ -16,11 +16,13 @@ import { useT } from './LocaleProvider';
  * three colours either way.
  */
 export const PALETTES = [
-  { id: 'nocturne', swatches: ['#0a0f1a', '#b8c7dc', '#56b6c2'] },
+  { id: 'nocturne', swatches: ['#0a0f1a', '#8fb3e8', '#56b6c2'] },
   { id: 'slate', swatches: ['#020617', '#f59e0b', '#34d399'] },
   { id: 'mushaf', swatches: ['#12101a', '#c9a227', '#3d6bc4'] },
   { id: 'graphite', swatches: ['#131315', '#b9975b', '#6f9bc4'] },
-  { id: 'verdigris', swatches: ['#0d1412', '#b8944d', '#5eb39b'] }
+  { id: 'verdigris', swatches: ['#0d1412', '#b8944d', '#5eb39b'] },
+  { id: 'maghrib', swatches: ['#150f17', '#e8916f', '#9d8fe0'] },
+  { id: 'qahwa', swatches: ['#15110d', '#d9a55b', '#7fb8a4'] }
 ] as const;
 
 const STORAGE_KEY = 'qc-palette';

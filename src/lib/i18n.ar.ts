@@ -56,14 +56,18 @@ export const ar: Dictionary = {
       slate: 'أردوازي وعنبري',
       mushaf: 'مصحف',
       graphite: 'جرافيت',
-      verdigris: 'زنجاري'
+      verdigris: 'زنجاري',
+      maghrib: 'مغرب',
+      qahwa: 'قهوة'
     },
     notes: {
-      nocturne: 'كحلي ولؤلؤي',
+      nocturne: 'كحلي وضوء القمر',
       slate: 'المظهر الأصلي',
       mushaf: 'ذهبي ولازوردي',
       graphite: 'رمادي محايد',
-      verdigris: 'أخضر ونحاسي'
+      verdigris: 'أخضر ونحاسي',
+      maghrib: 'بنفسجي الغسق ومرجاني الغروب',
+      qahwa: 'بنّي محمَّص وهيل'
     }
   },
 

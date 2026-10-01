@@ -9,22 +9,10 @@
    header and restored before first paint by the inline script in layout.tsx.
 
    Slate & Amber is the default and is bound to bare `:root` as well, so the
-   app still paints correctly if the attribute is ever missing.
+   app still paints correctly if the attribute is ever missing. That block has
+   to come first: `:root` and `[data-palette=…]` weigh the same, so any palette
+   written above it is silently overridden by the default.
    --------------------------------------------------------------------------- */
-[data-palette="nocturne"] {
-  --p-bg: #0a0f1a;
-  --p-surface: #121a2a;
-  --p-edge: #1f2b40;
-  --p-muted: #8497b0;
-  --p-text: #e8eef7;
-  --p-accent: #b8c7dc;
-  --p-accent-bright: #d6e0ee;
-  --p-live: #56b6c2;
-  --p-live-bright: #7fd3dd;
-  --p-success: #5fb59b;
-  --p-error: #e06c75;
-}
-
 :root,
 [data-palette="slate"] {
   --p-bg: #020617;
@@ -38,6 +26,20 @@
   --p-live-bright: #6ee7b7;
   --p-success: #34d399;
   --p-error: #ef4444;
+}
+
+[data-palette="nocturne"] {
+  --p-bg: #0a0f1a;
+  --p-surface: #121a2a;
+  --p-edge: #1f2b40;
+  --p-muted: #8497b0;
+  --p-text: #e8eef7;
+  --p-accent: #8fb3e8;
+  --p-accent-bright: #b3cdf2;
+  --p-live: #56b6c2;
+  --p-live-bright: #7fd3dd;
+  --p-success: #5fb59b;
+  --p-error: #e06c75;
 }
 
 [data-palette="mushaf"] {
@@ -80,6 +82,34 @@
   --p-live-bright: #82ccb7;
   --p-success: #5eb39b;
   --p-error: #c4614e;
+}
+
+[data-palette="maghrib"] {
+  --p-bg: #150f17;
+  --p-surface: #1f1722;
+  --p-edge: #302535;
+  --p-muted: #a394a8;
+  --p-text: #f2e9ee;
+  --p-accent: #e8916f;
+  --p-accent-bright: #f2ae92;
+  --p-live: #9d8fe0;
+  --p-live-bright: #bdb3ee;
+  --p-success: #6fb59a;
+  --p-error: #e05d6f;
+}
+
+[data-palette="qahwa"] {
+  --p-bg: #15110d;
+  --p-surface: #201a14;
+  --p-edge: #33291f;
+  --p-muted: #a8998a;
+  --p-text: #f1e8dc;
+  --p-accent: #d9a55b;
+  --p-accent-bright: #e8bf7f;
+  --p-live: #7fb8a4;
+  --p-live-bright: #a3d0bf;
+  --p-success: #8bb174;
+  --p-error: #cf6a52;
 }
 
 /* ---------------------------------------------------------------------------
