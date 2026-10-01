@@ -77,7 +77,12 @@ export const en = {
     undoTitle: 'Undo the last change (Ctrl+Z)',
     redo: 'Redo',
     redoTitle: 'Redo the last undone change (Ctrl+Shift+Z)',
-    savedClips: 'Saved clips',
+    savedClips: 'Projects',
+    saveToProjects: 'Save to Projects',
+    draftKept: (when: string) => `Kept in this browser · ${when}`,
+    notSavedYet: 'Not saved yet',
+    help: 'Help',
+    moreMenu: 'More: theme, language and tools',
     saveProject: 'Save project',
     saveProjectTitle: 'Save this clip to the saved-projects list',
     healthDatabase: 'Database',
@@ -110,6 +115,14 @@ export const en = {
     inspector: 'Inspector',
     edit: 'Edit',
     switchView: 'Switch view'
+  },
+
+  panel: {
+    label: 'Workflow',
+    source: 'Source',
+    captions: 'Captions',
+    style: 'Style',
+    toCheck: (count: number) => `${count} to check`
   },
 
   source: {

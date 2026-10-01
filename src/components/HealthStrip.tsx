@@ -69,7 +69,7 @@ export const HealthStrip: React.FC = () => {
       : report.aligner.state;
 
   return (
-    <div className="hidden xl:flex items-center gap-3 ms-3 ps-4 border-s border-slate-800">
+    <div className="flex items-center gap-3 px-2.5 py-2">
       {dot(
         report ? report.database.state : 'unknown',
         t.header.healthDatabase,

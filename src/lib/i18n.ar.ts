@@ -76,7 +76,12 @@ export const ar: Dictionary = {
     undoTitle: 'التراجع عن آخر تغيير (Ctrl+Z)',
     redo: 'إعادة',
     redoTitle: 'إعادة آخر تغيير تم التراجع عنه (Ctrl+Shift+Z)',
-    savedClips: 'المقاطع المحفوظة',
+    savedClips: 'المشاريع',
+    saveToProjects: 'احفظ في المشاريع',
+    draftKept: when => `محفوظ في هذا المتصفح · ${when}`,
+    notSavedYet: 'لم يُحفظ بعد',
+    help: 'مساعدة',
+    moreMenu: 'المزيد: المظهر واللغة والأدوات',
     saveProject: 'حفظ المشروع',
     saveProjectTitle: 'حفظ هذا المقطع في قائمة المشاريع',
     healthDatabase: 'قاعدة البيانات',
@@ -109,6 +114,14 @@ export const ar: Dictionary = {
     inspector: 'المحرر',
     edit: 'تحرير',
     switchView: 'تبديل العرض'
+  },
+
+  panel: {
+    label: 'سير العمل',
+    source: 'المصدر',
+    captions: 'الشرائح',
+    style: 'التنسيق',
+    toCheck: count => `${count} للمراجعة`
   },
 
   source: {

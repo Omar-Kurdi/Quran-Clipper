@@ -31,7 +31,8 @@ const SCREEN_BREAKS: ScreenBreaks[] = ['fewer', 'normal', 'more'];
  */
 const SHOW_DEV_TOOLS =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEV_TOOLS === '1';
-import { PaletteSwitcher } from '@/components/PaletteSwitcher';
+import { PaletteList } from '@/components/PaletteSwitcher';
+import { PanelTabs, type PanelTab } from '@/components/PanelTabs';
 import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
@@ -45,7 +46,7 @@ import {
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
 import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
-import { nextToCheck } from '@/lib/captionChecks';
+import { nextToCheck, captionChecks } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
@@ -81,7 +82,6 @@ import { applyContentSync } from '@/lib/contentSyncCore';
 import type { CorpusVerse } from '@/lib/quranCorpus';
 import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
 import { InspectorSkeleton } from '@/components/Skeleton';
-import { DICTIONARIES, LOCALES } from '@/lib/i18n';
 import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
 import { tourSeen, rememberTourSeen } from '@/lib/tourSeen';
 import { BatchMatchDialog } from '@/components/BatchMatchDialog';
@@ -104,9 +104,7 @@ import {
   Music, 
   BookOpen, 
   Layers,
-  Languages,
   Library,
-  Check, 
   Video,
   Server,
   Scissors,
@@ -117,7 +115,8 @@ import {
   ClipboardCheck,
   Undo2,
   Redo2,
-  Keyboard
+  Keyboard,
+  HelpCircle
 } from 'lucide-react';
 
 /** What "Save" reports, by where the project went: see `projectStore`. */
@@ -131,7 +130,7 @@ function savedStatusText(
 }
 
 export default function VideoCreatorPage() {
-  const { locale, setLocale, t } = useLocale();
+  const { locale, t } = useLocale();
   // Personal or public, and which fonts this server has -- see `/api/studio`.
   const studio = useStudioConfig();
 
@@ -375,8 +374,12 @@ export default function VideoCreatorPage() {
    */
 
   // UI Tabs & Drawer
-  /** Which ayah the timeline and inspector are focused on. */
-  const [inspectorTab, setInspectorTab] = useState<'ayah' | 'style'>('ayah');
+  /**
+   * Which tab the working panel shows. One panel with three tabs replaced a
+   * Source column and an Inspector column: Source is used once per clip, and
+   * keeping it on screen for good left the preview the least room.
+   */
+  const [panelTab, setPanelTab] = useState<PanelTab>('source');
   const [isProjectsDrawerOpen, setIsProjectsDrawerOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
 
@@ -1505,12 +1508,24 @@ export default function VideoCreatorPage() {
 
   const handleMarkHere = useCallback(() => edit.markHere(currentTime), [edit, currentTime]);
 
+  /**
+   * A caption picked on the timeline opens in the Captions tab -- except from
+   * Style, where clicking through captions is how a look is checked against
+   * each of them, and being sent away from the controls would undo that.
+   */
+  const selectCaption = (index: number) => {
+    setSelectedIndex(index);
+    setPanelTab(tab => (tab === 'style' ? tab : 'captions'));
+  };
+
   /** Selects the next caption marked for checking and puts the playhead on it. */
   const goToNextCheck = useCallback(() => {
     const next = nextToCheck(verses, selectedIndex);
     if (next === null) return;
     setSelectedIndex(next);
     handleSeek(verses[next].startTime);
+    // Reviewing is the Captions tab's job, so the caption opens there.
+    setPanelTab('captions');
   }, [verses, selectedIndex, setSelectedIndex, handleSeek]);
 
   useTransportKeys({
@@ -1766,7 +1781,7 @@ export default function VideoCreatorPage() {
    * about 180px. Below `md` one surface is shown at a time instead. It opens
    * on Source, where making a clip starts.
    */
-  const [mobileSurface, setMobileSurface] = useState<'source' | 'preview' | 'inspect'>('source');
+  const [mobileSurface, setMobileSurface] = useState<'panel' | 'preview'>('panel');
 
   /**
    * The first-visit walkthrough. Offered once per interface language, on its
@@ -1787,48 +1802,26 @@ export default function VideoCreatorPage() {
     rememberTourSeen(locale);
     // Finished or skipped, a phone is left where the first step said to start,
     // not on whichever surface the tour last showed.
-    setMobileSurface('source');
+    setMobileSurface('panel');
+    setPanelTab('source');
   };
   const tourSteps: TourStep[] = [
-    { target: 'source', tab: 'tab-source', title: t.tour.sourceTitle, body: t.tour.sourceBody, compactBody: t.tour.sourceBodyCompact },
+    { target: 'panel', tab: 'tab-source', title: t.tour.sourceTitle, body: t.tour.sourceBody, compactBody: t.tour.sourceBodyCompact },
     { target: 'timeline', title: t.tour.timelineTitle, body: t.tour.timelineBody, compactBody: t.tour.timelineBodyCompact },
-    { target: 'style', tab: 'tab-inspect', title: t.tour.styleTitle, body: t.tour.styleBody }
+    { target: 'panel', tab: 'tab-inspect', title: t.tour.styleTitle, body: t.tour.styleBody }
   ];
   /** On a phone one surface shows at a time: bring each step's into view. */
   const showTourStep = (index: number) => {
-    if (index === 0) setMobileSurface('source');
-    if (index === 1) setMobileSurface('preview');
-    if (index === 2) {
-      setMobileSurface('inspect');
-      setInspectorTab('style');
+    if (index === 1) {
+      setMobileSurface('preview');
+      return;
     }
+    setMobileSurface('panel');
+    setPanelTab(index === 0 ? 'source' : 'style');
   };
 
-  const otherLocale = LOCALES.find(id => id !== locale) ?? locale;
-  const headerOverflowItems: OverflowItem[] = [
-    // Only reaches the menu below `sm`, where the switcher itself is hidden;
-    // above that the header has room for it and this entry is redundant but harmless.
-    {
-      key: 'language',
-      label: DICTIONARIES[otherLocale].languageName,
-      icon: <Languages className="w-4 h-4" />,
-      onSelect: () => setLocale(otherLocale)
-    },
-    {
-      key: 'saved',
-      label: t.header.savedClips,
-      icon: <FolderOpen className="w-4 h-4" />,
-      onSelect: () => setIsProjectsDrawerOpen(true)
-    },
-    ...(customAudioFile
-      ? [{
-          key: 'trim',
-          label: t.header.trimAudio,
-          hint: customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined,
-          icon: <Scissors className="w-4 h-4" />,
-          onSelect: () => setShowTrimModal(true)
-        }]
-      : []),
+  /** Help: learning the studio, kept apart from the tools in the ⋯ menu. */
+  const helpItems: OverflowItem[] = [
     {
       key: 'tour',
       label: t.tour.open,
@@ -1840,15 +1833,59 @@ export default function VideoCreatorPage() {
       label: t.shortcuts.open,
       icon: <Keyboard className="w-4 h-4" />,
       onSelect: () => setIsShortcutsOpen(true)
+    }
+  ];
+  /**
+   * Everything secondary, so Export is the one primary action in the bar.
+   * Projects and Save show here only below the widths where the header carries
+   * them itself.
+   */
+  const moreItems: OverflowItem[] = [
+    ...helpItems.map(item => ({ ...item, className: 'sm:hidden' })),
+    {
+      key: 'saved',
+      label: t.header.savedClips,
+      icon: <FolderOpen className="w-4 h-4" />,
+      onSelect: () => setIsProjectsDrawerOpen(true),
+      className: 'sm:hidden'
     },
     {
       key: 'save',
-      label: t.header.saveProject,
+      label: t.header.saveToProjects,
       hint: saveStatus?.detail || saveStatus?.text,
       icon: <Save className="w-4 h-4" />,
-      onSelect: handleSaveProject
-    }
+      onSelect: handleSaveProject,
+      className: 'md:hidden'
+    },
+    ...(customAudioFile
+      ? [{
+          key: 'trim',
+          label: t.header.trimAudio,
+          hint: customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined,
+          icon: <Scissors className="w-4 h-4" />,
+          onSelect: () => setShowTrimModal(true)
+        }]
+      : []),
+    // A development tool, not a feature: the file it writes is only useful
+    // next to this repo's `gauge.sh`. Shown while developing, hidden in a
+    // production build.
+    ...(SHOW_DEV_TOOLS && verses.length > 0
+      ? [{
+          key: 'ground-truth',
+          label: t.header.groundTruth,
+          hint: t.header.groundTruthTitle,
+          icon: <ClipboardCheck className="w-4 h-4" />,
+          onSelect: () => void handleDownloadGroundTruth()
+        }]
+      : [])
   ];
+  /** How many captions are marked for checking, for the Captions tab's badge. */
+  const toCheckCount = useMemo(() => verses.filter(verse => captionChecks(verse).length > 0).length, [verses]);
+  /** The header's second line: where the work is kept right now. */
+  const saveLine = saveStatus?.text
+    ?? (draftSavedAt !== null
+      ? t.header.draftKept(new Date(draftSavedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }))
+      : t.header.notSavedYet);
 
 
   /**
@@ -2271,40 +2308,57 @@ export default function VideoCreatorPage() {
         {t.header.pageTitle(surahNameEnglish, selectedSurah, ayahStart, ayahEnd)}
       </h1>
 
-      {/* Top Navbar */}
+      {/* Top Navbar.
+
+          One primary action, Export. Everything else is either the project
+          itself (its name and where it is kept, on the left) or secondary
+          (Projects, Help, and the ⋯ menu holding theme, language and tools).
+          Ten controls of equal weight used to compete with Export here. */}
       <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-2 sm:px-4 flex items-center justify-between gap-2 shrink-0 z-30">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           {/* Not a link. The studio is the only page, so the wordmark had
               nowhere to go -- and because the whole project lives in component
               state, clicking it navigated away and silently discarded unsaved
               work. */}
-          <span className="flex items-baseline gap-2">
-            <span className="font-display text-xl leading-none text-parchment">{t.header.wordmark}</span>
-            <span className="hidden sm:inline text-[11px] uppercase tracking-[0.22em] text-gold">{t.header.wordmarkSuffix}</span>
-          </span>
+          <span className="font-display text-xl leading-none text-parchment truncate">{t.header.wordmark}</span>
 
-          {/* The reference, set the way a mushaf cites itself: surah name, then
-              the ayah span. Mono keeps the numerals aligned as they change. */}
-          <div className="hidden md:flex items-baseline gap-2.5 ms-3 ps-4 border-s border-slate-800">
-            <span className="font-display text-base text-parchment/90">
-              {locale === 'ar' ? currentSurahObj.nameArabic : surahNameEnglish}
-            </span>
-            <span className="font-mono text-[11px] text-gold tracking-wider" dir="ltr">
-              {selectedSurah}:{ayahStart}&ndash;{ayahEnd}
-            </span>
+          {/* The clip: the reference set the way a mushaf cites itself, who
+              recites it, and where the work is kept right now. */}
+          <div className="hidden md:flex flex-col min-w-0 ms-1 ps-4 border-s border-slate-800">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span className="font-display text-base text-parchment/90 truncate">
+                {locale === 'ar' ? currentSurahObj.nameArabic : surahNameEnglish}
+              </span>
+              <span className="font-mono text-[11px] text-gold tracking-wider shrink-0" dir="ltr">
+                {selectedSurah}:{ayahStart}&ndash;{ayahEnd}
+              </span>
+              <span className="text-xs text-slate-400 truncate">
+                {customAudioFile ? customAudioName : selectedReciterMeta?.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
+              {saveStatus?.kind === 'pending' ? (
+                <Loader2 className="w-3 h-3 text-amber-400 animate-spin shrink-0" />
+              ) : saveStatus?.kind === 'error' ? (
+                <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+              ) : (
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${saveStatus?.kind === 'ok' || draftSavedAt !== null ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+              )}
+              <span className={`truncate ${saveStatus?.kind === 'error' ? 'text-red-300' : ''}`} title={saveStatus?.detail}>{saveLine}</span>
+              <span aria-hidden="true">·</span>
+              <button
+                onClick={handleSaveProject}
+                title={t.header.saveProjectTitle}
+                className="shrink-0 text-amber-400 hover:text-amber-300 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded"
+              >
+                {t.header.saveToProjects}
+              </button>
+            </div>
           </div>
-
-          <HealthStrip />
         </div>
 
-        {/* Action Controls Header.
-
-            Below `lg` the secondary actions collapse into an overflow menu so
-            the primary one keeps its place: five side-by-side controls pushed
-            Export to 42% visible at 375px and made the bar scroll sideways
-            with nothing to indicate it. */}
         <div className="flex items-center gap-2">
-          {/* Outside the `lg` group on purpose: undoing a mis-drag is not a
+          {/* Outside the menus on purpose: undoing a mis-drag is not a
               secondary action, and it is the one control that has to be there
               the moment something goes wrong. */}
           <div className="flex items-center gap-1">
@@ -2324,83 +2378,28 @@ export default function VideoCreatorPage() {
             />
           </div>
 
-          {/* On a phone the language moves into the menu: at 375px the bar
-              cannot hold it and Export both, and Export is the one that matters. */}
           <div className="hidden sm:block">
-            <LanguageSwitcher />
-          </div>
-
-          <div className="hidden lg:flex items-center gap-2">
-            <PaletteSwitcher />
-
-            <Button
-              onClick={() => setIsShortcutsOpen(true)}
-              title={t.shortcuts.openTitle}
-              aria-label={t.shortcuts.dialogLabel}
-              icon={<Keyboard className="w-3.5 h-3.5 text-amber-400" />}
-            />
-
             <Button onClick={() => setIsProjectsDrawerOpen(true)} icon={<FolderOpen className="w-3.5 h-3.5 text-amber-400" />}>
               {t.header.savedClips}
             </Button>
-
-            {/* Trimming is not a step you do once up front -- wanting to shave a
-                second off the end after matching and editing is normal, and the
-                timeline survives it. Keep it reachable from every step rather
-                than only from the upload panel back in Quran & Reciter. */}
-            {customAudioFile && (
-              <Button
-                onClick={() => setShowTrimModal(true)}
-                title={t.header.trimAudioTitle}
-                icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />}
-              >
-                {customAudioDuration > 0
-                  ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
-                  : t.header.trimAudio}
-              </Button>
-            )}
-
-            {/* A development tool, not a feature.
-
-                The file it writes is only useful next to this repo's
-                `gauge.sh`, and an end user who clicks it gets a text file in
-                their Downloads folder that means nothing to them and never
-                reaches anyone who could act on it -- there is no upload path
-                and no telemetry, by design. So it is shown while developing
-                and hidden in a production build. Deleting this condition is
-                all it takes to put it back. */}
-            {SHOW_DEV_TOOLS && (
-              <Button
-                onClick={() => void handleDownloadGroundTruth()}
-                disabled={verses.length === 0}
-                title={t.header.groundTruthTitle}
-                icon={<ClipboardCheck className="w-3.5 h-3.5 text-sky-400" />}
-              >
-                {t.header.groundTruth}
-              </Button>
-            )}
-
-            <Button
-              onClick={handleSaveProject}
-              title={saveStatus?.detail || t.header.saveProjectTitle}
-              icon={saveStatus?.kind === 'ok' ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-              ) : saveStatus?.kind === 'error' ? (
-                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-              ) : saveStatus?.kind === 'pending' ? (
-                <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-              ) : (
-                <Save className="w-3.5 h-3.5 text-amber-400" />
-              )}
-              className={saveStatus?.kind === 'error' ? 'text-red-300' : undefined}
-            >
-              {saveStatus?.text || t.header.saveProject}
-            </Button>
           </div>
 
-          <div className="lg:hidden">
-            <OverflowMenu items={headerOverflowItems} />
+          {/* On a phone the bar holds undo, ⋯ and Export only; Help's
+              entries join the ⋯ menu there. */}
+          <div className="hidden sm:block">
+            <OverflowMenu items={helpItems} label={t.header.help} icon={<HelpCircle className="w-4 h-4" />} />
           </div>
+          <OverflowMenu
+            items={moreItems}
+            label={t.header.moreMenu}
+            footer={
+              <>
+                <div className="px-2.5 py-2"><LanguageSwitcher /></div>
+                <PaletteList />
+                <div className="mt-1 border-t border-slate-800"><HealthStrip /></div>
+              </>
+            }
+          />
 
           <Button variant="primary" size="md" onClick={() => setIsExportModalOpen(true)} icon={<Sparkles className="w-4 h-4 fill-current" />}>
             {t.header.export}
@@ -2410,26 +2409,32 @@ export default function VideoCreatorPage() {
 
       {/* Studio workspace.
 
-          Three columns over one full-width timeline. The previous layout put
-          the entire product -- source form, timeline and styling -- through a
-          single 420px column, which is why the timeline could not show time and
-          why the styling step showed four cards in a screen of empty space.
-          Each surface now gets the shape its content actually needs. */}
+          One working panel and the preview, over one full-width timeline. The
+          panel's tabs follow the order a clip is made -- Source, Captions,
+          Style -- and every tab stays reachable at any time. It replaced a
+          Source column and an Inspector column, which kept the once-per-clip
+          Source form on screen for good and left the preview the least room. */}
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="flex-1 flex overflow-hidden min-h-0">
 
-          {/* Source */}
+          {/* Working panel */}
           <aside
-            data-tour="source"
-            aria-label={t.surfaces.source}
-            className={`w-full lg:w-[340px] shrink-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
-              mobileSurface === 'source' ? 'flex' : 'hidden'
+            data-tour="panel"
+            aria-label={t.panel.label}
+            className={`w-full lg:w-[400px] shrink-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
+              mobileSurface === 'panel' ? 'flex' : 'hidden'
             } lg:flex`}
           >
-            <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800">
-              {t.surfaces.source}
-            </h2>
-            <div className="flex-1 overflow-y-auto p-3">
+            <PanelTabs value={panelTab} onChange={setPanelTab} toCheck={toCheckCount} />
+            {/* Source stays mounted while hidden, so a half-filled form or a
+                pending upload is where it was left on coming back. */}
+            <div
+              id="panel-source"
+              role="tabpanel"
+              aria-labelledby="panel-tab-source"
+              hidden={panelTab !== 'source'}
+              className="flex-1 overflow-y-auto p-3"
+            >
               {pendingDraft && (
                 <div className="mb-3 rounded-lg border border-lapis-bright/40 bg-lapis-bright/10 p-2.5 text-[11px] text-slate-200 flex flex-col gap-2">
                   <div className="flex items-start gap-2">
@@ -2978,6 +2983,49 @@ export default function VideoCreatorPage() {
                 )}
               </div>
             </div>
+            {panelTab === 'captions' && (
+              <div id="panel-captions" role="tabpanel" aria-labelledby="panel-tab-captions" className="flex-1 overflow-y-auto">
+                {isLoadingVerses ? (
+                  <InspectorSkeleton />
+                ) : (
+                  <Inspector
+                    verses={verses}
+                    index={selectedIndex}
+                    isActive={selectedIndex === activeVerseIndex}
+                    onText={edit.text}
+                    translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
+                    onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
+                    onTranslationText={edit.translationText}
+                    translationFollowsWords={!!canvasConfig.translationFollowsWords}
+                    onTranslationFollowsWords={follows =>
+                      setCanvasConfig(prev => ({ ...prev, translationFollowsWords: follows }))}
+                    onVerseNumber={edit.verseNumber}
+                    onToggleWord={edit.toggleWord}
+                    onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration, rippleEdits)}
+                    onReorder={edit.reorder}
+                    onDuplicate={() => edit.duplicate(audioDuration)}
+                    onDelete={edit.remove}
+                    onAdd={edit.add}
+                    currentTime={currentTime}
+                    onSplit={() => edit.split(currentTime)}
+                    onMerge={edit.merge}
+                    onChecked={edit.checked}
+                  />
+                )}
+              </div>
+            )}
+            {panelTab === 'style' && (
+              <div id="panel-style" role="tabpanel" aria-labelledby="panel-tab-style" className="flex-1 overflow-y-auto">
+                <StyleConfigPanel
+                  config={canvasConfig}
+                  onChangeConfig={setCanvasConfig}
+                  clipDuration={audioDuration}
+                  laneBlocks={bgSegments}
+                  selectedBackground={activeBackground}
+                  onSelectBackground={setSelectedBackground}
+                />
+              </div>
+            )}
           </aside>
 
           {/* Preview */}
@@ -3032,68 +3080,6 @@ export default function VideoCreatorPage() {
           )}
           </main>
 
-          {/* Inspector */}
-          <aside
-            data-tour="style"
-            aria-label={t.surfaces.inspector}
-            className={`w-full lg:w-[340px] shrink-0 border-s border-slate-800 bg-slate-900/60 backdrop-blur-sm flex-col overflow-hidden ${
-              mobileSurface === 'inspect' ? 'flex' : 'hidden'
-            } lg:flex`}
-          >
-            <div className="flex border-b border-slate-800 shrink-0">
-              {([['ayah', t.inspector.tabAyah], ['style', t.inspector.tabStyle]] as const).map(([id, label]) => (
-                <button
-                  key={id}
-                  onClick={() => setInspectorTab(id)}
-                  aria-current={inspectorTab === id ? 'true' : undefined}
-                  className={`relative flex-1 py-2.5 text-[11px] font-semibold tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold focus-visible:ring-inset ${
-                    inspectorTab === id ? 'text-parchment' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {label}
-                  <span className={`absolute inset-x-0 bottom-0 h-px ${inspectorTab === id ? 'bg-gold' : 'bg-transparent'}`} />
-                </button>
-              ))}
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {inspectorTab === 'ayah' && isLoadingVerses ? (
-                <InspectorSkeleton />
-              ) : inspectorTab === 'ayah' ? (
-                <Inspector
-                  verses={verses}
-                  index={selectedIndex}
-                  isActive={selectedIndex === activeVerseIndex}
-                  onText={edit.text}
-                  translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
-                  onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
-                  onTranslationText={edit.translationText}
-                  translationFollowsWords={!!canvasConfig.translationFollowsWords}
-                  onTranslationFollowsWords={follows =>
-                    setCanvasConfig(prev => ({ ...prev, translationFollowsWords: follows }))}
-                  onVerseNumber={edit.verseNumber}
-                  onToggleWord={edit.toggleWord}
-                  onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration, rippleEdits)}
-                  onReorder={edit.reorder}
-                  onDuplicate={() => edit.duplicate(audioDuration)}
-                  onDelete={edit.remove}
-                  onAdd={edit.add}
-                  currentTime={currentTime}
-                  onSplit={() => edit.split(currentTime)}
-                  onMerge={edit.merge}
-                  onChecked={edit.checked}
-                />
-              ) : (
-                <StyleConfigPanel
-                  config={canvasConfig}
-                  onChangeConfig={setCanvasConfig}
-                  clipDuration={audioDuration}
-                  laneBlocks={bgSegments}
-                  selectedBackground={activeBackground}
-                  onSelectBackground={setSelectedBackground}
-                />
-              )}
-            </div>
-          </aside>
         </div>
 
         <Timeline
@@ -3103,7 +3089,7 @@ export default function VideoCreatorPage() {
           currentTime={currentTime}
           isPlaying={isPlaying}
           selectedIndex={selectedIndex}
-          onSelect={setSelectedIndex}
+          onSelect={selectCaption}
           onSeek={handleSeek}
           onPlayPause={playClip}
           clip={passage}
@@ -3153,12 +3139,21 @@ export default function VideoCreatorPage() {
           ['preview', t.surfaces.preview, Film],
           ['inspect', t.surfaces.edit, Sliders]
         ] as const).map(([id, label, Icon]) => {
-          const active = mobileSurface === id;
+          // Source and Edit are the working panel on its Source tab or on
+          // either of the others; the panel's own tabs switch between those.
+          const active = id === 'preview'
+            ? mobileSurface === 'preview'
+            : mobileSurface === 'panel' && (id === 'source') === (panelTab === 'source');
+          const show = () => {
+            if (id === 'preview') { setMobileSurface('preview'); return; }
+            setMobileSurface('panel');
+            setPanelTab(tab => (id === 'source' ? 'source' : tab === 'source' ? 'captions' : tab));
+          };
           return (
             <button
               key={id}
               data-tour={`tab-${id}`}
-              onClick={() => setMobileSurface(id)}
+              onClick={show}
               aria-pressed={active}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
                 active ? 'bg-gold text-ink' : 'text-slate-300 hover:bg-slate-800'
