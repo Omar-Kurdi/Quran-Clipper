@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useInkOverhang } from '@/hooks/useInkOverhang';
+import { TranslationChooser } from './TranslationChooser';
 import { wordFace, pagesUsedBy, ensureQpcPages, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { Trash2, Copy, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, SplitSquareHorizontal, Combine, AlertTriangle } from 'lucide-react';
@@ -46,10 +48,11 @@ interface InspectorProps {
   /** Moves to another caption: the panel's previous / next. */
   onSelect: (index: number) => void;
   /**
-   * Which translations the card carries, for the boxes below. They are chosen
-   * in Style, since the choice is the same for every caption.
+   * Which translations the card carries, chosen here, right above the boxes
+   * they fill -- for every caption, as the chooser says.
    */
   translationIds: string[];
+  onTranslationIds: (ids: string[]) => void;
   /**
    * Edits one of the *additional* translations for this caption.
    *
@@ -82,7 +85,7 @@ export const Inspector: React.FC<InspectorProps> = ({
   verses, index, isActive,
   onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onAdd,
   onSplit, onMerge, onChecked, currentTime, onSelect,
-  translationIds, onTranslationText,
+  translationIds, onTranslationIds, onTranslationText,
   translationFollowsWords, onTranslationFollowsWords
 }) => {
   const t = useT();
@@ -186,7 +189,14 @@ export const Inspector: React.FC<InspectorProps> = ({
   }, [shownPages]);
 
   if (!verse) {
-    return <p className="p-4 text-[13px] text-slate-400 text-center">{t.inspector.empty}</p>;
+    // Reachable before a timeline exists, which is exactly when someone picks
+    // the translation they want the captions built in.
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <TranslationChooser value={translationIds} onChange={onTranslationIds} />
+        <p className="text-[13px] text-slate-400 text-center">{t.inspector.empty}</p>
+      </div>
+    );
   }
 
   const words = ensureWords(verse);
@@ -226,6 +236,8 @@ export const Inspector: React.FC<InspectorProps> = ({
           themselves are the control, rather than a read-only copy of the ayah
           above a second row of chips. */}
       <WordPicker words={words} glyphs={glyphs} onToggleWord={onToggleWord} />
+
+      <TranslationChooser value={translationIds} onChange={onTranslationIds} />
 
       {/* A box for every translation on the card, resolved through the same
           function the canvas draws with -- so the box and the video cannot
@@ -425,13 +437,15 @@ const WordPicker: React.FC<{
   onToggleWord: (wordIndex: number) => void;
 }> = ({ words, glyphs, onToggleWord }) => {
   const t = useT();
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const overhang = useInkOverhang(listRef, `${glyphs}|${words.map(w => w.arabic).join(' ')}`);
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2 text-xs">
         <span className="font-semibold text-slate-300">{t.inspector.onScreen}</span>
         <span className="text-slate-400">{t.inspector.tapToHide}</span>
       </div>
-      <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5" dir="rtl">
+      <div ref={listRef} className="flex flex-wrap gap-1.5 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5" dir="rtl">
         {words.map((word, wi) => {
           const face = wordFace(word, glyphs);
           return (
@@ -441,11 +455,21 @@ const WordPicker: React.FC<{
               aria-pressed={!word.excluded}
               className={`px-2.5 py-0.5 rounded-lg border font-quran text-2xl leading-loose transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
                 word.excluded
-                  ? 'border-dashed border-slate-700 text-slate-500 line-through'
+                  ? 'border-red-500/40 bg-red-500/10 text-red-300 line-through'
                   : 'border-slate-700 bg-slate-800/70 text-parchment hover:border-slate-500'
               }`}
             >
-              <span style={face.family ? { fontFamily: face.family } : undefined}>{face.text}</span>
+              <span
+                data-word
+                className="inline-block"
+                style={{
+                  ...(face.family ? { fontFamily: face.family } : {}),
+                  paddingInlineStart: overhang[wi]?.start || undefined,
+                  paddingInlineEnd: overhang[wi]?.end || undefined
+                }}
+              >
+                {face.text}
+              </span>
             </button>
           );
         })}

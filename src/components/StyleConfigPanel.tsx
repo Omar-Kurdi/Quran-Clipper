@@ -41,8 +41,6 @@ import {
 } from 'lucide-react';
 import { PresetGallery } from './PresetGallery';
 import { StyleSection } from './StyleSection';
-import { TranslationChooser } from './TranslationChooser';
-import { DEFAULT_TRANSLATION_ID } from '@/lib/translations';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 import { FRAME_LAYOUTS, asFrameLayout } from '@/lib/frameLayout';
 import { BADGE_STYLES, SURAH_NAME_FONT_ID, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
@@ -452,12 +450,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           the two could disagree. It is one setting now, above the preview. */}
               <p className="text-xs leading-relaxed text-slate-400">{t.frame.setAbove}</p>
 
-      {/* Which translations every caption carries. Here rather than beside a
-          caption: it is one choice for the whole clip. */}
-              <TranslationChooser
-          value={config.translationIds?.length ? config.translationIds : [DEFAULT_TRANSLATION_ID]}
-          onChange={ids => updateConfig('translationIds', ids)}
-        />
 
       {/* Layout & Text, section 2: typography and colour */}
               <div className="flex flex-col gap-3">

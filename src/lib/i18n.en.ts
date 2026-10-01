@@ -115,7 +115,7 @@ export const en = {
   frame: {
     label: 'Frame',
     safeArea: 'Show what the app covers',
-    covered: (platform: string) => `${platform}'s caption and buttons`,
+    covered: (platform: string) => `Covered by ${platform}`,
     setAbove: 'The frame shape is set above the preview, and Export opens on the same setting.'
   },
 
@@ -369,8 +369,8 @@ export const en = {
     atLimit: (max: number) => `${max} is the most that fits and still reads. Remove one first.`,
 
     panelLabel: 'Translations',
-    panelHelp: 'What appears under the Arabic. Choose a language, or show two at once.',
-    choose: 'Choose translations'
+    everyCaption: 'Shown under the Arabic of every caption',
+    change: 'Change'
   },
 
   batch: {

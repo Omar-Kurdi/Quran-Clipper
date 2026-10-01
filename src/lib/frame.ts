@@ -23,20 +23,36 @@ export interface FrameArea {
 }
 
 /**
- * Roughly where a vertical feed draws over the video: its header at the top,
- * the title, caption and audio line along the bottom, and the like / comment /
- * share column on the right. Approximate on purpose -- the four feeds put these
- * in about the same places, and change them between app versions -- so this is
- * a guide for keeping the ayah clear, not a measurement.
+ * Where each vertical feed draws its own interface over a 1080×1920 video, as
+ * margins in px: its header along the top, the title, caption and audio line
+ * along the bottom, the like / comment / share column down the right, and a
+ * strip on the left. Each edge is the larger of two published guides
+ * (postplanify.com and the figures gathered at upload-post.com / brandeal.ai,
+ * checked 2026-10-01), so the outline errs towards covering more. The apps
+ * move these between versions: a guide for keeping the ayah clear, not a
+ * measurement.
  */
-const VERTICAL_FEED: FrameArea[] = [
-  { top: 0, left: 0, width: 100, height: 8 },
-  { top: 78, left: 0, width: 100, height: 22 },
-  { top: 40, left: 86, width: 14, height: 38 }
-];
+const FEED_MARGINS: Record<string, { top: number; bottom: number; left: number; right: number }> = {
+  shorts: { top: 120, bottom: 320, left: 60, right: 180 },
+  tiktok: { top: 150, bottom: 480, left: 60, right: 140 },
+  reels: { top: 220, bottom: 420, left: 60, right: 130 },
+  facebook: { top: 100, bottom: 300, left: 0, right: 60 }
+};
+
+const pct = (px: number, of: number) => Math.round((px / of) * 1000) / 10;
 
 /** Where the platform's own interface covers the frame, or nothing for a feed that leaves the video clear. */
 export function coveredAreas(presetId: string): FrameArea[] {
-  const preset = EXPORT_PRESETS.find(p => p.id === presetId);
-  return preset && preset.aspectRatio === '9:16' ? VERTICAL_FEED : [];
+  const m = FEED_MARGINS[presetId];
+  if (!m) return [];
+  const top = pct(m.top, 1920);
+  const bottom = pct(m.bottom, 1920);
+  const middle = Math.round((100 - top - bottom) * 10) / 10;
+  const areas: FrameArea[] = [
+    { top: 0, left: 0, width: 100, height: top },
+    { top: 100 - bottom, left: 0, width: 100, height: bottom },
+    { top, left: 100 - pct(m.right, 1080), width: pct(m.right, 1080), height: middle }
+  ];
+  if (m.left > 0) areas.push({ top, left: 0, width: pct(m.left, 1080), height: middle });
+  return areas;
 }

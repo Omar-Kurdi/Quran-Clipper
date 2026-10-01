@@ -2509,6 +2509,13 @@ export default function VideoCreatorPage() {
             />
           </div>
 
+          {/* The interface language is a choice people look for on the page
+              itself, so it stays in the bar; only a phone, short of room,
+              moves it into the ⋯ menu. */}
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
+
           <div className="hidden sm:block">
             <Button onClick={() => setIsProjectsDrawerOpen(true)} icon={<FolderOpen className="w-3.5 h-3.5 text-amber-400" />}>
               {t.header.savedClips}
@@ -2525,7 +2532,7 @@ export default function VideoCreatorPage() {
             label={t.header.moreMenu}
             footer={
               <>
-                <div className="px-2.5 py-2"><LanguageSwitcher /></div>
+                <div className="px-2.5 py-2 sm:hidden"><LanguageSwitcher /></div>
                 <PaletteList />
                 <div className="mt-1 border-t border-slate-800"><HealthStrip /></div>
               </>
@@ -3043,6 +3050,7 @@ export default function VideoCreatorPage() {
                     isActive={selectedIndex === activeVerseIndex}
                     onText={edit.text}
                     translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
+                    onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
                     onTranslationText={edit.translationText}
                     translationFollowsWords={!!canvasConfig.translationFollowsWords}
                     onTranslationFollowsWords={follows =>

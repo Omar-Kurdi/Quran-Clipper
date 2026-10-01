@@ -114,7 +114,7 @@ export const ar: Dictionary = {
   frame: {
     label: 'الإطار',
     safeArea: 'أظهر ما يغطيه التطبيق',
-    covered: platform => `تعليق ${platform} وأزراره`,
+    covered: platform => `يغطيه ${platform}`,
     setAbove: 'شكل الإطار يُحدَّد فوق المعاينة، ويفتح التصدير على الإعداد نفسه.'
   },
 
@@ -362,8 +362,8 @@ export const ar: Dictionary = {
     atLimit: max => `${max} هو أقصى ما يتّسع ويبقى مقروءًا. أزِل واحدة أولًا.`,
 
     panelLabel: 'الترجمات',
-    panelHelp: 'ما يظهر أسفل النص العربي. اختر لغة، أو اعرض لغتين معًا.',
-    choose: 'اختيار الترجمات'
+    everyCaption: 'تظهر تحت النص العربي في كل مقطع',
+    change: 'تغيير'
   },
 
   batch: {

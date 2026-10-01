@@ -159,6 +159,19 @@ describe('addVerseAfter', () => {
     expect(verses[3].verseKey).toBe('33:24');
   });
 
+  it('overlaps nothing: takes the second half of the caption it follows, and moves no other', () => {
+    const before = timeline();
+    const { verses } = addVerseAfter(before, 0);
+    for (let i = 1; i < verses.length; i++) expect(verses[i].startTime).toBeGreaterThanOrEqual(verses[i - 1].endTime);
+    expect([verses[0].endTime, verses[1].startTime, verses[1].endTime]).toEqual([2.5, 2.5, before[0].endTime]);
+    expect(verses.slice(2)).toEqual(before.slice(1));
+  });
+
+  it('fills a gap before the next caption when there is room', () => {
+    const { verses } = addVerseAfter([verse('33:21', 0, 5), verse('33:23', 8, 12)], 0);
+    expect([verses[0].endTime, verses[1].startTime, verses[1].endTime]).toEqual([5, 5, 8]);
+  });
+
   it('rolls into the next surah rather than inventing an ayah that does not exist', () => {
     // Al-Ahzab has 73 ayahs.
     const { verses } = addVerseAfter([verse('33:73', 0, 5)], 0);

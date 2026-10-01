@@ -272,6 +272,24 @@ export function toggleWord(verses: VerseData[], verseIndex: number, wordIndex: n
   return updated;
 }
 
+/** The gap a new caption may fill without moving another caption. */
+const MIN_ADDED = 1;
+
+/**
+ * Where a caption added after `anchor` goes, so it overlaps nothing: the gap
+ * before the next caption when there is room for one, otherwise the second half
+ * of the anchor, which gives way. Captions after it keep their times -- they
+ * are tied to the recitation, and pushing them along would put every one of
+ * them off its audio. Five seconds when nothing follows.
+ */
+function roomAfter(anchor: VerseData | undefined, next: VerseData | undefined): { startTime: number; endTime: number; anchorEnd: number } {
+  const from = anchor ? anchor.endTime : 0;
+  if (!next) return { startTime: from, endTime: round1(from + 5), anchorEnd: from };
+  if (next.startTime - from >= MIN_ADDED) return { startTime: from, endTime: next.startTime, anchorEnd: from };
+  const half = anchor ? round1((anchor.startTime + anchor.endTime) / 2) : from;
+  return { startTime: half, endTime: from, anchorEnd: half };
+}
+
 /**
  * Inserts a new segment after `anchorIndex`, deriving the surah and next ayah
  * from that anchor rather than assuming Surah 1 -- which used to produce
@@ -295,21 +313,23 @@ export function addVerseAfter(verses: VerseData[], anchorIndex: number): { verse
   // is filled in by `fillFromCorpus`. A stand-in ayah under the wrong key --
   // this used to insert the basmala labelled as whichever ayah came next --
   // cannot be put right by hand now that the Arabic is not editable.
-  const startT = anchor ? anchor.endTime : 0;
+  const insertAt = (verses[anchorIndex] ? anchorIndex : verses.length - 1) + 1;
+  const { startTime, endTime, anchorEnd } = roomAfter(anchor, verses[insertAt]);
   const newVerse: VerseData = {
     verseNumber: nextNum,
     verseKey: `${surahNumber}:${nextNum}`,
     textUthmani: '',
     translation: '',
-    startTime: startT,
-    endTime: startT + 5.0,
+    startTime,
+    endTime,
     words: [],
     displayTextUthmani: ''
   };
 
-  const insertAt = (verses[anchorIndex] ? anchorIndex : verses.length - 1) + 1;
+  const before = verses.slice(0, insertAt);
+  if (anchor && anchorEnd !== anchor.endTime) before[before.length - 1] = { ...anchor, endTime: anchorEnd };
   return {
-    verses: [...verses.slice(0, insertAt), newVerse, ...verses.slice(insertAt)],
+    verses: [...before, newVerse, ...verses.slice(insertAt)],
     insertedAt: insertAt
   };
 }

@@ -21,10 +21,18 @@ describe('framePreset', () => {
 });
 
 describe('coveredAreas', () => {
-  it('marks the header, caption band and button column of a vertical feed', () => {
+  it('marks the header, caption band and button column of each vertical feed', () => {
     for (const id of ['shorts', 'tiktok', 'reels', 'facebook']) {
-      expect(coveredAreas(id)).toHaveLength(3);
+      expect(coveredAreas(id).length).toBeGreaterThanOrEqual(3);
     }
+  });
+
+  it('differs between feeds, as their apps do', () => {
+    const [shorts, tiktok, reels] = ['shorts', 'tiktok', 'reels'].map(coveredAreas);
+    // Reels has the tallest header, TikTok the deepest caption band.
+    expect(reels[0].height).toBeGreaterThan(shorts[0].height);
+    expect(tiktok[1].height).toBeGreaterThan(reels[1].height);
+    expect(tiktok[1].height).toBeGreaterThan(shorts[1].height);
   });
 
   it('marks nothing where the feed leaves the video clear', () => {
@@ -34,7 +42,7 @@ describe('coveredAreas', () => {
   });
 
   it('keeps every area inside the frame', () => {
-    for (const area of coveredAreas('shorts')) {
+    for (const area of ['shorts', 'tiktok', 'reels', 'facebook'].flatMap(coveredAreas)) {
       expect(area.left + area.width).toBeLessThanOrEqual(100);
       expect(area.top + area.height).toBeLessThanOrEqual(100);
     }
