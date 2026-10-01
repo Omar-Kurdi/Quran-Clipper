@@ -131,10 +131,29 @@ export const en = {
   },
 
   source: {
-    sampleTitle: 'This is a sample.',
-    sampleBody:
-      'The timeline is pre-filled with Al-Fatihah so the preview isn’t blank. Load a surah or upload a recitation to replace it.',
-
+    modeLabel: 'What are you starting from?',
+    modeReciter: 'Built-in reciter',
+    modeRecording: 'My recording',
+    sampleHint: 'You’re looking at a sample, Al-Fatihah. Choose a passage to start your own clip.',
+    dropTitle: 'Drop audio or video here',
+    dropHelp:
+      'MP3, WAV, M4A, OGG, MP4, MOV, WebM or MKV, up to about 18 MB (15–20 minutes of MP3). A video’s footage can be the background.',
+    engineLabel: 'Timing engine',
+    engineSummary: (name: string) => `Timing engine · ${name}`,
+    advanced: (breaks: string) => `Advanced · Screen breaks: ${breaks}`,
+    matchRecording: 'Match recording',
+    timeByHand: 'Time it by hand',
+    chooseFileFirst: 'Choose a file to match it.',
+    summaryLabel: 'This clip',
+    yourRecording: 'Your recording',
+    lengthLabel: 'Length',
+    captionsLabel: 'Captions',
+    changePassage: 'Change passage',
+    backToClip: 'Back to this clip',
+    nextReview: 'Next: review captions',
+    nextReviewBody: (count: number) =>
+      count === 0 ? 'Read through them once before export.' : count === 1 ? '1 caption is worth a look before export.' : `${count} captions are worth a look before export.`,
+    review: 'Review',
     howItWorks: 'How it works',
     step1Strong: 'Pick a reciter',
     step1: 'and a surah, or upload your own recitation.',
@@ -157,13 +176,9 @@ export const en = {
     howItWorksNoteUploaded: 'uploaded',
     howItWorksNoteEnd: 'files.',
 
-    uploadLabel: 'Upload Recitation — Audio or Video:',
-    uploadHelp:
-      'Audio (MP3 / WAV / M4A / OGG) or video (MP4 / MOV / WebM / MKV). For a video, the audio track is used for matching and the footage becomes the background. AI auto-matching supports files up to ~18 MB (roughly 15–20 minutes of MP3); compress or split longer recordings.',
     chooseFile: 'Choose or drop an audio or video file',
     dropHere: 'Drop it here',
 
-    matcherLabel: 'AI Matcher:',
     matcherUses: (technical: string) => `Uses ${technical}`,
     skipAlignerTimed: 'Built-in reciters: use their published timings only, without the aligner',
     skipAlignerTimedHelp: 'Faster, and works without the alignment model. Each ayah is one caption, split only where the reciter repeats; the aligner would also split a long ayah where the reciter pauses. Uploads are still aligned.',
@@ -200,7 +215,7 @@ export const en = {
     matcherHelperNeedsRestart: 'Helper needs restarting',
     matcherNeedsApiKey: 'Needs an API key',
     matcherDetectionOffBefore:
-      'Passage detection is switched off on your helper, so it will time the surah and range selected above instead of finding them in the audio. Unset',
+      'Passage detection is switched off on your helper, so it will time the surah and range chosen under Built-in reciter instead of finding them in the audio. Unset',
     matcherDetectionOffAfter: 'and restart it to turn detection back on.',
     matcherEngineFailedTitle:
       'The helper is running but could not load its alignment engine, so matching will fail.',
@@ -211,18 +226,16 @@ export const en = {
     useVideoAsBackgroundHelp: 'Its frames follow the audio, so the recitation stays in sync',
     useVideoAsBackgroundOffset: (offset: string) => ` (offset ${offset} after trimming)`,
 
-    autoMatch: 'AI Auto-match',
-    manualMatch: 'Manual Match',
     trimHelp:
       'Trim before matching to crop dead air first, or after to cut the AI-matched timeline down — either way the segment times adjust to the new clip automatically.',
 
-    selectSurah: 'Select Surah:',
+    selectSurah: 'Surah',
     surahOption: (number: number, english: string, arabic: string, ayahs: number) =>
       `${number}. ${english} (${arabic}) - ${ayahs} Ayahs`,
-    startAyah: 'Start Ayah:',
-    endAyah: 'End Ayah:',
+    startAyah: 'From ayah',
+    endAyah: 'To ayah',
 
-    selectReciter: 'Select Reciter / Voice:',
+    selectReciter: 'Reciter',
     reciterTimed: 'timed',
     reciterTimedTitle: 'Ayah boundaries for this reciter come from the recording',
     reciterStyles: {
@@ -236,7 +249,7 @@ export const en = {
     loadFailed: 'Could not load those ayahs. Check your connection and try again.',
     loadedCount: (count: number) => `Loaded ${count} ${count === 1 ? 'ayah' : 'ayahs'}.`,
     loadedAgainstUpload:
-      'Your uploaded file is still the audio being played, and these times belong to the reciter’s recording — not to it. Run AI Auto-match, or set the boundaries on the timeline.',
+      'Your uploaded file is still the audio being played, and these times belong to the reciter’s recording — not to it. Match the recording, or set the boundaries on the timeline.',
     loadedMeasured: (seeked: boolean) =>
       `Ayah boundaries came from the recording itself${
         seeked ? ', and the playhead has moved to the first one' : ''
@@ -407,6 +420,7 @@ export const en = {
   },
   presets: {
     heading: 'Presets',
+    showAll: (count: number) => `All ${count}`,
     help: 'A whole look in one click: font, colours, card, layout, badge style and background. Your translations, badge text, watermark and aspect ratio stay as they are.',
     items: {
       'night-mosque': { name: 'Night Mosque', note: 'The studio’s default look: the mushaf on a moonlit mosque, soft blue accents.' },
@@ -461,15 +475,14 @@ export const en = {
     playRecitation: 'Play recitation',
     pauseRecitation: 'Pause recitation',
     backToStart: 'Back to start',
-    rippleOn: 'Linked',
     rippleOnTitle:
-      'Linked: moving a segment\u2019s end shifts every segment after it, keeping the timeline packed. Click to unlink and move one edge at a time.',
-    rippleOff: 'Unlinked',
+      'On: moving a caption\u2019s end shifts every caption after it, keeping the timeline packed. Untick to move one edge at a time.',
+    rippleLabel: 'Shift later captions when I drag',
     rippleOffTitle:
-      'Unlinked: each edge moves on its own, and an end stops where the next segment begins. Click to link them again.',
-    markAyahEnd: 'Mark ayah end',
-    markAyahEndTitle: 'Mark the end of this ayah at the playhead (B)',
-    nextToCheck: (count: number) => `Check next (${count})`,
+      'Off: each edge moves on its own, and an end stops where the next caption begins. Tick to shift the captions after it again.',
+    markAyahEnd: 'Mark caption end',
+    markAyahEndTitle: 'End this caption at the playhead and move on to the next (B)',
+    nextToCheck: (count: number) => `${count} to check · Next`,
     nextToCheckTitle: (count: number) =>
       `${count} ${count === 1 ? 'caption is' : 'captions are'} marked for checking, where the match was least sure. Go to the next one (N).`,
     toCheck: 'marked for checking',
@@ -560,15 +573,10 @@ export const en = {
     tabCard: 'Card',
     // Shown on hover, because a label short enough for a 340px column cannot
     // also say what is inside it.
-    tabDesignHint: 'Frame size, fonts, colours and branding',
-    tabBackgroundHint: 'Background image, video and overlay',
-    tabCardHint: 'The card behind the text, its shadow and effects',
-
-    headingTypography: 'Typography',
     mushafLines: 'Follow the mushaf’s lines',
     mushafLinesHint:
       'Break the Arabic where the printed page breaks it, instead of wherever the card runs out of room. A long line gets smaller type rather than a new break.',
-    headingBranding: 'Branding',
+    headingBranding: 'Watermark',
 
     bgModeLabel: 'How backgrounds are used:',
     bgModes: {

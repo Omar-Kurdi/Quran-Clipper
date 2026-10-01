@@ -112,7 +112,6 @@ import {
   Sliders, 
   Clock, 
   Upload, 
-  Music, 
   BookOpen, 
   Layers,
   Library,
@@ -391,6 +390,10 @@ export default function VideoCreatorPage() {
    * keeping it on screen for good left the preview the least room.
    */
   const [panelTab, setPanelTab] = useState<PanelTab>('source');
+  /** Which way into a clip the Source tab shows: a built-in reciter, or the user's own recording. */
+  const [sourceMode, setSourceMode] = useState<'reciter' | 'recording'>('reciter');
+  /** Set while the passage is being changed; otherwise a loaded clip shows as a summary. */
+  const [sourceEditing, setSourceEditing] = useState(false);
   const [isProjectsDrawerOpen, setIsProjectsDrawerOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
 
@@ -628,6 +631,8 @@ export default function VideoCreatorPage() {
 
   // Fetch Verses on Surah / Reciter / Ayah change
   const handleLoadSurahVerses = async () => {
+    // Back to the clip's summary in Source, which reports how the load went.
+    setSourceEditing(false);
     setIsLoadingVerses(true);
     setLoadResult(null);
     try {
@@ -785,6 +790,7 @@ export default function VideoCreatorPage() {
    */
   const acceptRecitationFile = async (file: File | undefined) => {
     if (file) {
+      setSourceMode('recording');
       // A project is waiting for its recitation back. Reproduce the clip it was
       // saved against rather than starting a fresh upload, which would leave the
       // restored timeline describing a file it no longer matches.
@@ -1087,6 +1093,7 @@ export default function VideoCreatorPage() {
   };
 
   const handleAutoMatchUploadedAudio = () => {
+    setSourceEditing(false);
     if (!customAudioFile) {
       setMatchStatus({ text: t.match.needUpload, tone: 'error' });
       return;
@@ -1345,6 +1352,7 @@ export default function VideoCreatorPage() {
   };
 
   const handleManualMatchUploadedAudio = () => {
+    setSourceEditing(false);
     setMatchStatus({ text: t.match.manualMode, tone: 'info' });
     setMobileSurface('preview');
   };
@@ -2295,6 +2303,150 @@ export default function VideoCreatorPage() {
 
   const currentSurahObj = SURAHS_LIST.find(s => s.number === selectedSurah) || SURAHS_LIST[0];
 
+  /** Whether a passage is loaded or matched, as opposed to the sample the studio opens on. */
+  const hasClip = !isSampleProject && verses.length > 0;
+  /** A restored project waiting for its recording needs the drop zone, whatever was chosen. */
+  const shownSourceMode = awaitingAudio ? 'recording' : sourceMode;
+
+  /**
+   * The timing engine, as a compact list with each option's live status, and
+   * the settings that go with it. Shown in full for a recording, and folded
+   * away for a built-in reciter, where it only drives "Align to the recording".
+   */
+  const engineSettings = (
+    <div className="flex flex-col gap-2">
+      <fieldset className="min-w-0">
+        <legend className="text-xs font-semibold text-slate-300 mb-1.5">{t.source.engineLabel}</legend>
+        <div className="flex flex-col gap-1.5">
+          {matchOptions.map(opt => {
+            const selected = matchProvider === opt.id;
+            // A public studio offers no Gemini: the key is the owner's, and
+            // the route refuses it anyway.
+            const offline = studio.mode === 'public' && opt.id === 'gemini';
+            return (
+              <label
+                key={opt.id}
+                title={offline ? t.source.matcherOnlinePublic : t.source.matcherUses(opt.technical)}
+                className={`px-3 py-2.5 rounded-lg border flex items-center gap-2.5 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold ${
+                  offline ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                } ${selected ? 'border-amber-500 bg-amber-500/10' : 'border-slate-800 hover:border-slate-700'}`}
+              >
+                <input
+                  type="radio"
+                  name="matcher"
+                  value={opt.id}
+                  checked={selected}
+                  disabled={offline}
+                  onChange={() => setMatchProvider(opt.id)}
+                  className="w-4 h-4 accent-amber-500"
+                />
+                <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-100">{opt.label}</span>
+                <span className={`text-xs ${opt.ready ? 'text-emerald-300' : 'text-amber-300'}`}>{opt.status}</span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+      <p className="text-xs leading-relaxed text-slate-400">{selectedMatchOption.blurb}</p>
+                    {matchProvider === 'qul' && (
+                      <label className="flex items-start gap-2 mt-1.5 text-[11px] text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={skipAlignerSetting}
+                          onChange={e => skipAlignerPreference.set(e.target.checked)}
+                          className="mt-0.5 accent-amber-500"
+                        />
+                        <span>
+                          <span className="block">{t.source.skipAlignerTimed}</span>
+                          <span className="block text-slate-400">{t.source.skipAlignerTimedHelp}</span>
+                        </span>
+                      </label>
+                    )}
+      {matchProvider !== 'gemini' && (
+        <details className="text-[13px]">
+          <summary className="cursor-pointer select-none text-slate-400 hover:text-slate-200">
+            {t.source.advanced(screenBreaks === 'fewer' ? t.source.screenBreaksFewer : screenBreaks === 'more' ? t.source.screenBreaksMore : t.source.screenBreaksNormal)}
+          </summary>
+          <div className="mt-2">
+                      <fieldset className="min-w-0">
+                        <legend className="text-[11px] font-semibold text-slate-400 block mb-1">{t.source.screenBreaksLabel}</legend>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {SCREEN_BREAKS.map((level, index) => (
+                            <label
+                              key={level}
+                              className={`py-1 rounded-md border text-center text-[11px] font-bold transition-all cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
+                                screenBreaks === level
+                                  ? 'bg-amber-500/15 border-amber-500 text-slate-100'
+                                  : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="screen-breaks"
+                                value={level}
+                                checked={screenBreaks === level}
+                                onChange={() => screenBreaksPreference.set(index - 1)}
+                                className="sr-only"
+                              />
+                              {level === 'fewer' ? t.source.screenBreaksFewer : level === 'more' ? t.source.screenBreaksMore : t.source.screenBreaksNormal}
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">{t.source.screenBreaksHelp}</p>
+                        {/* Built-in reciters timed from published timings alone
+                            never reach the aligner, so the setting cannot touch them. */}
+                        {matchProvider === 'qul' && skipAlignerSetting && (
+                          <p className="text-[11px] text-slate-300 mt-1">{t.source.screenBreaksUploadsOnly}</p>
+                        )}
+                      </fieldset>
+          </div>
+        </details>
+      )}
+                    {!selectedMatchOption.ready && selectedMatchOption.fix && (
+                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                        {selectedMatchOption.fix}
+                      </p>
+                    )}
+                    {/* Kept because they are diagnostics with a fix, not descriptions:
+                        the blurb above already says what the option does. */}
+                    {matchProvider !== 'gemini' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
+                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
+                        {t.source.matcherDetectionOffBefore}{' '}
+                        <code className="font-mono">ASR_ALIGN_BACKEND</code>{' '}
+                        {t.source.matcherDetectionOffAfter}
+                      </p>
+                    )}
+                    {matchProvider !== 'gemini' && providerStatus?.align.alignReady === false && (
+                      <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
+                        <p className="font-semibold">{t.source.matcherEngineFailedTitle}</p>
+                        <p>{t.source.matcherEngineFailedBody}</p>
+                        <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[11px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
+                        {providerStatus.align.alignError && (
+                          <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
+                        )}
+                      </div>
+                    )}
+    </div>
+  );
+
+  /** Where a match has got to, or why it stopped. */
+  const matchStatusBlock = matchStatus && (
+    <div className={`text-xs rounded-lg p-3 flex items-start gap-2.5 ${
+      isMatching
+        ? 'bg-blue-500/10 border border-blue-500/30 text-slate-200'
+        : matchStatus.tone === 'error'
+        ? 'bg-red-500/10 border border-red-500/20 text-red-300'
+        : 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
+    }`}>
+      {isMatching && (
+        <span className="shrink-0 mt-0.5 flex h-4 w-4 items-center justify-center">
+          <span className="animate-spin h-3.5 w-3.5 border-2 border-blue-400 border-t-transparent rounded-full"></span>
+        </span>
+      )}
+      <span className="flex-1">{matchStatus.text}</span>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
       {/* Hidden Audio Element */}
@@ -2493,434 +2645,36 @@ export default function VideoCreatorPage() {
                 </div>
               )}
 
-              {draftSavedAt !== null && !pendingDraft && (
-                <p
-                  className="mb-3 text-[11px] text-slate-400 flex items-center gap-1.5"
-                  title={t.draft.savedTitle}
-                >
-                  <Save className="w-3 h-3" />
-                  {t.draft.savedAt(new Date(draftSavedAt).toLocaleTimeString(locale))}
+              {isSampleProject && !pendingDraft && (
+                <p className="mb-4 text-[13px] leading-relaxed text-slate-400 flex items-start gap-2">
+                  <BookOpen className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" aria-hidden="true" />
+                  {t.source.sampleHint}
                 </p>
               )}
-
-              {isSampleProject && (
-                <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5 text-[11px] text-amber-200 flex items-start gap-2">
-                  <BookOpen className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>
-                    <span className="font-semibold">{t.source.sampleTitle}</span> {t.source.sampleBody}
-                  </span>
-                </div>
-              )}
-              <div className="flex flex-col gap-4 text-xs">
-                {/* Workflow instructions.
-
-                    Collapsible and closed. It took about 40% of the panel when
-                    it opened by itself, pushing the controls it describes below
-                    the fold -- including for the first-run visitor it was open
-                    for, who cannot see the thing being described while reading
-                    about it. */}
-                <details
-                  className="group p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-600/5 to-emerald-500/10 border border-amber-500/20"
-                >
-                  <summary className="font-semibold text-amber-400 text-xs uppercase tracking-wider cursor-pointer list-none flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded">
-                    <span>{t.source.howItWorks}</span>
-                    <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed mt-1.5">
-                    <li><strong>{t.source.step1Strong}</strong> {t.source.step1}</li>
-                    <li>{t.source.step2Before} <strong>{t.source.step2Button}</strong>. {t.source.step2After}</li>
-                    <li>
-                      {t.source.step3Before}{' '}
-                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd>{' '}
-                      {t.source.step3Middle}{' '}
-                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">B</kbd>{' '}
-                      {t.source.step3After}
-                    </li>
-                    <li><strong>{t.source.step4Strong}</strong> {t.source.step4}</li>
-                    <li>{t.source.step5}</li>
-                    <li>{t.source.step6Before} <strong>{t.source.step6Strong}</strong>{t.source.step6After}</li>
-                  </ol>
-                  <p className="text-[11px] text-slate-400 mt-2">
-                    {t.source.howItWorksNoteBefore} <strong>{t.source.howItWorksNoteTimed}</strong>{' '}
-                    {t.source.howItWorksNoteMiddle} <strong>{t.source.howItWorksNoteUploaded}</strong>{' '}
-                    {t.source.howItWorksNoteEnd}
-                  </p>
-                  <button
-                    onClick={() => setIsTourOpen(true)}
-                    className="mt-2 text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2"
-                  >
-                    {t.tour.open}
-                  </button>
-                </details>
-
-                {/* Upload first.
-
-                    The two ways in are "bring your own recording" and "use a
-                    built-in reciter", and the upload is the one that produces a
-                    real, matched timeline -- it was below three other controls
-                    that only matter to the other path. */}
-                {/* Upload Custom Audio */}
-                <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800">
-                  <label htmlFor="recitation-upload" className="font-semibold text-slate-200 block mb-1 flex items-center gap-1.5">
-                    <Music className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{t.source.uploadLabel}</span>
-                  </label>
-                  <p className="text-[11px] text-slate-400 mb-2">{t.source.uploadHelp}</p>
-
-                  {/* AI Matcher Provider */}
-                  <div className="mb-3">
-                    {/* Native radios rather than buttons with role="radio": arrow
-                        keys, one Tab stop and the checked state come with them. */}
-                    <fieldset className="min-w-0">
-                    <legend className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.source.matcherLabel}</legend>
-                    <div className="grid grid-cols-2 gap-2">
-                      {matchOptions.map(opt => {
-                        const selected = matchProvider === opt.id;
-                        // A public studio offers no Gemini: the key is the
-                        // owner's, and the route refuses it anyway.
-                        const offline = studio.mode === 'public' && opt.id === 'gemini';
-                        return (
-                          <label
-                            key={opt.id}
-                            title={offline ? t.source.matcherOnlinePublic : t.source.matcherUses(opt.technical)}
-                            className={`py-2 px-2.5 rounded-lg border text-start flex items-center gap-1.5 transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
-                              offline ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-                            } ${
-                              selected
-                                ? 'bg-amber-500/15 border-amber-500 text-slate-100 ring-1 ring-amber-500/40'
-                                : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="matcher"
-                              value={opt.id}
-                              checked={selected}
-                              disabled={offline}
-                              onChange={() => setMatchProvider(opt.id)}
-                              className="sr-only"
-                            />
-                            <opt.Icon className={`w-3.5 h-3.5 shrink-0 ${opt.ready ? 'text-emerald-400' : 'text-slate-400'}`} />
-                            <span className="flex-1 min-w-0">
-                              <span className="block text-[11px] font-bold truncate">{opt.label}</span>
-                              <span className={`block text-[11px] ${opt.ready ? 'text-emerald-300' : 'text-slate-300'}`}>
-                                {opt.status}
-                              </span>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    </fieldset>
-                    <p className="text-[11px] text-slate-400 mt-1.5">{selectedMatchOption.blurb}</p>
-                    {matchProvider === 'qul' && (
-                      <label className="flex items-start gap-2 mt-1.5 text-[11px] text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={skipAlignerSetting}
-                          onChange={e => skipAlignerPreference.set(e.target.checked)}
-                          className="mt-0.5 accent-amber-500"
-                        />
-                        <span>
-                          <span className="block">{t.source.skipAlignerTimed}</span>
-                          <span className="block text-slate-400">{t.source.skipAlignerTimedHelp}</span>
-                        </span>
-                      </label>
-                    )}
-                    {matchProvider !== 'gemini' && (
-                      <fieldset className="mt-2 min-w-0">
-                        <legend className="text-[11px] font-semibold text-slate-400 block mb-1">{t.source.screenBreaksLabel}</legend>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {SCREEN_BREAKS.map((level, index) => (
-                            <label
-                              key={level}
-                              className={`py-1 rounded-md border text-center text-[11px] font-bold transition-all cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400 ${
-                                screenBreaks === level
-                                  ? 'bg-amber-500/15 border-amber-500 text-slate-100'
-                                  : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name="screen-breaks"
-                                value={level}
-                                checked={screenBreaks === level}
-                                onChange={() => screenBreaksPreference.set(index - 1)}
-                                className="sr-only"
-                              />
-                              {level === 'fewer' ? t.source.screenBreaksFewer : level === 'more' ? t.source.screenBreaksMore : t.source.screenBreaksNormal}
-                            </label>
-                          ))}
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1">{t.source.screenBreaksHelp}</p>
-                        {/* Built-in reciters timed from published timings alone
-                            never reach the aligner, so the setting cannot touch them. */}
-                        {matchProvider === 'qul' && skipAlignerSetting && (
-                          <p className="text-[11px] text-slate-300 mt-1">{t.source.screenBreaksUploadsOnly}</p>
-                        )}
-                      </fieldset>
-                    )}
-                    {!selectedMatchOption.ready && selectedMatchOption.fix && (
-                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
-                        {selectedMatchOption.fix}
-                      </p>
-                    )}
-                    {/* Kept because they are diagnostics with a fix, not descriptions:
-                        the blurb above already says what the option does. */}
-                    {matchProvider !== 'gemini' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
-                      <p className="text-[11px] text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
-                        {t.source.matcherDetectionOffBefore}{' '}
-                        <code className="font-mono">ASR_ALIGN_BACKEND</code>{' '}
-                        {t.source.matcherDetectionOffAfter}
-                      </p>
-                    )}
-                    {matchProvider !== 'gemini' && providerStatus?.align.alignReady === false && (
-                      <div className="text-[11px] text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
-                        <p className="font-semibold">{t.source.matcherEngineFailedTitle}</p>
-                        <p>{t.source.matcherEngineFailedBody}</p>
-                        <code className="block font-mono bg-slate-950/70 rounded px-1.5 py-1 text-[11px] text-slate-300">cd asr-service &amp;&amp; hash -r &amp;&amp; ./run.sh</code>
-                        {providerStatus.align.alignError && (
-                          <p className="text-red-400/80 break-words">{providerStatus.align.alignError.slice(0, 180)}</p>
-                        )}
+              <div className="flex flex-col gap-4 text-[13px]">
+                {/* A loaded clip shows as a summary: the form has done its
+                    job, and what matters now is what the clip is and where to
+                    go next. "Change passage" brings the form back. */}
+                {hasClip && !sourceEditing && !awaitingAudio ? (
+                  <>
+                    <section aria-label={t.source.summaryLabel} className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 flex flex-col gap-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-100">
+                          {locale === 'ar' ? currentSurahObj.nameArabic : surahNameEnglish}{' '}
+                          <span className="font-mono text-sm text-gold" dir="ltr">{selectedSurah}:{ayahStart}&ndash;{ayahEnd}</span>
+                        </h3>
+                        <p className="text-[13px] text-slate-400">
+                          {customAudioFile ? `${t.source.yourRecording} · ${customAudioName}` : selectedReciterMeta?.name}
+                        </p>
                       </div>
-                    )}
-                  </div>
-                  
-                  <div
-                    {...recitationDrop.dropHandlers}
-                    className={`relative flex items-center justify-center p-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-                      recitationDrop.isOver
-                        ? 'border-amber-400 bg-amber-500/10'
-                        : 'border-slate-700 hover:border-amber-500/50 bg-slate-900/60'
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      accept="audio/*,video/*,.mkv,.m4v,.mov"
-                      onChange={handleCustomAudioUpload}
-                      id="recitation-upload"
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                    />
-                    <div className="flex items-center gap-2 text-slate-300">
-                      {uploadIsVideo ? <Video className="w-4 h-4 text-amber-400" /> : <Upload className="w-4 h-4 text-amber-400" />}
-                      <span className="text-xs font-semibold">
-                        {recitationDrop.isOver
-                          ? t.source.dropHere
-                          : customAudioName || t.source.chooseFile}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsBatchOpen(true)}
-                    className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 hover:text-amber-200"
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    {t.batch.button}
-                  </button>
-
-                  {uploadIsVideo && videoBgUrl && (
-                    <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={useVideoAsBackground}
-                        onChange={e => {
-                          const on = e.target.checked;
-                          setUseVideoAsBackground(on);
-                          // Turning it off restores the previously chosen background
-                          // rather than leaving the canvas pointing at a video the
-                          // user just opted out of.
-                          setCanvasConfig(prev =>
-                            on
-                              ? { ...prev, bgType: 'video', bgUrl: videoBgUrl }
-                              : { ...prev, bgType: 'video', bgUrl: BACKGROUND_VIDEOS[0]?.url || '' }
-                          );
-                        }}
-                        className="mt-0.5 accent-amber-500"
-                      />
-                      <span>
-                        {t.source.useVideoAsBackground}
-                        <span className="block text-[11px] text-slate-300">
-                          {t.source.useVideoAsBackgroundHelp}
-                          {videoBgOffset > 0
-                            ? t.source.useVideoAsBackgroundOffset(formatDuration(videoBgOffset))
-                            : ''}
-                          .
-                        </span>
-                      </span>
-                    </label>
-                  )}
-
-                  {(customAudioFile || customAudioUrl) && (
-                    <div className="mt-3 space-y-2">
-                      <button
-                        onClick={() => setShowTrimModal(true)}
-                        disabled={!customAudioFile}
-                        className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                        <span>
-                          {customAudioDuration > 0
-                            ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
-                            : t.header.trimAudio}
-                        </span>
-                      </button>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={handleAutoMatchUploadedAudio}
-                          className="py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>{t.source.autoMatch}</span>
-                        </button>
-                        <button
-                          onClick={handleManualMatchUploadedAudio}
-                          className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{t.source.manualMatch}</span>
-                        </button>
-                      </div>
-                      <p className="text-[11px] text-slate-400">{t.source.trimHelp}</p>
-                    </div>
-                  )}
-
-                  {matchStatus && (
-                    <div className={`mt-2 text-[11px] rounded-lg p-3 flex items-start gap-2.5 ${
-                      isMatching
-                        ? 'bg-blue-500/10 border border-blue-500/30'
-                        : matchStatus.tone === 'error'
-                        ? 'bg-red-500/10 border border-red-500/20 text-red-300'
-                        : 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
-                    }`}>
-                      {isMatching && (
-                        <span className="shrink-0 mt-0.5">
-                          <span className="flex h-4 w-4 items-center justify-center">
-                            <span className="animate-spin h-3.5 w-3.5 border-2 border-blue-400 border-t-transparent rounded-full"></span>
-                          </span>
-                        </span>
-                      )}
-                      <span className="flex-1">{matchStatus.text}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Surah Selector */}
-                <div>
-                  <label htmlFor="surah-select" className="font-semibold text-slate-200 block mb-1.5">{t.source.selectSurah}</label>
-                  <select
-                    id="surah-select"
-                    value={selectedSurah}
-                    onChange={(e) => {
-                      const num = parseInt(e.target.value, 10);
-                      setSelectedSurah(num);
-                      const s = SURAHS_LIST.find(item => item.number === num);
-                      if (s) {
-                        const defaultEnd = Math.min(7, s.numberOfAyahs);
-                        setAyahStart(1);
-                        setAyahEnd(defaultEnd);
-                        setAyahStartInput('1');
-                        setAyahEndInput(String(defaultEnd));
-                      }
-                    }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-100 text-sm font-medium"
-                  >
-                    {SURAHS_LIST.map((s) => (
-                      <option key={s.number} value={s.number}>
-                        {t.source.surahOption(s.number, s.nameEnglish, s.nameArabic, s.numberOfAyahs)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Ayah Range */}
-                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">
-                  <div>
-                    <label htmlFor="ayah-start" className="text-slate-400 block mb-1">{t.source.startAyah}</label>
-                    <input
-                      id="ayah-start"
-                      type="text"
-                      inputMode="numeric"
-                      value={ayahStartInput}
-                      onChange={(e) => setAyahStartInput(e.target.value.replace(/[^0-9]/g, ''))}
-                      onBlur={() => commitAyahRangeInput('start')}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitAyahRangeInput('start');
-                      }}
-                      dir="ltr"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold text-start"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="ayah-end" className="text-slate-400 block mb-1">{t.source.endAyah}</label>
-                    <input
-                      id="ayah-end"
-                      type="text"
-                      inputMode="numeric"
-                      value={ayahEndInput}
-                      onChange={(e) => setAyahEndInput(e.target.value.replace(/[^0-9]/g, ''))}
-                      onBlur={() => commitAyahRangeInput('end')}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitAyahRangeInput('end');
-                      }}
-                      dir="ltr"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono font-bold text-start"
-                    />
-                  </div>
-                </div>
-
-                {/* Reciter Selector */}
-                <div>
-                  <label htmlFor="reciter-select" className="font-semibold text-slate-200 block mb-1.5">{t.source.selectReciter}</label>
-                  <select
-                    id="reciter-select"
-                    value={selectedReciter}
-                    onChange={(e) => setSelectedReciter(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-100 text-sm font-medium"
-                  >
-                    {/* A project saved with a reciter since hidden still shows who it is. */}
-                    {[
-                      ...listedReciters(qulTimedReciters),
-                      ...RECITERS.filter(r => r.id === selectedReciter && !listedReciters(qulTimedReciters).includes(r)),
-                    ].map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {locale === 'ar' ? `${r.arabicName} — ${r.name}` : `${r.name} — ${r.arabicName}`}
-                      </option>
-                    ))}
-                  </select>
-                  {/* Whether this voice has published ayah timings decides
-                      whether "Load ayahs & audio" produces a real timeline
-                      or one you have to set by hand, so it stays beside the
-                      choice rather than in a note underneath it. */}
-                  {selectedReciterMeta && (
-                    <div className="mt-1.5 flex items-center gap-1.5">
-                      {/* Timed by quran.com, or by a QUL export on this machine. */}
-                      {(selectedReciterMeta.quranApiId > 0 || qulTimedReciters.includes(selectedReciterMeta.id)) && (
-                        <span
-                          title={t.source.reciterTimedTitle}
-                          className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
-                        >
-                          {t.source.reciterTimed}
-                        </span>
-                      )}
-                      <span className="text-[11px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
-                        {t.source.reciterStyles[selectedReciterMeta.style as keyof typeof t.source.reciterStyles] ?? selectedReciterMeta.style}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Load & Fetch Button */}
-                <button
-                  onClick={handleLoadSurahVerses}
-                  disabled={isLoadingVerses}
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
-                >
-                  {isLoadingVerses ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
-                  <span>{isLoadingVerses ? t.source.loadingVerses : t.source.loadVerses}</span>
-                </button>
-
-                {loadResult && (
+                      <dl className="grid grid-cols-[6rem_1fr] gap-y-1 text-[13px]">
+                        <dt className="text-slate-400">{t.source.lengthLabel}</dt>
+                        <dd className="font-mono text-slate-200" dir="ltr">{formatDuration(audioDuration)}</dd>
+                        <dt className="text-slate-400">{t.source.captionsLabel}</dt>
+                        <dd className="text-slate-200">{verses.length}</dd>
+                      </dl>
+                      {matchStatusBlock}
+                {hasClip && loadResult && (
                   <div
                     role="status"
                     className={`mt-2 rounded-lg border p-2.5 text-[11px] ${
@@ -3003,6 +2757,363 @@ export default function VideoCreatorPage() {
                     )}
                   </div>
                 )}
+                  {uploadIsVideo && videoBgUrl && (
+                    <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={useVideoAsBackground}
+                        onChange={e => {
+                          const on = e.target.checked;
+                          setUseVideoAsBackground(on);
+                          // Turning it off restores the previously chosen background
+                          // rather than leaving the canvas pointing at a video the
+                          // user just opted out of.
+                          setCanvasConfig(prev =>
+                            on
+                              ? { ...prev, bgType: 'video', bgUrl: videoBgUrl }
+                              : { ...prev, bgType: 'video', bgUrl: BACKGROUND_VIDEOS[0]?.url || '' }
+                          );
+                        }}
+                        className="mt-0.5 accent-amber-500"
+                      />
+                      <span>
+                        {t.source.useVideoAsBackground}
+                        <span className="block text-[11px] text-slate-300">
+                          {t.source.useVideoAsBackgroundHelp}
+                          {videoBgOffset > 0
+                            ? t.source.useVideoAsBackgroundOffset(formatDuration(videoBgOffset))
+                            : ''}
+                          .
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => { setSourceMode(customAudioFile ? 'recording' : 'reciter'); setSourceEditing(true); }}>
+                          {t.source.changePassage}
+                        </Button>
+                        {customAudioFile && (
+                          <Button icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />} onClick={() => setShowTrimModal(true)}>
+                            {customAudioDuration > 0
+                              ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
+                              : t.header.trimAudio}
+                          </Button>
+                        )}
+                      </div>
+                    </section>
+
+                    {/* Where the work goes next, said once the passage is in. */}
+                    <div className="rounded-xl border border-amber-500/40 p-4 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-100">{t.source.nextReview}</p>
+                        <p className="text-xs text-slate-400">{t.source.nextReviewBody(toCheckCount)}</p>
+                      </div>
+                      <Button variant="primary" onClick={() => setPanelTab('captions')}>{t.source.review}</Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {hasClip && (
+                      <button
+                        onClick={() => setSourceEditing(false)}
+                        className="self-start text-[13px] font-semibold text-amber-300 hover:text-amber-200"
+                      >
+                        {t.source.backToClip}
+                      </button>
+                    )}
+
+                    {/* The two ways in, one at a time: each person sees only
+                        their own path, with its main action above the fold. */}
+                    <fieldset className="min-w-0">
+                      <legend className="sr-only">{t.source.modeLabel}</legend>
+                      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl border border-slate-800 bg-slate-950">
+                        {(['reciter', 'recording'] as const).map(mode => (
+                          <label
+                            key={mode}
+                            className={`h-10 rounded-lg flex items-center justify-center text-[13px] font-semibold cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold ${
+                              shownSourceMode === mode ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="source-mode"
+                              checked={shownSourceMode === mode}
+                              onChange={() => setSourceMode(mode)}
+                              className="sr-only"
+                            />
+                            {mode === 'reciter' ? t.source.modeReciter : t.source.modeRecording}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    {shownSourceMode === 'reciter' ? (
+                      <>
+                {/* Surah Selector */}
+                <div>
+                  <label htmlFor="surah-select" className="text-xs font-semibold text-slate-300 block mb-1.5">{t.source.selectSurah}</label>
+                  <select
+                    id="surah-select"
+                    value={selectedSurah}
+                    onChange={(e) => {
+                      const num = parseInt(e.target.value, 10);
+                      setSelectedSurah(num);
+                      const s = SURAHS_LIST.find(item => item.number === num);
+                      if (s) {
+                        const defaultEnd = Math.min(7, s.numberOfAyahs);
+                        setAyahStart(1);
+                        setAyahEnd(defaultEnd);
+                        setAyahStartInput('1');
+                        setAyahEndInput(String(defaultEnd));
+                      }
+                    }}
+                    className="w-full h-11 bg-slate-950 border border-slate-700 rounded-lg px-3 text-slate-100 text-sm"
+                  >
+                    {SURAHS_LIST.map((s) => (
+                      <option key={s.number} value={s.number}>
+                        {t.source.surahOption(s.number, s.nameEnglish, s.nameArabic, s.numberOfAyahs)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Ayah Range */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="ayah-start" className="text-xs font-semibold text-slate-300 block mb-1.5">{t.source.startAyah}</label>
+                    <input
+                      id="ayah-start"
+                      type="text"
+                      inputMode="numeric"
+                      value={ayahStartInput}
+                      onChange={(e) => setAyahStartInput(e.target.value.replace(/[^0-9]/g, ''))}
+                      onBlur={() => commitAyahRangeInput('start')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitAyahRangeInput('start');
+                      }}
+                      dir="ltr"
+                      className="w-full h-11 bg-slate-950 border border-slate-700 rounded-lg px-3 text-sm text-slate-100 font-mono text-start"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="ayah-end" className="text-xs font-semibold text-slate-300 block mb-1.5">{t.source.endAyah}</label>
+                    <input
+                      id="ayah-end"
+                      type="text"
+                      inputMode="numeric"
+                      value={ayahEndInput}
+                      onChange={(e) => setAyahEndInput(e.target.value.replace(/[^0-9]/g, ''))}
+                      onBlur={() => commitAyahRangeInput('end')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitAyahRangeInput('end');
+                      }}
+                      dir="ltr"
+                      className="w-full h-11 bg-slate-950 border border-slate-700 rounded-lg px-3 text-sm text-slate-100 font-mono text-start"
+                    />
+                  </div>
+                </div>
+
+                {/* Reciter Selector */}
+                <div>
+                  <label htmlFor="reciter-select" className="text-xs font-semibold text-slate-300 block mb-1.5">{t.source.selectReciter}</label>
+                  <select
+                    id="reciter-select"
+                    value={selectedReciter}
+                    onChange={(e) => setSelectedReciter(e.target.value)}
+                    className="w-full h-11 bg-slate-950 border border-slate-700 rounded-lg px-3 text-slate-100 text-sm"
+                  >
+                    {/* A project saved with a reciter since hidden still shows who it is. */}
+                    {[
+                      ...listedReciters(qulTimedReciters),
+                      ...RECITERS.filter(r => r.id === selectedReciter && !listedReciters(qulTimedReciters).includes(r)),
+                    ].map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {locale === 'ar' ? `${r.arabicName} — ${r.name}` : `${r.name} — ${r.arabicName}`}
+                      </option>
+                    ))}
+                  </select>
+                  {/* Whether this voice has published ayah timings decides
+                      whether "Load ayahs & audio" produces a real timeline
+                      or one you have to set by hand, so it stays beside the
+                      choice rather than in a note underneath it. */}
+                  {selectedReciterMeta && (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {/* Timed by quran.com, or by a QUL export on this machine. */}
+                      {(selectedReciterMeta.quranApiId > 0 || qulTimedReciters.includes(selectedReciterMeta.id)) && (
+                        <span
+                          title={t.source.reciterTimedTitle}
+                          className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"
+                        >
+                          {t.source.reciterTimed}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded">
+                        {t.source.reciterStyles[selectedReciterMeta.style as keyof typeof t.source.reciterStyles] ?? selectedReciterMeta.style}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                        <button
+                          onClick={handleLoadSurahVerses}
+                          disabled={isLoadingVerses}
+                          className="w-full h-12 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 text-[15px] font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                        >
+                          {isLoadingVerses ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
+                          <span>{isLoadingVerses ? t.source.loadingVerses : t.source.loadVerses}</span>
+                        </button>
+                        {!hasClip && loadResult && !loadResult.ok && (
+                          <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-200">
+                            {loadResult.error || t.source.loadFailed}
+                          </p>
+                        )}
+                        {/* The engine matters here too: it is what "Align to the
+                            recording" uses after a load, and Local + QUL can time
+                            a built-in reciter from published timings alone. */}
+                        <details className="text-[13px]">
+                          <summary className="cursor-pointer select-none text-slate-400 hover:text-slate-200">
+                            {t.source.engineSummary(selectedMatchOption.label)}
+                          </summary>
+                          <div className="mt-3">{engineSettings}</div>
+                        </details>
+                      </>
+                    ) : (
+                      <>
+                        <div
+                          {...recitationDrop.dropHandlers}
+                          className={`relative rounded-xl border-2 border-dashed px-4 py-6 flex flex-col items-center gap-2 text-center cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold ${
+                            recitationDrop.isOver ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 hover:border-amber-500/50 bg-slate-950/70'
+                          }`}
+                        >
+                          <input
+                            type="file"
+                            accept="audio/*,video/*,.mkv,.m4v,.mov"
+                            onChange={handleCustomAudioUpload}
+                            id="recitation-upload"
+                            aria-describedby="recitation-upload-help"
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                          {uploadIsVideo ? <Video className="w-6 h-6 text-amber-400" /> : <Upload className="w-6 h-6 text-amber-400" />}
+                          <span className="text-sm font-semibold text-slate-100">
+                            {recitationDrop.isOver ? t.source.dropHere : customAudioName || t.source.dropTitle}
+                          </span>
+                          <span id="recitation-upload-help" className="text-xs leading-relaxed text-slate-400">{t.source.dropHelp}</span>
+                        </div>
+
+                        {engineSettings}
+
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={handleAutoMatchUploadedAudio}
+                            disabled={!customAudioFile && !customAudioUrl}
+                            className="w-full h-12 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 text-[15px] font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            {t.source.matchRecording}
+                          </button>
+                          {customAudioFile || customAudioUrl ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button icon={<Clock className="w-3.5 h-3.5 text-amber-400" />} onClick={handleManualMatchUploadedAudio}>
+                                {t.source.timeByHand}
+                              </Button>
+                              <Button icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />} onClick={() => setShowTrimModal(true)} disabled={!customAudioFile}>
+                                {customAudioDuration > 0
+                                  ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
+                                  : t.header.trimAudio}
+                              </Button>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-400 text-center">{t.source.chooseFileFirst}</p>
+                          )}
+                        </div>
+                  {uploadIsVideo && videoBgUrl && (
+                    <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={useVideoAsBackground}
+                        onChange={e => {
+                          const on = e.target.checked;
+                          setUseVideoAsBackground(on);
+                          // Turning it off restores the previously chosen background
+                          // rather than leaving the canvas pointing at a video the
+                          // user just opted out of.
+                          setCanvasConfig(prev =>
+                            on
+                              ? { ...prev, bgType: 'video', bgUrl: videoBgUrl }
+                              : { ...prev, bgType: 'video', bgUrl: BACKGROUND_VIDEOS[0]?.url || '' }
+                          );
+                        }}
+                        className="mt-0.5 accent-amber-500"
+                      />
+                      <span>
+                        {t.source.useVideoAsBackground}
+                        <span className="block text-[11px] text-slate-300">
+                          {t.source.useVideoAsBackgroundHelp}
+                          {videoBgOffset > 0
+                            ? t.source.useVideoAsBackgroundOffset(formatDuration(videoBgOffset))
+                            : ''}
+                          .
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
+                        {!hasClip && matchStatusBlock}
+                        <button
+                          onClick={() => setIsBatchOpen(true)}
+                          className="self-start flex items-center gap-1.5 text-[13px] font-semibold text-amber-300 hover:text-amber-200"
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          {t.batch.button}
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* Workflow instructions.
+
+                    Collapsible and closed. It took about 40% of the panel when
+                    it opened by itself, pushing the controls it describes below
+                    the fold -- including for the first-run visitor it was open
+                    for, who cannot see the thing being described while reading
+                    about it. */}
+                <details
+                  className="group pt-3 border-t border-slate-800"
+                >
+                  <summary className="text-[13px] font-semibold text-amber-300 cursor-pointer list-none flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded">
+                    <span>{t.source.howItWorks}</span>
+                    <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed mt-1.5">
+                    <li><strong>{t.source.step1Strong}</strong> {t.source.step1}</li>
+                    <li>{t.source.step2Before} <strong>{t.source.step2Button}</strong>. {t.source.step2After}</li>
+                    <li>
+                      {t.source.step3Before}{' '}
+                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">SPACE</kbd>{' '}
+                      {t.source.step3Middle}{' '}
+                      <kbd className="px-1 py-0.5 bg-slate-800 text-amber-300 rounded text-[11px] font-mono">B</kbd>{' '}
+                      {t.source.step3After}
+                    </li>
+                    <li><strong>{t.source.step4Strong}</strong> {t.source.step4}</li>
+                    <li>{t.source.step5}</li>
+                    <li>{t.source.step6Before} <strong>{t.source.step6Strong}</strong>{t.source.step6After}</li>
+                  </ol>
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    {t.source.howItWorksNoteBefore} <strong>{t.source.howItWorksNoteTimed}</strong>{' '}
+                    {t.source.howItWorksNoteMiddle} <strong>{t.source.howItWorksNoteUploaded}</strong>{' '}
+                    {t.source.howItWorksNoteEnd}
+                  </p>
+                  <button
+                    onClick={() => setIsTourOpen(true)}
+                    className="mt-2 text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2"
+                  >
+                    {t.tour.open}
+                  </button>
+                </details>
+
               </div>
             </div>
             {panelTab === 'captions' && (

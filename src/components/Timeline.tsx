@@ -453,7 +453,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           <button
             onClick={onNextToCheck}
             title={t.timeline.nextToCheckTitle(toCheck)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 text-[11px] font-semibold rounded-lg border border-amber-500/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 text-xs font-semibold rounded-full border border-amber-500/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
           >
             <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden sm:inline">{t.timeline.nextToCheck(toCheck)}</span>
@@ -466,19 +466,21 @@ export const Timeline: React.FC<TimelineProps> = ({
             Its state has to be visible without hovering -- the same drag moves
             one block or twenty depending on it, and finding out afterwards is
             the whole complaint this answers. */}
-        <button
-          onClick={onToggleRippleEdits}
-          aria-pressed={rippleEdits}
+        {/* Said as what it does rather than as "Linked" / "Unlinked". */}
+        <label
           title={rippleEdits ? t.timeline.rippleOnTitle : t.timeline.rippleOffTitle}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
-            rippleEdits
-              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-          }`}
+          className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-slate-300 rounded-lg cursor-pointer hover:bg-slate-800 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold"
         >
-          {rippleEdits ? <Link2 className="w-3.5 h-3.5" /> : <Link2Off className="w-3.5 h-3.5" />}
-          <span className="hidden sm:inline">{rippleEdits ? t.timeline.rippleOn : t.timeline.rippleOff}</span>
-        </button>
+          <input
+            type="checkbox"
+            checked={rippleEdits}
+            onChange={onToggleRippleEdits}
+            aria-label={t.timeline.rippleLabel}
+            className="w-4 h-4 accent-amber-500"
+          />
+          {rippleEdits ? <Link2 className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" /> : <Link2Off className="w-3.5 h-3.5" aria-hidden="true" />}
+          <span className="hidden lg:inline" aria-hidden="true">{t.timeline.rippleLabel}</span>
+        </label>
 
         {/* Trimming belongs beside marking: both are edits to where the audio
             starts and stops, and both are things you reach for repeatedly

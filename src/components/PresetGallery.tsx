@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Check, Palette } from 'lucide-react';
 import { FONTS_ARABIC } from '@/lib/quranData';
 import { STYLE_PRESETS, presetBackground, type StylePreset, type PresetLook } from '@/lib/stylePresets';
@@ -21,17 +21,30 @@ interface PresetGalleryProps {
  * card at its opacity and border, and a line of Arabic in the preset's face
  * and colours. So it cannot drift from what applying the preset does.
  */
+/** How many looks show in one row before "All looks" opens the rest. */
+const ROW = 4;
+
 export const PresetGallery: React.FC<PresetGalleryProps> = ({ current, onApply }) => {
   const t = useT();
+  const [showAll, setShowAll] = useState(false);
+  // The look in use stays visible even when it is not in the first row.
+  const currentAt = STYLE_PRESETS.findIndex(preset => preset.id === current);
+  const shown = showAll || currentAt >= ROW ? STYLE_PRESETS : STYLE_PRESETS.slice(0, ROW);
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
-        <Palette className="w-3.5 h-3.5 text-amber-400" />
-        {t.presets.heading}
-      </h3>
-      <p className="text-[11px] text-slate-400">{t.presets.help}</p>
-      <div className="grid grid-cols-3 gap-2">
-        {STYLE_PRESETS.map(preset => {
+      <div className="flex items-center gap-1.5">
+        <h3 className="flex-1 text-[13px] font-semibold text-slate-200 flex items-center gap-1.5" title={t.presets.help}>
+          <Palette className="w-3.5 h-3.5 text-amber-400" />
+          {t.presets.heading}
+        </h3>
+        {shown.length < STYLE_PRESETS.length && (
+          <button onClick={() => setShowAll(true)} className="text-xs font-semibold text-amber-300 hover:text-amber-200">
+            {t.presets.showAll(STYLE_PRESETS.length)}
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {shown.map(preset => {
           const names = t.presets.items[preset.id as keyof typeof t.presets.items];
           const selected = current === preset.id;
           return (

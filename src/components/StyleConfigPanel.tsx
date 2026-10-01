@@ -26,10 +26,7 @@ import {
 } from '@/lib/quranData';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { 
-  Type, 
   Image as ImageIcon, 
-  Sliders, 
-  ShieldCheck, 
   Upload, 
   Palette,
   Check,
@@ -43,6 +40,7 @@ import {
   GripVertical
 } from 'lucide-react';
 import { PresetGallery } from './PresetGallery';
+import { StyleSection } from './StyleSection';
 import { TranslationChooser } from './TranslationChooser';
 import { DEFAULT_TRANSLATION_ID } from '@/lib/translations';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
@@ -79,7 +77,14 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   const { missingFonts } = useStudioConfig();
   /** One name per clip, shared by the lane list, the sequence list and every tooltip. */
   const nameOf = (url: string) => backgroundLabel(url, t.backgrounds);
-  const [activeTab, setActiveTab] = useState<'design' | 'background' | 'card'>('design');
+  /**
+   * Which sections are open. Collapsible rather than tabs: a closed section
+   * still says what it is set to, so the whole look reads at a glance, and
+   * finishing with one part does not hide the others behind a tab.
+   */
+  const [openSections, setOpenSections] = useState<string[]>(['text']);
+  const toggleSection = (id: string) =>
+    setOpenSections(current => (current.includes(id) ? current.filter(s => s !== id) : [...current, id]));
 
   const updateConfig = (key: keyof VideoCanvasConfig, value: unknown) => {
     onChangeConfig({
@@ -271,8 +276,17 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
    */
   const clipLengths = useMediaDurations(
     gallery.filter(bg => bg.url && !bg.missing && bg.kind === 'video').map(bg => bg.url as string),
-    activeTab === 'background'
+    openSections.includes('background')
   );
+
+  /** What each closed section is set to, in a few words. */
+  const textSummary = `${FONTS_ARABIC.find(f => f.id === config.fontArabic)?.name ?? config.fontArabic} · ${config.arabicFontSize}px`;
+  const badge = config.showSurahBadge ? t.style.badgeStyles[(config.badgeStyle ?? 'pill') as keyof typeof t.style.badgeStyles] : t.style.badgeStyles.none;
+  const cardSummary = `${t.style.layouts[asFrameLayout(config.layout)]} · ${badge}`;
+  const backgroundSummary = config.bgMode && config.bgMode !== 'single'
+    ? t.style.bgModes[config.bgMode as keyof typeof t.style.bgModes]
+    : gallery.find(bg => bg.url === config.bgUrl)?.title ?? '';
+  const brandingSummary = config.watermarkText ? `“${config.watermarkText}”` : '—';
 
   /**
    * Deletes a background the user added, and every use of it.
@@ -423,74 +437,350 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     // sliders and section headings all sat flush against the column border,
     // because the container in page.tsx only scrolls -- it does not pad.
     <div className="flex flex-col gap-4 text-xs p-3">
-      {/* Tab navigation.
-
-          Format, Typography and Branding used to be three tabs of their own,
-          which made five -- more than fits across a 340px column, so the strip
-          scrolled sideways and the last two tabs were invisible until you
-          found that out. They are all "how the frame is laid out and lettered"
-          and now share one tab with headings inside it. Three fit. */}
-      {/* Sticky, like the Ayah/Style tabs above it: this panel is long enough
-          that changing section meant scrolling back to the top to find the
-          strip. `-mx-3 -mt-3 px-3 pt-3` lets the backdrop reach the column
-          edges while the buttons keep the panel's padding. */}
-      <div
-        role="tablist"
-        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-slate-950/95 backdrop-blur
-                   grid grid-cols-3 gap-1"
-      >
-        {([
-          ['design', t.style.tabDesign, t.style.tabDesignHint, Type],
-          ['background', t.style.tabBackground, t.style.tabBackgroundHint, ImageIcon],
-          ['card', t.style.tabCard, t.style.tabCardHint, Sliders]
-        ] as const).map(([id, label, hint, Icon]) => (
-          <button
-            key={id}
-            role="tab"
-            title={hint}
-            onClick={() => setActiveTab(id)}
-            aria-selected={activeTab === id}
-            aria-current={activeTab === id ? 'true' : undefined}
-            className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px]
-                        font-medium transition-all min-w-0 border ${
-              activeTab === id
-                ? 'bg-amber-500 text-slate-950 font-semibold border-amber-400 shadow'
-                : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-slate-100'
-            }`}
-          >
-            <Icon className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{label}</span>
-          </button>
-        ))}
-      </div>
-
+      {/* Whole looks first: the quickest way to a finished frame, and the
+          fields they set are all edited in the sections below. */}
       {/* Whole looks first: the quickest way to a finished frame, and the
           fields they set are all edited further down this tab. */}
-      {activeTab === 'design' && (
-        <PresetGallery
+              <PresetGallery
           current={matchingPreset(config)}
           onApply={preset => onChangeConfig(applyStylePreset(config, preset))}
         />
-      )}
 
+
+      <StyleSection id="text" title={t.style.tabDesign} summary={textSummary} open={openSections.includes('text')} onToggle={() => toggleSection('text')}>
       {/* The frame shape used to be chosen here as well as in Export, and
           the two could disagree. It is one setting now, above the preview. */}
-      {activeTab === 'design' && (
-        <p className="text-xs leading-relaxed text-slate-400">{t.frame.setAbove}</p>
-      )}
+              <p className="text-xs leading-relaxed text-slate-400">{t.frame.setAbove}</p>
 
       {/* Which translations every caption carries. Here rather than beside a
           caption: it is one choice for the whole clip. */}
-      {activeTab === 'design' && (
-        <TranslationChooser
+              <TranslationChooser
           value={config.translationIds?.length ? config.translationIds : [DEFAULT_TRANSLATION_ID]}
           onChange={ids => updateConfig('translationIds', ids)}
         />
-      )}
 
+      {/* Layout & Text, section 2: typography and colour */}
+              <div className="flex flex-col gap-3">
+          <div>
+            <label className="font-semibold text-slate-200 text-sm block mb-1.5">{t.style.arabicFontLabel}</label>
+            <div className="grid grid-cols-2 gap-2">
+              {FONTS_ARABIC.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => updateConfig('fontArabic', f.id)}
+                  // A face whose files are not on this server cannot be drawn,
+                  // so it cannot be chosen either -- see usableArabicFont.
+                  disabled={missingFonts.has(f.id)}
+                  title={missingFonts.has(f.id) ? t.style.fontNotInstalled : undefined}
+                  className={`p-2.5 rounded-xl border text-start transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    usableArabicFont(config.fontArabic, missingFonts) === f.id
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-300 ring-1 ring-amber-500/40'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="block font-bold text-sm text-slate-100">
+                    {t.style.fonts[f.id as keyof typeof t.style.fonts] ?? f.name}
+                  </span>
+                  {/* Each face previews itself. Hardcoding one family here
+                      showed five identical samples -- and kept every other
+                      family out of the DOM, so the canvas never fetched the
+                      one it was about to draw with. */}
+                  <span className={`block text-lg ${f.className} text-amber-400 mt-1`} dir="rtl">
+                    بِسْمِ ٱللَّهِ
+                  </span>
+                </button>
+              ))}
+            </div>
+            {missingFonts.size > 0 && (
+              <p className="mt-2 text-[11px] text-slate-400">{t.style.fontNotInstalled}</p>
+            )}
+            {/* The chosen face is missing and none is selected above: say what
+                is drawing instead, in that face. */}
+            {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
+              <p className="mt-1.5 text-[11px] text-amber-300/90">
+                {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
+              </p>
+            )}
+            {/* Only the mushaf face knows where the printed lines break. */}
+            {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
+              <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!config.mushafLines}
+                  onChange={e => updateConfig('mushafLines', e.target.checked)}
+                  className="mt-0.5 accent-amber-500"
+                />
+                <span>
+                  <span className="font-semibold text-slate-200">{t.style.mushafLines}</span>
+                  <span className="block text-slate-400">{t.style.mushafLinesHint}</span>
+                </span>
+              </label>
+            )}
+          </div>
+
+          {/* Font Sizes */}
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.arabicFontSize}</span>
+                <span className="font-mono text-amber-400">{config.arabicFontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={24}
+                max={64}
+                value={config.arabicFontSize}
+                onChange={(e) => updateConfig('arabicFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.translationFontSize}</span>
+                <span className="font-mono text-amber-400">{config.translationFontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={14}
+                max={48}
+                value={config.translationFontSize}
+                onChange={(e) => updateConfig('translationFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.ayahNumberSize}</span>
+                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={20}
+                max={72}
+                value={config.ayahNumberFontSize}
+                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+          </div>
+
+          {/* Colours.
+
+              Three native `<input type="color">` used to sit here; on a
+              multi-monitor setup the OS opened its dialog on another screen
+              entirely. `ColorField` keeps the picker in the panel.
+
+              "Accent Gold" was also the wrong name twice over: it is not
+              necessarily gold, and it was never clear what it painted. It is
+              named for its job now, and the card border -- which was hardcoded
+              amber and stayed gold no matter what this was set to -- follows
+              it like everything else in the list. */}
+          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <label className="font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
+              <Palette className="w-3.5 h-3.5 text-amber-400" />
+              <span>{t.style.coloursLabel}</span>
+            </label>
+            <div className="flex flex-col gap-2">
+              <ColorField
+                label={t.style.colourArabic}
+                description={t.style.colourArabicDescription}
+                value={config.textColor}
+                onChange={hex => updateConfig('textColor', hex)}
+              />
+              <ColorField
+                label={t.style.colourAccent}
+                description={t.style.colourAccentDescription}
+                value={config.accentColor}
+                onChange={hex => updateConfig('accentColor', hex)}
+              />
+              <ColorField
+                label={t.style.colourTranslation}
+                description={t.style.colourTranslationDescription}
+                value={config.translationColor}
+                onChange={hex => updateConfig('translationColor', hex)}
+              />
+            </div>
+          </div>
+        </div>
+
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title={pendingDelete?.title || ''}
+        message={pendingDelete?.message || ''}
+        confirmLabel={pendingDelete?.confirmLabel}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          pendingDelete?.run();
+          setPendingDelete(null);
+        }}
+      />
+
+      </StyleSection>
+
+      <StyleSection id="card" title={t.style.tabCard} summary={cardSummary} open={openSections.includes('card')} onToggle={() => toggleSection('card')}>
+      {/* Card & FX */}
+              <div className="flex flex-col gap-3">
+          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
+            {/* Where things sit, then how the badge looks: the two choices
+                that change the frame's arrangement rather than its colours. */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="font-semibold text-slate-200 block mb-1">{t.style.layoutLabel}</label>
+                <select
+                  value={asFrameLayout(config.layout)}
+                  onChange={(e) => updateConfig('layout', e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  {FRAME_LAYOUTS.map(id => <option key={id} value={id}>{t.style.layouts[id]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeStyleLabel}</label>
+                {/* "None" is the badge switch, not a style: hiding the badge
+                    keeps the style it had for when it comes back. */}
+                <select
+                  value={config.showSurahBadge ? usableBadgeStyle(config.badgeStyle, missingFonts) : 'none'}
+                  onChange={(e) => onChangeConfig(e.target.value === 'none'
+                    ? { ...config, showSurahBadge: false }
+                    : { ...config, showSurahBadge: true, badgeStyle: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  <option value="none">{t.style.badgeStyles.none}</option>
+                  {BADGE_STYLES.map(id => (
+                    <option
+                      key={id}
+                      value={id}
+                      disabled={id === 'calligraphic' && missingFonts.has(SURAH_NAME_FONT_ID)}
+                    >
+                      {t.style.badgeStyles[id]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {missingFonts.has(SURAH_NAME_FONT_ID) && (
+              <p className="-mt-1 text-[11px] text-slate-400">{t.style.badgeFontMissing}</p>
+            )}
+            {/* Its own control, not the card's: a no-card layout sets the card
+                to nothing, and the badge still has to read over the footage. */}
+            {config.showSurahBadge && (
+              <div>
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>{t.style.badgeOpacity}</span>
+                  <span className="font-mono text-amber-400">{config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}
+                  onChange={(e) => updateConfig('badgeOpacity', parseInt(e.target.value, 10))}
+                  className="w-full accent-amber-500"
+                />
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-800">
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.cardOpacity}</span>
+                <span className="font-mono text-amber-400">{config.cardBgOpacity}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={80}
+                value={config.cardBgOpacity}
+                onChange={(e) => updateConfig('cardBgOpacity', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+
+            <div className="pt-2 border-t border-slate-800">
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeTextLabel}</label>
+              <input
+                type="text"
+                value={config.surahBadgeText}
+                onChange={(e) => updateConfig('surahBadgeText', e.target.value)}
+                placeholder={t.style.badgeTextPlaceholder}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800">
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeSubtitleLabel}</label>
+              <input
+                type="text"
+                value={config.surahBadgeSubtitleText}
+                onChange={(e) => updateConfig('surahBadgeSubtitleText', e.target.value)}
+                placeholder={t.style.badgeSubtitlePlaceholder}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.cardBorder}
+                  onChange={(e) => updateConfig('cardBorder', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.cardBorder}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.textShadow}
+                  onChange={(e) => updateConfig('textShadow', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.textShadow}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.showWaveform}
+                  onChange={(e) => updateConfig('showWaveform', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.audioVisualizer}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.showSurahBadge}
+                  onChange={(e) => updateConfig('showSurahBadge', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.surahBadge}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.showTranslation}
+                  onChange={(e) => updateConfig('showTranslation', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.englishTranslation}</span>
+              </label>
+            </div>
+
+          </div>
+        </div>
+
+      </StyleSection>
+
+      <StyleSection id="background" title={t.style.tabBackground} summary={backgroundSummary} open={openSections.includes('background')} onToggle={() => toggleSection('background')}>
       {/* Background */}
-      {activeTab === 'background' && (
-        <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4">
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
             <label className="font-semibold text-slate-200 text-sm block mb-2">{t.style.bgModeLabel}</label>
             <div className="grid grid-cols-2 gap-1.5">
@@ -973,338 +1263,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
           </div>
         </div>
-      )}
 
-      {/* Layout & Text, section 2: typography and colour */}
-      {activeTab === 'design' && (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
-            <Type className="w-3.5 h-3.5 text-amber-400" />
-            {t.style.headingTypography}
-          </h3>
-          <div>
-            <label className="font-semibold text-slate-200 text-sm block mb-1.5">{t.style.arabicFontLabel}</label>
-            <div className="grid grid-cols-2 gap-2">
-              {FONTS_ARABIC.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => updateConfig('fontArabic', f.id)}
-                  // A face whose files are not on this server cannot be drawn,
-                  // so it cannot be chosen either -- see usableArabicFont.
-                  disabled={missingFonts.has(f.id)}
-                  title={missingFonts.has(f.id) ? t.style.fontNotInstalled : undefined}
-                  className={`p-2.5 rounded-xl border text-start transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                    usableArabicFont(config.fontArabic, missingFonts) === f.id
-                      ? 'bg-amber-500/15 border-amber-500 text-amber-300 ring-1 ring-amber-500/40'
-                      : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                  }`}
-                >
-                  <span className="block font-bold text-sm text-slate-100">
-                    {t.style.fonts[f.id as keyof typeof t.style.fonts] ?? f.name}
-                  </span>
-                  {/* Each face previews itself. Hardcoding one family here
-                      showed five identical samples -- and kept every other
-                      family out of the DOM, so the canvas never fetched the
-                      one it was about to draw with. */}
-                  <span className={`block text-lg ${f.className} text-amber-400 mt-1`} dir="rtl">
-                    بِسْمِ ٱللَّهِ
-                  </span>
-                </button>
-              ))}
-            </div>
-            {missingFonts.size > 0 && (
-              <p className="mt-2 text-[11px] text-slate-400">{t.style.fontNotInstalled}</p>
-            )}
-            {/* The chosen face is missing and none is selected above: say what
-                is drawing instead, in that face. */}
-            {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
-              <p className="mt-1.5 text-[11px] text-amber-300/90">
-                {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
-              </p>
-            )}
-            {/* Only the mushaf face knows where the printed lines break. */}
-            {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
-              <label className="mt-2 flex items-start gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={!!config.mushafLines}
-                  onChange={e => updateConfig('mushafLines', e.target.checked)}
-                  className="mt-0.5 accent-amber-500"
-                />
-                <span>
-                  <span className="font-semibold text-slate-200">{t.style.mushafLines}</span>
-                  <span className="block text-slate-400">{t.style.mushafLinesHint}</span>
-                </span>
-              </label>
-            )}
-          </div>
+      </StyleSection>
 
-          {/* Font Sizes */}
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.arabicFontSize}</span>
-                <span className="font-mono text-amber-400">{config.arabicFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={24}
-                max={64}
-                value={config.arabicFontSize}
-                onChange={(e) => updateConfig('arabicFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.translationFontSize}</span>
-                <span className="font-mono text-amber-400">{config.translationFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={14}
-                max={48}
-                value={config.translationFontSize}
-                onChange={(e) => updateConfig('translationFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.ayahNumberSize}</span>
-                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={20}
-                max={72}
-                value={config.ayahNumberFontSize}
-                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-          </div>
-
-          {/* Colours.
-
-              Three native `<input type="color">` used to sit here; on a
-              multi-monitor setup the OS opened its dialog on another screen
-              entirely. `ColorField` keeps the picker in the panel.
-
-              "Accent Gold" was also the wrong name twice over: it is not
-              necessarily gold, and it was never clear what it painted. It is
-              named for its job now, and the card border -- which was hardcoded
-              amber and stayed gold no matter what this was set to -- follows
-              it like everything else in the list. */}
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <label className="font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
-              <Palette className="w-3.5 h-3.5 text-amber-400" />
-              <span>{t.style.coloursLabel}</span>
-            </label>
-            <div className="flex flex-col gap-2">
-              <ColorField
-                label={t.style.colourArabic}
-                description={t.style.colourArabicDescription}
-                value={config.textColor}
-                onChange={hex => updateConfig('textColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourAccent}
-                description={t.style.colourAccentDescription}
-                value={config.accentColor}
-                onChange={hex => updateConfig('accentColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourTranslation}
-                description={t.style.colourTranslationDescription}
-                value={config.translationColor}
-                onChange={hex => updateConfig('translationColor', hex)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <ConfirmDialog
-        isOpen={pendingDelete !== null}
-        title={pendingDelete?.title || ''}
-        message={pendingDelete?.message || ''}
-        confirmLabel={pendingDelete?.confirmLabel}
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={() => {
-          pendingDelete?.run();
-          setPendingDelete(null);
-        }}
-      />
-
-      {/* Card & FX */}
-      {activeTab === 'card' && (
-        <div className="flex flex-col gap-3">
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
-            {/* Where things sit, then how the badge looks: the two choices
-                that change the frame's arrangement rather than its colours. */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="font-semibold text-slate-200 block mb-1">{t.style.layoutLabel}</label>
-                <select
-                  value={asFrameLayout(config.layout)}
-                  onChange={(e) => updateConfig('layout', e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  {FRAME_LAYOUTS.map(id => <option key={id} value={id}>{t.style.layouts[id]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeStyleLabel}</label>
-                {/* "None" is the badge switch, not a style: hiding the badge
-                    keeps the style it had for when it comes back. */}
-                <select
-                  value={config.showSurahBadge ? usableBadgeStyle(config.badgeStyle, missingFonts) : 'none'}
-                  onChange={(e) => onChangeConfig(e.target.value === 'none'
-                    ? { ...config, showSurahBadge: false }
-                    : { ...config, showSurahBadge: true, badgeStyle: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  <option value="none">{t.style.badgeStyles.none}</option>
-                  {BADGE_STYLES.map(id => (
-                    <option
-                      key={id}
-                      value={id}
-                      disabled={id === 'calligraphic' && missingFonts.has(SURAH_NAME_FONT_ID)}
-                    >
-                      {t.style.badgeStyles[id]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {missingFonts.has(SURAH_NAME_FONT_ID) && (
-              <p className="-mt-1 text-[11px] text-slate-400">{t.style.badgeFontMissing}</p>
-            )}
-            {/* Its own control, not the card's: a no-card layout sets the card
-                to nothing, and the badge still has to read over the footage. */}
-            {config.showSurahBadge && (
-              <div>
-                <div className="flex justify-between text-slate-300 mb-1">
-                  <span>{t.style.badgeOpacity}</span>
-                  <span className="font-mono text-amber-400">{config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}
-                  onChange={(e) => updateConfig('badgeOpacity', parseInt(e.target.value, 10))}
-                  className="w-full accent-amber-500"
-                />
-              </div>
-            )}
-
-            <div className="pt-2 border-t border-slate-800">
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.cardOpacity}</span>
-                <span className="font-mono text-amber-400">{config.cardBgOpacity}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={80}
-                value={config.cardBgOpacity}
-                onChange={(e) => updateConfig('cardBgOpacity', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeTextLabel}</label>
-              <input
-                type="text"
-                value={config.surahBadgeText}
-                onChange={(e) => updateConfig('surahBadgeText', e.target.value)}
-                placeholder={t.style.badgeTextPlaceholder}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              />
-              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeSubtitleLabel}</label>
-              <input
-                type="text"
-                value={config.surahBadgeSubtitleText}
-                onChange={(e) => updateConfig('surahBadgeSubtitleText', e.target.value)}
-                placeholder={t.style.badgeSubtitlePlaceholder}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              />
-              <p className="text-[11px] text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.cardBorder}
-                  onChange={(e) => updateConfig('cardBorder', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.cardBorder}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.textShadow}
-                  onChange={(e) => updateConfig('textShadow', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.textShadow}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showWaveform}
-                  onChange={(e) => updateConfig('showWaveform', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.audioVisualizer}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showSurahBadge}
-                  onChange={(e) => updateConfig('showSurahBadge', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.surahBadge}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showTranslation}
-                  onChange={(e) => updateConfig('showTranslation', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.englishTranslation}</span>
-              </label>
-            </div>
-
-          </div>
-        </div>
-      )}
-
+      <StyleSection id="branding" title={t.style.headingBranding} summary={brandingSummary} open={openSections.includes('branding')} onToggle={() => toggleSection('branding')}>
       {/* Card & FX, section 2: branding. It belongs with the other things
           stamped on top of the frame rather than with the ayah's typography. */}
-      {activeTab === 'card' && (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-            {t.style.headingBranding}
-          </h3>
+              <div className="flex flex-col gap-3">
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
             <div>
               <label className="font-semibold text-slate-200 block mb-1">{t.style.watermarkLabel}</label>
@@ -1333,7 +1298,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
           </div>
         </div>
-      )}
+      </StyleSection>
     </div>
   );
 };
