@@ -32,6 +32,14 @@ export const DEFAULT_CAPTION_TRANSITION: CaptionTransition = 'cut';
 export const DEFAULT_WORD_EFFECT: WordEffect = 'none';
 export const DEFAULT_MOTION_SPEED: MotionSpeed = 'normal';
 
+/** What a new clip starts with: no motion. Not carried by presets or from one clip to the next. */
+export const MOTION_DEFAULTS = {
+  captionTransition: DEFAULT_CAPTION_TRANSITION,
+  wordEffect: DEFAULT_WORD_EFFECT,
+  motionSpeed: DEFAULT_MOTION_SPEED,
+  highlightColor: '',
+};
+
 export const asCaptionTransition = (value: unknown): CaptionTransition =>
   CAPTION_TRANSITIONS.includes(value as CaptionTransition) ? value as CaptionTransition : DEFAULT_CAPTION_TRANSITION;
 export const asWordEffect = (value: unknown): WordEffect =>

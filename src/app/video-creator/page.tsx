@@ -56,10 +56,7 @@ import {
 } from '@/lib/backgroundTimeline';
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY, NEW_PROJECT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
-import {
-  asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour,
-  DEFAULT_CAPTION_TRANSITION, DEFAULT_WORD_EFFECT, DEFAULT_MOTION_SPEED
-} from '@/lib/captionMotion';
+import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour, MOTION_DEFAULTS } from '@/lib/captionMotion';
 import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
 import { nextToCheck, captionChecks } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
@@ -399,6 +396,9 @@ export default function VideoCreatorPage() {
   const [sourceMode, setSourceMode] = useState<'reciter' | 'recording'>('reciter');
   /** Set while the source is being edited; otherwise a loaded clip shows as a summary. */
   const [sourceEditing, setSourceEditing] = useState(false);
+  // Set by "New clip" and cleared by whatever follows it: loading or matching
+  // the new clip resets its motion, going back to the current one does not.
+  const newClipPending = useRef(false);
   /** Advanced (screen breaks) opens itself when the clip's source is reopened to re-match. */
   const [advancedOpen, setAdvancedOpen] = useState(false);
   /** Fewer / More re-cut a match the aligner still holds -- see `useRegroup`. */
@@ -457,10 +457,7 @@ export default function VideoCreatorPage() {
     badgeStyle: DEFAULT_BADGE_STYLE,
     badgeOpacity: NEW_PROJECT_BADGE_OPACITY,
     layout: DEFAULT_FRAME_LAYOUT,
-    captionTransition: DEFAULT_CAPTION_TRANSITION,
-    wordEffect: DEFAULT_WORD_EFFECT,
-    motionSpeed: DEFAULT_MOTION_SPEED,
-    highlightColor: '',
+    ...MOTION_DEFAULTS,
     surahBadgeText: '',
     surahBadgeSubtitleText: '',
     bgType: 'video',
@@ -478,6 +475,12 @@ export default function VideoCreatorPage() {
     fps: 60,
     gpuAccelerated: true
   });
+  /** A new clip starts with no motion, whatever the last one had; the rest of its style carries over. */
+  const beginClip = () => {
+    if (!newClipPending.current) return;
+    newClipPending.current = false;
+    setCanvasConfig(prev => ({ ...prev, ...MOTION_DEFAULTS }));
+  };
 
   /**
    * Undo and redo over the project.
@@ -646,6 +649,7 @@ export default function VideoCreatorPage() {
 
   // Fetch Verses on Surah / Reciter / Ayah change
   const handleLoadSurahVerses = async () => {
+    beginClip();
     // Back to the clip's summary in Source, which reports how the load went.
     setSourceEditing(false);
     setIsLoadingVerses(true);
@@ -1145,6 +1149,7 @@ export default function VideoCreatorPage() {
   };
 
   const handleAutoMatchUploadedAudio = () => {
+    beginClip();
     setSourceEditing(false);
     if (!customAudioFile) {
       setMatchStatus({ text: t.match.needUpload, tone: 'error' });
@@ -1403,6 +1408,7 @@ export default function VideoCreatorPage() {
   };
 
   const handleManualMatchUploadedAudio = () => {
+    beginClip();
     setSourceEditing(false);
     setMatchStatus({ text: t.match.manualMode, tone: 'info' });
   };
@@ -1861,6 +1867,7 @@ export default function VideoCreatorPage() {
 
   /** "New clip" in Projects: the Source tab, on its form rather than the current clip's summary. */
   const startNewClip = () => {
+    newClipPending.current = true;
     setPanelTab('source');
     setSourceEditing(true);
   };
@@ -2827,7 +2834,7 @@ export default function VideoCreatorPage() {
                   )}
 
                       <div className="flex flex-wrap gap-2">
-                        <Button onClick={() => { setSourceMode(customAudioFile ? 'recording' : 'reciter'); setAdvancedOpen(true); setSourceEditing(true); }}>
+                        <Button onClick={() => { setSourceMode(customAudioFile ? 'recording' : 'reciter'); setAdvancedOpen(true); newClipPending.current = false; setSourceEditing(true); }}>
                           {t.source.editSource}
                         </Button>
                         {customAudioFile && (
@@ -2853,7 +2860,7 @@ export default function VideoCreatorPage() {
                   <>
                     {hasClip && (
                       <button
-                        onClick={() => setSourceEditing(false)}
+                        onClick={() => { newClipPending.current = false; setSourceEditing(false); }}
                         className="self-start text-[13px] font-semibold text-amber-300 hover:text-amber-200"
                       >
                         {t.source.backToClip}

@@ -1,14 +1,24 @@
-# Quran Clipper Studio
+# Quran Clipper Studio — a Quran video and clip maker
 
 <p align="center">
-  <img src="docs/screenshots/Banner.jpg" alt="Banner.">
+  <img src="docs/screenshots/Banner.jpg" alt="Quran Clipper Studio, a Quran video and clip maker for short-form recitation videos.">
 </p>
 
 **English · [العربية](README.ar.md)**
 
-A Next.js studio for creating short-form Quran recitation videos. Select ayahs, choose a
-reciter or upload your own recitation, sync verse timings, style the canvas, pick an animated
-background, and export the result — all in the browser.
+**Turn any Quran recitation into a captioned short video for TikTok, Instagram Reels and YouTube
+Shorts.** Pick the ayahs and a reciter, or upload your own recitation. Quran Clipper times every
+word to the audio, sets the Arabic in the Madani mushaf's own script with a translation beneath
+it, and exports the finished clip, all in the browser. Free for personal and non-commercial use
+(see [LICENSE](LICENSE)).
+
+- **Your own recording, timed word by word:** the ayahs it contains are found and every word placed on the audio.
+- **Ten reciters,** every one with published timings.
+- **Mushaf typography:** the Madani mushaf's page glyphs, IndoPak, Digital Khatt.
+- **Translations** from 126 editions in any language quran.com publishes, up to three under each caption.
+- **Captions that follow the recitation:** gentle fades or slides between captions, and words revealed or highlighted as they are recited.
+- **Every frame:** 9:16, 1:1, 4:5 and 16:9 presets for TikTok, Reels, Shorts and YouTube, exported up to 4K.
+- **English and Arabic interface,** eight themes.
 
 Its distinguishing feature is how it times uploaded audio. Instead of asking a model to guess
 what was recited and when, it takes the *known* Quran text as a fixed constraint and solves
