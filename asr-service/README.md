@@ -143,6 +143,7 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 |---|---|---|
 | `ASR_ALIGN_BACKEND` | `nemo` | Backend for `/align`. `wav2vec2` disables ayah-range detection. |
 | `ASR_ALIGN_MODEL` | per backend | Override the alignment checkpoint. |
+| `ASR_ALIGN_MODEL_REVISION` | the pinned upload | Load another upload of `Muno459/fastconformer-quran`, by commit sha, to measure it. See [Updating the model](#updating-the-model). |
 | `ASR_BACKEND` | `wav2vec2` | Decode backend for `/transcribe`: `wav2vec2`, `nemo`, or `whisper`. |
 | `ASR_MODEL` | per backend | Override the decode checkpoint. |
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |
@@ -211,6 +212,27 @@ or 3.12 virtualenv for this service.
 `ASR_MODEL` doesn't need setting; `Muno459/fastconformer-quran` is already the NeMo default.
 That repo's root contains loose browsing copies that NeMo's generic `from_pretrained()` cannot
 load, so the loader fetches the packaged `nemo/fastconformer-quran.nemo` checkpoint directly.
+
+### Updating the model
+
+The service loads one exact upload of `Muno459/fastconformer-quran`:
+`DEFAULT_NEMO_ALIGN_REVISION` in `app/align.py`. A new push to the Hub changes nothing until it
+is chosen. Before the pin, every restart with a connection fetched whatever had been pushed
+since, so a new upload could change every caption with nobody having measured it.
+
+`scripts/check_model.py` asks the Hub whether there is a newer upload. It also says whether the
+weights changed or only the repo's other files, since a new README is not a new model.
+`./start.sh` runs it and speaks up only when there is one, and `./gauge.sh` ends with it. To
+judge a newer upload:
+
+```bash
+python3 scripts/check_model.py                      # is there one, and did the weights change?
+ASR_ALIGN_MODEL_REVISION=<sha> ./gauge.sh           # score it against ground truth and the reported cases
+```
+
+Move the pin to that sha only when both agree it is no worse (see `docs/ALIGNMENT.md`). The
+first load of a new revision downloads it once (~1.2 GB); a pinned revision already in the
+cache loads without asking the Hub at all.
 
 ### RNNT vs CTC decoding (NeMo only)
 
@@ -387,6 +409,7 @@ and whether range auto-detection is available:
   "model": "jonatasgrosman/wav2vec2-large-xlsr-53-arabic",
   "alignBackend": "nemo",
   "alignModel": "Muno459/fastconformer-quran",
+  "alignModelRevision": "77dbe5d809628ea89422243695de4c0d69770775",  // the pinned upload, or a trial's
   "alignReady": true,          // false => every /align call will fail
   "alignError": null,          // why, when alignReady is false
   "canAutoDetectRange": true,

@@ -180,3 +180,12 @@ SUMMARY
 if [[ "$TEXT_UPDATE" == 1 && -n "$TEXT_ADVICE" ]]; then
   printf '\n%s\n\n' "$TEXT_ADVICE"
 fi
+
+# Whether the Hub has a newer upload of the alignment model than the one the
+# sidecar is pinned to. Said only when there is one, and nothing is fetched:
+# a new model changes every caption, so it is measured with ./gauge.sh first
+# -- see scripts/check_model.py.
+if [[ -x asr-service/.venv/bin/python ]]; then
+  MODEL_OUT="$(timeout 10 asr-service/.venv/bin/python scripts/check_model.py 2>/dev/null)"
+  [[ $? -eq 1 ]] && printf '\n%s\n\n' "$MODEL_OUT"
+fi

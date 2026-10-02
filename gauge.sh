@@ -115,3 +115,12 @@ for suite in test_reported_cases test_alignment_rules test_phrase_search test_ca
 done
 echo
 echo "  full output in $RUN_DIR/gauge-*.log"
+
+# Which upload of the model these numbers are for, and whether the Hub has a
+# newer one. A trial of another (ASR_ALIGN_MODEL_REVISION) is named, so its
+# numbers are never mistaken for the pinned model's.
+echo
+if [[ -n "${ASR_ALIGN_MODEL_REVISION:-}" ]]; then
+  echo "  model: trying upload ${ASR_ALIGN_MODEL_REVISION} (ASR_ALIGN_MODEL_REVISION), not the pinned one"
+fi
+"$PY" scripts/check_model.py | sed 's/^/  /' || true

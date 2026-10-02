@@ -420,7 +420,9 @@ Nothing in it is required to run the app.
   running and waiting, and how many matches finished, failed, were abandoned or turned away, with
   the time of the last failure. Counts only -- no addresses or error text, because it answers
   anyone. An uptime check can alert on `waiting` nearing `limit`, or on `failed` climbing.
-- **No Gemini.** The key would be yours, so the option is greyed out and the route refuses it.
+- **One timing engine, called "Match".** Visitors are not asked to choose: no Gemini (the key
+  would be yours), and not the experimental Local + QUL either. The route refuses both. Built-in
+  reciters still use QUL's published timings wherever its exports are imported.
 - **The default translation (Saheeh International, 20),** and no locally installed edition is
   served, whatever is on the disk.
 - **Only reciter audio reaches the sidecar.** A match may not point it at an arbitrary address --
@@ -609,8 +611,10 @@ clips**. It is a parameter sweep, not advice — a value that wins on one record
 another is not an improvement, and this is what makes that visible. More ground-truth files make
 it more trustworthy; with only one clip it has repeatedly preferred the wrong value.
 
-**Ground truth** is a development tool and is hidden in production builds — the file it writes is
-only useful next to this repository. `NEXT_PUBLIC_DEV_TOOLS=1` shows it in a build.
+**Ground truth** is offered in a personal studio, in development and in a production build
+alike, since the file it writes is only useful next to this repository. A public studio never
+shows it, and its server refuses the route.
+`NEXT_PUBLIC_DEV_TOOLS=1` now only shows the preview's frame-rate readout in a build.
 
 See [docs/ALIGNMENT.md](docs/ALIGNMENT.md#growing-the-ground-truth) for the format.
 

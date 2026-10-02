@@ -153,6 +153,10 @@ def health() -> dict:
         "nemoDecoder": asr.active_nemo_decoder() if asr.backend_name() == "nemo" else None,
         "alignBackend": align.align_backend(),
         "alignModel": align.align_model_name(),
+        # Which upload of it, when it is the default model: pinned, so a new
+        # upload to the Hub changes nothing until it is chosen.
+        "alignModelRevision": align.default_model_revision()
+        if align.align_model_name() == align.DEFAULT_NEMO_ALIGN_MODEL else None,
         # Whether the align backend actually loads. False means every /align
         # call will fail, so the app can say so up front instead of letting
         # someone upload a file and wait for the error.

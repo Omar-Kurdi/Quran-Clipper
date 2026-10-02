@@ -201,7 +201,11 @@ export const en = {
     matcherLocalBlurb:
       'Finds the passage in the audio, then times every word against the real Quran text, so no word can be dropped or misheard. Nothing leaves your machine.',
     matcherLocalFix: 'This needs the local helper app running. Start it, then reload this page.',
+    matcherPublic: 'Match',
+    matcherPublicBlurb:
+      'Finds the passage in the audio, then times every word against the real Quran text, so no word can be dropped or misheard.',
     matcherQul: 'Local + QUL',
+    matcherExperimental: 'Experimental',
     matcherQulTechnical: 'local forced alignment, with QUL morphology and mutashabihat',
     matcherQulBlurb:
       'The same local matcher, but it also uses QUL’s word roots and its list of repeated passages to work out which passage was recited. Try it on the same recording as Local to compare.',

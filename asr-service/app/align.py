@@ -100,6 +100,19 @@ class AlignedWord:
 #: it does for merely placing known text in order).
 DEFAULT_NEMO_ALIGN_MODEL = "Muno459/fastconformer-quran"
 
+#: The upload of that model this aligner is measured against (`./gauge.sh`).
+#: Loaded by name alone, every restart with a connection fetched whatever had
+#: been pushed since -- so a new upload could change every caption without
+#: anyone choosing it or measuring it. `scripts/check_model.py` says when the
+#: Hub has a newer one; `ASR_ALIGN_MODEL_REVISION` tries it without a code
+#: change, and this moves only once `./gauge.sh` agrees.
+DEFAULT_NEMO_ALIGN_REVISION = "77dbe5d809628ea89422243695de4c0d69770775"
+
+
+def default_model_revision() -> str:
+    """Which upload of the default model to load: the pinned one, unless a trial asks for another."""
+    return (os.getenv("ASR_ALIGN_MODEL_REVISION") or "").strip() or DEFAULT_NEMO_ALIGN_REVISION
+
 
 def align_backend() -> str:
     """``nemo`` (the default) or ``wav2vec2``.
@@ -289,7 +302,9 @@ def _load_nemo_aligner():
         # raw HfHubHTTPError says nothing about how to get past it -- so name the
         # three steps here rather than leave someone reading a stack trace.
         try:
-            path = hf_hub_download(repo_id=name, filename="nemo/fastconformer-quran.nemo")
+            path = hf_hub_download(
+                repo_id=name, filename="nemo/fastconformer-quran.nemo", revision=default_model_revision()
+            )
         except Exception as exc:
             raise AlignError(
                 f"Could not download {name} ({type(exc).__name__}: {exc}). This model is "

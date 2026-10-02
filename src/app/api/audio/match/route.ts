@@ -242,6 +242,9 @@ export async function POST(req: NextRequest) {
       if (provider === 'gemini') {
         return NextResponse.json({ success: false, provider, error: 'Gemini matching is not offered on this public studio.' }, { status: 403 });
       }
+      if (provider === 'qul') {
+        return NextResponse.json({ success: false, provider, error: 'This public studio matches with its one engine only.' }, { status: 403 });
+      }
       if (audioUrl && !publicAudioUrlAllowed(audioUrl, req.nextUrl.origin, hostAllowed)) {
         return NextResponse.json({ success: false, provider, error: 'That audio address is not one this studio reads.' }, { status: 400 });
       }

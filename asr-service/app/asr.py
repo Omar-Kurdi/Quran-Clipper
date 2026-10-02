@@ -247,7 +247,13 @@ def _load_nemo():
         # correctly hash-named internally, no patching needed.
         from huggingface_hub import hf_hub_download
 
-        restore_path = hf_hub_download(repo_id=DEFAULT_NEMO_MODEL, filename="nemo/fastconformer-quran.nemo")
+        # The same upload the aligner is pinned to; imported here so this
+        # module does not depend on that one for anything else.
+        from .align import default_model_revision
+
+        restore_path = hf_hub_download(
+            repo_id=DEFAULT_NEMO_MODEL, filename="nemo/fastconformer-quran.nemo", revision=default_model_revision()
+        )
         model = nemo_asr.models.ASRModel.restore_from(restore_path=restore_path, map_location=_device())
     else:
         model = nemo_asr.models.ASRModel.from_pretrained(model_name=name)

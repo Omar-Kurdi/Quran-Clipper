@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { groundTruthAudioName, groundTruthFileName } from '@/lib/groundTruth';
+import { studioMode } from '@/lib/studioMode';
 
 /**
  * Writes a ground-truth file and its audio straight into `scripts/`.
@@ -19,9 +20,11 @@ import { groundTruthAudioName, groundTruthFileName } from '@/lib/groundTruth';
  * file it accompanies carries `# trim: none` and the evaluator simply decodes
  * it.
  *
- * Development only. This writes to the repository checkout, which a deployed
- * instance has no business doing and generally cannot; the studio falls back to
- * downloading the text file when this is not here.
+ * A personal studio's tool, in development or a production build alike: it
+ * writes to this checkout's `scripts/`, which is where the owner's
+ * `./gauge.sh` reads. Never on a public studio, which takes nobody's files onto
+ * its disk -- the middleware closes the route there too. The studio falls back
+ * to downloading the text file when this answers 404.
  */
 export const runtime = 'nodejs';
 
@@ -29,7 +32,7 @@ export const runtime = 'nodejs';
 const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === 'production') {
+  if (studioMode() === 'public') {
     return NextResponse.json({ success: false, error: 'not available' }, { status: 404 });
   }
 

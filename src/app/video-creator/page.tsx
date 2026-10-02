@@ -31,11 +31,11 @@ const framePreference = createNumberPreference('qc-frame-platform', 0, { min: 0,
 const safeAreaPreference = createBooleanPreference('qc-safe-area', false);
 
 /**
- * Whether to show tools that only mean something next to this repository.
+ * Whether to show the preview's frame-rate and paint-time readout.
  *
- * `npm run dev` yes, `npm run build` no. `NEXT_PUBLIC_DEV_TOOLS=1` forces them
- * on in a build, which is what to set if you want the ground-truth loop from a
- * production server you host yourself.
+ * `npm run dev` yes, `npm run build` no; `NEXT_PUBLIC_DEV_TOOLS=1` forces it on
+ * in a build. Ground truth is not behind this: a personal studio offers it in
+ * either, a public one never (see the overflow menu).
  */
 const SHOW_DEV_TOOLS =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEV_TOOLS === '1';
@@ -233,9 +233,9 @@ export default function VideoCreatorPage() {
   const [matchStatus, setMatchStatus] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [chosenProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul'>('align');
-  // Whatever was picked before, a public studio matches locally: it offers no
-  // Gemini, and its route refuses one.
-  const matchProvider = studio.mode === 'public' && chosenProvider === 'gemini' ? 'align' : chosenProvider;
+  // Whatever was picked before, a public studio matches locally: it offers
+  // only that engine, and its route refuses the others.
+  const matchProvider = studio.mode === 'public' ? 'align' : chosenProvider;
   /** Built-in reciters with a QUL timing export on this machine. */
   const [qulTimedReciters, setQulTimedReciters] = useState<string[]>([]);
   const [providerStatus, setProviderStatus] = useState<{
@@ -1791,10 +1791,10 @@ export default function VideoCreatorPage() {
    * carries the consequence (measured timing vs estimated). The implementation
    * name is kept on hover for anyone who does want it.
    */
-  const matchOptions = [
+  const allMatchOptions = [
     {
       id: 'align' as const,
-      label: t.source.matcherLocal,
+      label: studio.mode === 'public' ? t.source.matcherPublic : t.source.matcherLocal,
       technical: t.source.matcherLocalTechnical,
       Icon: Server,
       ready: !!providerStatus?.align.configured && providerStatus.align.alignReady !== false,
@@ -1805,8 +1805,9 @@ export default function VideoCreatorPage() {
             ? t.source.matcherHelperNeedsRestart
             : t.source.matcherReady
           : t.source.matcherHelperNotRunning,
-      blurb: t.source.matcherLocalBlurb,
-      fix: t.source.matcherLocalFix
+      blurb: studio.mode === 'public' ? t.source.matcherPublicBlurb : t.source.matcherLocalBlurb,
+      fix: t.source.matcherLocalFix,
+      experimental: false
     },
     {
       // Its own option rather than a switch on Local, so one recording can be
@@ -1828,7 +1829,9 @@ export default function VideoCreatorPage() {
       blurb: t.source.matcherQulBlurb,
       fix: providerStatus?.align.configured && !providerStatus.qul?.qulSupported
         ? t.source.matcherQulRestartFix
-        : t.source.matcherQulFix
+        : t.source.matcherQulFix,
+      // No gain measured over Local yet (FutureIdeas #40), so it says so.
+      experimental: true
     },
     {
       id: 'gemini' as const,
@@ -1844,9 +1847,13 @@ export default function VideoCreatorPage() {
             ? t.source.matcherReady
             : t.source.matcherNeedsApiKey,
       blurb: t.source.matcherOnlineBlurb,
-      fix: t.source.matcherOnlineFix
+      fix: t.source.matcherOnlineFix,
+      experimental: false
     }
   ];
+  // A public studio offers the one engine it uses, under a name that says
+  // what it does: visitors have nothing to choose between.
+  const matchOptions = studio.mode === 'public' ? allMatchOptions.filter(opt => opt.id === 'align') : allMatchOptions;
   const selectedMatchOption = matchOptions.find(o => o.id === matchProvider) ?? matchOptions[0];
 
 
@@ -1919,9 +1926,9 @@ export default function VideoCreatorPage() {
         }]
       : []),
     // A development tool, not a feature: the file it writes is only useful
-    // next to this repo's `gauge.sh`. Shown while developing, hidden in a
-    // production build.
-    ...(SHOW_DEV_TOOLS && verses.length > 0
+    // next to this repo's `gauge.sh`. Offered in a personal studio, built or
+    // not; never in a public one, whose server does not take the files.
+    ...(studio.mode !== 'public' && verses.length > 0
       ? [{
           key: 'ground-truth',
           label: t.header.groundTruth,
@@ -2346,8 +2353,8 @@ export default function VideoCreatorPage() {
         <div className="flex flex-col gap-1.5">
           {matchOptions.map(opt => {
             const selected = matchProvider === opt.id;
-            // A public studio offers no Gemini: the key is the owner's, and
-            // the route refuses it anyway.
+            // Only ever true in an older public build; a public studio now
+            // lists only its own engine.
             const offline = studio.mode === 'public' && opt.id === 'gemini';
             return (
               <label
@@ -2366,7 +2373,14 @@ export default function VideoCreatorPage() {
                   onChange={() => setMatchProvider(opt.id)}
                   className="w-4 h-4 accent-amber-500"
                 />
-                <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-100">{opt.label}</span>
+                <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-100">
+                  {opt.label}
+                  {opt.experimental && (
+                    <span className="ms-1.5 align-middle rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      {t.source.matcherExperimental}
+                    </span>
+                  )}
+                </span>
                 <span className={`text-xs ${opt.ready ? 'text-emerald-300' : 'text-amber-300'}`}>{opt.status}</span>
               </label>
             );
