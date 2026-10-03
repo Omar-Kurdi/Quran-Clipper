@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import align, asr, corpus, detect, qul, regroup
+from . import align, asr, corpus, detect, phoneme, qul, regroup
 from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, decode_url_window, duration_seconds
 from .vad import VoicedRegion, detect_voiced_regions
 
@@ -387,6 +387,7 @@ async def align_endpoint(
     window_end: float = Form(0.0),
     assist: str = Form(""),
     breaks: str = Form(""),
+    retime: str = Form(""),  # a phoneme model (`phoneme.MODELS`) to re-time the words with -- a development trial
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -541,8 +542,8 @@ async def align_endpoint(
     except align.AlignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    aligned = result.words
-    segments = result.segments
+    aligned, segments = result.words, result.segments
+    retimed = bool(retime) and phoneme.retime(retime, pcm, aligned, segments)
     mean_score = result.mean_score
     coverage = result.reference_coverage
     agreement = result.decode_agreement
@@ -635,6 +636,7 @@ async def align_endpoint(
         "model": align.align_model_name(),
         "detectedRange": detected.to_dict() if detected else None,
         "assist": "qul" if detected is not None and detect_assist is not None else None,
+        "retimed": retime if retimed else None,
         "audioDuration": round(total_duration, 3),
         # Where in the recording this alignment sits, so the caller can tell a
         # window apart from a clip that happens to start at zero.

@@ -44,6 +44,7 @@ import { PanelTabs, type PanelTab } from '@/components/PanelTabs';
 import { FrameBar, SafeAreaOverlay } from '@/components/FrameBar';
 import { framePreset, coveredAreas } from '@/lib/frame';
 import { EXPORT_PRESETS } from '@/lib/exportPresets';
+import { isPhonemeProvider, phonemeTrialOffered, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
@@ -127,7 +128,8 @@ import {
   Undo2,
   Redo2,
   Keyboard,
-  HelpCircle
+  HelpCircle,
+  FlaskConical
 } from 'lucide-react';
 
 /** What "Save" reports, by where the project went: see `projectStore`. */
@@ -232,7 +234,7 @@ export default function VideoCreatorPage() {
    */
   const [matchStatus, setMatchStatus] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
-  const [chosenProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul'>('align');
+  const [chosenProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul' | PhonemeProvider>('align');
   // Whatever was picked before, a public studio matches locally: it offers
   // only that engine, and its route refuses the others.
   const matchProvider = studio.mode === 'public' ? 'align' : chosenProvider;
@@ -1025,8 +1027,9 @@ export default function VideoCreatorPage() {
       formData.append('windowEnd', String(source.end));
       // A built-in reciter's recording: where it has published timings the
       // server times the captions from them and only asks the aligner where the
-      // reciter paused. Any other audio is aligned as before.
-      formData.append('timing', 'published');
+      // reciter paused. Any other audio is aligned as before. Not for the
+      // phoneme trial, whose word times are the thing being tried.
+      if (!isPhonemeProvider(matchProvider)) formData.append('timing', 'published');
       if (source.skipAligner) formData.append('aligner', 'skip');
     }
     formData.append('surah', String(selectedSurah));
@@ -1089,7 +1092,9 @@ export default function VideoCreatorPage() {
         audioDuration: data.audioDuration ?? audioDuration
       });
       const providerLabel =
-        data.provider === 'qul' ? 'Forced alignment + QUL' : data.provider === 'align' ? 'Forced alignment' : 'Gemini';
+        data.provider === 'qul' ? 'Forced alignment + QUL'
+          : data.provider === 'align' ? 'Forced alignment'
+            : isPhonemeProvider(data.provider) ? `Forced alignment, re-timed (${data.provider})` : 'Gemini';
       // Kept user-facing and short: what was found, and what to do next. The
       // provider name, model, phrase counts and acoustic scores are diagnostics
       // -- they go to the console, not to someone making a video.
@@ -1100,7 +1105,7 @@ export default function VideoCreatorPage() {
       // range is right -- the acoustic score can't tell those apart (see
       // README.md). So when the range wasn't the user's own choice, ask them to
       // check it explicitly rather than implying the match verified itself.
-      const confirmRange = data.provider === 'align' || data.provider === 'qul';
+      const confirmRange = data.provider === 'align' || data.provider === 'qul' || isPhonemeProvider(data.provider);
       setMatchStatus({
         text: data.timedFrom
           ? t.match.publishedTimed(
@@ -1853,7 +1858,26 @@ export default function VideoCreatorPage() {
   ];
   // A public studio offers the one engine it uses, under a name that says
   // what it does: visitors have nothing to choose between.
-  const matchOptions = studio.mode === 'public' ? allMatchOptions.filter(opt => opt.id === 'align') : allMatchOptions;
+  // Development only: Match with its words re-timed by a phoneme model, one
+  // option per model so the same recording can be tried with each -- see
+  // `phonemeTrial`. They run wherever Match runs.
+  const localOption = allMatchOptions[0];
+  const phonemeOptions = phonemeTrialOffered(studio.mode, process.env.NODE_ENV)
+    ? ([
+        { id: 'phoneme-v31' as const, label: t.source.matcherPhonemeV31 },
+        { id: 'phoneme-old' as const, label: t.source.matcherPhonemeOld }
+      ].map(option => ({
+        ...localOption,
+        ...option,
+        technical: t.source.matcherPhonemeTechnical,
+        Icon: FlaskConical,
+        blurb: t.source.matcherPhonemeBlurb,
+        experimental: true
+      })))
+    : [];
+  const matchOptions = studio.mode === 'public'
+    ? allMatchOptions.filter(opt => opt.id === 'align')
+    : [...allMatchOptions, ...phonemeOptions];
   const selectedMatchOption = matchOptions.find(o => o.id === matchProvider) ?? matchOptions[0];
 
 

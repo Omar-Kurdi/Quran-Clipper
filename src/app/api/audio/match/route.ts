@@ -15,6 +15,7 @@ import { timedFromPublished } from '@/lib/publishedPhrases';
 import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
 import { hostAllowed } from '@/app/api/audio/proxy/route';
 import { studioMode } from '@/lib/studioMode';
+import { PHONEME_MODEL, PHONEME_PROVIDERS, isPhonemeProvider, phonemeTrialOffered, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { matchQueue, ticketFrom, visitorFrom, QueueFullError, VisitorBusyError, AbandonedError } from '@/lib/matchQueue';
 
 export const runtime = 'nodejs';
@@ -28,15 +29,15 @@ export const dynamic = 'force-dynamic';
  * mutashabihat -- a separate option so the two can be compared on the same
  * recording. See docs/ALIGNMENT.md.
  */
-type Provider = 'gemini' | 'align' | 'qul';
+type Provider = 'gemini' | 'align' | 'qul' | PhonemeProvider;
 
-const PROVIDERS: Provider[] = ['gemini', 'align', 'qul'];
+const PROVIDERS: Provider[] = ['gemini', 'align', 'qul', ...PHONEME_PROVIDERS];
 
 /** The longest stretch of a reciter's chapter one match may read on a public studio. */
 const PUBLIC_MAX_WINDOW_SEC = 600;
 
 /** Both local providers run the forced aligner; they differ only in how the passage is found. */
-const isLocal = (provider: Provider) => provider === 'align' || provider === 'qul';
+const isLocal = (provider: Provider) => provider === 'align' || provider === 'qul' || isPhonemeProvider(provider);
 
 /**
  * Whether the UI should ask the user to check the result before publishing.
@@ -57,8 +58,7 @@ function needsReview(provider: Provider, confidence: number, warned: boolean): b
       return true;
     // The user asserted the range themselves and the coverage check passed, so
     // there is nothing left to flag.
-    case 'align':
-    case 'qul':
+    default:
       return false;
   }
 }
@@ -238,6 +238,11 @@ export async function POST(req: NextRequest) {
     // A public studio has no Gemini (its key is the owner's, and its free tier
     // is not a shared one) and hands the sidecar only reciter audio -- see
     // `publicAudioUrlAllowed`.
+    // The phoneme trial is a development tool; see `phonemeTrial`.
+    if (isPhonemeProvider(provider) && !phonemeTrialOffered(studioMode(), process.env.NODE_ENV)) {
+      return NextResponse.json({ success: false, provider, error: 'The phoneme trial runs only in a personal studio under npm run dev.' }, { status: 403 });
+    }
+
     if (studioMode() === 'public') {
       if (provider === 'gemini') {
         return NextResponse.json({ success: false, provider, error: 'Gemini matching is not offered on this public studio.' }, { status: 403 });
@@ -320,7 +325,8 @@ export async function POST(req: NextRequest) {
           start: selectedStart,
           end: selectedEnd,
           assist: provider === 'qul' ? 'qul' : undefined,
-          breaks: screenBreaksFrom(formData.get('breaks'))
+          breaks: screenBreaksFrom(formData.get('breaks')),
+          retime: isPhonemeProvider(provider) ? PHONEME_MODEL[provider] : undefined
         }), {
           // On a public studio each visitor holds only a small share of the
           // queue, and a visitor who closes the tab gives up their place.

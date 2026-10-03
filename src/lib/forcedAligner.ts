@@ -84,6 +84,8 @@ type AlignResponse = {
   warning: string | null;
   /** `qul` when detection ran with QUL's text data; absent on the default path. */
   assist?: AlignAssist | null;
+  /** The phoneme model whose word starts these are, when one was asked for and could read the passage. */
+  retimed?: PhonemeRetime | null;
   /** Asks the sidecar to cut this same alignment again at another setting; see `runRegroup`. */
   regroupId?: string;
 };
@@ -107,6 +109,7 @@ type AlignRequest = {
   reference: string;
   assist?: AlignAssist;
   breaks?: ScreenBreaks;
+  retime?: PhonemeRetime;
 };
 
 /** The sidecar's `/align` form for one request. */
@@ -122,6 +125,7 @@ function alignmentForm(params: AlignRequest): FormData {
   formData.append('reference', params.reference);
   if (params.assist) formData.append('assist', params.assist);
   if (params.breaks && params.breaks !== 'normal') formData.append('breaks', params.breaks);
+  if (params.retime) formData.append('retime', params.retime);
   return formData;
 }
 
@@ -197,6 +201,12 @@ export function referenceToken(word: { arabic: string }): string {
 export type AlignAssist = 'qul';
 
 /**
+ * A phoneme model the sidecar can re-time the words with, after the captions
+ * are cut -- a development trial, see the sidecar's `phoneme.py`.
+ */
+export type PhonemeRetime = 'v31' | 'old';
+
+/**
  * The studio's "fewer / more screen breaks" setting. It moves how much silence
  * the sidecar needs before it calls a pause a stop and ends a caption there;
  * ayah ends and restarts still break either way. See `align.BREAK_SCALES`.
@@ -223,6 +233,7 @@ export async function runForcedAlignMatch(params: {
    */
   assist?: AlignAssist;
   breaks?: ScreenBreaks;
+  retime?: PhonemeRetime;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
   /** Set when auto-detect was asked for but the sidecar couldn't do it. */
@@ -254,7 +265,8 @@ export async function runForcedAlignMatch(params: {
       source: params.source,
       reference,
       assist: params.assist,
-      breaks: params.breaks
+      breaks: params.breaks,
+      retime: params.retime
     });
   } catch (err) {
     // Retry with the user's range only when the sidecar said auto-detection is
@@ -286,7 +298,8 @@ export async function runForcedAlignMatch(params: {
         .map(verse => `${verse.verseKey}\t${verse.words.map(referenceToken).join(' ')}`)
         .join('\n'),
       assist: params.assist,
-      breaks: params.breaks
+      breaks: params.breaks,
+      retime: params.retime
     });
     fellBackToSelected = true;
   }
@@ -408,7 +421,8 @@ function alignmentNotes(result: AlignResponse, rangeLabel: string, fellBackToSel
       : fellBackToSelected
         ? `This sidecar can't detect the range from audio, so the selected range ${rangeLabel} was force-aligned instead — confirm it matches the recording`
         : `Force-aligned the selected text of ${rangeLabel}`) +
-    ` (${result.model}). Every reference word has a timestamp by construction.${repeatNote}`
+    ` (${result.model}). Every reference word has a timestamp by construction.${repeatNote}` +
+    (result.retimed ? ` Word starts re-timed with phoneme model ${result.retimed}.` : '')
   );
 }
 
@@ -428,7 +442,7 @@ function alignedRanges(result: AlignResponse, params: { surah?: number; start?: 
 /** A sidecar alignment as the studio's match result, the same for a first match and a regroup. */
 async function matchFromAlignment(
   result: AlignResponse,
-  params: { surah?: number; start?: number; end?: number },
+  params: { surah?: number; start?: number; end?: number; retime?: PhonemeRetime },
   fellBackToSelected: boolean
 ): Promise<MatchResult> {
   const detected = result.detectedRange;
@@ -466,7 +480,10 @@ async function matchFromAlignment(
     confidence: meanScore,
     transcript: result.words.map(word => word.text).join(' '),
     segments,
-    warning: result.warning || undefined,
+    // A re-timing asked for and not done is said, or the comparison it was
+    // asked for would quietly compare Match with itself.
+    warning: [result.warning, params.retime && !result.retimed ? 'The phoneme model could not read this passage, so these are Match\'s own word times.' : '']
+      .filter(Boolean).join(' ') || undefined,
     notes: alignmentNotes(result, rangeLabel, fellBackToSelected, restarts),
     regroupId: result.regroupId
   };
