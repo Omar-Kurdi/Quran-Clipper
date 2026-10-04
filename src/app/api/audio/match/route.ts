@@ -10,12 +10,15 @@ import {
   estimateDurationFromSegments
 } from '@/lib/matchTimeline';
 import type { MatchResult } from '@/lib/matchTypes';
+import type { VerseData } from '@/lib/quranData';
 import { publishedPassage } from '@/lib/publishedTiming';
 import { timedFromPublished } from '@/lib/publishedPhrases';
 import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
 import { hostAllowed } from '@/app/api/audio/proxy/route';
 import { studioMode } from '@/lib/studioMode';
-import { PHONEME_MODEL, PHONEME_PROVIDERS, isPhonemeProvider, phonemeTrialOffered, type PhonemeProvider } from '@/lib/phonemeTrial';
+import { openingVerses } from '@/lib/openings';
+import { getVerseByKey } from '@/lib/quranCorpus';
+import { PHONEME_PROVIDERS, asLab, isPhonemeProvider, labStages, phonemeTrialOffered, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { matchQueue, ticketFrom, visitorFrom, QueueFullError, VisitorBusyError, AbandonedError } from '@/lib/matchQueue';
 
 export const runtime = 'nodejs';
@@ -134,6 +137,14 @@ async function timelineOf(
   return { audioDuration, rawTimeline, timeline: enforceTimelineOrder(rawTimeline, audioDuration) };
 }
 
+/** What was said before the passage -- isti'adha, basmala -- leading it, and ending where it begins. */
+async function withOpenings(result: MatchResult, passage: VerseData[]): Promise<VerseData[]> {
+  if (!result.openings?.length) return passage;
+  // The basmala is drawn from 1:1's own page, like any ayah.
+  const basmala = result.openings.some(opening => opening.kind === 'basmala') ? await getVerseByKey('1:1') : null;
+  return [...openingVerses(result.openings, passage[0]?.startTime ?? 0, basmala?.words), ...passage];
+}
+
 /** The provider's own confidence where it gave one, otherwise the timeline's average. */
 function matchConfidence(result: MatchResult, timeline: { matchConfidence?: number }[]): number {
   if (typeof result.confidence === 'number') return Math.max(0, Math.min(1, result.confidence));
@@ -156,7 +167,8 @@ export async function timelineBody(
     const providerLabel = provider === 'gemini' ? 'Gemini' : 'The forced aligner';
     return { status: 422, error: `${providerLabel} did not return any detected ayah segments. Try a clearer/shorter audio clip or use manual matching.` };
   }
-  const { audioDuration, rawTimeline, timeline } = await timelineOf(result, params);
+  const { audioDuration, rawTimeline, timeline: passage } = await timelineOf(result, params);
+  const timeline = await withOpenings(result, passage);
 
   // `enforceTimelineOrder` drops segments that start past the end of the
   // audio. If that emptied a timeline that had rows going in, the duration is
@@ -238,10 +250,11 @@ export async function POST(req: NextRequest) {
     // A public studio has no Gemini (its key is the owner's, and its free tier
     // is not a shared one) and hands the sidecar only reciter audio -- see
     // `publicAudioUrlAllowed`.
-    // The phoneme trial is a development tool; see `phonemeTrial`.
+    // The phoneme lab is a development tool; see `phonemeTrial`.
     if (isPhonemeProvider(provider) && !phonemeTrialOffered(studioMode(), process.env.NODE_ENV)) {
-      return NextResponse.json({ success: false, provider, error: 'The phoneme trial runs only in a personal studio under npm run dev.' }, { status: 403 });
+      return NextResponse.json({ success: false, provider, error: 'The phoneme lab runs only in a personal studio under npm run dev.' }, { status: 403 });
     }
+    const lab = isPhonemeProvider(provider) ? asLab(formData.get('lab')) : null;
 
     if (studioMode() === 'public') {
       if (provider === 'gemini') {
@@ -326,7 +339,8 @@ export async function POST(req: NextRequest) {
           end: selectedEnd,
           assist: provider === 'qul' ? 'qul' : undefined,
           breaks: screenBreaksFrom(formData.get('breaks')),
-          retime: isPhonemeProvider(provider) ? PHONEME_MODEL[provider] : undefined
+          retime: lab?.starts,
+          lab: lab ? labStages(lab) : undefined
         }), {
           // On a public studio each visitor holds only a small share of the
           // queue, and a visitor who closes the tab gives up their place.

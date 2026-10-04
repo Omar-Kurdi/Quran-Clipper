@@ -14,6 +14,7 @@
  * range by skeleton match, so the orthography does not have to be exact.
  */
 
+import { isOpening } from './openings';
 import { VerseData, SURAHS_LIST } from '@/lib/quranData';
 
 /** What a caption actually showed: the recited words, not the whole ayah. */
@@ -53,7 +54,9 @@ export interface GroundTruthMeta {
  * than a header with nothing under it, so a caller can tell there is nothing
  * worth saving.
  */
-export function groundTruthFile(verses: VerseData[], meta: GroundTruthMeta = {}): string {
+export function groundTruthFile(all: VerseData[], meta: GroundTruthMeta = {}): string {
+  // What was said before the passage is not part of it, and the aligner is not scored on it.
+  const verses = all.filter(verse => !isOpening(verse));
   const lines = verses.map(recitedText).filter(Boolean);
   if (lines.length === 0) return '';
 

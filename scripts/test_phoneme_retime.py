@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "asr-service"))
 
-from app import phoneme, phoneme_table  # noqa: E402
+from app import phoneme, phoneme_reading, phoneme_table  # noqa: E402
 
 FAILED: list[str] = []
 
@@ -139,6 +139,34 @@ check(
 check("starts never go backwards within a caption", ok=all(fitted[i][0] <= fitted[i + 1][0] for i in range(2)), detail=f"got {fitted}")
 loose = phoneme.fit_to_captions([5.0], [(4.0, 4.4)], captions)
 check("a word in no caption keeps its old span", ok=loose == [(4.0, 4.4)], detail=f"got {loose}")
+
+print("\nreading -- what was recited, restarts included")
+
+# Four units of three symbols each; the reciter says 1-2, goes back to 1, then says 1-4.
+UNITS = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+heard = [1, 2, 3, 4, 5, 6] + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+check("a restart is read as a run going back", ok=phoneme_reading.runs_recited(heard, UNITS) == [(0, 1), (0, 3)],
+      detail=f"got {phoneme_reading.runs_recited(heard, UNITS)}")
+check("a reading straight through is one run", ok=phoneme_reading.runs_recited(list(range(1, 13)), UNITS) == [(0, 3)])
+check("a symbol misheard is not taken for a restart",
+      ok=phoneme_reading.runs_recited([1, 2, 3, 4, 9, 6, 7, 8, 9, 10, 11, 12], UNITS) == [(0, 3)])
+check("a unit never heard is still recited, in place",
+      ok=phoneme_reading.runs_recited([1, 2, 3, 7, 8, 9, 10, 11, 12], UNITS) == [(0, 3)])
+units = [phoneme_table.Unit([0], "", True), phoneme_table.Unit([1, 2], "", True), phoneme_table.Unit([3], "", True)]
+script, again = phoneme_reading.script_from_runs([(0, 1), (1, 2)], units)
+check("runs become the aligner's script, the words said again marked so",
+      ok=script == [0, 1, 2, 1, 2, 3] and again == [False, False, False, True, True, True], detail=f"got {script} {again}")
+
+print("\nopenings -- an isti'adha or basmala heard before the passage")
+
+check("found inside whatever else was said", ok=phoneme_reading.best_match([1, 2, 3], [9, 1, 2, 3, 9])[:1] == (0,))
+check("a symbol misheard costs one", ok=phoneme_reading.best_match([1, 2, 3], [9, 1, 7, 3, 9])[0] == 1)
+check("nothing like it is far off", ok=phoneme_reading.best_match([1, 2, 3], [5, 5, 5])[0] == 3)
+
+print("\nlab -- the stages the dev-only lab hands to a phoneme model")
+
+check("reading and timing by name", ok=phoneme.lab_stages("reading=v31;timing=old") == {"phoneme_reading": "v31", "phoneme_timing": "old"})
+check("anything else ignored", ok=phoneme.lab_stages("reading=whisper;starts=old;x") == {} and phoneme.lab_stages("") == {})
 
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

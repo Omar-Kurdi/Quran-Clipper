@@ -367,6 +367,32 @@ def _build_targets_nemo(ref_words: list[tuple[str, int, str]]) -> tuple[list[int
     return target_ids, target_to_word, missing
 
 
+def reference_words(reference: str) -> list[tuple[str, int, str]]:
+    """`/align`'s ``reference`` -- one ayah a line, ``surah:ayah<TAB>word word`` -- as reference words."""
+    ref_words: list[tuple[str, int, str]] = []
+    for line in reference.splitlines():
+        verse_key, tab, text = line.strip().partition("\t")
+        if tab:
+            ref_words.extend(_ayah_words(verse_key.strip(), text))
+    return ref_words
+
+
+def _ayah_words(verse_key: str, text: str) -> list[tuple[str, int, str]]:
+    words: list[tuple[str, int, str]] = []
+    for token in text.split():
+        # Uthmani orthography puts waqf/sajda marks in their own token, and
+        # some words carry one after an internal space. They aren't recited
+        # words and normalize to nothing, so they can't be aligned -- glue
+        # them onto the previous word's display text instead of letting
+        # them become reference words that no frame can ever match.
+        if normalize_for_vocab(token):
+            words.append((verse_key, len(words), token))
+        elif words:
+            key, position, previous = words[-1]
+            words[-1] = (key, position, f"{previous} {token}")
+    return words
+
+
 def build_targets(ref_words: list[tuple[str, int, str]]) -> tuple[list[int], list[int], set[str]]:
     """Turn reference words into a CTC target sequence.
 
@@ -3252,6 +3278,44 @@ def group_recitation(grouping: Grouping, breaks: str = "normal") -> list[Segment
     return _close_gaps(segments, duration, grouping.quiet)
 
 
+def _script_by_decode(
+    pcm: np.ndarray,
+    ref_words: list[tuple[str, int, str]],
+    boundaries: list[float],
+    emission,
+    sec_per_frame: float,
+    decoded_phrases: list[str] | None = None,
+) -> tuple[list[int], list[bool]]:
+    """What was recited, by decoding each phrase and finding it in the reference: the script, and its repeats."""
+    if align_backend() == "nemo":
+        assignments = assign_phrase_ranges_by_decode(
+            pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame
+        )
+    else:
+        assignments = assign_phrase_ranges(emission, ref_words, boundaries, sec_per_frame)
+
+    # The script is every assigned range concatenated, so a restart appears as
+    # the same reference words twice -- which is exactly what was recited, and
+    # what gives the alignment below text to put over the second utterance
+    # instead of stretching its neighbours across it.
+    script: list[int] = []
+    for begin, finish, _, _, _ in assignments:
+        script.extend(range(begin, finish + 1))
+    if not script:
+        script = list(range(len(ref_words)))
+
+    # An ayah no phrase window could claim is still an ayah that was recited.
+    # See `_restore_skipped_ayahs` -- without this it leaves the pipeline here
+    # and never reappears.
+    script = _restore_skipped_ayahs(script, ref_words)
+
+    # Give the reciter's own repeats text of their own, so the words around a
+    # hole are not stretched across audio that said something else. See
+    # `_fill_gaps_with_repeats`.
+    script, _, repeated = _fill_gaps_with_repeats(pcm, ref_words, script, emission, sec_per_frame)
+    return script, repeated
+
+
 def align_recitation(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -3259,6 +3323,7 @@ def align_recitation(
     decoded_phrases: list[str] | None = None,
     breaks: str = "normal",
     phoneme_timing: str = "",
+    phoneme_reading: str = "",
 ) -> RecitationResult:
     """Full pipeline: decide *what* was recited, then align it, then group it.
 
@@ -3291,9 +3356,10 @@ def align_recitation(
     they are the expensive part. `breaks` is a key of `BREAK_SCALES`.
 
     `phoneme_timing` names a phoneme model (`phoneme.MODELS`) whose word times
-    replace this alignment's before the captions are cut -- a trial, off by
-    default; `ALIGN_PHONEME_TIMING` sets it for every call, which is how
-    `./gauge.sh` measures it.
+    replace this alignment's before the captions are cut, and `phoneme_reading`
+    one that reads what was recited (`phoneme_reading`) -- trials, off by
+    default; `ALIGN_PHONEME_TIMING` and `ALIGN_PHONEME_READING` set them for
+    every call, which is how `./gauge.sh` measures them.
     """
     duration = len(pcm) / SAMPLE_RATE
     emission = compute_emission(pcm)
@@ -3306,32 +3372,21 @@ def align_recitation(
 
     if boundaries is None:
         boundaries = detect_boundaries(pcm)
-    if align_backend() == "nemo":
-        assignments = assign_phrase_ranges_by_decode(
-            pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame
-        )
-    else:
-        assignments = assign_phrase_ranges(emission, ref_words, boundaries, sec_per_frame)
 
-    # The script is every assigned range concatenated, so a restart appears as
-    # the same reference words twice -- which is exactly what was recited, and
-    # what gives the alignment below text to put over the second utterance
-    # instead of stretching its neighbours across it.
-    script: list[int] = []
-    for begin, finish, _, _, _ in assignments:
-        script.extend(range(begin, finish + 1))
-    if not script:
-        script = list(range(len(ref_words)))
+    # What was recited, restarts included: read by a phoneme model when one is
+    # asked for and can read this passage (`phoneme_reading`, a trial), and by
+    # decoding each phrase otherwise.
+    phoneme_reading = phoneme_reading or os.getenv("ALIGN_PHONEME_READING", "")
 
-    # An ayah no phrase window could claim is still an ayah that was recited.
-    # See `_restore_skipped_ayahs` -- without this it leaves the pipeline here
-    # and never reappears.
-    script = _restore_skipped_ayahs(script, ref_words)
+    def by_decode() -> tuple[list[int], list[bool]]:
+        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases)
 
-    # Give the reciter's own repeats text of their own, so the words around a
-    # hole are not stretched across audio that said something else. See
-    # `_fill_gaps_with_repeats`.
-    script, repeats, repeated = _fill_gaps_with_repeats(pcm, ref_words, script, emission, sec_per_frame)
+    read = None
+    if phoneme_reading:
+        from . import phoneme_reading as reading  # a trial's model, loaded only when asked for
+
+        read = reading.read_script(phoneme_reading, pcm, ref_words, by_decode)
+    script, repeated = read if read is not None else by_decode()
 
     # The one pass that decides all timing, over the whole clip at once.
     # Monotonic and gapless by construction: every scripted word is given

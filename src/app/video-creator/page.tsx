@@ -44,7 +44,8 @@ import { PanelTabs, type PanelTab } from '@/components/PanelTabs';
 import { FrameBar, SafeAreaOverlay } from '@/components/FrameBar';
 import { framePreset, coveredAreas } from '@/lib/frame';
 import { EXPORT_PRESETS } from '@/lib/exportPresets';
-import { isPhonemeProvider, phonemeTrialOffered, type PhonemeProvider } from '@/lib/phonemeTrial';
+import { isOpening } from '@/lib/openings';
+import { isPhonemeProvider, phonemeTrialOffered, LAB_CHOICES, LAB_DEFAULTS, type PhonemeLab, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
@@ -235,6 +236,8 @@ export default function VideoCreatorPage() {
   const [matchStatus, setMatchStatus] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [chosenProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul' | PhonemeProvider>('align');
+  /** The phoneme lab's model for each stage -- development only, see `phonemeTrial`. */
+  const [lab, setLab] = useState<PhonemeLab>(LAB_DEFAULTS);
   // Whatever was picked before, a public studio matches locally: it offers
   // only that engine, and its route refuses the others.
   const matchProvider = studio.mode === 'public' ? 'align' : chosenProvider;
@@ -295,8 +298,9 @@ export default function VideoCreatorPage() {
    * the spelling a segment already has are left exactly as they were.
    */
   useEffect(() => {
+    // An isti'adha or basmala before the passage is no ayah of it: nothing to fetch.
     const needs = (verse: VerseData) =>
-      Boolean(verse.verseKey) && (
+      Boolean(verse.verseKey) && !isOpening(verse) && (
         !verse.textUthmani?.trim() ||
         !canDrawAsMushaf(verse.words) ||
         // Saved before the printed lines were carried: fetched once so the
@@ -1027,9 +1031,9 @@ export default function VideoCreatorPage() {
       formData.append('windowEnd', String(source.end));
       // A built-in reciter's recording: where it has published timings the
       // server times the captions from them and only asks the aligner where the
-      // reciter paused. Any other audio is aligned as before. Not for the
-      // phoneme trial, whose word times are the thing being tried.
-      if (!isPhonemeProvider(matchProvider)) formData.append('timing', 'published');
+      // reciter paused. Any other audio is aligned as before. The phoneme lab
+      // can set them aside, so its models' own work is what shows.
+      if (!isPhonemeProvider(matchProvider) || lab.published) formData.append('timing', 'published');
       if (source.skipAligner) formData.append('aligner', 'skip');
     }
     formData.append('surah', String(selectedSurah));
@@ -1037,6 +1041,7 @@ export default function VideoCreatorPage() {
     formData.append('end', String(ayahEnd));
     formData.append('reciter', selectedReciter);
     formData.append('provider', matchProvider);
+    if (isPhonemeProvider(matchProvider)) formData.append('lab', JSON.stringify(lab));
     if (matchProvider !== 'gemini' && screenBreaks !== 'normal') formData.append('breaks', screenBreaks);
     // Measured from this exact file at upload time, not read off the player.
     // Gemini only estimates duration -- on the test clip it reported 108s for a
@@ -1094,7 +1099,7 @@ export default function VideoCreatorPage() {
       const providerLabel =
         data.provider === 'qul' ? 'Forced alignment + QUL'
           : data.provider === 'align' ? 'Forced alignment'
-            : isPhonemeProvider(data.provider) ? `Forced alignment, re-timed (${data.provider})` : 'Gemini';
+            : isPhonemeProvider(data.provider) ? `Phoneme lab ${JSON.stringify(lab)}` : 'Gemini';
       // Kept user-facing and short: what was found, and what to do next. The
       // provider name, model, phrase counts and acoustic scores are diagnostics
       // -- they go to the console, not to someone making a video.
@@ -1858,22 +1863,18 @@ export default function VideoCreatorPage() {
   ];
   // A public studio offers the one engine it uses, under a name that says
   // what it does: visitors have nothing to choose between.
-  // Development only: Match with the default word re-timing swapped for
-  // another phoneme model, or for none -- see `phonemeTrial`. They run
-  // wherever Match runs.
-  const localOption = allMatchOptions[0];
+  // Development only: Match with each stage handed to the model chosen for
+  // it -- see `phonemeTrial`. It runs wherever Match runs.
   const phonemeOptions = phonemeTrialOffered(studio.mode, process.env.NODE_ENV)
-    ? ([
-        { id: 'phoneme-v31' as const, label: t.source.matcherPhonemeV31 },
-        { id: 'phoneme-off' as const, label: t.source.matcherPhonemeOff }
-      ].map(option => ({
-        ...localOption,
-        ...option,
+    ? [{
+        ...allMatchOptions[0],
+        id: 'phoneme-lab' as const,
+        label: t.source.matcherPhonemeLab,
         technical: t.source.matcherPhonemeTechnical,
         Icon: FlaskConical,
         blurb: t.source.matcherPhonemeBlurb,
         experimental: true
-      })))
+      }]
     : [];
   const matchOptions = studio.mode === 'public'
     ? allMatchOptions.filter(opt => opt.id === 'align')
@@ -2412,6 +2413,33 @@ export default function VideoCreatorPage() {
         </div>
       </fieldset>
       <p className="text-xs leading-relaxed text-slate-400">{selectedMatchOption.blurb}</p>
+                    {matchProvider === 'phoneme-lab' && (
+                      <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-300">
+                        {(Object.keys(LAB_CHOICES) as (keyof typeof LAB_CHOICES)[]).map(stage => (
+                          <label key={stage} className="flex flex-col gap-0.5">
+                            <span>{t.source.labStage[stage]}</span>
+                            <select
+                              value={lab[stage]}
+                              onChange={e => setLab(prev => ({ ...prev, [stage]: e.target.value }))}
+                              className="rounded border border-slate-700 bg-slate-900 px-1.5 py-1 text-slate-100"
+                            >
+                              {LAB_CHOICES[stage].map(choice => (
+                                <option key={choice} value={choice}>{t.source.labModel[choice]}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                        <label className="flex items-center gap-2 self-end pb-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={lab.published}
+                            onChange={e => setLab(prev => ({ ...prev, published: e.target.checked }))}
+                            className="accent-amber-500"
+                          />
+                          <span>{t.source.labPublished}</span>
+                        </label>
+                      </div>
+                    )}
                     {matchProvider === 'qul' && (
                       <label className="flex items-start gap-2 mt-1.5 text-xs text-slate-300 cursor-pointer">
                         <input

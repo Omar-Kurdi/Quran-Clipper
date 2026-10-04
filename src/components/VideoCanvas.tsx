@@ -1,5 +1,6 @@
 'use client';
 
+import { isOpening } from '@/lib/openings';
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo, type ReactNode } from 'react';
 import { useOffsetBox } from '@/hooks/useOffsetBox';
 import { VerseData, arabicFontFamily, usableArabicFont } from '@/lib/quranData';
@@ -936,7 +937,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           y: arrangement.badgeY,
           accent: goldAccent,
           surah: badgeSurah(leading?.verseKey, { number: surahNumber, nameArabic: surahNameArabic, nameEnglish: surahNameEnglish }),
-          range: badgeRange(verses[0]?.verseKey, verses[verses.length - 1]?.verseKey, { surah: surahNumber, start: ayahStart, end: ayahEnd }),
+          range: badgeRange(verses.find(verse => !isOpening(verse))?.verseKey, verses[verses.length - 1]?.verseKey, { surah: surahNumber, start: ayahStart, end: ayahEnd }),
           customTitle: config.surahBadgeText?.trim() || '',
           subtitle: config.surahBadgeSubtitleText?.trim() || '',
           watermarkPosition: config.watermarkPosition,
@@ -1196,7 +1197,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // it was drawn in whatever serif the browser falls back to.
         // U+FD3E opens and U+FD3F closes when read right-to-left, despite their
         // Unicode names ("ornate left/right parenthesis") suggesting the reverse.
-        const numeral = `﴾ ${activeVerse.verseNumber} ﴿`;
+        // An isti'adha or basmala before the passage is verse 0: no numeral.
+        const numeral = activeVerse.verseNumber > 0 ? `﴾ ${activeVerse.verseNumber} ﴿` : '';
         ctx.fillStyle = goldAccent;
         if (translationBox) {
           // Centred in the gap between the cards, and no larger than it.

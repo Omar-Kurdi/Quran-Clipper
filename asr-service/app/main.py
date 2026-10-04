@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import align, asr, corpus, detect, phoneme, qul, regroup
+from . import align, asr, corpus, detect, phoneme, phoneme_reading, qul, regroup
 from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, decode_url_window, duration_seconds
 from .vad import VoicedRegion, detect_voiced_regions
 
@@ -388,6 +388,7 @@ async def align_endpoint(
     assist: str = Form(""),
     breaks: str = Form(""),
     retime: str = Form(""),  # the phoneme model to re-time the words with (`phoneme.chosen`); `none` for fastconformer's
+    lab: str = Form(""),  # the dev-only phoneme lab's other stages, `reading=v31;timing=old`; see `phoneme.lab_stages`
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -443,27 +444,7 @@ async def align_endpoint(
         if not raw:
             raise HTTPException(status_code=400, detail="Empty audio upload.")
 
-    ref_words: list[tuple[str, int, str]] = []
-    for line in reference.splitlines():
-        line = line.strip()
-        if not line or "\t" not in line:
-            continue
-        verse_key, text = line.split("\t", 1)
-        verse_key = verse_key.strip()
-        index = 0
-        for token in text.split():
-            # Uthmani orthography puts waqf/sajda marks in their own token, and
-            # some words carry one after an internal space. They aren't recited
-            # words and normalize to nothing, so they can't be aligned -- glue
-            # them onto the previous word's display text instead of letting
-            # them become reference words that no frame can ever match.
-            if not align.normalize_for_vocab(token):
-                if ref_words and ref_words[-1][0] == verse_key:
-                    key, position, previous = ref_words[-1]
-                    ref_words[-1] = (key, position, f"{previous} {token}")
-                continue
-            ref_words.append((verse_key, index, token))
-            index += 1
+    ref_words = align.reference_words(reference)
     if pcm_or_none is not None:
         pcm = pcm_or_none
     else:
@@ -538,7 +519,7 @@ async def align_endpoint(
             raise HTTPException(status_code=422, detail=f"Detected {summary} but found no text for it.")
 
     try:
-        result = align.align_recitation(pcm, ref_words, boundaries, decoded_phrases, breaks)
+        result = align.align_recitation(pcm, ref_words, boundaries, decoded_phrases, breaks, **phoneme.lab_stages(lab))
     except align.AlignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -637,6 +618,7 @@ async def align_endpoint(
         "detectedRange": detected.to_dict() if detected else None,
         "assist": "qul" if detected is not None and detect_assist is not None else None,
         "retimed": retimed,
+        "openings": phoneme_reading.find_openings(pcm, segments[0].start if segments else 0.0, ref_words[0][0], window_offset),
         "audioDuration": round(total_duration, 3),
         # Where in the recording this alignment sits, so the caller can tell a
         # window apart from a clip that happens to start at zero.

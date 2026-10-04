@@ -15,6 +15,7 @@
  * detection, or failing that the UI's selection. See docs/ALIGNMENT.md.
  */
 
+import type { HeardOpening } from './openings';
 import { getRange } from '@/lib/quranCorpus';
 import type { MatchResult, MatchSegment } from '@/lib/matchTypes';
 
@@ -88,6 +89,8 @@ type AlignResponse = {
   retimed?: PhonemeRetime | null;
   /** Asks the sidecar to cut this same alignment again at another setting; see `runRegroup`. */
   regroupId?: string;
+  /** What the reciter said before the passage, heard by the phoneme model; absent from older sidecars. */
+  openings?: HeardOpening[];
 };
 
 /**
@@ -110,6 +113,8 @@ type AlignRequest = {
   assist?: AlignAssist;
   breaks?: ScreenBreaks;
   retime?: PhonemeRetime;
+  /** The phoneme lab's other stages, as the sidecar's `lab` field; see `phonemeTrial`. */
+  lab?: string;
 };
 
 /** The sidecar's `/align` form for one request. */
@@ -126,6 +131,7 @@ function alignmentForm(params: AlignRequest): FormData {
   if (params.assist) formData.append('assist', params.assist);
   if (params.breaks && params.breaks !== 'normal') formData.append('breaks', params.breaks);
   if (params.retime) formData.append('retime', params.retime);
+  if (params.lab) formData.append('lab', params.lab);
   return formData;
 }
 
@@ -235,6 +241,7 @@ export async function runForcedAlignMatch(params: {
   assist?: AlignAssist;
   breaks?: ScreenBreaks;
   retime?: PhonemeRetime;
+  lab?: string;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
   /** Set when auto-detect was asked for but the sidecar couldn't do it. */
@@ -267,7 +274,8 @@ export async function runForcedAlignMatch(params: {
       reference,
       assist: params.assist,
       breaks: params.breaks,
-      retime: params.retime
+      retime: params.retime,
+      lab: params.lab
     });
   } catch (err) {
     // Retry with the user's range only when the sidecar said auto-detection is
@@ -300,7 +308,8 @@ export async function runForcedAlignMatch(params: {
         .join('\n'),
       assist: params.assist,
       breaks: params.breaks,
-      retime: params.retime
+      retime: params.retime,
+      lab: params.lab
     });
     fellBackToSelected = true;
   }
@@ -486,6 +495,7 @@ async function matchFromAlignment(
     warning: [result.warning, params.retime && params.retime !== 'none' && !result.retimed ? 'The phoneme model could not read this passage, so these are Match\'s own word times.' : '']
       .filter(Boolean).join(' ') || undefined,
     notes: alignmentNotes(result, rangeLabel, fellBackToSelected, restarts),
-    regroupId: result.regroupId
+    regroupId: result.regroupId,
+    openings: result.openings
   };
 }

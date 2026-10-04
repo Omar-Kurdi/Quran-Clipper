@@ -1,3 +1,5 @@
+import type { HeardOpening } from './openings';
+
 /**
  * Shared shapes produced by either audio-match provider (local forced
  * alignment, Gemini) before they're turned into a `VerseData[]` timeline by
@@ -62,4 +64,6 @@ export type MatchResult = {
    * at another screen-break setting without matching again. See `runRegroup`.
    */
   regroupId?: string;
+  /** What the reciter said before the passage -- isti'adha, basmala -- where it was heard; see `openings`. */
+  openings?: HeardOpening[];
 };

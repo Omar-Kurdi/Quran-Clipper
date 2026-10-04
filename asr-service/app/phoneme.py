@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .audio import SAMPLE_RATE
-from .phoneme_table import Unit, tokenize, units_for
+from .phoneme_table import Unit, tokenize, units_for  # noqa: F401 -- also how `phoneme_reading` reaches them
 
 if TYPE_CHECKING:  # the types only; `retime` is handed what `align` made
     from .align import AlignedWord, Segment
@@ -87,6 +87,20 @@ def chosen(requested: str) -> str | None:
     return name if name in MODELS else None
 
 
+#: The stages the dev-only phoneme lab can hand to a phoneme model, as `align_recitation` names them.
+LAB_STAGES = {"reading": "phoneme_reading", "timing": "phoneme_timing"}
+
+
+def lab_stages(lab: str) -> dict[str, str]:
+    """``reading=v31;timing=old`` as `align_recitation`'s arguments; anything not a stage and a model is left out."""
+    stages: dict[str, str] = {}
+    for part in (lab or "").split(";"):
+        stage, _, name = part.partition("=")
+        if stage.strip() in LAB_STAGES and (name.strip() in MODELS or (stage.strip(), name.strip()) == ("reading", "best")):
+            stages[LAB_STAGES[stage.strip()]] = name.strip()
+    return stages
+
+
 #: Fastconformer's own offset against the same timings. A word the phoneme
 #: model gives no start of its own (see `chunk_sizes`) keeps fastconformer's,
 #: moved by this so the two agree on where a word begins.
@@ -94,6 +108,11 @@ FASTCONFORMER_OFFSET = -0.195
 
 #: Seconds per output frame: 10 ms fbank hop, subsampled four times.
 FRAME_SEC = 0.04
+
+#: How much recording the encoder reads at once, and how much each window
+#: shares with the next. See `_Loaded.emission`.
+WINDOW_SEC = 20.0
+OVERLAP_SEC = 4.0
 
 #: The shortest a re-timed word may be, so its middle stays inside its caption.
 MIN_WORD_SEC = 0.02
@@ -264,7 +283,36 @@ class _Loaded:
         self.table = json.loads(_read_side_file(model, "ordered_quran_phonemes.json"))
 
     def emission(self, pcm: np.ndarray):
-        """Log-probabilities per 40 ms frame, streamed through the cache-aware encoder."""
+        """Log-probabilities per 40 ms frame, over the whole recording, read a window at a time.
+
+        Streamed through one recording from start to finish, the encoder goes
+        deaf in stretches: in test5 it emitted nothing over 34.8-38.6s, where
+        the same audio read on its own window says عَلَىٰ مَن يَشَآءُ plainly --
+        the second reading of a restart, exactly what `phoneme_reading` is
+        for. So each `WINDOW_SEC` is read fresh, overlapping its neighbours by
+        `OVERLAP_SEC`, and each frame is taken from the window that saw it with
+        the most context either side.
+        """
+        import torch
+
+        hop = WINDOW_SEC - OVERLAP_SEC
+        total = int(np.ceil(len(pcm) / SAMPLE_RATE / FRAME_SEC))
+        pieces = []
+        start = 0.0
+        while True:
+            end = start + WINDOW_SEC
+            frames = self._stream(pcm[int(start * SAMPLE_RATE):int(end * SAMPLE_RATE)])
+            last = end * SAMPLE_RATE >= len(pcm)
+            keep_from = 0 if start == 0 else int(round(OVERLAP_SEC / 2 / FRAME_SEC))
+            keep_to = len(frames) if last else int(round((WINDOW_SEC - OVERLAP_SEC / 2) / FRAME_SEC))
+            pieces.append(frames[keep_from:keep_to])
+            if last:
+                break
+            start += hop
+        return torch.from_numpy(np.concatenate(pieces)[:total])[None].float()
+
+    def _stream(self, pcm: np.ndarray) -> np.ndarray:
+        """One window's log-probabilities, streamed through the cache-aware encoder from a fresh state."""
         import torch
         import torchaudio.compliance.kaldi as kaldi
 
@@ -288,14 +336,14 @@ class _Loaded:
             result = self.session.run(None, {**states, "x": chunk[None].astype(np.float32)})
             frames.append(result[0][0])
             states.update({name.removeprefix("new_"): value for name, value in zip(outputs[1:], result[1:])})
-        return torch.from_numpy(np.concatenate(frames))[None].float()
+        return np.concatenate(frames)
 
 
 _loaded: dict[str, _Loaded] = {}
 _lock = threading.Lock()
 
 
-def _model(name: str) -> _Loaded:
+def load(name: str) -> _Loaded:
     with _lock:
         if name not in _loaded:
             log.info("loading phoneme model %s (%s)", name, MODELS[name].repo)
@@ -328,7 +376,7 @@ def _unit_spans(emission, units: list[Unit], model: _Loaded) -> list[tuple[float
 def _hear(name: str, pcm: np.ndarray, words: list[AlignedWord]) -> tuple[list[Unit], list[tuple[float, float] | None]] | None:
     """The words' phoneme units and where model ``name`` (one of `MODELS`) hears each, or None (logged) if it cannot."""
     try:
-        model = _model(name)
+        model = load(name)
     except Exception as exc:  # noqa: BLE001 -- a gated repo not accepted, no network: never fail the match for it
         log.warning("phoneme re-timing (%s) skipped: the model could not be loaded (%s)", name, exc)
         return None

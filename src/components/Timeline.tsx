@@ -1,5 +1,6 @@
 'use client';
 
+import { isOpening, type OpeningKind } from '@/lib/openings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
@@ -808,7 +809,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     className="absolute inset-0 px-2 flex flex-col justify-center items-start text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold-bright"
                   >
                     <span className={`font-mono text-[10px] truncate w-full ${active ? 'text-gold-bright' : 'text-slate-300'}`}>
-                      {verse.verseKey}
+                      {isOpening(verse) ? t.timeline.opening[verse.verseKey as OpeningKind] : verse.verseKey}
                     </span>
                     <CaptionText verse={verse} />
                     {flagged && <CheckMark label={t.timeline.toCheck} />}

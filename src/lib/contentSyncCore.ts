@@ -7,6 +7,7 @@
  * changes. See `contentSync.ts` for what the sync is and why.
  */
 
+import { isOpening } from './openings';
 import type { VerseData, VerseWord } from './quranData';
 import type { CorpusVerse } from './quranCorpus';
 import type { TranslationTexts } from './translationTexts';
@@ -78,6 +79,8 @@ export function applyContentSync(input: ContentSyncInput): ContentSyncResult {
   let complete = true;
   const verses = input.verses.map(verse => {
     const current = input.corpus.get(verse.verseKey);
+    // An isti'adha or basmala before the passage has no ayah to be synced against.
+    if (isOpening(verse)) return verse;
     if (!current) {
       complete = false;
       return verse;

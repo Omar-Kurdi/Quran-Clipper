@@ -204,11 +204,13 @@ export const en = {
     matcherPublic: 'Match',
     matcherPublicBlurb:
       'Finds the passage in the audio, then times every word against the real Quran text, so no word can be dropped or misheard.',
-    matcherPhonemeV31: 'Match, v3.1 word starts',
-    matcherPhonemeOff: 'Match, fastconformer word starts',
-    matcherPhonemeTechnical: 'local forced alignment, with other word-start timing',
+    matcherPhonemeLab: 'Phoneme lab',
+    matcherPhonemeTechnical: 'local forced alignment, each stage by the model chosen for it',
     matcherPhonemeBlurb:
-      'Development only. Matches exactly like Local, but times each word’s start differently: with the newer phoneme model (v3.1), or with no phoneme model at all, as before. Local uses the older phoneme model. The captions stay the same; only Highlight and Reveal timing changes. Published reciter timings are not used.',
+      'Development only. Matches like Local, with each stage done by the model you choose: reading what was recited (restarts included), the word times the captions are cut from, and the word starts Highlight and Reveal use. Local is fastconformer for the first two and the older phoneme model for word starts.',
+    labStage: { reading: 'Reading', timing: 'Caption timing', starts: 'Word starts' },
+    labModel: { fastconformer: 'fastconformer', old: 'Phoneme (older)', v31: 'Phoneme v3.1', none: 'fastconformer', best: 'Best of both' },
+    labPublished: 'Use published reciter timings',
     matcherQul: 'Local + QUL',
     matcherExperimental: 'Experimental',
     matcherQulTechnical: 'local forced alignment, with QUL morphology and mutashabihat',
@@ -469,6 +471,7 @@ export const en = {
   },
 
   timeline: {
+    opening: { istiadha: 'Isti\'adha', basmala: 'Basmala' },
     dragToReorder: 'drag to move it in the order',
     label: 'Timeline',
     playRecitation: 'Play recitation',
