@@ -157,6 +157,17 @@ script, again = phoneme_reading.script_from_runs([(0, 1), (1, 2)], units)
 check("runs become the aligner's script, the words said again marked so",
       ok=script == [0, 1, 2, 1, 2, 3] and again == [False, False, False, True, True, True], detail=f"got {script} {again}")
 
+REF = [("9:1", 0, "a"), ("9:1", 1, "b"), ("9:1", 2, "c"), ("9:2", 0, "d"), ("9:2", 1, "e")]
+read = ([0, 1, 2, 1, 2, 3, 4], [False, False, False, True, True, False, False])
+check("restarts are counted where the script goes back", ok=phoneme_reading._restarts(read[0]) == 1 and phoneme_reading._restarts([0, 1, 0, 1, 0, 1]) == 2)
+check("one ayah's stretch of a script, with its flags",
+      ok=phoneme_reading._ayah_block(read, REF, "9:1") == ([0, 1, 2, 1, 2], [False, False, False, True, True]))
+check("an ayah the script leaves and comes back to is not taken apart",
+      ok=phoneme_reading._ayah_block(([0, 1, 3, 1, 4], [False] * 5), REF, "9:1") is None)
+swapped = phoneme_reading._with_block(read, REF, "9:1", ([0, 1, 0, 1, 2], [False, False, True, True, False]))
+check("an ayah's stretch is replaced and the rest kept",
+      ok=swapped == ([0, 1, 0, 1, 2, 3, 4], [False, False, True, True, False, False, False]), detail=f"got {swapped}")
+
 print("\nopenings -- an isti'adha or basmala heard before the passage")
 
 check("found inside whatever else was said", ok=phoneme_reading.best_match([1, 2, 3], [9, 1, 2, 3, 9])[:1] == (0,))

@@ -24,7 +24,7 @@ export const isPhonemeProvider = (provider: string): provider is PhonemeProvider
   (PHONEME_PROVIDERS as readonly string[]).includes(provider);
 
 export const LAB_CHOICES = {
-  reading: ['fastconformer', 'v31', 'best'],
+  reading: ['fastconformer', 'mixed', 'v31', 'best'],
   timing: ['fastconformer', 'old', 'v31'],
   starts: ['old', 'v31', 'none']
 } as const;
@@ -37,7 +37,7 @@ export interface PhonemeLab {
 }
 
 /** Where the lab starts: the one stage worth trying first handed over, the rest as Local does it. */
-export const LAB_DEFAULTS: PhonemeLab = { reading: 'v31', timing: 'fastconformer', starts: 'old', published: false };
+export const LAB_DEFAULTS: PhonemeLab = { reading: 'mixed', timing: 'fastconformer', starts: 'old', published: false };
 
 const pick = <T extends string>(value: unknown, choices: readonly T[], fallback: T): T =>
   choices.includes(value as T) ? value as T : fallback;

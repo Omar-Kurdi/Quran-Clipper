@@ -209,7 +209,7 @@ export const en = {
     matcherPhonemeBlurb:
       'Development only. Matches like Local, with each stage done by the model you choose: reading what was recited (restarts included), the word times the captions are cut from, and the word starts Highlight and Reveal use. Local is fastconformer for the first two and the older phoneme model for word starts.',
     labStage: { reading: 'Reading', timing: 'Caption timing', starts: 'Word starts' },
-    labModel: { fastconformer: 'fastconformer', old: 'Phoneme (older)', v31: 'Phoneme v3.1', none: 'fastconformer', best: 'Best of both' },
+    labModel: { fastconformer: 'fastconformer', old: 'Phoneme (older)', v31: 'Phoneme v3.1', none: 'fastconformer', best: 'Best of both', mixed: 'Restart by restart' },
     labPublished: 'Use published reciter timings',
     matcherQul: 'Local + QUL',
     matcherExperimental: 'Experimental',

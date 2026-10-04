@@ -66,16 +66,22 @@ def runs_recited(heard: list[int], unit_symbols: list[list[int]]) -> list[tuple[
     earlier unit at `JUMP_COST`. Starts at the first unit and ends at the last:
     every word of the passage is recited at least once.
     """
+    if not heard or not any(unit_symbols):
+        return None
+    return _aligned(heard, unit_symbols)[0]
+
+
+def _aligned(heard: list[int], unit_symbols: list[list[int]]) -> tuple[list[tuple[int, int]], list[int]]:
+    """`runs_recited`, and for each heard symbol the unit it was heard as part of."""
     reference = [s for symbols in unit_symbols for s in symbols]
     unit_of = np.repeat(np.arange(len(unit_symbols)), [len(s) for s in unit_symbols])
     starts = np.cumsum([0] + [len(s) for s in unit_symbols[:-1]])
-    if not heard or not reference:
-        return None
     table = _Search(np.array(reference), starts)
     for symbol in heard:
         table.take(symbol)
-    positions = table.trace()
-    return _runs(positions, unit_of)
+    positions, cells = table.trace()
+    heard_units = [int(unit_of[min(max(cell - 1, 0), len(reference) - 1)]) for cell in cells]
+    return _runs(positions, unit_of), heard_units
 
 
 class _Search:
@@ -122,21 +128,23 @@ class _Search:
                 jumped[int(start)] = source
         return out, jumped
 
-    def trace(self) -> list[int]:
-        """The reference positions read, in the order read: a position is the symbol about to be read."""
+    def trace(self) -> tuple[list[int], list[int]]:
+        """The reference positions read, in the order read; and for each heard symbol, how far into the text it was."""
         cell = len(self.reference)
         read: list[int] = []
+        cells: list[int] = []
         for i in range(len(self.moves) - 1, -1, -1):
             move = self.moves[i]
             while move[cell] == _MISSING and cell > 0:
                 cell -= 1
                 read.append(cell)
+            cells.append(cell)
             if move[cell] == _SAME:
                 cell -= 1
                 read.append(cell)
             cell = self.jumps[i].get(cell, cell)
         read.extend(range(cell - 1, -1, -1))
-        return read[::-1]
+        return read[::-1], cells[::-1]
 
 
 def _runs(positions: list[int], unit_of: np.ndarray) -> list[tuple[int, int]]:
@@ -160,8 +168,20 @@ def script_from_runs(runs: list[tuple[int, int]], units: list[Unit]) -> tuple[li
     return [word for word, _ in words], [again for _, again in words]
 
 
-#: The model `best` reads with.
+#: The model `best` and `mixed` read with.
 BEST_READER = "v31"
+
+#: For `mixed`: how much better the phoneme reading of an ayah has to fit what
+#: was heard there, in symbols, before it replaces the aligner's -- and how
+#: thick the restarts it hears there have to come, per word of the ayah.
+#:
+#: Set from three ayahs, so treat it as provisional: At-Tawbah 9:112 (5
+#: restarts in 16 words) and 9:111 (6 in 37), where the phoneme reading is
+#: right, against Ali 'Imran 3:195 (3 in 43), where it is not. 2026-10-04,
+#: `./gauge.sh` with `ALIGN_PHONEME_READING=mixed`.
+MIN_GAIN = 4.0
+MIN_RESTARTS = 2
+MIN_RESTARTS_PER_WORD = 0.1
 
 Script = tuple[list[int], list[bool]]
 
@@ -187,23 +207,105 @@ def read_script(
 
     ``by_decode`` is the aligner's own reading, asked for only by `best`.
     """
-    reader = BEST_READER if name == "best" else name
+    reader = BEST_READER if name in ("best", "mixed") else name
     if reader not in phoneme.MODELS:
         log.warning("phoneme reading skipped: no model %r", name)
         return None
     try:
         model = phoneme.load(reader)
         heard = heard_symbols(model.emission(pcm)[0].numpy(), model.blank)
-        read = _read(model, heard, ref_words)
-        if name != "best" or read is None:
-            return read
-        decoded = by_decode()
-        scores = [misfit(heard, _symbols(model, script, ref_words)) for script in (read[0], decoded[0])]
+        return _by_name(name, model, heard, ref_words, by_decode)
     except Exception as exc:  # noqa: BLE001 -- a trial: never fail the match for it
         log.warning("phoneme reading (%s) skipped: %s", name, exc)
         return None
+
+
+def _by_name(name: str, model: phoneme.Loaded, heard: list[int], ref_words: list[tuple[str, int, str]], by_decode: Callable[[], Script]) -> Script | None:
+    """The reading ``name`` asks for, from what ``model`` heard."""
+    if name == "mixed":
+        return mixed(model, heard, ref_words, by_decode())
+    read = _read(model, heard, ref_words)
+    if name != "best" or read is None:
+        return read
+    decoded = by_decode()
+    scores = [misfit(heard, _symbols(model, script, ref_words)) for script in (read[0], decoded[0])]
     log.info("phoneme reading (best): phoneme %.0f against decoding %.0f symbols off", *scores)
     return read if scores[0] < scores[1] else decoded
+
+
+def mixed(model: phoneme.Loaded, heard: list[int], ref_words: list[tuple[str, int, str]], decoded: Script) -> Script:
+    """The aligner's own reading, with an ayah's taken from the phoneme model where it fits what was heard far better.
+
+    Restart by restart, in effect: an ayah is where restarts live, and each is
+    judged on the stretch of what was heard that the phoneme reading put
+    there -- the reading itself decides nothing outside it.
+
+    Only where the phoneme reading hears restarts come thick and fast. Fit
+    alone cannot choose: the phoneme model misses some short restarts outright
+    (the second لِمَنِ ٱلْمُلْكُ of 40:16) and starts others a word late (3:188),
+    and a reading without a restart nobody heard fits what was heard better
+    than the true one with it. Where it hears a reciter going back again and
+    again, as through At-Tawbah 9:111-112, the aligner's phrase-by-phrase
+    decoding is what loses its place, and the phoneme reading is the one to
+    believe.
+    """
+    units = units_for([(key, index) for key, index, _ in ref_words], model.table)
+    if not units:
+        return decoded
+    symbols = [tokenize(unit.phonemes, model.tokens) for unit in units]
+    runs, heard_units = _aligned(heard, symbols)
+    script, repeated = script_from_runs(runs, units)
+    ayah_of_unit = [ref_words[unit.words[0]][0] for unit in units]
+    replaced = []
+    heard_in = _heard_by_ayah(heard, [ayah_of_unit[unit] for unit in heard_units])
+    for ayah in dict.fromkeys(key for key, _, _ in ref_words):
+        said = heard_in.get(ayah, [])
+        ours = _ayah_block((script, repeated), ref_words, ayah)
+        if _phoneme_reads_better(model, said, _ayah_block(decoded, ref_words, ayah), ours, ref_words):
+            decoded = _with_block(decoded, ref_words, ayah, ours)
+            replaced.append(ayah)
+    log.info("phoneme reading (mixed): the phoneme reading for %s", ", ".join(replaced) or "no ayah")
+    return decoded
+
+
+def _heard_by_ayah(heard: list[int], ayahs: list[str]) -> dict[str, list[int]]:
+    """What was heard, split by the ayah the phoneme reading put each symbol in."""
+    out: dict[str, list[int]] = {}
+    for symbol, ayah in zip(heard, ayahs):
+        out.setdefault(ayah, []).append(symbol)
+    return out
+
+
+def _phoneme_reads_better(
+    model: phoneme.Loaded, said: list[int], theirs: Script | None, ours: Script | None, ref_words: list[tuple[str, int, str]]
+) -> bool:
+    """Whether one ayah's phoneme reading should replace the aligner's: restarts thick and fast, and a better fit."""
+    if theirs is None or ours is None or not said or theirs[0] == ours[0]:
+        return False
+    if _restarts(ours[0]) < max(MIN_RESTARTS, MIN_RESTARTS_PER_WORD * len(set(ours[0]))):
+        return False
+    gain = misfit(said, _symbols(model, theirs[0], ref_words)) - misfit(said, _symbols(model, ours[0], ref_words))
+    log.info("phoneme reading (mixed): the phoneme reading fits %.0f symbols better of %d heard", gain, len(said))
+    return gain >= MIN_GAIN
+
+
+def _restarts(words: list[int]) -> int:
+    return sum(1 for before, after in zip(words, words[1:]) if after <= before)
+
+
+def _ayah_block(read: Script, ref_words: list[tuple[str, int, str]], ayah: str) -> Script | None:
+    """One ayah's stretch of a script, or None if the script leaves it and comes back (a restart across ayahs)."""
+    at = [i for i, word in enumerate(read[0]) if ref_words[word][0] == ayah]
+    if not at or at[-1] - at[0] + 1 != len(at):
+        return None
+    return read[0][at[0]:at[-1] + 1], read[1][at[0]:at[-1] + 1]
+
+
+def _with_block(read: Script, ref_words: list[tuple[str, int, str]], ayah: str, block: Script) -> Script:
+    """``read`` with its stretch of ``ayah`` replaced by ``block``."""
+    at = [i for i, word in enumerate(read[0]) if ref_words[word][0] == ayah]
+    first, last = at[0], at[-1] + 1
+    return read[0][:first] + block[0] + read[0][last:], read[1][:first] + block[1] + read[1][last:]
 
 
 def _read(model, heard: list[int], ref_words: list[tuple[str, int, str]]) -> Script | None:

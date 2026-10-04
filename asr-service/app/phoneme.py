@@ -44,6 +44,8 @@ from .audio import SAMPLE_RATE
 from .phoneme_table import Unit, tokenize, units_for  # noqa: F401 -- also how `phoneme_reading` reaches them
 
 if TYPE_CHECKING:  # the types only; `retime` is handed what `align` made
+    import torch
+
     from .align import AlignedWord, Segment
 
 log = logging.getLogger("asr-service")
@@ -96,7 +98,7 @@ def lab_stages(lab: str) -> dict[str, str]:
     stages: dict[str, str] = {}
     for part in (lab or "").split(";"):
         stage, _, name = part.partition("=")
-        if stage.strip() in LAB_STAGES and (name.strip() in MODELS or (stage.strip(), name.strip()) == ("reading", "best")):
+        if stage.strip() in LAB_STAGES and (name.strip() in MODELS or (stage.strip() == "reading" and name.strip() in ("best", "mixed"))):
             stages[LAB_STAGES[stage.strip()]] = name.strip()
     return stages
 
@@ -110,7 +112,7 @@ FASTCONFORMER_OFFSET = -0.195
 FRAME_SEC = 0.04
 
 #: How much recording the encoder reads at once, and how much each window
-#: shares with the next. See `_Loaded.emission`.
+#: shares with the next. See `Loaded.emission`.
 WINDOW_SEC = 20.0
 OVERLAP_SEC = 4.0
 
@@ -268,7 +270,7 @@ def _read_side_file(model: str, name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-class _Loaded:
+class Loaded:
     def __init__(self, model: str):
         import onnxruntime as ort
 
@@ -282,7 +284,7 @@ class _Loaded:
         self.blank = self.tokens["<blank>"]
         self.table = json.loads(_read_side_file(model, "ordered_quran_phonemes.json"))
 
-    def emission(self, pcm: np.ndarray):
+    def emission(self, pcm: np.ndarray) -> torch.Tensor:
         """Log-probabilities per 40 ms frame, over the whole recording, read a window at a time.
 
         Streamed through one recording from start to finish, the encoder goes
@@ -339,19 +341,19 @@ class _Loaded:
         return np.concatenate(frames)
 
 
-_loaded: dict[str, _Loaded] = {}
+_loaded: dict[str, Loaded] = {}
 _lock = threading.Lock()
 
 
-def load(name: str) -> _Loaded:
+def load(name: str) -> Loaded:
     with _lock:
         if name not in _loaded:
             log.info("loading phoneme model %s (%s)", name, MODELS[name].repo)
-            _loaded[name] = _Loaded(name)
+            _loaded[name] = Loaded(name)
         return _loaded[name]
 
 
-def _unit_spans(emission, units: list[Unit], model: _Loaded) -> list[tuple[float, float] | None]:
+def _unit_spans(emission, units: list[Unit], model: Loaded) -> list[tuple[float, float] | None]:
     """Where model ``model`` hears each unit, from its first symbol's first frame to its last symbol's last."""
     import torch
     import torchaudio.functional as AF

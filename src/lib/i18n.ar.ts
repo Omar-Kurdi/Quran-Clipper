@@ -208,7 +208,7 @@ export const ar: Dictionary = {
     matcherPhonemeBlurb:
       'للتطوير فقط. يطابق مثل «محلي»، وكل مرحلة بالنموذج الذي تختاره: قراءة ما تُلي (مع الإعادات)، وتوقيت الكلمات الذي تُقطع عليه الشاشات، وبدايات الكلمات للتظليل والإظهار. «محلي» يستخدم fastconformer للمرحلتين الأوليين والنموذج الصوتي الأقدم لبدايات الكلمات.',
     labStage: { reading: 'القراءة', timing: 'توقيت الشاشات', starts: 'بدايات الكلمات' },
-    labModel: { fastconformer: 'fastconformer', old: 'صوتي (الأقدم)', v31: 'صوتي v3.1', none: 'fastconformer', best: 'الأفضل من الاثنين' },
+    labModel: { fastconformer: 'fastconformer', old: 'صوتي (الأقدم)', v31: 'صوتي v3.1', none: 'fastconformer', best: 'الأفضل من الاثنين', mixed: 'إعادةً بإعادة' },
     labPublished: 'استخدام توقيتات القارئ المنشورة',
     matcherQul: 'محلي + QUL',
     matcherExperimental: 'تجريبي',
