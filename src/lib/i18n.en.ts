@@ -233,9 +233,6 @@ export const en = {
     matcherHelperNotRunning: 'Helper not running',
     matcherHelperNeedsRestart: 'Helper needs restarting',
     matcherNeedsApiKey: 'Needs an API key',
-    matcherDetectionOffBefore:
-      'Passage detection is switched off on your helper, so it will time the surah and range chosen under Built-in reciter instead of finding them in the audio. Unset',
-    matcherDetectionOffAfter: 'and restart it to turn detection back on.',
     matcherEngineFailedTitle:
       'The helper is running but could not load its alignment engine, so matching will fail.',
     matcherEngineFailedBody:

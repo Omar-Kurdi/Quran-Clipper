@@ -5,9 +5,9 @@
 A small FastAPI service that answers *when* each word of a recitation was spoken. The main
 app talks to it over HTTP; it knows nothing about the app's data model.
 
-It has two endpoints doing very different jobs, and a third that follows on from `/align`.
+It has two endpoints, the second following on from the first.
 
-**`POST /align` — forced alignment. This is the one to use.** You supply the audio *and* the
+**`POST /align` — forced alignment.** You supply the audio *and* the
 Quran text; it decides only the timing. Because the text is a fixed constraint rather than
 something to guess, a word cannot go missing, come back garbled, or land in the wrong surah.
 Consumed by the app's `align` provider -- "Local" in the studio.
@@ -19,14 +19,10 @@ That is what lets the studio's Fewer / More act at once. Matches are kept in mem
 going first past `REGROUP_KEPT_SECONDS` of audio in all; an id that has gone answers 404 with
 code `regroup_expired`, and the remedy is to match again.
 
-**`POST /transcribe` — free decode plus pause detection.** Answers "which Arabic words were
-spoken, when, and where were the pauses?" with no reference text, for the app's `asr`
-provider. Much less reliable: whatever the model mishears is lost, and the app then has to
-fuzzy-search the whole Quran to recover.
-
-The difference is stark in practice. On a 68-second test clip a general Arabic wav2vec2 model
-free-decoded into unusable text, yet **the same model force-aligned all 53 reference words of
-that clip correctly.** See [../docs/ALIGNMENT.md](../docs/ALIGNMENT.md) for the measurements.
+Aligning a known text is far more reliable than transcribing: on a 68-second test clip a
+general Arabic model free-decoded into unusable text, yet **the same model force-aligned all 53
+reference words of that clip correctly.** See [../docs/ALIGNMENT.md](../docs/ALIGNMENT.md) for
+the measurements.
 
 ---
 
@@ -64,10 +60,8 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
-`requirements.txt` includes `nemo_toolkit[asr]`, which is a large install. It is required
-rather than optional: `ASR_ALIGN_BACKEND` defaults to `nemo`, and NeMo is the only backend that
-can work the surah out from the audio. If it will not install on your platform, comment it out
-and set `ASR_ALIGN_BACKEND=wav2vec2` -- see [Giving up range detection](#giving-up-range-detection).
+`requirements.txt` includes `nemo_toolkit[asr]`, which is a large install. It is required: the
+align model is a NeMo checkpoint, and it is also what works the surah out from the audio.
 
 ## Run
 
@@ -112,33 +106,7 @@ single fixed sequence rather than every possible one. Measured on an 8-core desk
 68.5-second clip against a 53-word reference aligned in **4.4 seconds** (14 s on the first
 request, which includes loading the model).
 
-**Keep the default `nemo` align backend even on CPU.** It is what decodes the audio to work
-out which surah is being recited, and that is the feature most of the app is built around.
 NeMo is a heavy install but it is not GPU-only; `ASR_DEVICE` handles the rest.
-
-```bash
-ASR_WARM_UP=1 uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-Startup does **not** load the `ASR_BACKEND` model any more — that model is what `/transcribe`
-uses, and the app never calls `/transcribe`, so it was a second large model held in memory for
-nothing. Pass `ASR_WARM_UP=1` if you serve `/transcribe` yourself and would rather pay the
-load once at startup than on the first request. `/align` has its own model and is unaffected.
-
-### Giving up range detection
-
-`ASR_ALIGN_BACKEND=wav2vec2` swaps in an ungated character model that needs nothing beyond
-`transformers`. Its weaker acoustics matter far less for alignment than they would for
-decoding — but it **cannot detect the ayah range**, because detection requires decoding the
-audio. `POST /align` without a `reference` then returns HTTP 400, and the app falls back to
-whatever range is selected in its UI (and says so).
-
-Choose it only when NeMo genuinely will not install. It is never selected automatically: an
-earlier version probed whether NeMo imported and switched silently, which turned a fixable
-environment problem — typically the service started outside its virtualenv — into what looked
-like a permanent limitation, and cost every user range detection without telling them. Now a
-broken NeMo raises an error naming the cause. `GET /health` reports the backend in use and a
-`canAutoDetectRange` flag.
 
 ---
 
@@ -146,18 +114,12 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ASR_ALIGN_BACKEND` | `nemo` | Backend for `/align`. `wav2vec2` disables ayah-range detection. |
-| `ASR_ALIGN_MODEL` | per backend | Override the alignment checkpoint. |
+| `ASR_ALIGN_MODEL` | `Muno459/fastconformer-quran` | Override the alignment checkpoint (a NeMo hybrid CTC model). |
 | `ASR_ALIGN_MODEL_REVISION` | the pinned upload | Load another upload of `Muno459/fastconformer-quran`, by commit sha, to measure it. See [Updating the model](#updating-the-model). |
 | `ASR_PHONEME_RETIME` | `old` | The phoneme model that re-times each word's start after the captions are cut (`app/phoneme.py`): `old` (`Muno459/zipformer_p-quran`), `v31` (`Quran-Lab/zipformer_p-arabic-v3`), or `none` for the align model's own times. Only the one used is downloaded, about 80 MB. |
-| `ASR_BACKEND` | `wav2vec2` | Decode backend for `/transcribe`: `wav2vec2`, `nemo`, or `whisper`. |
-| `ASR_MODEL` | per backend | Override the decode checkpoint. |
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |
-| `ASR_WARM_UP` | `0` | Load the decode model at startup instead of on first request. |
-| `ASR_NEMO_DECODER` | `rnnt` | `rnnt` or `ctc` for the hybrid NeMo model. |
 | `ALIGN_MIN_REPEAT_MATCH` | `0.75` | How much of a repeated phrase's spelling must be heard in the gap it explains. |
 | `ALIGN_MAX_REPEAT_WORDS` | `4` | How far back a reciter is assumed to go when resuming. |
-| `ASR_WARM_UP` | `0` | Loads the `/transcribe` model at startup. The app never calls `/transcribe`, so this is off — startup is ~6s rather than ~11s and a model's worth of GPU memory stays free. Set it to `1` if you serve `/transcribe` yourself. `/align` is unaffected either way. |
 | `ALIGN_QUIET_DROP_DB` | `10` | How far below the clip's speech level counts as silence. Measured against the speech level, not as a rank, so trimming a recording does not change where it splits. |
 | `ALIGN_QUIET_MERGE_SEC` | `0.12` | Quiet either side of a drawn breath is one pause, not two. |
 | `ALIGN_MAX_PAUSE_INSET` | `0.25` | How far short of a word's end a silence may stop and still count as following it. Beyond this it is inside the word, not at the join. |
@@ -171,7 +133,6 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ALIGN_DIP_PERCENTILE` | `15` | Energy percentile treated as a phrase boundary. |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit. |
 | `REGROUP_KEPT_SECONDS` | `1800` | Audio kept for `/regroup`, in seconds across all held matches (about 115 MB). |
-| `MAX_CHUNK_SECONDS` | `25` | Max decode chunk length for `/transcribe`. |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allow-list. |
 | `ALIGN_ALLOWED_AUDIO_HOSTS` | the two recitation CDNs | Hosts `/align` will fetch a recording from. An entry starting with a dot matches any subdomain. |
 | `ALIGN_AUDIO_PROXY_ORIGIN` | `http://localhost:3000` | The studio's own `/api/audio/proxy`, which the app points this service at instead of the CDN. Allowed over plain http, since it is this deployment's own address; ffmpeg cannot prefer IPv4 and both CDNs publish AAAA records, so a machine with no IPv6 route fails on a direct fetch and succeeds through the app's Node fetch. |
@@ -179,22 +140,10 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 
 ---
 
-## Backends
+## The align model
 
-| `ASR_BACKEND` | Model | Notes |
-|---|---|---|
-| `wav2vec2` (default) | `jonatasgrosman/wav2vec2-large-xlsr-53-arabic` | Ungated, CPU-viable, no extra install. A general Arabic model, so noticeably weaker on recitation — but for *alignment* that matters far less than for decoding. |
-| `nemo` | `Muno459/fastconformer-quran` | Best accuracy tested on recitation (trained on `tarteel-ai/everyayah`). Gated -- needs a Hugging Face login. Installed by `requirements.txt`. Required for range auto-detection. |
-| `whisper` | `tarteel-ai/whisper-base-ar-quran` | Encoder-decoder. Doesn't share NeMo's RNNT quirk, but has Whisper's own known habit of hallucinating repeated text into silence. Shares the `transformers` dependency — no extra install. |
-
-Whisper word timestamps are derived from cross-attention weights, which scale steeply with
-model size — `IJyad/whisper-large-v3-Tarteel` exhausted a 16 GB GPU on this task, which is why
-`base` is the default. Budget well beyond the weight size if you try a larger checkpoint.
-
-### Enabling the NeMo backend
-
-Nothing to install -- `requirements.txt` already carries `nemo_toolkit[asr]`, and `nemo` is the
-default backend for `/align`. What it does need is access to its gated model:
+Nothing to install -- `requirements.txt` already carries `nemo_toolkit[asr]`. What it does need
+is access to its gated model:
 
 ```bash
 # 1. Accept the model terms while logged in at:
@@ -208,15 +157,11 @@ Without that the weights download returns 401 and `/align` fails on every reques
 looks for a stored token at startup and warns when it finds none, so this lands in the log
 rather than as a mystery 502 in the studio.
 
-To use NeMo for free decoding (`/transcribe`) as well, set `ASR_BACKEND=nemo`; `/align` already
-uses it.
-
 `nemo_toolkit[asr]` pulls in `pytorch-lightning`, `hydra-core`, `sentencepiece` and more. On
 Python 3.13+ some of these lack prebuilt wheels and will try to build from source — use a 3.11
 or 3.12 virtualenv for this service.
 
-`ASR_MODEL` doesn't need setting; `Muno459/fastconformer-quran` is already the NeMo default.
-That repo's root contains loose browsing copies that NeMo's generic `from_pretrained()` cannot
+That model's repo root contains loose browsing copies that NeMo's generic `from_pretrained()` cannot
 load, so the loader fetches the packaged `nemo/fastconformer-quran.nemo` checkpoint directly.
 
 ### Updating the model
@@ -240,46 +185,6 @@ Move the pin to that sha only when both agree it is no worse (see `docs/ALIGNMEN
 first load of a new revision downloads it once (~1.2 GB); a pinned revision already in the
 cache loads without asking the Hub at all.
 
-### RNNT vs CTC decoding (NeMo only)
-
-`Muno459/fastconformer-quran` is a hybrid model with two jointly-trained decoder heads;
-`ASR_NEMO_DECODER` selects which produces output.
-
-- **`rnnt`** (default) advances through the audio one token at a time. Its known failure mode
-  is occasionally skipping a stretch right after a pause — observed on real recitation with
-  the whole clip as a single region, so not a chunking artifact.
-- **`ctc`** computes one output per fixed frame, which structurally cannot skip ahead that way.
-
-The comparison is mixed rather than a clean win. CTC recovered content RNNT consistently
-missed, but also produced malformed tokens with invalid diacritics (`يُؤْمُِونَ`, `وَْلًِا`) that
-correspond to nothing recited — and those dragged whole phrases to unrelated surahs during
-matching. A missing word is safer than a confidently wrong segment, so `rnnt` remains the
-default. Treat `ctc` as a per-recording experiment.
-
-Hybrid-model CTC timestamp decoding has had compatibility issues on some NeMo versions
-([NVIDIA-NeMo/Speech#12799](https://github.com/NVIDIA-NeMo/Speech/issues/12799)). If switching
-fails the service logs a traceback and stays on RNNT rather than refusing to start.
-
-### Tuning pause segmentation (`/transcribe`)
-
-`min_silence_ms` (default `900`) decides what counts as a meaningful breath:
-
-- **Lower (~200–400 ms)** gives more, shorter segments, but each decode sees less context.
-  On real recitation this measurably *loses content* — whole clauses, not just tighter
-  boundaries.
-- **Higher (~900 ms+)** gives fewer, longer segments and recovers that content. A ~70 s clip
-  showed no quality loss even at 4000 ms; longer recordings are untested at that extreme,
-  which is why 900 ms ships as the default.
-
-`vad_threshold` (default `0.3`) and `speech_pad_ms` (default `200`) work the same way: a lower
-threshold catches quieter passages, and more padding keeps region boundaries off word onsets.
-All three can be passed per request:
-
-```bash
-curl -s http://127.0.0.1:8000/transcribe \
-  -F "audio=@clip.mp3" -F "min_silence_ms=1200" -F "vad_threshold=0.25" | python3 -m json.tool
-```
-
 ---
 
 ## API
@@ -296,8 +201,7 @@ ffmpeg selects the audio stream, so callers need not strip it first.
 
 **Omit it to auto-detect the passage.** The service decodes the audio, locates each phrase in
 the full Quran (downloaded once and cached under `~/.cache/quran-clip-creator/`), and aligns
-against exactly the ayahs it found, returning them as `detectedRange`. This requires the
-`nemo` align backend (the default).
+against exactly the ayahs it found, returning them as `detectedRange`.
 
 Each phrase is located independently and the results pooled, so a repeat is harmless — it just
 lands on the same place twice. The reported span is the *cluster* of ayahs carrying the most
@@ -367,12 +271,6 @@ between the two (0.479), which is the right shape — it is narrow, not wrong.
 `warning` is set below `ALIGN_MIN_DECODE_AGREEMENT` (0.40), and separately when coverage shows
 supplied text that was never recited.
 
-**This check only runs on the `nemo` align backend.** The threshold is calibrated against a
-Quran-tuned decode; the general Arabic model used by `ASR_ALIGN_BACKEND=wav2vec2` free-decodes
-into unreadable text, so it would disagree just as much with a *correct* alignment. On that
-backend `decodeAgreement` comes back `null` and the guard sits out — which also means a wrong
-ayah range goes undetected there.
-
 Treat `meanScore` as a diagnostic of alignment *sharpness*, not of whether the passage is right.
 
 Two caveats:
@@ -388,32 +286,14 @@ Two caveats:
   for 1:1–1:2 and never reached Al-Ahzab. Coverage caught it (0.10), but the timeline was
   unusable rather than merely padded. Prefer one tight range when you know it.
 
-### `POST /transcribe`
-
-Free decode, no reference text. Multipart with `audio`, plus optional `vad_threshold`,
-`min_silence_ms`, `min_speech_ms`, `speech_pad_ms`.
-
-```jsonc
-{
-  "success": true,
-  "audioDuration": 84.32,
-  "transcript": "...",
-  "words": [{ "text": "بسم", "start": 0.62, "end": 1.05, "score": 0.91 }],
-  "voicedRegions": [{ "start": 0.6, "end": 8.4, "wordCount": 12, "text": "..." }]
-}
-```
-
 ### `GET /health`
 
-Reports the decode backend, the align backend in use, whether that backend actually loaded,
-and whether range auto-detection is available:
+Reports the align model, whether it actually loaded, and whether range auto-detection is
+available:
 
 ```jsonc
 {
   "status": "ok",
-  "backend": "wav2vec2",
-  "model": "jonatasgrosman/wav2vec2-large-xlsr-53-arabic",
-  "alignBackend": "nemo",
   "alignModel": "Muno459/fastconformer-quran",
   "alignModelRevision": "77dbe5d809628ea89422243695de4c0d69770775",  // the pinned upload, or a trial's
   "alignReady": true,          // false => every /align call will fail

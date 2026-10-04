@@ -2501,13 +2501,6 @@ export default function VideoCreatorPage() {
                     )}
                     {/* Kept because they are diagnostics with a fix, not descriptions:
                         the blurb above already says what the option does. */}
-                    {matchProvider !== 'gemini' && providerStatus?.align.configured && providerStatus.align.canAutoDetectRange === false && (
-                      <p className="text-xs text-amber-400/90 mt-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
-                        {t.source.matcherDetectionOffBefore}{' '}
-                        <code className="font-mono">ASR_ALIGN_BACKEND</code>{' '}
-                        {t.source.matcherDetectionOffAfter}
-                      </p>
-                    )}
                     {matchProvider !== 'gemini' && providerStatus?.align.alignReady === false && (
                       <div className="text-xs text-red-300 mt-1.5 rounded-md bg-red-500/10 border border-red-500/25 p-2 space-y-1">
                         <p className="font-semibold">{t.source.matcherEngineFailedTitle}</p>

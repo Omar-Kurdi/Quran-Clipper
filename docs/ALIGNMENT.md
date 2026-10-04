@@ -54,8 +54,8 @@ decode-then-search approach become *structurally impossible* rather than merely 
 
 ### The evidence
 
-The same acoustic model (`jonatasgrosman/wav2vec2-large-xlsr-53-arabic`) was run over the
-reference clip both ways.
+The same acoustic model (`jonatasgrosman/wav2vec2-large-xlsr-53-arabic`, the first align model,
+since removed) was run over the reference clip both ways.
 
 **Free decoding** produced unusable output — only fragments are recoverable:
 
@@ -347,8 +347,8 @@ junctions with known truth, measured every way available:
 | `لَكُم` → `مِّنَ` | p4.8 | 16% | gap | **no** |
 
 Nothing orders that. A real stop has *no quiet frames at all* (reverberant room), while a
-junction the reciter never stopped at is quieter than one they did. Silero VAD — already in this
-repo for `/transcribe` — scores 5 of 9 against known truth and agrees with the energy on all five.
+junction the reciter never stopped at is quieter than one they did. Silero VAD — then in this
+repo for a `/transcribe` endpoint, since removed — scores 5 of 9 against known truth and agrees with the energy on all five.
 
 **The answer was that two of those junctions are not silence at all.** A ghunnah is a nasal hum
 held about two counts: quiet, flat and sustained, which is the same shape as silence to anything
@@ -543,9 +543,8 @@ A reference covering only *part* of its audio lands in between (0.479) rather th
 extreme, which is the right shape — it is not a wrong passage, just a narrow one.
 
 The sidecar warns below 0.40 (`ALIGN_MIN_DECODE_AGREEMENT`), and separately when coverage shows
-supplied text that was never recited. The check runs on the `nemo` backend only: the threshold
-assumes a Quran-tuned decode, and the general Arabic model would disagree just as much with a
-correct alignment. On `wav2vec2` the field is `null` and nothing guards the passage.
+supplied text that was never recited. The threshold assumes a Quran-tuned decode: a general
+Arabic model would disagree just as much with a correct alignment.
 
 ### What the app does with this
 
@@ -641,12 +640,6 @@ that belong to whoever is testing, and `.gitignore` excludes audio. Supply your 
 ground truth in `scripts/expected_segments.txt` is specific to the 33:21–23 clip.
 
 ```bash
-# forced alignment vs. free decoding
-asr-service/.venv/bin/python scripts/spike_forced_align.py path/to/clip.mp3 33 21 23
-
-# repeat-hypothesis scoring
-asr-service/.venv/bin/python scripts/spike_detect_repeat.py path/to/clip.mp3
-
 # segment-level evaluation against expected output
 asr-service/.venv/bin/python scripts/eval_segments.py test.mp3 33 21 23
 

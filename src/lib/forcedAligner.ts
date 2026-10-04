@@ -244,8 +244,6 @@ export async function runForcedAlignMatch(params: {
   lab?: string;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
-  /** Set when auto-detect was asked for but the sidecar couldn't do it. */
-  let fellBackToSelected = false;
 
   // Auto-detect sends no reference at all: the sidecar decodes the audio,
   // finds the passage in the full Quran, and aligns against exactly that.
@@ -266,55 +264,16 @@ export async function runForcedAlignMatch(params: {
       .join('\n');
   }
 
-  let result: AlignResponse;
-  try {
-    result = await requestAlignment({
-      serviceUrl: params.serviceUrl,
-      source: params.source,
-      reference,
-      assist: params.assist,
-      breaks: params.breaks,
-      retime: params.retime,
-      lab: params.lab
-    });
-  } catch (err) {
-    // Retry with the user's range only when the sidecar said auto-detection is
-    // *unsupported here* -- that is the one failure a reference actually fixes.
-    //
-    // Any other failure (most often the backend not loading at all) fails the
-    // same way with a reference attached, so retrying just doubles the wait and
-    // logs a second 400 for the same underlying problem. That is exactly what
-    // it did: two 400s per upload, both the same protobuf error.
-    const retryable =
-      err instanceof AlignRequestError &&
-      err.code === 'auto_detect_unsupported' &&
-      autoDetect &&
-      params.surah &&
-      params.start &&
-      params.end;
-    if (!retryable) throw err;
-
-    console.warn(
-      `[forcedAligner] auto-detect failed (${(err as Error).message.slice(0, 160)}); ` +
-        `retrying with the selected range ${params.surah}:${params.start}-${params.end}.`
-    );
-    const selected = await getRange(params.surah!, params.start!, params.end!);
-    if (!selected.length) throw err;
-    result = await requestAlignment({
-      serviceUrl: params.serviceUrl,
-      source: params.source,
-      reference: selected
-        .map(verse => `${verse.verseKey}\t${verse.words.map(referenceToken).join(' ')}`)
-        .join('\n'),
-      assist: params.assist,
-      breaks: params.breaks,
-      retime: params.retime,
-      lab: params.lab
-    });
-    fellBackToSelected = true;
-  }
-
-  return matchFromAlignment(result, params, fellBackToSelected);
+  const result = await requestAlignment({
+    serviceUrl: params.serviceUrl,
+    source: params.source,
+    reference,
+    assist: params.assist,
+    breaks: params.breaks,
+    retime: params.retime,
+    lab: params.lab
+  });
+  return matchFromAlignment(result, params);
 }
 
 /**
@@ -335,7 +294,7 @@ export async function runRegroup(params: {
 }): Promise<MatchResult> {
   const query = new URLSearchParams({ id: params.regroupId, breaks: params.breaks });
   const result = await askSidecar(params.serviceUrl, `/regroup?${query}`);
-  return matchFromAlignment(result, params, false);
+  return matchFromAlignment(result, params);
 }
 
 type AlignedSegment = AlignResponse['segments'][number];
@@ -420,7 +379,7 @@ export function alignedSegments(result: Pick<AlignResponse, 'words' | 'segments'
 }
 
 /** What the studio is told about how this timeline was made. */
-function alignmentNotes(result: AlignResponse, rangeLabel: string, fellBackToSelected: boolean, restarts: number): string {
+function alignmentNotes(result: AlignResponse, rangeLabel: string, restarts: number): string {
   const detected = result.detectedRange;
   const repeatNote = restarts ? ` ${restarts} restarted phrase(s) detected.` : '';
   return (
@@ -428,9 +387,7 @@ function alignmentNotes(result: AlignResponse, rangeLabel: string, fellBackToSel
     (detected
       ? `Detected ${rangeLabel} from the audio itself${result.assist === 'qul' ? ' with QUL\'s morphology and mutashabihat' : ''} (${Math.round(detected.confidence * 100)}% match on ` +
         `${detected.matched_phrases}/${detected.total_phrases} phrases) and force-aligned it`
-      : fellBackToSelected
-        ? `This sidecar can't detect the range from audio, so the selected range ${rangeLabel} was force-aligned instead — confirm it matches the recording`
-        : `Force-aligned the selected text of ${rangeLabel}`) +
+      : `Force-aligned the selected text of ${rangeLabel}`) +
     ` (${result.model}). Every reference word has a timestamp by construction.${repeatNote}` +
     (result.retimed ? ` Word starts re-timed with phoneme model ${result.retimed}.` : '')
   );
@@ -452,8 +409,7 @@ function alignedRanges(result: AlignResponse, params: { surah?: number; start?: 
 /** A sidecar alignment as the studio's match result, the same for a first match and a regroup. */
 async function matchFromAlignment(
   result: AlignResponse,
-  params: { surah?: number; start?: number; end?: number; retime?: PhonemeRetime },
-  fellBackToSelected: boolean
+  params: { surah?: number; start?: number; end?: number; retime?: PhonemeRetime }
 ): Promise<MatchResult> {
   const detected = result.detectedRange;
   const ranges = alignedRanges(result, params);
@@ -494,7 +450,7 @@ async function matchFromAlignment(
     // asked for would quietly compare Match with itself.
     warning: [result.warning, params.retime && params.retime !== 'none' && !result.retimed ? 'The phoneme model could not read this passage, so these are Match\'s own word times.' : '']
       .filter(Boolean).join(' ') || undefined,
-    notes: alignmentNotes(result, rangeLabel, fellBackToSelected, restarts),
+    notes: alignmentNotes(result, rangeLabel, restarts),
     regroupId: result.regroupId,
     openings: result.openings
   };

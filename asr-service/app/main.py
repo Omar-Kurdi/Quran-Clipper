@@ -1,10 +1,8 @@
-"""Quran recitation ASR + VAD sidecar.
+"""Quran recitation alignment sidecar.
 
-Deliberately knows nothing about the Quran text. It answers one question:
-"which Arabic words were spoken, when, and where were the pauses?"
-
-Mapping those words onto ayahs happens in the Next.js app, which already owns
-the Quran corpus and the timeline data model.
+Places a known Quran text on a recitation (`/align`), working out which
+passage it is when no text is given, and re-cuts an alignment's captions
+(`/regroup`). The studio owns the Quran corpus and the timeline data model.
 """
 
 from __future__ import annotations
@@ -18,9 +16,8 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import align, asr, corpus, detect, phoneme, phoneme_reading, qul, regroup
+from . import align, corpus, detect, phoneme, phoneme_reading, qul, regroup
 from .audio import SAMPLE_RATE, AudioDecodeError, decode_to_pcm, decode_url_window, duration_seconds
-from .vad import VoicedRegion, detect_voiced_regions
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -42,8 +39,6 @@ MIN_REFERENCE_COVERAGE = float(os.getenv("ALIGN_MIN_REFERENCE_COVERAGE", "0.75")
 #: describing the same recitation, which in practice means the text is not what
 #: this audio says. See `align.decode_agreement` for the measurements.
 MIN_DECODE_AGREEMENT = float(os.getenv("ALIGN_MIN_DECODE_AGREEMENT", "0.40"))
-# Long voiced spans are split so a single forward pass never blows up memory.
-MAX_CHUNK_SECONDS = float(os.getenv("MAX_CHUNK_SECONDS", "25"))
 
 app = FastAPI(title="Quran ASR Aligner", version="1.0.0")
 
@@ -70,8 +65,7 @@ ALIGN_STARTUP_ERROR: str | None = None
 def _startup() -> None:
     global ALIGN_STARTUP_ERROR
 
-    backend = align.align_backend()
-    log.info("align backend: %s (%s)", backend, align.align_model_name())
+    log.info("align model: %s", align.align_model_name())
 
     # Fail loudly here rather than on the first request. The usual cause is the
     # service being started by a Python that is not this project's virtualenv --
@@ -82,7 +76,7 @@ def _startup() -> None:
     if ALIGN_STARTUP_ERROR:
         expected = Path(__file__).resolve().parent.parent / ".venv" / "bin" / "python"
         log.error("%s", "=" * 78)
-        log.error("ALIGN BACKEND '%s' CANNOT LOAD -- /align will fail on every request.", backend)
+        log.error("THE ALIGN MODEL CANNOT LOAD -- /align will fail on every request.")
         log.error("  reason:      %s", ALIGN_STARTUP_ERROR)
         log.error("  running as:  %s", sys.executable)
         log.error("  expected:    %s", expected)
@@ -102,24 +96,6 @@ def _startup() -> None:
             align.align_model_name(),
             align.align_model_name(),
         )
-
-    if backend != "nemo":
-        # Only reachable by explicitly setting ASR_ALIGN_BACKEND, so this is an
-        # informed choice rather than an accident -- but say what it costs, since
-        # it is the one setting that disables detecting the surah from audio.
-        log.warning(
-            "ASR_ALIGN_BACKEND=%s disables range auto-detection: /align will require a "
-            "'reference' and the app will fall back to the ayah range selected in the UI.",
-            backend,
-        )
-
-    # Off by default: warm-up loads the `/transcribe` model, and nothing in the
-    # app calls `/transcribe`. Paying ~5s of startup and a model's worth of GPU
-    # memory for an endpoint that is never hit is the wrong default; anyone
-    # serving `/transcribe` directly can set ASR_WARM_UP=1 and get it back.
-    # `/align` has its own model and is unaffected either way.
-    if os.getenv("ASR_WARM_UP", "0") == "1":
-        asr.warm_up()
 
 
 def _assist_requested(name: str) -> bool:
@@ -148,10 +124,6 @@ def _assist(name: str) -> qul.Assist | None:
 def health() -> dict:
     return {
         "status": "ok",
-        "backend": asr.backend_name(),
-        "model": asr.model_name(),
-        "nemoDecoder": asr.active_nemo_decoder() if asr.backend_name() == "nemo" else None,
-        "alignBackend": align.align_backend(),
         "alignModel": align.align_model_name(),
         # Which upload of it, when it is the default model: pinned, so a new
         # upload to the Hub changes nothing until it is chosen.
@@ -162,160 +134,13 @@ def health() -> dict:
         # someone upload a file and wait for the error.
         "alignReady": ALIGN_STARTUP_ERROR is None,
         "alignError": ALIGN_STARTUP_ERROR,
-        # Working the passage out from the audio means decoding it, which only
-        # the nemo backend does -- and only if it loads. The app needs this up
-        # front: without it, `/align` with no reference is a 400 rather than a
-        # capability the caller could have planned around.
-        "canAutoDetectRange": align.align_backend() == "nemo" and ALIGN_STARTUP_ERROR is None,
+        # Working the passage out from the audio means decoding it, which the
+        # align model does whenever it loads.
+        "canAutoDetectRange": ALIGN_STARTUP_ERROR is None,
         "sampleRate": SAMPLE_RATE,
         # Whether "Local + QUL" can run: the morphology and mutashabihat
         # exports are on this machine.
         "qulAssist": qul.available(),
-    }
-
-
-# Overlap between consecutive decode chunks. Without it a chunk boundary lands
-# mid-word and destroys the words either side of the cut; each chunk needs to
-# see a little of its neighbour's audio to decode its own edges correctly.
-CHUNK_OVERLAP_SECONDS = float(os.getenv("CHUNK_OVERLAP_SECONDS", "2.0"))
-
-
-def _split_region(region: VoicedRegion) -> list[tuple[float, float]]:
-    """Chunk an over-long voiced region into overlapping ASR-sized pieces."""
-    if region.duration <= MAX_CHUNK_SECONDS:
-        return [(region.start, region.end)]
-
-    overlap = min(CHUNK_OVERLAP_SECONDS, MAX_CHUNK_SECONDS / 2)
-    hop = MAX_CHUNK_SECONDS - overlap
-
-    pieces: list[tuple[float, float]] = []
-    cursor = region.start
-    while cursor < region.end:
-        end = min(cursor + MAX_CHUNK_SECONDS, region.end)
-        pieces.append((cursor, end))
-        if end >= region.end:
-            break
-        cursor += hop
-    return pieces
-
-
-def _dedupe_overlapping_words(words: list[asr.TimedWord]) -> list[asr.TimedWord]:
-    """Drop words decoded twice because they fell in a chunk overlap.
-
-    Consecutive words with the same text whose spans overlap in time can only
-    be the same utterance seen by two adjacent chunks -- a genuine immediate
-    repetition would be separated in time, not overlapping.
-    """
-    deduped: list[asr.TimedWord] = []
-    for word in sorted(words, key=lambda w: w.start):
-        if deduped and deduped[-1].text == word.text and word.start < deduped[-1].end:
-            continue
-        deduped.append(word)
-    return deduped
-
-
-def _merge_overlapping_regions(regions: list[VoicedRegion]) -> list[VoicedRegion]:
-    """Merge voiced regions that overlap after `speech_pad_ms` padding.
-
-    Silero pads each region on both sides, so two regions separated by less
-    than 2*speech_pad_ms come back overlapping. Left alone they get transcribed
-    twice and confuse any word-to-region assignment downstream.
-    """
-    if not regions:
-        return regions
-
-    merged = [regions[0]]
-    for region in regions[1:]:
-        last = merged[-1]
-        if region.start <= last.end:
-            merged[-1] = VoicedRegion(last.start, max(last.end, region.end))
-        else:
-            merged.append(region)
-
-    if len(merged) != len(regions):
-        log.info("merged %d overlapping voiced region(s)", len(regions) - len(merged))
-    return merged
-
-
-@app.post("/transcribe")
-async def transcribe(
-    audio: UploadFile = File(...),
-    vad_threshold: float = Form(0.3),
-    min_silence_ms: int = Form(900),
-    min_speech_ms: int = Form(250),
-    speech_pad_ms: int = Form(200),
-) -> dict:
-    started = time.perf_counter()
-
-    raw = await audio.read()
-    size_mb = len(raw) / 1024 / 1024
-    if size_mb > MAX_UPLOAD_MB:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio is {size_mb:.1f} MB, above the {MAX_UPLOAD_MB:.0f} MB limit.",
-        )
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty audio upload.")
-
-    try:
-        pcm = decode_to_pcm(raw)
-    except AudioDecodeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    total_duration = duration_seconds(pcm)
-
-    regions = detect_voiced_regions(
-        pcm,
-        threshold=vad_threshold,
-        min_silence_ms=min_silence_ms,
-        min_speech_ms=min_speech_ms,
-        speech_pad_ms=speech_pad_ms,
-    )
-    if not regions:
-        regions = [VoicedRegion(0.0, total_duration)]
-    regions = _merge_overlapping_regions(regions)
-
-    words: list[dict] = []
-    region_payload: list[dict] = []
-
-    for region in regions:
-        region_words: list[asr.TimedWord] = []
-        for start, end in _split_region(region):
-            chunk = pcm[int(start * SAMPLE_RATE) : int(end * SAMPLE_RATE)]
-            try:
-                region_words.extend(asr.transcribe_words(chunk, offset=start))
-            except asr.AsrError as exc:
-                raise HTTPException(status_code=500, detail=str(exc)) from exc
-        region_words = _dedupe_overlapping_words(region_words)
-
-        region_payload.append(
-            {
-                "start": round(region.start, 3),
-                "end": round(region.end, 3),
-                "wordCount": len(region_words),
-                "text": " ".join(word.text for word in region_words),
-            }
-        )
-        words.extend(word.to_dict() for word in region_words)
-
-    elapsed = time.perf_counter() - started
-    log.info(
-        "transcribed %.1fs of audio into %d words across %d regions in %.1fs",
-        total_duration,
-        len(words),
-        len(regions),
-        elapsed,
-    )
-
-    return {
-        "success": True,
-        "backend": asr.backend_name(),
-        "model": asr.model_name(),
-        "audioDuration": round(total_duration, 3),
-        "processingSeconds": round(elapsed, 2),
-        "transcript": " ".join(word["text"] for word in words),
-        "words": words,
-        "voicedRegions": region_payload,
     }
 
 
@@ -463,21 +288,6 @@ async def align_endpoint(
     decoded_phrases: list[str] | None = None
 
     if not ref_words:
-        if align.align_backend() != "nemo":
-            # Structured so the caller can tell "this backend can't auto-detect,
-            # send me a reference instead" (worth retrying with one) apart from
-            # "the backend is broken" (retrying anything fails the same way).
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "auto_detect_unsupported",
-                    "message": (
-                        "Range auto-detection needs the nemo align backend (it reads the audio to "
-                        f"find the passage), but ASR_ALIGN_BACKEND is set to '{align.align_backend()}'. "
-                        "Unset it to restore detection, or supply 'reference' to align a known range."
-                    ),
-                },
-            )
         try:
             boundaries = align.detect_boundaries(pcm)
             decoded_phrases = align.decode_phrases(pcm, boundaries)
@@ -613,7 +423,6 @@ async def align_endpoint(
     # accumulate. Zero for an upload, which is its own whole recording.
     response = {
         "success": True,
-        "backend": align.align_backend(),
         "model": align.align_model_name(),
         "detectedRange": detected.to_dict() if detected else None,
         "assist": "qul" if detected is not None and detect_assist is not None else None,

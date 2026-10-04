@@ -385,9 +385,6 @@ Then reload the studio page — the **Local** matcher will show "Ready".
 
 > **CPU-only hosts:** everything here runs on CPU — a 68-second clip aligns in about 4 seconds
 > on an 8-core machine, because it searches one fixed text rather than every possible sentence.
-> Keep the default NeMo backend even without a GPU: it is what reads the audio to work out the
-> surah for you. `ASR_ALIGN_BACKEND=wav2vec2` avoids that dependency but **gives up surah
-> detection**, so reach for it only if NeMo genuinely won't install.
 > See [asr-service/README.md](asr-service/README.md#running-without-a-gpu).
 
 ### 5. Configure keys (optional)
@@ -1086,15 +1083,14 @@ src/lib/
   i18n.ar.ts                 Arabic interface copy, typed against the English one
 asr-service/                 Python sidecar
   app/align.py               CTC forced alignment, phrase segmentation, repeat detection
-  app/asr.py                 Free-decode backends (wav2vec2 / nemo / whisper)
-  app/vad.py                 Silero VAD pause detection
+  app/phoneme*.py            Phoneme models: word starts, the phoneme lab, isti'adha and basmala
 scripts/                     Standalone scripts reproducing the docs/ALIGNMENT.md measurements
 docs/ALIGNMENT.md            Why alignment is built this way, with measurements
 ```
 
 **Tech stack:** Next.js 16 (App Router), React 19, TypeScript (strict), Tailwind CSS v4,
 Drizzle ORM + PostgreSQL, Quran.com API v4 and the Quran Foundation content API,
-WebCodecs + `mp4-muxer` + `mp4box` for export, FastAPI + PyTorch/torchaudio, Silero VAD.
+WebCodecs + `mp4-muxer` + `mp4box` for export, FastAPI + PyTorch/torchaudio, NeMo, ONNX Runtime.
 
 Anything pure — timeline edits, export planning, draft serialisation, the translation
 picker's grouping and search — is a `src/lib/*.ts` module with a `*.test.ts` beside it, run
@@ -1217,10 +1213,8 @@ variable is *unset*, so a broken value fails every save. Either comment the line
 
 **`pip install -r requirements.txt` fails on `nemo_toolkit`**
 Almost always Python 3.13+, which has no wheels for several of its dependencies and falls back
-to building from source. Rebuild the virtualenv with `python3.12 -m venv .venv`. If NeMo will
-not install on your platform at all, comment it out of `asr-service/requirements.txt` and set
-`ASR_ALIGN_BACKEND=wav2vec2` — everything else keeps working, but the sidecar can no longer
-work the surah out from the audio, so `/align` uses the range selected in the studio.
+to building from source. Rebuild the virtualenv with `python3.12 -m venv .venv`. The sidecar
+needs NeMo: its align model is a NeMo checkpoint.
 
 **`/align` fails with a 401 or `GatedRepoError`**
 `Muno459/fastconformer-quran` is a gated repo and the machine has no Hugging Face credential.
@@ -1285,11 +1279,8 @@ npx next dev --webpack
 
 - **Always review an AI-generated timeline before publishing.** Forced alignment cannot report
   that it was handed the wrong text; decode agreement is a strong guard, not a guarantee.
-- Range auto-detection needs the `nemo` align backend (the default), since it has to read the
-  audio. Setting `ASR_ALIGN_BACKEND=wav2vec2` turns detection off and makes you supply the
-  range; the studio shows a warning when the sidecar is in that state. If NeMo fails to load,
-  the service says so with the reason rather than quietly downgrading — most often it means the
-  service was started outside its virtualenv.
+- If NeMo fails to load, the sidecar says so with the reason, and the studio shows it before
+  you upload anything — most often it means the service was started outside its virtualenv.
 - A built-in reciter's timeline can now be aligned rather than estimated: **Align to audio**
   after loading reads the reciter's own recording and places every word. Before this, three of
   the six reciters had no published timings at all and got boundaries guessed from average pace,
@@ -1345,13 +1336,32 @@ npx next dev --webpack
 
 ## Credits
 
-Quran text, translation, and word data from the [Quran.com API](https://api-docs.quran.com/)
-and, where credentials are configured, the
-[Quran Foundation content API](https://api-docs.quran.foundation).
-Reciter audio from [mp3quran.net](https://mp3quran.net/). Background footage from
-[Pexels](https://www.pexels.com/). Acoustic models from the Hugging Face community.
+Quran text, translation, word data and published word timings from the
+[Quran.com API](https://api-docs.quran.com/) and, where credentials are configured, the
+[Quran Foundation content API](https://api-docs.quran.foundation) (optional; without them the open
+Quran.com API serves everything). Mushaf fonts, QUL word
+timings, morphology and mutashabihat from Tarteel's
+[Quranic Universal Library](https://qul.tarteel.ai), which you download yourself. Reciter audio
+from [QuranicAudio](https://quranicaudio.com/), QUL and [mp3quran.net](https://mp3quran.net/).
+Background footage from [Pexels](https://www.pexels.com/).
+
+**Models.** None ships with this repository: the sidecar downloads each one from the Hugging
+Face Hub, and each stays under its own licence, not this project's.
+
+| Model | Used for | Licence |
+|---|---|---|
+| [Muno459/fastconformer-quran](https://huggingface.co/Muno459/fastconformer-quran) | Matching: finding the passage and timing every word | Quran-Lab No-Profit License 1.1 |
+| [Muno459/zipformer_p-quran](https://huggingface.co/Muno459/zipformer_p-quran) | Each word's start (the default re-timing); isti'adha and basmala detection | Quran-Lab No-Profit License 1.1 |
+| [Quran-Lab/zipformer_p-arabic-v3](https://huggingface.co/Quran-Lab/zipformer_p-arabic-v3) | Phoneme lab (development only) | Quran-Lab No-Profit License 1.2 |
+
+fastconformer-quran is fine-tuned from NVIDIA's
+[stt_ar_fastconformer_hybrid_large_pcd_v1.0](https://huggingface.co/nvidia/stt_ar_fastconformer_hybrid_large_pcd_v1.0)
+(CC-BY-4.0) and trained in part on Tarteel's EveryAyah (CC-BY-4.0); the zipformers are built on
+[k2-fsa/icefall](https://github.com/k2-fsa/icefall)'s Zipformer2. The Quran-Lab models are
+no-profit: nothing they power may be sold, put behind a payment or subscription, or carry
+advertising, and a hosted copy may recover only its running costs.
 
 ## License
 
 Free for personal, educational, and other non-commercial use — see [LICENSE](LICENSE) for the
-full terms. Commercial use requires separate written permission from the copyright holder.
+full terms. There is no commercial licence, and none will be granted.

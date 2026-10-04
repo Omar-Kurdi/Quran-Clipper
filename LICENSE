@@ -17,7 +17,7 @@ You may:
 * Share the original Software or modified versions free of charge.
 * Include the Software in personal, educational, or other non-commercial projects.
 
-You may not, without obtaining separate written permission from the copyright holder:
+You may not:
 
 * Sell the Software or any modified version of it.
 * Charge money for access to the Software.
@@ -45,11 +45,9 @@ If you distribute a modified version, you must clearly indicate that modificatio
 
 Modified versions remain subject to the non-commercial restrictions of this license.
 
-## 5. Commercial Licensing
+## 5. No Commercial License
 
-Commercial use is not granted by this license.
-
-The copyright holder may, at their sole discretion, grant separate written permission for commercial use. Such permission may be subject to separate terms or fees.
+There is no commercial license for the Software and none will be granted. It is not available for a fee, a revenue share, a one-time payment, or any other arrangement. If your use is commercial, you do not have a license under these terms and no separate license is obtainable.
 
 ## 6. Ownership
 
@@ -65,6 +63,8 @@ This license applies only to the original work contained in this repository that
 
 Third-party libraries, frameworks, assets, fonts, icons, services, and other components included in or used by the Software may be subject to their own licenses and terms. Those components remain subject to their respective licenses.
 
+The speech models the alignment service downloads are not part of the Software and are licensed by their authors, not by this license. The Quran-Lab models among them are no-profit: they may never be used in anything that is sold, placed behind a payment or subscription, or monetised.
+
 ## 8. No Warranty
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
@@ -75,13 +75,11 @@ IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHE
 
 Any rights granted under this license automatically terminate if you violate its terms.
 
-Upon termination, you must cease using and distributing the Software unless you otherwise have permission from the copyright holder.
+Upon termination, you must cease using and distributing the Software.
 
 ## 10. Copyright Holder
 
 Copyright © 2026 Omar-Kurdi.
-
-For commercial licensing or other permissions not granted by this license, please contact the copyright holder.
 
 ---
 
@@ -104,7 +102,7 @@ For commercial licensing or other permissions not granted by this license, pleas
 * مشاركة البرنامج الأصلي أو النسخ المعدلة منه مجانًا.
 * تضمين البرنامج في مشاريع شخصية أو تعليمية أو غير تجارية.
 
-ولا يجوز لك، دون الحصول على إذن كتابي منفصل من صاحب حقوق الطبع والنشر:
+ولا يجوز لك:
 
 * بيع البرنامج أو أي نسخة معدلة منه.
 * فرض رسوم مقابل الوصول إلى البرنامج.
@@ -132,11 +130,9 @@ For commercial licensing or other permissions not granted by this license, pleas
 
 وتظل النسخ المعدلة خاضعة للقيود المتعلقة بالاستخدام غير التجاري الواردة في هذه الرخصة.
 
-## 5. الترخيص التجاري
+## 5. لا ترخيص تجاري
 
-لا تمنح هذه الرخصة أي حق في الاستخدام التجاري.
-
-يجوز لصاحب حقوق الطبع والنشر، وفقًا لتقديره الخاص، منح إذن منفصل للاستخدام التجاري. وقد يخضع هذا الإذن لشروط أو رسوم منفصلة.
+لا توجد رخصة تجارية للبرنامج، ولن تُمنح. فهو غير متاح مقابل رسوم أو حصة من الإيرادات أو دفعة واحدة أو أي ترتيب آخر. وإن كان استخدامك تجاريًا، فلا رخصة لك بموجب هذه الشروط، ولا يمكن الحصول على رخصة منفصلة.
 
 ## 6. الملكية
 
@@ -152,6 +148,8 @@ For commercial licensing or other permissions not granted by this license, pleas
 
 قد تخضع المكتبات والأطر البرمجية والأصول والخطوط والأيقونات والخدمات وغيرها من المكونات التابعة لجهات خارجية والمستخدمة مع البرنامج لتراخيص وشروط خاصة بها. وتظل هذه المكونات خاضعة لتراخيصها الخاصة.
 
+ولا تُعدّ نماذج الكلام التي تنزّلها خدمة المطابقة جزءًا من البرنامج، وإنما يرخّصها مؤلفوها لا هذه الرخصة. ونماذج Quran-Lab منها غير ربحية: فلا يجوز أبدًا استعمالها في أي شيء يُباع، أو يوضع خلف دفع أو اشتراك، أو يُستثمر لتحقيق دخل.
+
 ## 8. إخلاء المسؤولية عن الضمان
 
 يتم توفير البرنامج "كما هو"، دون أي ضمان من أي نوع، سواء كان صريحًا أو ضمنيًا، بما في ذلك على سبيل المثال لا الحصر ضمانات القابلية للتسويق أو الملاءمة لغرض معين أو عدم انتهاك الحقوق.
@@ -162,13 +160,11 @@ For commercial licensing or other permissions not granted by this license, pleas
 
 تنتهي تلقائيًا جميع الحقوق الممنوحة بموجب هذه الرخصة في حال مخالفة أي من شروطها.
 
-وعند انتهاء الترخيص، يجب التوقف عن استخدام البرنامج وتوزيعه، ما لم يكن لديك إذن آخر من صاحب حقوق الطبع والنشر.
+وعند انتهاء الترخيص، يجب التوقف عن استخدام البرنامج وتوزيعه.
 
 ## 10. صاحب حقوق الطبع والنشر
 
 حقوق الطبع والنشر © 2026 Omar-Kurdi
-
-للحصول على ترخيص تجاري أو أي أذونات أخرى غير ممنوحة بموجب هذه الرخصة، يرجى التواصل مع صاحب حقوق الطبع والنشر.
 
 ---
 

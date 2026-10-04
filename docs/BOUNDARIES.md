@@ -16,7 +16,7 @@ Ground truth = user's per-segment description. Score = exact word-range matches.
 The nemo path (`assign_phrase_ranges_by_decode`) uses every candidate as a
 forced split -- it cannot decline one. `detect_boundaries` documents its output
 as candidates "for the search to choose from", but only the wav2vec2 path
-(`assign_phrase_ranges`) actually searches them. Extra candidates therefore
+(`assign_phrase_ranges`, since removed) actually searched them. Extra candidates therefore
 cut mid-word, produce fragment decodes, and lose words outright.
 
 ## Why the wanted boundaries are invisible to energy

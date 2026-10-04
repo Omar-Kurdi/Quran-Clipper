@@ -232,9 +232,6 @@ export const ar: Dictionary = {
     matcherHelperNotRunning: 'التطبيق المساعد لا يعمل',
     matcherHelperNeedsRestart: 'التطبيق المساعد يحتاج إعادة تشغيل',
     matcherNeedsApiKey: 'يحتاج مفتاح API',
-    matcherDetectionOffBefore:
-      'كشف المقطع معطَّل في التطبيق المساعد لديك، لذا سيوقّت السورة والنطاق المحددين تحت «قارئ مدمج» بدل البحث عنهما في الصوت. أزِل ضبط',
-    matcherDetectionOffAfter: 'وأعد تشغيله لإعادة تفعيل الكشف.',
     matcherEngineFailedTitle:
       'التطبيق المساعد يعمل لكنه لم يتمكن من تحميل محرك المحاذاة، لذا ستفشل المطابقة.',
     matcherEngineFailedBody:

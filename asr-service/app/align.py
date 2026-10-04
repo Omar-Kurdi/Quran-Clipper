@@ -1,9 +1,8 @@
 """CTC forced alignment of *known* Quran text against recitation audio.
 
-The difference from `asr.py` is the whole point of this module: nothing here
-decodes in order to decide *timing*. The caller supplies the Uthmani text, that
-text becomes a fixed CTC target sequence, and the model only chooses when each
-character was spoken.
+Nothing here decodes in order to decide *timing*. The caller supplies the
+Uthmani text, that text becomes a fixed CTC target sequence, and the model only
+chooses when each character was spoken.
 
 Three failure modes of the free-decode pipeline are therefore structurally
 impossible rather than merely mitigated:
@@ -48,12 +47,6 @@ from .audio import SAMPLE_RATE
 
 log = logging.getLogger(__name__)
 
-# Character-vocabulary CTC model. A char vocab is what makes this simple: the
-# Uthmani text maps straight onto target tokens with no tokenizer to match.
-# (NeMo's Quran checkpoint is stronger acoustically but uses SentencePiece BPE
-# and a different blank convention -- see docs/ALIGNMENT.md before switching.)
-DEFAULT_ALIGN_MODEL = "jonatasgrosman/wav2vec2-large-xlsr-53-arabic"
-
 # Long audio cannot be chunked the way a decode can: the Viterbi path is global
 # over the whole sequence. So emissions are computed in overlapping windows and
 # stitched at the *emission* level, then aligned in one pass.
@@ -66,10 +59,10 @@ EMISSION_OVERLAP_SEC = 4.0
 #: while allowing roughly a 45-minute recitation.
 MAX_ALIGN_MEMORY_GB = float(os.getenv("ALIGN_MAX_MEMORY_GB", "2.0"))
 
-#: Seconds of audio per CTC frame, per backend. Only ever used to turn a frame
-#: count back into "about N minutes" for an error message -- the alignment
-#: itself measures this from the emission it actually got.
-_SEC_PER_FRAME = {"nemo": 0.0784, "wav2vec2": 0.02}
+#: Seconds of audio per CTC frame. Only ever used to turn a frame count back
+#: into "about N minutes" for an error message -- the alignment itself measures
+#: this from the emission it actually got.
+_SEC_PER_FRAME = 0.0784
 
 
 class AlignError(RuntimeError):
@@ -114,42 +107,17 @@ def default_model_revision() -> str:
     return (os.getenv("ASR_ALIGN_MODEL_REVISION") or "").strip() or DEFAULT_NEMO_ALIGN_REVISION
 
 
-def align_backend() -> str:
-    """``nemo`` (the default) or ``wav2vec2``.
-
-    **Never probe-and-downgrade here.** Working the surah out from the audio is
-    a core feature, not a bonus, and it needs nemo because it has to decode.
-    An earlier version checked whether nemo imported and quietly switched to
-    wav2vec2 when it didn't -- which turned a *fixable environment problem*
-    (service started outside its virtualenv, so nemo's dependencies mismatched)
-    into what looked like a permanent capability limit, and silently cost every
-    user range detection.
-
-    So the default is nemo, unconditionally. If nemo cannot load,
-    `_load_nemo_aligner` raises with a message naming the actual cause, which
-    the caller can act on. wav2vec2 is available only by explicitly asking for
-    it -- an informed opt-out, never an automatic one.
-    """
-    value = (os.getenv("ASR_ALIGN_BACKEND") or "nemo").strip().lower()
-    return value if value in ("nemo", "wav2vec2") else "nemo"
-
-
 def probe_backend_error() -> str | None:
-    """Import-check the configured backend, returning the failure reason or None.
+    """Import-check NeMo, returning the failure reason or None.
 
-    **Diagnostic only -- this never changes which backend is used.** That
-    distinction is the whole point: an earlier version used a check like this to
-    silently switch to wav2vec2, which hid a broken environment and cost users
-    range detection without telling them. Here the answer is only ever reported,
-    never acted on, so a broken install surfaces at startup (and in `/health`)
-    instead of as a 400 the first time someone uploads a file.
+    **Diagnostic only.** The answer is only ever reported, so a broken install
+    surfaces at startup (and in `/health`) instead of as a 400 the first time
+    someone uploads a file.
 
     Only the import is exercised, not the model weights -- the failure this
     catches (a protobuf/onnx mismatch from running under the wrong interpreter)
     happens at import time, and loading weights here would cost a download.
     """
-    if align_backend() != "nemo":
-        return None
     try:
         import nemo.collections.asr  # noqa: F401
     except Exception as exc:
@@ -165,7 +133,7 @@ def gated_model_needs_login() -> bool:
     setup works fine. A false alarm that costs a line of log is acceptable; a
     false alarm that greys the provider out in the studio would not be.
     """
-    if align_backend() != "nemo" or align_model_name() != DEFAULT_NEMO_ALIGN_MODEL:
+    if align_model_name() != DEFAULT_NEMO_ALIGN_MODEL:
         return False
     try:
         from huggingface_hub import get_token
@@ -179,7 +147,7 @@ def align_model_name() -> str:
     explicit = (os.getenv("ASR_ALIGN_MODEL") or "").strip()
     if explicit:
         return explicit
-    return DEFAULT_NEMO_ALIGN_MODEL if align_backend() == "nemo" else DEFAULT_ALIGN_MODEL
+    return DEFAULT_NEMO_ALIGN_MODEL
 
 
 def _device() -> str:
@@ -208,33 +176,6 @@ def normalize_for_vocab(word: str) -> str:
     text = re.sub(r"[آأإٱ]", "ا", text)  # آ أ إ ٱ -> ا
     text = text.replace("ى", "ي")  # ى -> ي
     return re.sub(r"[^ء-ي]", "", text)
-
-
-@lru_cache(maxsize=1)
-def _load_aligner():
-    import torch
-    from transformers import AutoModelForCTC, AutoProcessor
-
-    name = align_model_name()
-    device = _device()
-    log.info("loading forced-alignment model=%s device=%s", name, device)
-
-    processor = AutoProcessor.from_pretrained(name)
-    model = AutoModelForCTC.from_pretrained(name).to(device).eval()
-    torch.set_grad_enabled(False)
-
-    vocab = processor.tokenizer.get_vocab()
-    blank_id = processor.tokenizer.pad_token_id
-    if blank_id is None:
-        raise AlignError(f"{name} has no pad/blank token; cannot force-align with it.")
-    # torchaudio's forced_align is called with blank=blank_id below, but a model
-    # whose blank is not 0 also tends to differ in other conventions -- surface
-    # it loudly rather than silently producing a plausible-looking bad path.
-    if blank_id != 0:
-        log.warning("model blank id is %d, not 0 -- verify alignment output carefully", blank_id)
-
-    separator_id = vocab.get("|")
-    return processor, model, device, vocab, blank_id, separator_id
 
 
 #: Uthmani orthography the NeMo tokenizer has no piece for. Its SentencePiece
@@ -286,9 +227,7 @@ def _load_nemo_aligner():
             "By far the most common cause is starting this service outside its virtualenv, which "
             "picks up a system Python whose onnx/protobuf versions disagree -- run "
             "`cd asr-service && source .venv/bin/activate` first, or call `.venv/bin/uvicorn` "
-            "directly. If nemo genuinely isn't installed, `pip install nemo_toolkit[asr]`. "
-            "Setting ASR_ALIGN_BACKEND=wav2vec2 avoids this dependency but gives up detecting "
-            "the surah from the audio, so fix the environment in preference to switching."
+            "directly. If nemo genuinely isn't installed, `pip install nemo_toolkit[asr]`."
         ) from exc
 
     from huggingface_hub import hf_hub_download
@@ -312,8 +251,7 @@ def _load_nemo_aligner():
                 f"1) accept them while logged in at https://huggingface.co/{name}, "
                 "2) create a read token at https://huggingface.co/settings/tokens, "
                 "3) run `hf auth login` (`huggingface-cli login` on huggingface_hub < 1.0) "
-                "in this service's virtualenv. Setting ASR_ALIGN_BACKEND=wav2vec2 uses an "
-                "ungated model instead but gives up detecting the surah from the audio."
+                "in this service's virtualenv."
             ) from exc
         model = nemo_asr.models.ASRModel.restore_from(restore_path=path, map_location=_device())
     else:
@@ -333,9 +271,7 @@ def _load_nemo_aligner():
 
 
 def _blank_id() -> int:
-    if align_backend() == "nemo":
-        return _load_nemo_aligner()[1]
-    return _load_aligner()[4]
+    return _load_nemo_aligner()[1]
 
 
 def _build_targets_nemo(ref_words: list[tuple[str, int, str]]) -> tuple[list[int], list[int], set[str]]:
@@ -401,32 +337,7 @@ def build_targets(ref_words: list[tuple[str, int, str]]) -> tuple[list[int], lis
     ``i`` belongs to (``-1`` for the word separator). That map is what lets
     frame times be attributed back to display words.
     """
-    if align_backend() == "nemo":
-        return _build_targets_nemo(ref_words)
-
-    _, _, _, vocab, _, separator_id = _load_aligner()
-
-    target_ids: list[int] = []
-    target_to_word: list[int] = []
-    missing: set[str] = set()
-
-    for word_idx, (_, _, uthmani) in enumerate(ref_words):
-        normalized = normalize_for_vocab(uthmani)
-        if not normalized:
-            continue
-        if target_ids and separator_id is not None:
-            target_ids.append(separator_id)
-            target_to_word.append(-1)
-        for char in normalized:
-            token = vocab.get(char)
-            if token is None:
-                # An unmapped char would become <unk> and align to noise.
-                missing.add(char)
-                continue
-            target_ids.append(token)
-            target_to_word.append(word_idx)
-
-    return target_ids, target_to_word, missing
+    return _build_targets_nemo(ref_words)
 
 
 # ---------------------------------------------------------------------------
@@ -438,29 +349,19 @@ def compute_emission(pcm: np.ndarray):
     """Log-probs over the whole clip, stitching overlapping windows if needed."""
     import torch
 
-    if align_backend() == "nemo":
-        model, _ = _load_nemo_aligner()
-        device = _device()
+    model, _ = _load_nemo_aligner()
+    device = _device()
 
-        def emit(chunk: np.ndarray):
-            wav = torch.from_numpy(np.ascontiguousarray(chunk)).float().unsqueeze(0).to(device)
-            length = torch.tensor([wav.shape[1]], device=device)
-            with torch.inference_mode():
-                processed, processed_len = model.preprocessor(input_signal=wav, length=length)
-                encoded, _ = model.encoder(audio_signal=processed, length=processed_len)
-                # The CTC head, not the RNNT branch: forced alignment needs one
-                # output per fixed time frame, which is what CTC gives.
-                log_probs = model.ctc_decoder(encoder_output=encoded)
-            return log_probs.float()
-    else:
-        processor, model, device, _, _, _ = _load_aligner()
-
-        def emit(chunk: np.ndarray):
-            inputs = processor(chunk, sampling_rate=SAMPLE_RATE, return_tensors="pt")
-            values = inputs.input_values.to(device)
-            with torch.inference_mode():
-                logits = model(values).logits
-            return torch.log_softmax(logits.float(), dim=-1)
+    def emit(chunk: np.ndarray):
+        wav = torch.from_numpy(np.ascontiguousarray(chunk)).float().unsqueeze(0).to(device)
+        length = torch.tensor([wav.shape[1]], device=device)
+        with torch.inference_mode():
+            processed, processed_len = model.preprocessor(input_signal=wav, length=length)
+            encoded, _ = model.encoder(audio_signal=processed, length=processed_len)
+            # The CTC head, not the RNNT branch: forced alignment needs one
+            # output per fixed time frame, which is what CTC gives.
+            log_probs = model.ctc_decoder(encoder_output=encoded)
+        return log_probs.float()
 
     window = int(EMISSION_WINDOW_SEC * SAMPLE_RATE)
     if len(pcm) <= window:
@@ -565,7 +466,7 @@ def _align_path(emission, target_ids: list[int]):
     needed_bytes = alignment_bytes(frames, len(target_ids), emission.shape[2])
     budget = MAX_ALIGN_MEMORY_GB * 1024**3
     if needed_bytes > budget:
-        seconds = frames * _SEC_PER_FRAME.get(align_backend(), 0.02)
+        seconds = frames * _SEC_PER_FRAME
         raise AlignError(
             f"This recording is too long to align in one pass: {seconds / 60:.0f} minutes of audio "
             f"against {len(target_ids)} text tokens needs about {needed_bytes / 1024**3:.1f} GB, and the "
@@ -871,9 +772,10 @@ def detect_boundaries(pcm: np.ndarray, window_sec: float = 0.02) -> list[float]:
     These are *candidates*, not decisions. Picking one threshold and committing
     to its boundaries fails in both directions at once: on the reference clip
     the setting that found the right count overall still merged two phrases
-    inside one ayah while over-splitting another. `assign_phrase_ranges` decides
-    which candidates are real, by whether using one lets the text line up
-    better -- so this only has to avoid *missing* a true boundary.
+    inside one ayah while over-splitting another.
+    `assign_phrase_ranges_by_decode` decides which candidates are real, by
+    whether using one lets the text line up better -- so this only has to
+    avoid *missing* a true boundary.
     """
     hop = max(1, int(window_sec * SAMPLE_RATE))
     frames = np.array([np.sqrt(np.mean(pcm[i : i + hop] ** 2) + 1e-12) for i in range(0, max(1, len(pcm) - hop), hop)])
@@ -971,31 +873,6 @@ def _dips_below(db: np.ndarray, window_sec: float, threshold: float) -> list[tup
             dips.append([begin, end])
             quiet_for.append(end - begin)
     return [(begin, end) for (begin, end), quiet in zip(dips, quiet_for) if quiet >= MIN_DIP_SEC]
-
-
-def _blank_score(emission, frame_start: int, frame_end: int) -> float:
-    """Log-likelihood of explaining a frame window as pure silence/blank.
-
-    This is the null hypothesis a candidate repeat has to beat: "there is no
-    text here." At frames carrying real speech the blank posterior is low, so
-    text that genuinely matches scores above it and text that doesn't scores
-    below -- which is exactly the discrimination we need.
-    """
-    blank_id = _blank_id()
-    return float(emission[0, frame_start:frame_end, blank_id].sum())
-
-
-def _fill_score(emission, ref_words, sequence: list[int], frame_start: int, frame_end: int) -> float:
-    """Log-likelihood of a candidate word sequence over one frame window."""
-    window = emission[:, frame_start:frame_end, :]
-    target_ids, _, _ = build_targets([ref_words[i] for i in sequence])
-    if not target_ids or required_frames(target_ids) > window.shape[1]:
-        return float("-inf")
-    try:
-        _, _, total = _align_path(window, target_ids)
-    except AlignError:
-        return float("-inf")
-    return total
 
 
 # ---------------------------------------------------------------------------
@@ -1147,16 +1024,6 @@ def skipped_ayahs(ref_words: list[tuple[str, int, str]], segments: list[Segment]
     if not placed:
         return []
     return [keys[i] for i in range(placed[0] + 1, placed[-1]) if keys[i] not in captioned]
-
-def _verse_starts(ref_words: list[tuple[str, int, str]]) -> dict[int, int]:
-    """Index of the first reference word of each word's own ayah."""
-    starts: dict[int, int] = {}
-    first_of_verse: dict[str, int] = {}
-    for i, (verse_key, _, _) in enumerate(ref_words):
-        first_of_verse.setdefault(verse_key, i)
-    for i, (verse_key, _, _) in enumerate(ref_words):
-        starts[i] = first_of_verse[verse_key]
-    return starts
 
 
 #: How many candidate boundaries a single phrase may swallow. Raising this
@@ -1365,115 +1232,6 @@ def match_decoded_to_range(
                 best = (start, end, score)
 
     return best
-
-
-def assign_phrase_ranges(
-    emission,
-    ref_words: list[tuple[str, int, str]],
-    boundaries: list[float],
-    sec_per_frame: float,
-) -> list[tuple[int, int, float, float, float]]:
-    """Decide which reference words each phrase contains.
-
-    A beam search rather than a single forward pass, because the locally best
-    range for one phrase is often not the one that lets the rest of the
-    recitation line up. Each phrase is scored by force-aligning a candidate
-    word range against *only that phrase's frames*, normalised per frame so
-    long and short phrases compare fairly.
-
-    Candidate starts are: continue where the last phrase ended, back up a few
-    words, or restart at the beginning of an ayah. That last option is what
-    reproduces the overlapping structure real recitation has -- a reciter says
-    part of an ayah, then goes back to its start and carries further -- which a
-    strictly forward alignment cannot represent at all.
-    """
-    total_frames = emission.shape[1]
-    verse_starts = _verse_starts(ref_words)
-    n = len(ref_words)
-    cache: dict[tuple[int, int, int, int], float] = {}
-
-    def range_value(start: int, end: int, frame_start: int, frame_end: int) -> float:
-        """How much better words[start..end] explain these frames than silence does."""
-        key = (frame_start, frame_end, start, end)
-        if key not in cache:
-            # Scoring as gain over blank, rather than raw likelihood, removes a
-            # systematic bias toward SHORT ranges: fewer tokens leaves more
-            # frames free to take the cheap blank label, so a 1-word guess
-            # otherwise beats the correct 8-word range on a long phrase.
-            fill = _fill_score(emission, ref_words, list(range(start, end + 1)), frame_start, frame_end)
-            null = _blank_score(emission, frame_start, frame_end)
-            cache[key] = float("-inf") if fill == float("-inf") else (fill - null) / max(1, frame_end - frame_start)
-        return cache[key]
-
-    # boundary index -> list of (cursor, covered, score, assignments)
-    states: dict[int, list[tuple[int, int, float, list]]] = {0: [(0, -1, 0.0, [])]}
-
-    for i in range(len(boundaries) - 1):
-        if i not in states:
-            continue
-        for j in range(i + 1, min(i + 1 + MAX_BOUNDARY_SPAN, len(boundaries))):
-            phrase_start, phrase_end = boundaries[i], boundaries[j]
-            frame_start = max(0, int(phrase_start / sec_per_frame))
-            frame_end = min(total_frames, int(phrase_end / sec_per_frame) + 1)
-            if frame_end - frame_start < 4:
-                continue
-
-            arrivals: list[tuple[int, int, float, list]] = []
-            for cursor, covered, total, assignments in states[i]:
-                starts = {cursor}
-                for back in range(1, MAX_BACK_OVERLAP + 1):
-                    if cursor - back >= 0:
-                        starts.add(cursor - back)
-                # Restarting at the top of an ayah is what produces the
-                # overlapping structure real recitation has: part of an ayah,
-                # then back to its start and onward. A strictly forward
-                # alignment cannot represent that at all.
-                starts.add(verse_starts.get(min(cursor, n - 1), 0))
-                if cursor > 0:
-                    starts.add(verse_starts.get(min(cursor - 1, n - 1), 0))
-
-                for start in sorted(s for s in starts if 0 <= s < n):
-                    verse_key = ref_words[start][0]
-                    for end in range(start, min(n, start + MAX_PHRASE_WORDS)):
-                        # A phrase never spans an ayah boundary -- the reference
-                        # site's model, and the natural unit reciters pause on.
-                        if ref_words[end][0] != verse_key:
-                            break
-                        value = range_value(start, end, frame_start, frame_end)
-                        if value == float("-inf"):
-                            continue
-                        arrivals.append(
-                            (
-                                end + 1,
-                                max(covered, end),
-                                total + value,
-                                assignments + [(start, end, value, phrase_start, phrase_end)],
-                            )
-                        )
-
-            if not arrivals:
-                continue
-            # Keep the best state per coverage depth rather than the top N by
-            # score: ranking on score alone lets many near-identical shallow
-            # readings crowd out the one branch that has actually advanced
-            # through the text, and once pruned the search can never reach the
-            # end -- it just re-recites the same ayah forever.
-            best_by_coverage: dict[int, tuple[int, int, float, list]] = {}
-            for state in arrivals + states.get(j, []):
-                current = best_by_coverage.get(state[1])
-                if current is None or state[2] > current[2]:
-                    best_by_coverage[state[1]] = state
-            states[j] = sorted(best_by_coverage.values(), key=lambda s: s[2], reverse=True)[:BEAM_WIDTH]
-
-    final = states.get(len(boundaries) - 1, [])
-    if not final:
-        raise AlignError("Could not assign any phrase ranges -- the audio and reference text may not correspond.")
-
-    complete = [state for state in final if state[1] >= n - 1]
-    best = max(complete or final, key=lambda state: state[2])
-    if not complete:
-        log.warning("no reading covered the full reference (best reached word %d of %d)", best[1] + 1, n)
-    return best[3]
 
 
 def _match_ratio(decoded: str, ref_words: list[tuple[str, int, str]], start: int, end: int) -> float:
@@ -3199,14 +2957,6 @@ def decode_agreement(
     the two stop agreeing. No corpus search is involved, so unlike the old
     coverage figure this cannot be talked into agreeing with itself.
     """
-    if align_backend() != "nemo":
-        # The threshold this feeds is calibrated against the Quran-tuned
-        # decode. The general Arabic model's free output is unreadable -- the
-        # transcript in docs/ALIGNMENT.md is the example -- so it disagrees
-        # just as much with a *correct* alignment, and comparing it against
-        # that threshold would warn on every clip. Unmeasurable, not zero.
-        return None
-
     ratios: list[float] = []
     for i, text in enumerate(decoded_phrases):
         if i + 1 >= len(boundaries):
@@ -3287,12 +3037,7 @@ def _script_by_decode(
     decoded_phrases: list[str] | None = None,
 ) -> tuple[list[int], list[bool]]:
     """What was recited, by decoding each phrase and finding it in the reference: the script, and its repeats."""
-    if align_backend() == "nemo":
-        assignments = assign_phrase_ranges_by_decode(
-            pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame
-        )
-    else:
-        assignments = assign_phrase_ranges(emission, ref_words, boundaries, sec_per_frame)
+    assignments = assign_phrase_ranges_by_decode(pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame)
 
     # The script is every assigned range concatenated, so a restart appears as
     # the same reference words twice -- which is exactly what was recited, and
@@ -3404,7 +3149,7 @@ def align_recitation(
     grouping = prepare_grouping(pcm, aligned, script, repeated, ref_words)
     segments = group_recitation(grouping, breaks)
 
-    if decoded_phrases is None and align_backend() == "nemo":
+    if decoded_phrases is None:
         # Not free, but this is the only check that can catch a wrong ayah
         # range, and a supplied reference is exactly where one gets picked.
         try:

@@ -1,6 +1,6 @@
 """Audio decoding helpers.
 
-Everything downstream (VAD + ASR) works on 16 kHz mono float32 PCM, so we
+Everything downstream works on 16 kHz mono float32 PCM, so we
 normalise once here via ffmpeg and keep a single numpy array in memory.
 """
 
