@@ -204,11 +204,11 @@ export const en = {
     matcherPublic: 'Match',
     matcherPublicBlurb:
       'Finds the passage in the audio, then times every word against the real Quran text, so no word can be dropped or misheard.',
-    matcherPhonemeV31: 'Match + phoneme v3.1',
-    matcherPhonemeOld: 'Match + phoneme (older)',
-    matcherPhonemeTechnical: 'local forced alignment, word starts re-timed by a phoneme model',
+    matcherPhonemeV31: 'Match, v3.1 word starts',
+    matcherPhonemeOff: 'Match, fastconformer word starts',
+    matcherPhonemeTechnical: 'local forced alignment, with other word-start timing',
     matcherPhonemeBlurb:
-      'Development only. Matches exactly like Local, then moves each word’s start to where a phoneme-level Quran model hears it. The captions stay the same; only Highlight and Reveal timing changes. Match the same recording with Local to compare. Published reciter timings are not used.',
+      'Development only. Matches exactly like Local, but times each word’s start differently: with the newer phoneme model (v3.1), or with no phoneme model at all, as before. Local uses the older phoneme model. The captions stay the same; only Highlight and Reveal timing changes. Published reciter timings are not used.',
     matcherQul: 'Local + QUL',
     matcherExperimental: 'Experimental',
     matcherQulTechnical: 'local forced alignment, with QUL morphology and mutashabihat',

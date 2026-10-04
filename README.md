@@ -322,7 +322,9 @@ The alignment model is a **gated** Hugging Face repo, so an anonymous download r
 Three one-off steps, before installing anything:
 
 1. Accept its terms while logged in at
-   <https://huggingface.co/Muno459/fastconformer-quran>.
+   <https://huggingface.co/Muno459/fastconformer-quran>, and those of the phoneme model that
+   times each word's start, at <https://huggingface.co/Muno459/zipformer_p-quran>. (Without the
+   second, matching still works, with the alignment model's own word starts.)
 2. Create a **read** token at <https://huggingface.co/settings/tokens>.
 3. Keep it to hand — you log in with it at the end of the next step.
 

@@ -36,10 +36,15 @@ Requires **Python 3.11 or 3.12** and **ffmpeg** on PATH
 (`sudo apt install ffmpeg` / `brew install ffmpeg`). Not 3.13+: several dependencies have no
 wheels for it and fall back to building from source.
 
-The default align model is **gated**, so do this first, once:
+The default align model is **gated**, and so is the phoneme model that times each word's
+start, so do this first, once:
 
-1. Accept its terms while logged in at <https://huggingface.co/Muno459/fastconformer-quran>.
+1. Accept the terms of both while logged in at <https://huggingface.co/Muno459/fastconformer-quran>
+   and <https://huggingface.co/Muno459/zipformer_p-quran>.
 2. Create a read token at <https://huggingface.co/settings/tokens>.
+
+Without the second, matching still works: words keep the align model's own start times, and
+the log says why.
 
 Then:
 
@@ -144,6 +149,7 @@ broken NeMo raises an error naming the cause. `GET /health` reports the backend 
 | `ASR_ALIGN_BACKEND` | `nemo` | Backend for `/align`. `wav2vec2` disables ayah-range detection. |
 | `ASR_ALIGN_MODEL` | per backend | Override the alignment checkpoint. |
 | `ASR_ALIGN_MODEL_REVISION` | the pinned upload | Load another upload of `Muno459/fastconformer-quran`, by commit sha, to measure it. See [Updating the model](#updating-the-model). |
+| `ASR_PHONEME_RETIME` | `old` | The phoneme model that re-times each word's start after the captions are cut (`app/phoneme.py`): `old` (`Muno459/zipformer_p-quran`), `v31` (`Quran-Lab/zipformer_p-arabic-v3`), or `none` for the align model's own times. Only the one used is downloaded, about 80 MB. |
 | `ASR_BACKEND` | `wav2vec2` | Decode backend for `/transcribe`: `wav2vec2`, `nemo`, or `whisper`. |
 | `ASR_MODEL` | per backend | Override the decode checkpoint. |
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |

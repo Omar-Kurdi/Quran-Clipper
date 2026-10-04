@@ -1858,14 +1858,14 @@ export default function VideoCreatorPage() {
   ];
   // A public studio offers the one engine it uses, under a name that says
   // what it does: visitors have nothing to choose between.
-  // Development only: Match with its words re-timed by a phoneme model, one
-  // option per model so the same recording can be tried with each -- see
-  // `phonemeTrial`. They run wherever Match runs.
+  // Development only: Match with the default word re-timing swapped for
+  // another phoneme model, or for none -- see `phonemeTrial`. They run
+  // wherever Match runs.
   const localOption = allMatchOptions[0];
   const phonemeOptions = phonemeTrialOffered(studio.mode, process.env.NODE_ENV)
     ? ([
         { id: 'phoneme-v31' as const, label: t.source.matcherPhonemeV31 },
-        { id: 'phoneme-old' as const, label: t.source.matcherPhonemeOld }
+        { id: 'phoneme-off' as const, label: t.source.matcherPhonemeOff }
       ].map(option => ({
         ...localOption,
         ...option,

@@ -201,10 +201,11 @@ export function referenceToken(word: { arabic: string }): string {
 export type AlignAssist = 'qul';
 
 /**
- * A phoneme model the sidecar can re-time the words with, after the captions
- * are cut -- a development trial, see the sidecar's `phoneme.py`.
+ * What the sidecar re-times the words with after the captions are cut, in
+ * place of its default model: another phoneme model, or `none` for
+ * fastconformer's own times. See the sidecar's `phoneme.py`.
  */
-export type PhonemeRetime = 'v31' | 'old';
+export type PhonemeRetime = 'v31' | 'old' | 'none';
 
 /**
  * The studio's "fewer / more screen breaks" setting. It moves how much silence
@@ -482,7 +483,7 @@ async function matchFromAlignment(
     segments,
     // A re-timing asked for and not done is said, or the comparison it was
     // asked for would quietly compare Match with itself.
-    warning: [result.warning, params.retime && !result.retimed ? 'The phoneme model could not read this passage, so these are Match\'s own word times.' : '']
+    warning: [result.warning, params.retime && params.retime !== 'none' && !result.retimed ? 'The phoneme model could not read this passage, so these are Match\'s own word times.' : '']
       .filter(Boolean).join(' ') || undefined,
     notes: alignmentNotes(result, rangeLabel, fellBackToSelected, restarts),
     regroupId: result.regroupId

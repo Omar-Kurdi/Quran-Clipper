@@ -3258,6 +3258,7 @@ def align_recitation(
     boundaries: list[float] | None = None,
     decoded_phrases: list[str] | None = None,
     breaks: str = "normal",
+    phoneme_timing: str = "",
 ) -> RecitationResult:
     """Full pipeline: decide *what* was recited, then align it, then group it.
 
@@ -3288,6 +3289,11 @@ def align_recitation(
     `boundaries` and `decoded_phrases` may be passed in when the caller has
     already computed them -- range auto-detection needs the same decodes, and
     they are the expensive part. `breaks` is a key of `BREAK_SCALES`.
+
+    `phoneme_timing` names a phoneme model (`phoneme.MODELS`) whose word times
+    replace this alignment's before the captions are cut -- a trial, off by
+    default; `ALIGN_PHONEME_TIMING` sets it for every call, which is how
+    `./gauge.sh` measures it.
     """
     duration = len(pcm) / SAMPLE_RATE
     emission = compute_emission(pcm)
@@ -3333,6 +3339,12 @@ def align_recitation(
     # be dropped. Measured against per-ayah ground truth on a 220s recitation,
     # this placed all 177 words with a mean ayah-start error of 0.48s.
     aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
+
+    phoneme_timing = phoneme_timing or os.getenv("ALIGN_PHONEME_TIMING", "")
+    if phoneme_timing:
+        from . import phoneme  # a trial's model, loaded only when asked for
+
+        phoneme.retime_words(phoneme_timing, pcm, aligned)
 
     grouping = prepare_grouping(pcm, aligned, script, repeated, ref_words)
     segments = group_recitation(grouping, breaks)

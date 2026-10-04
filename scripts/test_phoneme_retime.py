@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "asr-service"))
 
-from app import phoneme  # noqa: E402
+from app import phoneme, phoneme_table  # noqa: E402
 
 FAILED: list[str] = []
 
@@ -43,22 +43,29 @@ TABLE = {
     },
 }
 
+print("\nchoice -- which model a match re-times with")
+
+check("a match asks for nothing and gets the default", ok=phoneme.chosen("") == phoneme.DEFAULT_RETIME)
+check("a named model is used", ok=phoneme.chosen("v31") == "v31")
+check("none keeps fastconformer's times", ok=phoneme.chosen("none") is None)
+check("an unknown name re-times nothing", ok=phoneme.chosen("bogus") is None)
+
 print("\nchunks -- words joined in recitation share one")
 
 for key, expected in (("67:12", [1, 1, 1, 2, 4]), ("67:30", [1, 1, 1, 1, 1, 5])):
-    got = phoneme.chunk_sizes(phoneme.recited_words(TABLE[key]["aya_text"]), TABLE[key]["aya_phonemes_list"])
+    got = phoneme_table.chunk_sizes(phoneme_table.recited_words(TABLE[key]["aya_text"]), TABLE[key]["aya_phonemes_list"])
     # 67:30 joins five words into its last chunk; a cap of three once paired them wrongly.
     check(f"{key} lines up as {expected}", ok=got == expected, detail=f"got {got}")
 
 check(
-    "waqf marks are not words",
-    ok=phoneme.recited_words("ذَٰلِكَ ٱلْكِتَـٰبُ لَا رَيْبَ ۛ فِيهِ ۛ") == ["ذَٰلِكَ", "ٱلْكِتَـٰبُ", "لَا", "رَيْبَ", "فِيهِ"],
+    "waqf marks are not words: each stays on its word, as the aligner numbers them",
+    ok=phoneme_table.recited_words("ذَٰلِكَ ٱلْكِتَـٰبُ لَا رَيْبَ ۛ فِيهِ ۛ") == ["ذَٰلِكَ", "ٱلْكِتَـٰبُ", "لَا", "رَيْبَ ۛ", "فِيهِ ۛ"],
 )
 
 print("\nunits -- the aligned words grouped by chunk")
 
 words = [("67:12", i) for i in range(9)]
-units = phoneme.units_for(words, TABLE)
+units = phoneme_table.units_for(words, TABLE)
 check(
     "a whole ayah is one unit per chunk",
     ok=units is not None and [u.words for u in units] == [[0], [1], [2], [3, 4], [5, 6, 7, 8]],
@@ -66,21 +73,21 @@ check(
 )
 # A reciter going back to the second word of a joined pair: that run starts
 # inside its chunk, so the chunk's start is not its first word's.
-restart = phoneme.units_for([("67:12", 3), ("67:12", 4), ("67:12", 4)], TABLE)
+restart = phoneme_table.units_for([("67:12", 3), ("67:12", 4), ("67:12", 4)], TABLE)
 check(
     "a run that starts inside a chunk is not given the chunk's start",
     ok=restart is not None and [(u.words, u.starts_chunk) for u in restart] == [([0, 1], True), ([2], False)],
     detail=f"got {None if restart is None else [(u.words, u.starts_chunk) for u in restart]}",
 )
-check("an ayah the table does not have gives up", ok=phoneme.units_for([("2:1", 0)], TABLE) is None)
-check("a word past the end of its ayah gives up", ok=phoneme.units_for([("67:12", 9)], TABLE) is None)
+check("an ayah the table does not have gives up", ok=phoneme_table.units_for([("2:1", 0)], TABLE) is None)
+check("a word past the end of its ayah gives up", ok=phoneme_table.units_for([("67:12", 9)], TABLE) is None)
 
 print("\nstarts -- the chunk's where it has one, kept in order otherwise")
 
 units = [
-    phoneme.Unit([0], "", True),
-    phoneme.Unit([1, 2], "", True),
-    phoneme.Unit([3], "", True),
+    phoneme_table.Unit([0], "", True),
+    phoneme_table.Unit([1, 2], "", True),
+    phoneme_table.Unit([3], "", True),
 ]
 starts = phoneme.place_starts([1.0, 2.0, 2.2, 3.0], units, [1.2, 1.9, 3.1], offset=0.1)
 check(
@@ -89,12 +96,24 @@ check(
     detail=f"got {starts}",
 )
 check("an inner word keeps its own start inside its chunk", ok=round(starts[2], 3) == 2.2, detail=f"got {starts}")
-pinned = phoneme.place_starts([1.0, 0.5, 9.0], [phoneme.Unit([0, 1, 2], "", True)], [1.0], offset=0.0)
+pinned = phoneme.place_starts([1.0, 0.5, 9.0], [phoneme_table.Unit([0, 1, 2], "", True)], [1.0], offset=0.0)
 check("and is never before its chunk began", ok=pinned[1] == 1.0, detail=f"got {pinned}")
-capped = phoneme.place_starts([1.0, 9.0, 2.0], [phoneme.Unit([0, 1], "", True), phoneme.Unit([2], "", True)], [1.0, 2.0], offset=0.0)
+capped = phoneme.place_starts([1.0, 9.0, 2.0], [phoneme_table.Unit([0, 1], "", True), phoneme_table.Unit([2], "", True)], [1.0, 2.0], offset=0.0)
 check("nor after the next chunk begins", ok=capped[1] == 2.0, detail=f"got {capped}")
-blind = phoneme.place_starts([1.0, 2.0], [phoneme.Unit([0], "", True), phoneme.Unit([1], "", False)], [1.0, 1.5], offset=0.0)
+blind = phoneme.place_starts([1.0, 2.0], [phoneme_table.Unit([0], "", True), phoneme_table.Unit([1], "", False)], [1.0, 1.5], offset=0.0)
 check("a run starting inside a chunk keeps the fallback", ok=blind[1] == 2.0, detail=f"got {blind}")
+
+print("\nspans -- the phoneme model's timing before any caption exists")
+
+units = [phoneme_table.Unit([0], "", True), phoneme_table.Unit([1, 2], "", True)]
+spans = phoneme.place_spans([(1.0, 1.5), (2.0, 2.4), (2.5, 3.0)], units, [(1.1, 1.6), (2.2, 3.2)], offset=0.1)
+check("a chunk's edges are where the model heard them, less the offset", ok=spans[0] == (1.0, 1.5) and spans[1][0] == 2.1 and spans[2][1] == 3.1, detail=f"got {spans}")
+check("a word inside a chunk keeps its own boundary there", ok=spans[1][1] == 2.4 and spans[2][0] == 2.5, detail=f"got {spans}")
+unheard = phoneme.place_spans([(1.0, 1.5), (2.0, 2.5)], [phoneme_table.Unit([0], "", True), phoneme_table.Unit([1], "", True)], [None, (2.0, 2.5)], offset=0.0)
+check("a unit the model did not place keeps the fallback", ok=unheard[0] == (1.0, 1.5), detail=f"got {unheard}")
+crossed = phoneme.place_spans([(1.0, 1.5), (2.0, 2.5)], [phoneme_table.Unit([0], "", True), phoneme_table.Unit([1], "", True)], [(1.0, 2.3), (2.1, 2.5)], offset=0.0)
+check("no word runs past the start of the next", ok=crossed[0][1] <= crossed[1][0], detail=f"got {crossed}")
+check("and every word lasts", ok=all(b - a >= phoneme.MIN_WORD_SEC - 1e-9 for a, b in crossed), detail=f"got {crossed}")
 
 print("\ncaptions -- a moved word stays in the caption it was in")
 
@@ -103,8 +122,13 @@ captions = [(0.0, 2.0), (2.0, 3.0)]
 fitted = phoneme.fit_to_captions([-0.3, 0.6, 2.4, 2.2], spans, captions)
 check("a start before its caption is brought to the caption's start", ok=fitted[0][0] == 0.0, detail=f"got {fitted}")
 check(
-    "a start past its caption's end is kept just inside it",
-    ok=fitted[2][0] == round(2.0 - phoneme.MIN_WORD_SEC, 3) and fitted[2][1] <= 2.0,
+    "a start past its own word's end is kept just inside the word, whose end stays",
+    ok=fitted[2] == (round(1.9 - phoneme.MIN_WORD_SEC, 3), 1.9),
+    detail=f"got {fitted}",
+)
+check(
+    "every word's middle stays inside its old span, so a Fewer / More re-cut files it with the same caption",
+    ok=all(a0 <= (a + b) / 2 < b0 for (a, b), (a0, b0) in zip(fitted, spans)),
     detail=f"got {fitted}",
 )
 check(

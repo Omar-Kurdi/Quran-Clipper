@@ -1,4 +1,4 @@
-"""Re-timing aligned words with a phoneme-level Quran model -- a development trial.
+"""Re-timing aligned words with a phoneme-level Quran model.
 
 The studio's aligner places words with `Muno459/fastconformer-quran`, a
 character model. The zipformers below recognise phonemes instead, trained for
@@ -10,12 +10,19 @@ the older zipformer_p-quran's 111 ms and 4.7% (FutureIdeas #58).
 
 Nothing about the captions changes here. Fastconformer still finds the passage
 and cuts the captions; this only moves each word's start inside the caption it
-already belongs to, which is what Highlight and Reveal draw. It is offered only
-in a personal studio under `npm run dev`, so the two can be compared by ear.
+already belongs to, which is what Highlight and Reveal draw. Every match does
+this with `DEFAULT_RETIME`, the model with the fewest words badly misplaced;
+the other is offered in a personal studio under `npm run dev` for comparison,
+and only a model that is used is ever downloaded.
+
+Feeding these times to the caption rules instead was measured too (2026-10-04,
+`ALIGN_PHONEME_TIMING`): 233/265 for v3.1 and 228/265 for the older model,
+against fastconformer's 244 -- the rules are tuned to fastconformer's timing.
 
 Both models are gated on the Hub and released under Quran-Lab's no-profit
 licence (NPL-1.2 for v3.1, NPL-1.1 for the older one) -- accept them on the Hub
-and log in before the first use.
+with the account the service logs in as. A model that cannot be loaded leaves
+fastconformer's times, and says so in the log.
 
 Heavy imports (onnxruntime, torch, huggingface_hub) stay inside functions, so
 the pure parts can be tested with numpy alone.
@@ -23,12 +30,10 @@ the pure parts can be tested with numpy alone.
 
 from __future__ import annotations
 
-import itertools
 import json
 import logging
-import re
+import os
 import threading
-import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,6 +41,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .audio import SAMPLE_RATE
+from .phoneme_table import Unit, tokenize, units_for
 
 if TYPE_CHECKING:  # the types only; `retime` is handed what `align` made
     from .align import AlignedWord, Segment
@@ -69,6 +75,18 @@ MODELS: dict[str, PhonemeModel] = {
     ),
 }
 
+#: The model every match re-times its words with: the older zipformer, whose
+#: tail is the shortest (4.7% of words over 300 ms off, against v3.1's 6.4%).
+#: `ASR_PHONEME_RETIME` names another, or `none` -- as can a request -- for
+#: fastconformer's own times.
+DEFAULT_RETIME = "old"
+
+def chosen(requested: str) -> str | None:
+    """The model a request re-times with: its own choice, else the service's default; None for none."""
+    name = (requested or os.getenv("ASR_PHONEME_RETIME", "") or DEFAULT_RETIME).strip().lower()
+    return name if name in MODELS else None
+
+
 #: Fastconformer's own offset against the same timings. A word the phoneme
 #: model gives no start of its own (see `chunk_sizes`) keeps fastconformer's,
 #: moved by this so the two agree on where a word begins.
@@ -79,147 +97,6 @@ FRAME_SEC = 0.04
 
 #: The shortest a re-timed word may be, so its middle stays inside its caption.
 MIN_WORD_SEC = 0.02
-
-_ARABIC_LETTER = re.compile(r"[ء-يٱ]")
-_DIACRITICS = re.compile(r"[ؐ-ًؚ-ٰٟۖ-ۭـ]")
-
-
-def recited_words(aya_text: str) -> list[str]:
-    """The words of an ayah as the aligner indexes them: waqf marks are not words."""
-    return [token for token in aya_text.split() if _ARABIC_LETTER.search(token)]
-
-
-def _skeleton(text: str) -> str:
-    text = _DIACRITICS.sub("", unicodedata.normalize("NFC", text))
-    for a, b in (("أ", "ا"), ("إ", "ا"), ("آ", "ا"), ("ٱ", "ا"), ("ى", "ا"), ("ة", "ه"), ("ؤ", "و"), ("ئ", "ي"), ("ء", "")):
-        text = text.replace(a, b)
-    text = re.sub(r"(.)\1+", r"\1", text)  # phonemes lengthen a sound by repeating it
-    return re.sub(r"[اوي]", "", text)  # and write long vowels their own way
-
-
-def _distance(a: str, b: str) -> int:
-    """Edit distance, a row at a time: insertions along a row are a running minimum."""
-    target = np.array([ord(c) for c in b], dtype=np.int64)
-    steps = np.arange(len(b) + 1)
-    previous = steps.copy()
-    for i, ca in enumerate(a, 1):
-        kept_or_swapped = np.minimum(previous[1:] + 1, previous[:-1] + (target != ord(ca)))
-        current = np.concatenate(([i], kept_or_swapped))
-        previous = np.minimum.accumulate(current - steps) + steps
-    return int(previous[-1])
-
-
-#: The most words one phoneme chunk has been seen to join (67:30 joins five).
-MAX_JOINED = 7
-
-_UNREACHABLE = 10**9
-
-
-@dataclass
-class _Lineup:
-    """The table `chunk_sizes` fills: the cheapest way to cover ``i`` words with ``j`` chunks, and its last step."""
-
-    best: np.ndarray
-    back: np.ndarray
-
-    def extend(self, words: list[str], chunk: str, i: int, j: int) -> None:
-        """Try chunk ``j`` as words ``i`` onwards, one to `MAX_JOINED` of them."""
-        for k in range(1, min(MAX_JOINED, len(words) - i) + 1):
-            cost = self.best[i, j] + _distance(_skeleton("".join(words[i:i + k])), chunk)
-            if cost < self.best[i + k, j + 1]:
-                self.best[i + k, j + 1] = cost
-                self.back[i + k, j + 1] = k
-
-
-def chunk_sizes(words: list[str], chunks: list[str]) -> list[int] | None:
-    """How many words each phoneme chunk of an ayah covers, or None if they cannot be lined up.
-
-    The phoneme table writes an ayah as recited, so words joined in recitation
-    -- a tanween merging into the next word, say -- are one chunk with no
-    boundary inside it. Those inner words get no start from the phoneme model.
-    """
-    n, m = len(words), len(chunks)
-    table = _Lineup(np.full((n + 1, m + 1), _UNREACHABLE, dtype=np.int64), np.zeros((n + 1, m + 1), dtype=np.int64))
-    table.best[0, 0] = 0
-    skeletons = [_skeleton(chunk) for chunk in chunks]
-    for i, j in itertools.product(range(n + 1), range(m)):
-        if table.best[i, j] < _UNREACHABLE:
-            table.extend(words, skeletons[j], i, j)
-    if table.best[n, m] >= _UNREACHABLE:
-        return None
-    sizes, i = [], n
-    for j in range(m, 0, -1):
-        sizes.append(int(table.back[i, j]))
-        i -= sizes[-1]
-    return sizes[::-1]
-
-
-def tokenize(phonemes: str, tokens: dict[str, int]) -> list[int]:
-    """A phoneme string as the model's units, longest match first -- some units are runs of one sound."""
-    longest = max(len(symbol) for symbol in tokens)
-    out: list[int] = []
-    i = 0
-    while i < len(phonemes):
-        if phonemes[i].isspace():
-            i += 1
-            continue
-        for n in range(min(longest, len(phonemes) - i), 0, -1):
-            piece = phonemes[i:i + n]
-            if piece != "<blank>" and piece in tokens:
-                out.append(tokens[piece])
-                i += n
-                break
-        else:
-            raise ValueError(f"no phoneme unit for {phonemes[i]!r}")
-    return out
-
-
-@dataclass
-class Unit:
-    """A run of aligned words the phoneme model reads as one chunk."""
-
-    #: Indices into the aligned word list.
-    words: list[int]
-    phonemes: str
-    #: Whether the run starts where its chunk does, so the chunk's start is its first word's.
-    starts_chunk: bool
-
-
-def _layout(entry: dict | None) -> list[tuple[int, int]] | None:
-    """For each word of an ayah, its chunk and its place in that chunk; None if the ayah does not line up."""
-    if entry is None:
-        return None
-    sizes = chunk_sizes(recited_words(entry["aya_text"]), entry["aya_phonemes_list"])
-    if sizes is None:
-        return None
-    return [(chunk, place) for chunk, size in enumerate(sizes) for place in range(size)]
-
-
-def units_for(words: list[tuple[str, int]], table: dict) -> list[Unit] | None:
-    """The aligned words, in order, grouped into phoneme chunks; None if any ayah does not line up.
-
-    ``words`` is each aligned word's (verse key, word index), repeats included,
-    in recitation order. A run that starts inside a chunk -- a reciter going
-    back to the middle of a joined pair -- still reads that whole chunk, since
-    the table has no phonemes for part of one.
-    """
-    layout: dict[str, list[tuple[int, int]] | None] = {}
-    units: list[Unit] = []
-    previous: tuple[str, int, int] | None = None  # verse, word index, chunk
-    for position, (verse_key, word_index) in enumerate(words):
-        if verse_key not in layout:
-            layout[verse_key] = _layout(table.get(verse_key))
-        places = layout[verse_key]
-        if places is None or not 0 <= word_index < len(places):
-            return None
-        chunk, place = places[word_index]
-        if previous is not None and previous == (verse_key, word_index - 1, chunk):
-            units[-1].words.append(position)
-        else:
-            units.append(Unit([position], table[verse_key]["aya_phonemes_list"][chunk], place == 0))
-        previous = (verse_key, word_index, chunk)
-    return units
-
 
 def place_starts(
     fallback: list[float],
@@ -250,6 +127,50 @@ def _place_unit(starts: list[float], unit: Unit, own: float | None, following: f
         starts[word] = float(min(max(at, low), high))
 
 
+def place_spans(
+    fallback: list[tuple[float, float]],
+    units: list[Unit],
+    unit_spans: list[tuple[float, float] | None],
+    offset: float,
+) -> list[tuple[float, float]]:
+    """Each word's (start, end) from the phoneme model, before any caption exists.
+
+    A unit's first word starts where the model hears the chunk begin (if the
+    run begins the chunk) and its last word ends where the chunk ends. Words
+    inside a chunk keep ``fallback`` -- fastconformer's span, already moved by
+    its offset -- held inside the chunk. Then every word is kept in order: a
+    start never before the previous start, an end never before its own start
+    or after the next word's start.
+    """
+    spans = list(fallback)
+    for unit, heard in zip(units, unit_spans):
+        if heard is not None:
+            _span_unit(spans, unit, heard[0] - offset, heard[1] - offset)
+    return _in_order(spans)
+
+
+def _span_unit(spans: list[tuple[float, float]], unit: Unit, low: float, high: float) -> None:
+    """One unit's words between ``low`` and ``high``: its edges where the model heard them, the inside kept."""
+    last = len(unit.words) - 1
+    for k, word in enumerate(unit.words):
+        start, end = (min(max(at, low), high) for at in spans[word])
+        if k == 0 and unit.starts_chunk:
+            start = low
+        if k == last:
+            end = high
+        spans[word] = (start, end)
+
+
+def _in_order(spans: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    out: list[tuple[float, float]] = []
+    for i, (start, end) in enumerate(spans):
+        start = max(start, out[-1][0] if out else start)
+        following = spans[i + 1][0] if i + 1 < len(spans) else end
+        end = max(start + MIN_WORD_SEC, min(end, max(following, start + MIN_WORD_SEC)))
+        out.append((round(start, 3), round(end, 3)))
+    return out
+
+
 def fit_to_captions(
     starts: list[float],
     spans: list[tuple[float, float]],
@@ -260,6 +181,11 @@ def fit_to_captions(
     The studio files a word under the caption its middle falls in, so a word
     moved past its caption's edge would vanish from it. A word that was in no
     caption keeps its old span. Within a caption starts never go backwards.
+
+    The end is kept, and the start held where the word's middle stays inside
+    its old span -- so it is filed with the same caption under any cut made
+    from that alignment, including a Fewer / More re-cut, which uses the old
+    spans and never sees these.
     """
     out: list[tuple[float, float]] = []
     last_start: dict[int, float] = {}
@@ -270,8 +196,10 @@ def fit_to_captions(
             out.append((old_start, old_end))
             continue
         low, high = captions[caption]
+        low = max(low, 2 * old_start - old_end)  # its middle no earlier than its old start
+        high = min(high, old_end)  # nor at or past its old end
         start = min(max(start, low, last_start.get(caption, low)), max(low, high - MIN_WORD_SEC))
-        end = min(high, max(old_end, start + MIN_WORD_SEC))
+        end = old_end
         last_start[caption] = start
         out.append((round(start, 3), round(end, 3)))
     return out
@@ -375,7 +303,8 @@ def _model(name: str) -> _Loaded:
         return _loaded[name]
 
 
-def _unit_starts(emission, units: list[Unit], model: _Loaded) -> list[float | None]:
+def _unit_spans(emission, units: list[Unit], model: _Loaded) -> list[tuple[float, float] | None]:
+    """Where model ``model`` hears each unit, from its first symbol's first frame to its last symbol's last."""
     import torch
     import torchaudio.functional as AF
 
@@ -386,51 +315,72 @@ def _unit_starts(emission, units: list[Unit], model: _Loaded) -> list[float | No
         targets += ids
         owner += [u] * len(ids)
     path, _ = AF.forced_align(emission, torch.tensor([targets], dtype=torch.int32), blank=model.blank)
-    starts: list[float | None] = [None] * len(units)
+    frames: dict[int, list[int]] = {}  # unit -> the frames its symbols were emitted on
     position, previous = -1, model.blank
     for frame, token in enumerate(path[0].tolist()):
-        if token != model.blank and token != previous:
-            position += 1
-            if position < len(owner) and starts[owner[position]] is None:
-                starts[owner[position]] = frame * FRAME_SEC
+        position += token not in (model.blank, previous)
+        if token != model.blank:
+            frames.setdefault(owner[position], []).append(frame)
         previous = token
-    return starts
+    return [(frames[u][0] * FRAME_SEC, (frames[u][-1] + 1) * FRAME_SEC) if u in frames else None for u in range(len(units))]
 
 
-def _hear(name: str, pcm: np.ndarray, words: list[AlignedWord]) -> tuple[list[Unit], list[float | None]] | None:
-    """The words' phoneme units and where model ``name`` hears each begin, or None (logged) if it cannot."""
-    if name not in MODELS:
-        log.warning("phoneme re-timing skipped: no model %r (have %s)", name, ", ".join(MODELS))
+def _hear(name: str, pcm: np.ndarray, words: list[AlignedWord]) -> tuple[list[Unit], list[tuple[float, float] | None]] | None:
+    """The words' phoneme units and where model ``name`` (one of `MODELS`) hears each, or None (logged) if it cannot."""
+    try:
+        model = _model(name)
+    except Exception as exc:  # noqa: BLE001 -- a gated repo not accepted, no network: never fail the match for it
+        log.warning("phoneme re-timing (%s) skipped: the model could not be loaded (%s)", name, exc)
         return None
-    model = _model(name)
     units = units_for([(w.verse_key, w.word_index) for w in words], model.table)
     if not units:
         log.warning("phoneme re-timing (%s) skipped: the aligned words do not line up with its phoneme table", name)
         return None
     try:
-        return units, _unit_starts(model.emission(pcm), units, model)
+        return units, _unit_spans(model.emission(pcm), units, model)
     except (RuntimeError, ValueError) as exc:  # too little audio for the text, or a unit it has no symbol for
         log.warning("phoneme re-timing (%s) skipped: %s", name, exc)
         return None
 
 
-def retime(name: str, pcm: np.ndarray, words: list[AlignedWord], segments: list[Segment]) -> bool:
-    """Move each aligned word's start to where model ``name`` hears it. Changes ``words`` in place.
+def retime_words(name: str, pcm: np.ndarray, words: list[AlignedWord]) -> bool:
+    """Move every aligned word to where model ``name`` hears it, start and end, before the captions are cut.
 
-    Returns False, leaving every word as it was, when ``name`` is not one of
-    `MODELS` or the passage cannot be read with its phoneme table.
+    The other trial, beside `retime`: here the phoneme model's timing is what
+    the caption breaks are decided from. Changes ``words`` in place; returns
+    False, leaving them as they were, when the model cannot read the passage.
     """
-    found = _hear(name, pcm, words)
+    found = _hear(name, pcm, words) if name in MODELS else None
     if found is None:
         return False
     units, heard = found
-    starts = place_starts([w.start - FASTCONFORMER_OFFSET for w in words], units, heard, MODELS[name].offset)
-    spans = fit_to_captions(starts, [(w.start, w.end) for w in words], [(s.start, s.end) for s in segments])
-    moved = [abs(new - w.start) for (new, _), w in zip(spans, words)]
+    shifted = [(w.start - FASTCONFORMER_OFFSET, w.end - FASTCONFORMER_OFFSET) for w in words]
+    _move(words, place_spans(shifted, units, heard, MODELS[name].offset))
+    log.info("phoneme timing (%s) for the captions: %d words in %d chunks", name, len(words), len(units))
+    return True
+
+
+def retime(requested: str, pcm: np.ndarray, words: list[AlignedWord], segments: list[Segment]) -> str | None:
+    """Move each aligned word's start to where the `chosen` model hears it. Changes ``words`` in place.
+
+    Returns the model's name, or None -- leaving every word as it was -- when
+    none was chosen, it could not be loaded, or it cannot read the passage.
+    """
+    name = chosen(requested)
+    found = None if name is None else _hear(name, pcm, words)
+    if name is None or found is None:
+        return None
+    units, heard = found
+    heard_starts = [at[0] if at else None for at in heard]
+    starts = place_starts([w.start - FASTCONFORMER_OFFSET for w in words], units, heard_starts, MODELS[name].offset)
+    moved = _move(words, fit_to_captions(starts, [(w.start, w.end) for w in words], [(s.start, s.end) for s in segments]))
+    log.info("phoneme re-timing (%s): %d words in %d chunks, median move %.0f ms", name, len(words), len(units), moved * 1000)
+    return name
+
+
+def _move(words: list[AlignedWord], spans: list[tuple[float, float]]) -> float:
+    """Give each word its new span; the median distance a start moved, in seconds."""
+    moved = [abs(start - word.start) for word, (start, _) in zip(words, spans)]
     for word, (start, end) in zip(words, spans):
         word.start, word.end = start, end
-    log.info(
-        "phoneme re-timing (%s): %d words in %d chunks, median move %.0f ms",
-        name, len(words), len(units), float(np.median(moved)) * 1000 if moved else 0.0,
-    )
-    return True
+    return float(np.median(moved)) if moved else 0.0

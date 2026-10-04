@@ -13,7 +13,7 @@ describe('phonemeTrialOffered', () => {
 describe('isPhonemeProvider', () => {
   it('knows the two trial matchers and nothing else', () => {
     expect(isPhonemeProvider('phoneme-v31')).toBe(true);
-    expect(isPhonemeProvider('phoneme-old')).toBe(true);
+    expect(isPhonemeProvider('phoneme-off')).toBe(true);
     expect(isPhonemeProvider('align')).toBe(false);
   });
 });
