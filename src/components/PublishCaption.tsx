@@ -106,14 +106,16 @@ export const PublishCaption: React.FC<PublishCaptionProps> = ({
   );
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60">
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60">
       <button
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-semibold text-slate-200 hover:text-amber-300"
       >
-        {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        {t.publish.title}
+        {open ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
+        <span className="shrink-0">{t.publish.title}</span>
+        {/* Closed, the title it will post under is still in sight. */}
+        {!open && <span className="min-w-0 truncate font-normal text-slate-400">{meta.title}</span>}
       </button>
 
       {open && (

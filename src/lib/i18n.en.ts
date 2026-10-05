@@ -924,6 +924,7 @@ export const en = {
     previewFailed:
       'The preview did not finish. Nothing is wrong with the export itself — try it, or run the preview again.',
     renderAnother: 'Render Another Export',
+    done: 'Done',
     warningsHeading: 'Before you render',
     warnGap: (from: string, to: string) => `No background from ${from} to ${to}: the frame shows the plain gradient there. Drag a block over it on the timeline.`,
     warnSeeking: (name: string) => `${name} cannot be decoded frame by frame here, so it is read by seeking. It will render correctly, but slowly.`,
@@ -933,12 +934,18 @@ export const en = {
   youtube: {
     upload: 'Upload to my YouTube',
     privacyLabel: 'Who can see it',
-    privacy: { private: 'Private', unlisted: 'Unlisted', public: 'Public' },
+    privacy: { private: 'Private', unlisted: 'Unlisted', public: 'Public', scheduled: 'Scheduled' },
+    scheduleLabel: 'Goes public at (your time)',
+    schedulePast: 'That time has already passed. Pick one in the future.',
+    scheduleInvalid: 'Pick a date and time for it to go public.',
     help:
       'Signs in to Google in a pop-up and uploads this file to your channel with the caption below. Quran Clipper keeps nothing, and the sign-in ends when you close this tab. Until this studio\'s Google app is verified, YouTube keeps uploads private whatever you choose.',
+    privateUntilVerified: 'Private until this studio\'s Google app is verified. Why?',
     signingIn: 'Waiting for Google sign-in in the pop-up…',
     cancel: 'Cancel',
     done: 'Uploaded. YouTube is processing it now.',
+    doneScheduled: (when: string) =>
+      `Uploaded and scheduled to go public at ${when}. It stays private until then, and until this studio's Google app passes YouTube's audit.`,
     openStudio: 'Open in YouTube Studio',
     failed: {
       signin: 'Google sign-in did not finish, so nothing was uploaded. Press the button to try again.',
@@ -952,10 +959,14 @@ export const en = {
     }
   },
   post: {
-    title: 'Post it',
-    help:
-      'You sign in to the platform, never to Quran Clipper. Each button copies the caption and opens that platform\'s upload page: drop in the file you downloaded and paste.',
-    share: 'Share to an app…',
+    sendTo: 'Send it to',
+    computer: 'This computer',
+    computerHelp: 'Download the video, with or without its caption',
+    uploadsHelp: 'Uploads to your channel. You sign in to Google, never to Quran Clipper',
+    openHelp: 'Opens the upload page with the caption copied',
+    youtubePage: 'Or open YouTube\'s upload page instead',
+    share: 'Another app on this device',
+    shareHelp: 'Opens this device\'s share menu',
     platforms: { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' },
     openTitle: (name: string) => `Copy the caption and open ${name}'s upload page`,
     openedCopied: (name: string) => `${name} is open in a new tab, and the caption is on the clipboard. Add the downloaded file there and paste the caption.`,

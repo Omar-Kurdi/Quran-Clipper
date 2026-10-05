@@ -904,6 +904,7 @@ export const ar: Dictionary = {
     previewFailed:
       'لم تكتمل المعاينة. ولا عيب في التصدير نفسه — جرّبه، أو أعد المعاينة.',
     renderAnother: 'تصدير مقطع آخر',
+    done: 'تم',
     warningsHeading: 'قبل التصدير',
     warnGap: (from, to) => `لا خلفية من ${from} إلى ${to}: يظهر التدرّج العادي هناك. اسحب مقطعًا فوقه على الخط الزمني.`,
     warnSeeking: name => `لا يمكن فك ترميز ${name} إطارًا بإطار هنا، فيُقرأ بالتقديم. سيُصدَّر صحيحًا لكن ببطء.`,
@@ -913,12 +914,18 @@ export const ar: Dictionary = {
   youtube: {
     upload: 'ارفعه إلى قناتي على YouTube',
     privacyLabel: 'من يمكنه مشاهدته',
-    privacy: { private: 'خاص', unlisted: 'غير مُدرج', public: 'عام' },
+    privacy: { private: 'خاص', unlisted: 'غير مُدرج', public: 'عام', scheduled: 'مجدول' },
+    scheduleLabel: 'يصبح عامًّا في (بتوقيتك)',
+    schedulePast: 'هذا الوقت قد مضى. اختر وقتًا في المستقبل.',
+    scheduleInvalid: 'اختر تاريخًا ووقتًا ليصبح فيه عامًّا.',
     help:
       'يسجّل الدخول إلى Google في نافذة منبثقة ويرفع هذا الملف إلى قناتك مع الوصف أدناه. لا يحتفظ Quran Clipper بشيء، وينتهي تسجيل الدخول حين تغلق هذا اللسان. وإلى أن يُوثَّق تطبيق Google الخاص بهذا الاستوديو، يُبقي YouTube المرفوعات خاصة أيًّا كان اختيارك.',
+    privateUntilVerified: 'خاص إلى أن يُوثَّق تطبيق Google الخاص بهذا الاستوديو. لماذا؟',
     signingIn: 'بانتظار تسجيل الدخول إلى Google في النافذة المنبثقة…',
     cancel: 'إلغاء',
     done: 'رُفع الفيديو. ويعالجه YouTube الآن.',
+    doneScheduled: (when: string) =>
+      `رُفع الفيديو وجُدول ليصبح عامًّا في ${when}. ويبقى خاصًّا حتى ذلك الحين، وحتى يجتاز تطبيق Google الخاص بهذا الاستوديو تدقيق YouTube.`,
     openStudio: 'افتحه في YouTube Studio',
     failed: {
       signin: 'لم يكتمل تسجيل الدخول إلى Google، فلم يُرفع شيء. اضغط الزر لتحاول مجددًا.',
@@ -932,10 +939,14 @@ export const ar: Dictionary = {
     }
   },
   post: {
-    title: 'انشره',
-    help:
-      'تسجّل الدخول إلى المنصة، لا إلى Quran Clipper أبدًا. كل زر ينسخ الوصف ويفتح صفحة الرفع في تلك المنصة: أضف الملف الذي نزّلته والصق الوصف.',
-    share: 'شارك إلى تطبيق…',
+    sendTo: 'أرسله إلى',
+    computer: 'هذا الجهاز',
+    computerHelp: 'نزّل الفيديو، مع وصفه أو دونه',
+    uploadsHelp: 'يرفعه إلى قناتك. تسجّل الدخول إلى Google، لا إلى Quran Clipper أبدًا',
+    openHelp: 'يفتح صفحة الرفع مع نسخ الوصف',
+    youtubePage: 'أو افتح صفحة الرفع في YouTube بدلًا من ذلك',
+    share: 'تطبيق آخر على هذا الجهاز',
+    shareHelp: 'يفتح قائمة المشاركة في هذا الجهاز',
     platforms: { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' },
     openTitle: (name: string) => `انسخ الوصف وافتح صفحة الرفع في ${name}`,
     openedCopied: (name: string) => `فُتح ${name} في لسان جديد، والوصف في الحافظة. أضف الملف الذي نزّلته هناك والصق الوصف.`,

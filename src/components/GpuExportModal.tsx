@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { exportFileName } from '@/lib/exportName';
 import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
-import { Film, Download, CheckCircle, AlertTriangle, X, Loader2, Eye } from 'lucide-react';
+import { AlertTriangle, X, Loader2, Eye } from 'lucide-react';
 import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
 import {
   QUALITY_TIERS, QualityTier, ExportPlan,
@@ -12,8 +12,7 @@ import {
 import { exportRoute } from '@/lib/exportRoute';
 import { DestinationPicker, Segmented } from './ExportChoices';
 import { Dialog } from './Dialog';
-import { PublishCaption } from './PublishCaption';
-import { PostPanel } from './PostPanel';
+import { ExportResult } from './ExportResult';
 import { StudioVideo } from './StudioVideo';
 import { buildPublishMetadata, captionFileText, PublishInput } from '@/lib/publishMetadata';
 import { creditedTranslationNames } from '@/lib/translations';
@@ -24,7 +23,6 @@ import { ExportQueuePanel } from './ExportQueuePanel';
 import { useExportQueue } from '@/hooks/useExportQueue';
 import { ServerRendersPanel } from './ServerRendersPanel';
 import { ExportWarnings, type ExportLane } from './ExportWarnings';
-import { RenderCheckPanel } from './RenderCheckPanel';
 import type { RenderCheckInput } from '@/lib/renderCheckRunner';
 import { useServerRenders } from '@/hooks/useServerRenders';
 
@@ -404,7 +402,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
           </p>
         </div>
 
-        {!exportedBlobUrl ? (
+        {!(exportedBlobUrl && exportedBlob) ? (
           <div className="flex flex-col gap-5">
             {/* Where it is going, first: it decides the shape, the resolution
                 and the bitrate of each render. Several can be ticked -- one
@@ -620,120 +618,29 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
           </div>
         ) : (
           /* Completed Export View */
-          <div className="flex flex-col items-center gap-4 text-center py-2 animate-fade-in">
-            <div
-              className={`p-4 rounded-full border ${
-                verdict === 'clean'
-                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                  : 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-              }`}
-            >
-              {verdict === 'clean' ? <CheckCircle className="w-10 h-10" /> : <AlertTriangle className="w-10 h-10" />}
-            </div>
-
-            <div>
-              <h4 className="text-lg font-bold text-slate-100">{t.exportModal.complete}</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                {t.exportModal.renderedIn}{' '}
-                <span className="font-mono text-emerald-400" dir="ltr">{Math.round(renderedMs / 100) / 10}s</span>
-                {t.exportModal.renderedOn(gpuName)}
-              </p>
-            </div>
-
-            {/* The export can succeed and still be unwatchable: capture is
-                real-time off the canvas, so anything that stopped the canvas
-                painting -- a backgrounded tab, a slept display -- leaves the
-                picture frozen while the audio plays on. The file gives no sign
-                of it, so this has to. */}
-            {pauses > 0 && (
-              <p className="w-full text-start text-[11px] leading-relaxed text-slate-300 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2">
-                {t.exportModal.pausedNotice(pauses)}
-              </p>
-            )}
-
-            {verdict !== 'clean' && (
-              <p className="w-full text-start text-[11px] leading-relaxed text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-                {verdict === 'frozen'
-                  ? t.exportModal.frozenWarning(Math.round(starvedSeconds))
-                  : t.exportModal.choppyWarning}
-              </p>
-            )}
-
-            {/* Video Player Preview */}
-            <div className="w-full max-h-52 overflow-hidden rounded-xl border border-slate-800 bg-black">
-              {/* `preload="none"` because this mounts at the worst possible
-                  moment: the muxer's buffers, the assembled file and the Blob
-                  copy of it are all still live, and starting a decoder for a
-                  4K file on top of them is what "it crashed as soon as the
-                  export ended" is made of. The player still plays on demand --
-                  it just does not read the file before anyone asks. */}
-              <StudioVideo
-                src={exportedBlobUrl}
-                controls
-                preload="none"
-                className="w-full h-full object-contain"
-              />
-            </div>
-
-            <a
-              href={exportedBlobUrl}
-              download={downloadFileName}
-              className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all"
-            >
-              <Download className="w-5 h-5" />
-              {/* The container is only known once the render has chosen its
-                   path, so the label follows the file rather than promising
-                   WebM for a render that produced MP4. */}
-              <span>{t.exportModal.download(downloadFileName.endsWith('.mp4') ? 'MP4' : 'WebM')}</span>
-            </a>
-
-            {/* The same file, plus the text that goes in the upload form beside
-                it. A second button rather than a change to the one above: the
-                caption costs a catalogue fetch and writes a file nobody asked
-                for, and the plain download is what most renders want. */}
-            <button
-              onClick={downloadWithCaption}
-              disabled={savingCaption}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-emerald-300 font-bold rounded-xl border border-emerald-500/40 flex items-center justify-center gap-2 transition-all"
-            >
-              {savingCaption
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <Download className="w-4 h-4" />}
-              <span>
-                {t.exportModal.downloadWithCaption(downloadFileName.endsWith('.mp4') ? 'MP4' : 'WebM')}
-              </span>
-            </button>
-
-            {/* Before it is posted: the faults found by hand in earlier
-                renders, measured on the file itself. */}
-            {exportedBlob && (
-              <RenderCheckPanel key={exportedBlobUrl} url={exportedBlobUrl} blob={exportedBlob} input={renderCheck} />
-            )}
-
-            {/* Straight to the platform, signed in there rather than here. */}
-            {exportedBlob && (
-              <PostPanel blob={exportedBlob} fileName={downloadFileName} presetIds={destinations} caption={buildCaption} />
-            )}
-
-            {/* Beside the download rather than anywhere else: the next thing
-                that happens to this file is an upload form. */}
-            <PublishCaption
-              publish={publish}
-              translationIds={translationIds}
-              includeVerseText={captionIncludesText}
-              onIncludeVerseText={setCaptionIncludesText}
-            />
-
-            {/* Renders are repeatable -- the previous blob URL is left alive on
-                purpose so the saved export record keeps working. */}
-            <button
-              onClick={() => { setExportedBlobUrl(null); setExportedBlob(null); }}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <Film className="w-3.5 h-3.5 text-amber-400" />
-              <span>{t.exportModal.renderAnother}</span>
-            </button>
-          </div>
+          <ExportResult
+            blob={exportedBlob}
+            blobUrl={exportedBlobUrl}
+            fileName={downloadFileName}
+            renderedMs={renderedMs}
+            gpuName={gpuName}
+            verdict={verdict}
+            starvedSeconds={starvedSeconds}
+            pauses={pauses}
+            renderCheck={renderCheck}
+            publish={publish}
+            translationIds={translationIds}
+            captionIncludesText={captionIncludesText}
+            onCaptionIncludesText={setCaptionIncludesText}
+            presetIds={destinations}
+            caption={buildCaption}
+            savingCaption={savingCaption}
+            onDownloadWithCaption={downloadWithCaption}
+            // Renders are repeatable -- the previous blob URL is left alive on
+            // purpose so the saved export record keeps working.
+            onRenderAnother={() => { setExportedBlobUrl(null); setExportedBlob(null); }}
+            onDone={handleClose}
+          />
         )}
       </div>
     </Dialog>

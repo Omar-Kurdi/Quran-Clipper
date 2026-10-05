@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { startUpload, uploadFailure, videoResource, UploadError, studioLink } from './youtubeUpload';
+import { startUpload, uploadFailure, videoResource, UploadError, studioLink, scheduleTime, defaultScheduleValue } from './youtubeUpload';
 import { TITLE_MAX, TAGS_MAX } from './publishMetadata';
 
 const meta = { title: 'Surah Fatir 35:5-7', description: 'Recited by Sudais\n\n#Quran #Shorts', tags: ['quran', 'surah fatir'] };
@@ -65,5 +65,31 @@ describe('startUpload', () => {
 describe('studioLink', () => {
   it('opens the video\'s edit page in YouTube Studio', () => {
     expect(studioLink('abc123')).toBe('https://studio.youtube.com/video/abc123/edit');
+  });
+});
+
+describe('scheduling', () => {
+  const now = new Date(2026, 9, 5, 14, 20);
+
+  it('uploads private with the moment to go public, which is how YouTube schedules', () => {
+    const resource = videoResource(meta, 'public', '2026-10-06T09:00:00.000Z');
+    expect(resource.status).toEqual({ privacyStatus: 'private', publishAt: '2026-10-06T09:00:00.000Z', selfDeclaredMadeForKids: false });
+  });
+
+  it('sends no publishAt when nothing is scheduled', () => {
+    expect(videoResource(meta, 'unlisted').status).not.toHaveProperty('publishAt');
+  });
+
+  it('reads the picker\'s local time as an instant, and refuses one already gone', () => {
+    const later = scheduleTime('2026-10-05T18:00', now);
+    expect(later).toEqual({ publishAt: new Date(2026, 9, 5, 18, 0).toISOString() });
+    expect(scheduleTime('2026-10-05T14:00', now)).toBe('past');
+    expect(scheduleTime('', now)).toBe('invalid');
+    expect(scheduleTime('not a date', now)).toBe('invalid');
+  });
+
+  it('first offers the top of the hour after next', () => {
+    expect(defaultScheduleValue(now)).toBe('2026-10-05T16:00');
+    expect(scheduleTime(defaultScheduleValue(now), now)).not.toBe('past');
   });
 });

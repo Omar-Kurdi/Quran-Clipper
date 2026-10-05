@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { ExternalLink, Share2 } from 'lucide-react';
+import { ChevronDown, ExternalLink, Monitor, Share2, Upload } from 'lucide-react';
 import type { PublishMetadata } from '@/lib/publishMetadata';
 import { postTargets, postText, renderedFor, shareableFile, UPLOAD_PAGES, type Platform } from '@/lib/postTargets';
 import { youtubeClientId } from '@/lib/youtubeUpload';
@@ -16,6 +16,8 @@ interface PostPanelProps {
   presetIds: string[];
   /** The caption, built when it is needed: it may fetch the translation catalogue. */
   caption: () => Promise<PublishMetadata>;
+  /** The "This computer" row's buttons, which the result screen owns. */
+  download: React.ReactNode;
 }
 
 type Status = { tone: 'ok' | 'warn'; text: string } | null;
@@ -30,8 +32,8 @@ async function copyCaption(meta: PublishMetadata): Promise<boolean> {
   }
 }
 
-/** What the panel's buttons do, and what they last said about it. */
-function usePosting({ blob, fileName, caption }: Omit<PostPanelProps, 'presetIds'>) {
+/** What the list's buttons do, and what they last said about it. */
+function usePosting({ blob, fileName, caption }: Pick<PostPanelProps, 'blob' | 'fileName' | 'caption'>) {
   const t = useT();
   const [status, setStatus] = useState<Status>(null);
 
@@ -71,63 +73,67 @@ function usePosting({ blob, fileName, caption }: Omit<PostPanelProps, 'presetIds
   return { file, status, share, open };
 }
 
-/** One button per platform, those the clip was rendered for marked. */
-const PlatformButtons: React.FC<{ presetIds: string[]; onOpen: (platform: Platform) => void }> = ({ presetIds, onOpen }) => {
-  const t = useT();
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {postTargets(presetIds).map(platform => (
-        <button
-          key={platform}
-          onClick={() => onOpen(platform)}
-          title={t.post.openTitle(t.post.platforms[platform])}
-          className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-semibold transition-colors ${
-            renderedFor(platform, presetIds)
-              ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
-              : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
-          }`}
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          {t.post.platforms[platform]}
-        </button>
-      ))}
-    </div>
-  );
-};
+const ROW = 'rounded-xl border bg-slate-950/60';
+const ROW_HEAD = 'w-full flex items-center gap-3 px-3 py-3 text-start text-slate-100 hover:bg-slate-800/40 rounded-xl transition-colors';
+
+/** One destination: a heading row, and what opens under it when it is the open one. */
+const Destination: React.FC<{
+  icon: React.ReactNode; title: string; help: string; highlight?: boolean;
+  open?: boolean; onToggle?: () => void; onPress?: () => void; children?: React.ReactNode;
+}> = ({ icon, title, help, highlight, open, onToggle, onPress, children }) => (
+  <li className={`${ROW} ${open || highlight ? 'border-emerald-500/50' : 'border-slate-800'}`}>
+    <button onClick={onToggle ?? onPress} aria-expanded={onToggle ? open : undefined} className={ROW_HEAD}>
+      <span className="shrink-0 text-slate-300">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold">{title}</span>
+        <span className="block text-[11px] text-slate-400">{help}</span>
+      </span>
+      {onToggle
+        ? <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        : <ExternalLink className="w-4 h-4 text-slate-400" />}
+    </button>
+    {open && children && <div className="px-3 pb-3 flex flex-col gap-2">{children}</div>}
+  </li>
+);
 
 /**
- * Posting the clip, with the person signed in to the platform rather than to
- * the studio -- see `postTargets`.
- *
- * The share button only appears where the browser can share a file, which is
- * mostly phones; everywhere, each platform's upload page opens with the
- * caption already on the clipboard.
+ * Where the clip goes next: this computer, then each platform, the one it was
+ * rendered for first, and only one row open at a time. The person signs in to
+ * the platform, never to the studio -- see `postTargets`.
  */
-export const PostPanel: React.FC<PostPanelProps> = ({ blob, fileName, presetIds, caption }) => {
+export const PostPanel: React.FC<PostPanelProps> = ({ blob, fileName, presetIds, caption, download }) => {
   const t = useT();
   const { file, status, share, open } = usePosting({ blob, fileName, caption });
+  const clientId = youtubeClientId();
+  const [expanded, setExpanded] = useState<'computer' | 'youtube' | null>(
+    clientId && renderedFor('youtube', presetIds) ? 'youtube' : 'computer'
+  );
+  const toggle = (row: 'computer' | 'youtube') => setExpanded(current => (current === row ? null : row));
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3 flex flex-col gap-2.5">
-      <div>
-        <p className="text-xs font-semibold text-slate-200">{t.post.title}</p>
-        <p className="text-[11px] leading-relaxed text-slate-400">{t.post.help}</p>
-      </div>
-
-      {file && (
-        <button
-          onClick={share}
-          className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"
-        >
-          <Share2 className="w-4 h-4" />
-          <span>{t.post.share}</span>
-        </button>
-      )}
-
-      {youtubeClientId() && <YouTubeUpload clientId={youtubeClientId()} blob={blob} caption={caption} />}
-
-      <PlatformButtons presetIds={presetIds} onOpen={open} />
-
+    <div className="flex flex-col gap-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{t.post.sendTo}</p>
+      <ul className="flex flex-col gap-2">
+        <Destination icon={<Monitor className="w-5 h-5" />} title={t.post.computer} help={t.post.computerHelp}
+          open={expanded === 'computer'} onToggle={() => toggle('computer')}>
+          {download}
+        </Destination>
+        {postTargets(presetIds).map(platform => platform === 'youtube' && clientId ? (
+          <Destination key={platform} icon={<Upload className="w-5 h-5" />} title={t.post.platforms.youtube} help={t.post.uploadsHelp}
+            highlight={renderedFor(platform, presetIds)} open={expanded === 'youtube'} onToggle={() => toggle('youtube')}>
+            <YouTubeUpload clientId={clientId} blob={blob} caption={caption} />
+            <button onClick={() => open('youtube')} className="self-start text-[11px] text-slate-400 hover:text-emerald-300 underline">
+              {t.post.youtubePage}
+            </button>
+          </Destination>
+        ) : (
+          <Destination key={platform} icon={<ExternalLink className="w-5 h-5" />} title={t.post.platforms[platform]} help={t.post.openHelp}
+            highlight={renderedFor(platform, presetIds)} onPress={() => open(platform)} />
+        ))}
+        {file && (
+          <Destination icon={<Share2 className="w-5 h-5" />} title={t.post.share} help={t.post.shareHelp} onPress={share} />
+        )}
+      </ul>
       {status && (
         <p role="status" className={`text-[11px] leading-relaxed ${status.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300/90'}`}>
           {status.text}

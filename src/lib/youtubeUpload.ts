@@ -38,8 +38,37 @@ function fitTags(tags: string[]): string[] {
   return kept;
 }
 
-/** What YouTube is told about the video before the file goes. */
-export function videoResource(meta: Pick<PublishMetadata, 'title' | 'description' | 'tags'>, privacy: Privacy) {
+/**
+ * When a scheduled upload goes public, from a `datetime-local` value -- which
+ * is the person's own local time, with no zone in it.
+ *
+ * YouTube takes the moment as an ISO instant and refuses one in the past, so a
+ * time already gone is said here instead of as a failed upload.
+ */
+export function scheduleTime(local: string, now: Date = new Date()): { publishAt: string } | 'past' | 'invalid' {
+  const when = new Date(local);
+  if (!local || Number.isNaN(when.getTime())) return 'invalid';
+  if (when.getTime() <= now.getTime()) return 'past';
+  return { publishAt: when.toISOString() };
+}
+
+/** A sensible first offer for the schedule: the top of the hour after next, as a `datetime-local` value. */
+export function defaultScheduleValue(now: Date = new Date()): string {
+  const when = new Date(now);
+  when.setHours(when.getHours() + 2, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}T${pad(when.getHours())}:${pad(when.getMinutes())}`;
+}
+
+/**
+ * What YouTube is told about the video before the file goes.
+ *
+ * A scheduled video is uploaded private with a `publishAt`, which is how
+ * YouTube schedules: it turns public by itself at that moment. Like every
+ * upload from an unaudited project it stays locked private until the audit
+ * passes, so the schedule only takes effect after that.
+ */
+export function videoResource(meta: Pick<PublishMetadata, 'title' | 'description' | 'tags'>, privacy: Privacy, publishAt?: string) {
   return {
     snippet: {
       title: meta.title.slice(0, TITLE_MAX),
@@ -49,7 +78,8 @@ export function videoResource(meta: Pick<PublishMetadata, 'title' | 'description
       categoryId: '27'
     },
     status: {
-      privacyStatus: privacy,
+      privacyStatus: publishAt ? 'private' : privacy,
+      ...(publishAt ? { publishAt } : {}),
       // Required on every upload. A recitation clip is not made for children
       // in COPPA's sense, which is about content directed at them.
       selfDeclaredMadeForKids: false
@@ -91,7 +121,9 @@ function parseJson(text: string): unknown {
 }
 
 /** Asks YouTube for an upload address for this video. */
-export async function startUpload(token: string, meta: Pick<PublishMetadata, 'title' | 'description' | 'tags'>, privacy: Privacy, file: Blob): Promise<string> {
+export async function startUpload(
+  token: string, meta: Pick<PublishMetadata, 'title' | 'description' | 'tags'>, privacy: Privacy, file: Blob, publishAt?: string
+): Promise<string> {
   let res: Response;
   try {
     res = await fetch(UPLOAD_ENDPOINT, {
@@ -102,7 +134,7 @@ export async function startUpload(token: string, meta: Pick<PublishMetadata, 'ti
         'X-Upload-Content-Type': file.type || 'video/mp4',
         'X-Upload-Content-Length': String(file.size)
       },
-      body: JSON.stringify(videoResource(meta, privacy))
+      body: JSON.stringify(videoResource(meta, privacy, publishAt))
     });
   } catch (err) {
     throw new UploadError('network', (err as Error).message);
