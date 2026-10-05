@@ -57,24 +57,6 @@ export function describeGpu(): string {
 }
 
 /**
- * Whether this device has a hardware H.264 encoder the browser will use, or
- * null when the browser cannot say. Without one, WebCodecs encodes on the
- * processor -- slower, but the same file: a PC with no graphics card, or a
- * phone whose encoder the browser does not expose, still exports.
- */
-export async function hasHardwareEncoder(width = 1080, height = 1920): Promise<boolean | null> {
-  if (typeof VideoEncoder === 'undefined') return null;
-  try {
-    const { supported } = await VideoEncoder.isConfigSupported({
-      codec: 'avc1.640028', width, height, hardwareAcceleration: 'prefer-hardware'
-    });
-    return Boolean(supported);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Which container/codec `MediaRecorder` will actually pick. Whether it lands on
  * a hardware encoder is not observable from JS -- Chromium usually encodes VP8
  * and VP9 in software via libvpx -- so this names the codec, not the silicon.

@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { exportFileName } from '@/lib/exportName';
 import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
 import { AlertTriangle, X, Loader2, Eye } from 'lucide-react';
-import { realGpuName, hasHardwareEncoder, describeEncoder } from '@/lib/gpuInfo';
+import { realGpuName, describeEncoder } from '@/lib/gpuInfo';
 import {
   QUALITY_TIERS, QualityTier, ExportPlan,
   planExport, presetById, dimensionsFor, formatBytes, previewPlan
@@ -130,22 +130,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   renderCheck
 }) => {
   const t = useT();
-  // What does the encoding: always this device, in the browser, unless the
-  // render is sent to the server. The card is named only when the browser
-  // gives its real name -- Firefox and Brave give stand-ins (`realGpuName`) --
-  // and a device with no hardware encoder is told it will use the processor.
+  // The card is named on the result screen only when the browser gives its
+  // real name -- Firefox and Brave give stand-ins (`realGpuName`).
   const gpuName = useMemo(() => realGpuName(), []);
-  const [hardware, setHardware] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    hasHardwareEncoder().then(found => { if (!cancelled) setHardware(found); });
-    return () => { cancelled = true; };
-  }, [isOpen]);
-  const hardwareNote = hardware === false
-    ? t.exportModal.hardware.cpu
-    : gpuName ? t.exportModal.hardware.named(gpuName)
-      : hardware ? t.exportModal.hardware.unnamed : t.exportModal.hardware.unknown;
   const encoderName = useMemo(() => describeEncoder(fastPath), [fastPath]);
 
   // The platform's own frame rate, as choosing it would set: opening on Shorts
@@ -621,7 +608,6 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 {fastPath ? t.exportModal.subtitle(encoderName) : t.exportModal.subtitleRecorder(encoderName)}
               </summary>
               <p className="mt-1.5">{t.exportModal.rendersHere}</p>
-              <p className="mt-1">{hardwareNote}</p>
             </details>
           </div>
         ) : (
