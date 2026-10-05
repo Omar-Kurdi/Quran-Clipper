@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { exportFileName } from '@/lib/exportName';
 import { ExportHealth, ExportVerdict, exportVerdict } from '@/lib/exportHealth';
 import { AlertTriangle, X, Loader2, Eye } from 'lucide-react';
-import { detectGpuRenderer, describeEncoder } from '@/lib/gpuInfo';
+import { realGpuName, hasHardwareEncoder, describeEncoder } from '@/lib/gpuInfo';
 import {
   QUALITY_TIERS, QualityTier, ExportPlan,
   planExport, presetById, dimensionsFor, formatBytes, previewPlan
@@ -130,13 +130,22 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   renderCheck
 }) => {
   const t = useT();
-  // Report what this machine actually has rather than a hardcoded model name.
-  // The raw renderer string is read directly rather than through `describeGpu`,
-  // whose fallback wording is the value written to the `exports` record and is
-  // deliberately English there. What is shown here is a label, so it is
-  // translated; what is stored stays searchable.
-  const renderer = useMemo(() => detectGpuRenderer(), []);
-  const gpuName = renderer ?? t.exportModal.gpuNotReported;
+  // What does the encoding: always this device, in the browser, unless the
+  // render is sent to the server. The card is named only when the browser
+  // gives its real name -- Firefox and Brave give stand-ins (`realGpuName`) --
+  // and a device with no hardware encoder is told it will use the processor.
+  const gpuName = useMemo(() => realGpuName(), []);
+  const [hardware, setHardware] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    hasHardwareEncoder().then(found => { if (!cancelled) setHardware(found); });
+    return () => { cancelled = true; };
+  }, [isOpen]);
+  const hardwareNote = hardware === false
+    ? t.exportModal.hardware.cpu
+    : gpuName ? t.exportModal.hardware.named(gpuName)
+      : hardware ? t.exportModal.hardware.unnamed : t.exportModal.hardware.unknown;
   const encoderName = useMemo(() => describeEncoder(fastPath), [fastPath]);
 
   // The platform's own frame rate, as choosing it would set: opening on Shorts
@@ -611,9 +620,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               <summary className="cursor-pointer select-none hover:text-slate-200">
                 {fastPath ? t.exportModal.subtitle(encoderName) : t.exportModal.subtitleRecorder(encoderName)}
               </summary>
-              <p className="mt-1.5">
-                {t.exportModal.detectedGpu}: <span className={renderer ? 'font-mono' : ''}>{gpuName}</span>
-              </p>
+              <p className="mt-1.5">{t.exportModal.rendersHere}</p>
+              <p className="mt-1">{hardwareNote}</p>
             </details>
           </div>
         ) : (
@@ -623,7 +631,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
             blobUrl={exportedBlobUrl}
             fileName={downloadFileName}
             renderedMs={renderedMs}
-            gpuName={gpuName}
+            gpuName={gpuName ?? t.exportModal.thisDevice}
             verdict={verdict}
             starvedSeconds={starvedSeconds}
             pauses={pauses}

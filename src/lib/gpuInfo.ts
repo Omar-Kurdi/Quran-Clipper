@@ -27,9 +27,51 @@ export function detectGpuRenderer(): string | null {
   }
 }
 
-/** `detectGpuRenderer()` with a caller-friendly fallback, for display and for the `exports` record. */
+/**
+ * Whether a renderer string is a stand-in rather than the card.
+ *
+ * Browsers answer the renderer question with a generic value to keep sites
+ * from fingerprinting the machine: Firefox reports a bucketed model ("NVIDIA
+ * GeForce GTX 980, or similar") whatever is fitted, and Brave reports its own
+ * name. Printed as "Detected GPU", the first read as the server's card to a
+ * person exporting from a desktop with an RTX 5080 -- so a stand-in is not
+ * shown as a GPU at all.
+ */
+export function isPlaceholderRenderer(name: string): boolean {
+  return /or similar/i.test(name) || /^(brave|firefox|mozilla|chrome|chromium|safari|webkit|opera|edge)$/i.test(name.trim());
+}
+
+/** Whether the "GPU" is software drawing on the processor: a machine with no graphics hardware the browser can use. */
+export function isSoftwareRenderer(name: string): boolean {
+  return /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i.test(name);
+}
+
+/** The graphics card's real name, or null when the browser hides it, offers a stand-in, or draws in software. */
+export function realGpuName(name: string | null = detectGpuRenderer()): string | null {
+  return name && !isPlaceholderRenderer(name) && !isSoftwareRenderer(name) ? name : null;
+}
+
+/** The card's real name for the `exports` record, or a plain statement that it was not given. */
 export function describeGpu(): string {
-  return detectGpuRenderer() ?? 'GPU not reported by browser';
+  return realGpuName() ?? 'GPU not reported by browser';
+}
+
+/**
+ * Whether this device has a hardware H.264 encoder the browser will use, or
+ * null when the browser cannot say. Without one, WebCodecs encodes on the
+ * processor -- slower, but the same file: a PC with no graphics card, or a
+ * phone whose encoder the browser does not expose, still exports.
+ */
+export async function hasHardwareEncoder(width = 1080, height = 1920): Promise<boolean | null> {
+  if (typeof VideoEncoder === 'undefined') return null;
+  try {
+    const { supported } = await VideoEncoder.isConfigSupported({
+      codec: 'avc1.640028', width, height, hardwareAcceleration: 'prefer-hardware'
+    });
+    return Boolean(supported);
+  } catch {
+    return null;
+  }
 }
 
 /**

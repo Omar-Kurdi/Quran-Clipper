@@ -852,8 +852,14 @@ export const en = {
     title: 'Export',
     subtitle: (encoder: string) => `Encodes frame by frame with WebCodecs (${encoder})`,
     subtitleRecorder: (encoder: string) => `Records the canvas in real time via MediaRecorder (${encoder})`,
-    detectedGpu: 'Detected GPU',
-    gpuNotReported: 'GPU not reported by browser',
+    rendersHere: 'Renders on this device, in your browser, not on the server.',
+    thisDevice: 'this device',
+    hardware: {
+      named: (gpu: string) => `Uses this device\'s video hardware (${gpu}).`,
+      unnamed: 'Uses this device\'s video hardware. The browser keeps its model private.',
+      cpu: 'No hardware video encoder found, so it encodes on the processor. Slower, but the same video.',
+      unknown: 'Uses this device\'s video hardware where the browser allows, otherwise the processor.'
+    },
     frameRateLabel: 'Frame rate',
 
     beforeYouPublish: 'Before you publish:',
@@ -893,7 +899,7 @@ export const en = {
     recorderOnly:
       'This project records in real time, which can only capture the preview’s own 1080p frame. Higher resolutions need the frame-by-frame path.',
     aspectFormat: 'Aspect Format:',
-    encoding: 'GPU Encoding Frames...',
+    encoding: 'Encoding frames...',
     speed: (speed: string) => `Speed: ${speed}`,
     realtimeCapture: 'Real-time capture',
     realtimeCaptureTitle:
