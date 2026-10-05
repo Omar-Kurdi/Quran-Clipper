@@ -930,6 +930,42 @@ export const en = {
     warnUnreadable: (name: string) => `${name} cannot be read by this browser: the frame shows the plain gradient wherever it should be. Replace it, or re-add the file.`
   },
 
+  youtube: {
+    upload: 'Upload to my YouTube',
+    privacyLabel: 'Who can see it',
+    privacy: { private: 'Private', unlisted: 'Unlisted', public: 'Public' },
+    help:
+      'Signs in to Google in a pop-up and uploads this file to your channel with the caption below. Quran Clipper keeps nothing, and the sign-in ends when you close this tab. Until this studio\'s Google app is verified, YouTube keeps uploads private whatever you choose.',
+    signingIn: 'Waiting for Google sign-in in the pop-up…',
+    cancel: 'Cancel',
+    done: 'Uploaded. YouTube is processing it now.',
+    openStudio: 'Open in YouTube Studio',
+    failed: {
+      signin: 'Google sign-in did not finish, so nothing was uploaded. Press the button to try again.',
+      quota: 'This studio has used its YouTube upload allowance for today. Try again tomorrow, or upload the downloaded file on youtube.com.',
+      limit: 'YouTube says this channel has reached its upload limit for now. Try again later.',
+      forbidden:
+        'YouTube refused the upload. The Google account may have no YouTube channel yet, or not be a test user of this studio\'s Google app.',
+      network: 'The connection dropped during the upload. Press the button to start again.',
+      other: 'YouTube did not accept the upload. Download the file and upload it on youtube.com instead.',
+      cancelled: 'Upload cancelled.'
+    }
+  },
+  post: {
+    title: 'Post it',
+    help:
+      'You sign in to the platform, never to Quran Clipper. Each button copies the caption and opens that platform\'s upload page: drop in the file you downloaded and paste.',
+    share: 'Share to an app…',
+    platforms: { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' },
+    openTitle: (name: string) => `Copy the caption and open ${name}'s upload page`,
+    openedCopied: (name: string) => `${name} is open in a new tab, and the caption is on the clipboard. Add the downloaded file there and paste the caption.`,
+    openedNotCopied: (name: string) =>
+      `${name} is open in a new tab. This browser would not let the page copy the caption, so copy it from "Caption for this clip" below.`,
+    popupBlocked: (name: string) => `The browser blocked the new tab. Allow pop-ups for this page, then press ${name} again.`,
+    shared: 'Sent to the app. Finish the post there.',
+    sharedCopied: 'Sent to the app, and the caption is on the clipboard in case the app left it out. Finish the post there.',
+    shareFailed: 'This device could not share the video. Download it and use one of the upload pages instead.'
+  },
   publish: {
     title: 'Caption for this clip',
     copy: 'Copy',

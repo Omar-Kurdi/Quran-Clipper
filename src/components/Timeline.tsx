@@ -156,6 +156,13 @@ export const Timeline: React.FC<TimelineProps> = ({
   const clipLengths = useMediaDurations(backgroundSegments.map(seg => seg.url));
   // What actually loops: a clip's black ends are left out (see `clipLoop`).
   const loopWindows = useLoopWindows(backgroundSegments.map(seg => seg.url));
+  /** How long one pass of a clip lasts on screen: its file, less any black ends. */
+  const playedLength = (url: string): number | undefined => {
+    const fileLength = clipLengths[url];
+    if (!fileLength) return fileLength;
+    const loop = loopFor(loopWindows[url], fileLength);
+    return loop.end - loop.start;
+  };
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   // The load result is stamped with the url it belongs to, so "still loading"
@@ -681,9 +688,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                 const editable = Boolean(onMoveBackground && onResizeBackground);
                 const active = selectedBackground === i;
                 const span = seg.end - seg.start;
-                const fileLength = clipLengths[seg.url];
-                const loop = fileLength ? loopFor(loopWindows[seg.url], fileLength) : null;
-                const clipLength = loop ? loop.end - loop.start : fileLength;
+                const clipLength = playedLength(seg.url);
                 const times = repeatCount(span, clipLength);
                 // Where the footage starts over, in the block's own width. Only
                 // whole restarts are marked -- the tail of the last pass is

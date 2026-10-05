@@ -13,6 +13,7 @@ import { exportRoute } from '@/lib/exportRoute';
 import { DestinationPicker, Segmented } from './ExportChoices';
 import { Dialog } from './Dialog';
 import { PublishCaption } from './PublishCaption';
+import { PostPanel } from './PostPanel';
 import { StudioVideo } from './StudioVideo';
 import { buildPublishMetadata, captionFileText, PublishInput } from '@/lib/publishMetadata';
 import { creditedTranslationNames } from '@/lib/translations';
@@ -208,18 +209,23 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
    * if the browser does ask to allow multiple downloads, the video is the file
    * whose prompt is obviously worth answering.
    */
+  /** The caption as posted, with the translators credited by name -- see `downloadWithCaption`. */
+  const buildCaption = async () => {
+    const catalogue = await loadTranslationCatalogue();
+    return buildPublishMetadata({
+      ...publish,
+      translationNames: creditedTranslationNames(
+        catalogue, translationIds, publish.verses, publish.wordByWord
+      ),
+      includeVerseText: captionIncludesText
+    });
+  };
+
   const downloadWithCaption = async () => {
     if (!exportedBlobUrl || savingCaption) return;
     setSavingCaption(true);
     try {
-      const catalogue = await loadTranslationCatalogue();
-      const meta = buildPublishMetadata({
-        ...publish,
-        translationNames: creditedTranslationNames(
-          catalogue, translationIds, publish.verses, publish.wordByWord
-        ),
-        includeVerseText: captionIncludesText
-      });
+      const meta = await buildCaption();
       const caption = URL.createObjectURL(
         new Blob([captionFileText(meta)], { type: 'text/plain;charset=utf-8' })
       );
@@ -702,6 +708,11 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                 renders, measured on the file itself. */}
             {exportedBlob && (
               <RenderCheckPanel key={exportedBlobUrl} url={exportedBlobUrl} blob={exportedBlob} input={renderCheck} />
+            )}
+
+            {/* Straight to the platform, signed in there rather than here. */}
+            {exportedBlob && (
+              <PostPanel blob={exportedBlob} fileName={downloadFileName} presetIds={destinations} caption={buildCaption} />
             )}
 
             {/* Beside the download rather than anywhere else: the next thing
