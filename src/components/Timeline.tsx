@@ -13,6 +13,8 @@ import { formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import { BackgroundSegment, backgroundLabel, moveSegmentTo, resizeSegment } from '@/lib/backgroundTimeline';
 import { formatClipLength, repeatCount } from '@/lib/mediaDuration';
 import { useMediaDurations } from '@/hooks/useMediaDurations';
+import { useLoopWindows } from '@/hooks/useLoopWindows';
+import { loopFor } from '@/lib/clipLoop';
 import { useT } from './LocaleProvider';
 import { TimelineSkeleton } from './Skeleton';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
@@ -152,6 +154,8 @@ export const Timeline: React.FC<TimelineProps> = ({
    * an edge for a clean loop.
    */
   const clipLengths = useMediaDurations(backgroundSegments.map(seg => seg.url));
+  // What actually loops: a clip's black ends are left out (see `clipLoop`).
+  const loopWindows = useLoopWindows(backgroundSegments.map(seg => seg.url));
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   // The load result is stamped with the url it belongs to, so "still loading"
@@ -677,7 +681,9 @@ export const Timeline: React.FC<TimelineProps> = ({
                 const editable = Boolean(onMoveBackground && onResizeBackground);
                 const active = selectedBackground === i;
                 const span = seg.end - seg.start;
-                const clipLength = clipLengths[seg.url];
+                const fileLength = clipLengths[seg.url];
+                const loop = fileLength ? loopFor(loopWindows[seg.url], fileLength) : null;
+                const clipLength = loop ? loop.end - loop.start : fileLength;
                 const times = repeatCount(span, clipLength);
                 // Where the footage starts over, in the block's own width. Only
                 // whole restarts are marked -- the tail of the last pass is

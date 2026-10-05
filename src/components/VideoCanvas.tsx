@@ -13,6 +13,7 @@ import { blurPath } from '@/lib/glBlur';
 import { ExportHealth, accumulateStarvation, emptyHealth } from '@/lib/exportHealth';
 import { encodeOffline, canEncodeOffline, OFFLINE_BITRATE, type OfflineExportResult } from '@/lib/offlineExport';
 import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
+import { knownLoopWindow, loadLoopWindow, loopFor, loopPhase } from '@/lib/clipLoop';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
 import { frameLayout, blockTop, textFits, splitFits } from '@/lib/frameLayout';
@@ -48,6 +49,30 @@ const mediaReady = (el: BackgroundMedia | null): boolean =>
   !!el && (isFrame(el)
     ? el.codedWidth > 0
     : isClip(el) ? el.readyState >= 2 : (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
+
+/**
+ * Starts a decorative clip and measures where its black ends are, so neither
+ * the preview nor the export ever loops through them -- see `clipLoop`.
+ */
+function playDecorative(media: HTMLVideoElement, url: string): void {
+  media.play().catch(() => {});
+  void loadLoopWindow(url);
+}
+
+/**
+ * Sends a playing clip back to the start of its loop once it reaches its black
+ * tail. The element loops on its own only at the end of the file, which is
+ * where the black is.
+ */
+function keepInsideLoop(media: BackgroundMedia | null): void {
+  if (!media || !isClip(media) || media.paused || media.seeking) return;
+  const loop = loopFor(knownLoopWindow(media.currentSrc || media.src), media.duration);
+  const trimmed = loop.start > 0 || loop.end < media.duration;
+  if (trimmed && (media.currentTime >= loop.end || media.currentTime < loop.start - 0.05)) {
+    // Its length is known, so its metadata is in and the seek cannot throw.
+    media.currentTime = loop.start;
+  }
+}
 
 const mediaSize = (el: BackgroundMedia) =>
   isFrame(el)
@@ -516,7 +541,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // not: it is driven by the sync effect below, and looping would send it
       // back to 0 mid-verse.
       media.loop = !syncBackgroundVideo;
-      if (!syncBackgroundVideo) media.play().catch(() => {});
+      if (!syncBackgroundVideo) playDecorative(media, url);
     }
 
     for (const [url, media] of Array.from(pool.entries())) {
@@ -640,9 +665,10 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     // below the level the draw loop requires, which during a real-time export
     // bakes a gradient frame into the file -- and a clip parked at 0 by the
     // export setup below is already exactly where it needs to be.
-    if (vid.currentTime > 0.05) {
+    const opening = loopFor(knownLoopWindow(activeBg.url), vid.duration).start;
+    if (Math.abs(vid.currentTime - opening) > 0.05) {
       try {
-        vid.currentTime = 0;
+        vid.currentTime = opening;
       } catch {
         // Seeking before metadata lands throws; the clip plays from 0 anyway.
       }
@@ -681,9 +707,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
 
     const length = vid.duration;
     if (Number.isFinite(length) && length > 0) {
-      // A block longer than its footage simply plays it again, which is what
-      // the modulo is: the same arithmetic `videoFrames` uses on export.
-      const target = Math.max(0, currentTime - activeBg.start) % length;
+      // A block longer than its footage simply plays it again, inside the part
+      // with a picture: the same arithmetic the export uses.
+      const target = loopPhase(loopFor(knownLoopWindow(activeBg.url), length), currentTime - activeBg.start);
       if (Math.abs(vid.currentTime - target) > 0.25) {
         try {
           vid.currentTime = target;
@@ -1306,6 +1332,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // While playing, the element's own position, read now; paused, the
       // position the studio holds, which is where a scrub left it.
       const time = isPlaying && playhead ? playhead() : currentTime;
+      if (!syncBackgroundVideo) keepInsideLoop(bgMediaRef.current);
       paintFrame(ctx, {
         time,
         captions: captionLayers(sortedVerses, time, motion, 'show'),
@@ -1329,7 +1356,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
     return () => cancelAnimationFrame(animationFrameId);
     // Everything the drawing itself depends on now lives inside `paintFrame`,
     // so this loop only needs the things it feeds in.
-  }, [paintFrame, audioAnalyser, sortedVerses, currentTime, isPlaying, playhead, motion]);
+  }, [paintFrame, audioAnalyser, sortedVerses, currentTime, isPlaying, playhead, motion, syncBackgroundVideo]);
 
   // ---- EXPORT ----
   useImperativeHandle(ref, () => ({
@@ -1410,8 +1437,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // Backgrounds loop, which is the whole reason this can be sequential:
         // the clip's own time sweeps 0 to its length over and over while
         // output time only moves forward.
+        // Black at either end of the clip is left out of the loop, as in the
+        // preview; a recitation video is the picture of the audio and plays whole.
         const into = Math.max(0, atSeconds - active.start);
-        return clip.frameAt(clip.duration > 0 ? into % clip.duration : into);
+        if (!(clip.duration > 0)) return clip.frameAt(into);
+        const loop = loopFor(syncBackgroundVideo ? null : await loadLoopWindow(active.url), clip.duration);
+        return clip.frameAt(loopPhase(loop, into));
       };
 
       try {
@@ -1657,7 +1688,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         }
         if (activeBgVideo) {
           bgSegmentRef.current = activeBg ? { key: activeBg.key, url: activeBg.url } : null;
-          await seekTo(activeBgVideo, Math.max(0, startSec - (activeBg?.start ?? 0)));
+          const loop = activeBg ? await loadLoopWindow(activeBg.url) : null;
+          await seekTo(activeBgVideo, loopPhase(loopFor(loop, activeBgVideo.duration), startSec - (activeBg?.start ?? 0)));
           activeBgVideo.play().catch(() => {});
         }
 
