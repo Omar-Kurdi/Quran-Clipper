@@ -2737,6 +2737,43 @@ def _lone_word_cuts(
         dropped.add(weaker)
 
 
+#: How long an unmarked silence must be when the read-out also ended a phrase
+#: there (`decoded_phrase_ends`), against `MIN_UNMARKED_PAUSE_SEC` when only
+#: the silence speaks.
+#:
+#: Length alone cannot tell these short stops from breaths. Across the gauge's
+#: clips some need the unmarked bar lowered to this (Fussilat 41:30-31 stops
+#: for 0.24s after ٱسْتَقَـٰمُوا۟ and 0.30s before its second وَلَكُمْ, in a
+#: reverberant room) and others lose captions to it, where the reciter only
+#: breathed. Three signals agreeing is what decides: the room went quiet, the
+#: words read as one phrase ending and the next beginning, and the aligner
+#: placed the two words apart by at least the clip's stop gap (`waqf_pause`).
+#: The last is what keeps ٱلطَّرْفِ | أَتْرَابٌ (0.08s apart) and the idafa
+#: حُسْنُ ٱلثَّوَابِ (0.24s) together where the read-out happened to cut, while the
+#: real stops were 0.40s and more.
+BORDERLINE_PAUSE_SEC = float(os.getenv("ALIGN_BORDERLINE_PAUSE_SEC", "0.20"))
+
+#: How far from a silence the read-out's phrase end may fall and still be the
+#: same break: it cuts at the middle of a dip, which may be measured a little
+#: wider or narrower than the silence.
+PHRASE_END_SLACK_SEC = 0.15
+
+
+def _read_out_ended_here(
+    phrase_ends: list[tuple[float, int]] | None, word: int, pause_start: float, pause_end: float
+) -> bool:
+    """Did the read-out end a phrase on reference word `word`, within this silence?"""
+    return any(
+        last == word and pause_start - PHRASE_END_SLACK_SEC <= at <= pause_end + PHRASE_END_SLACK_SEC
+        for at, last in phrase_ends or ()
+    )
+
+
+def _placed_inside(word: AlignedWord, start: float, end: float) -> bool:
+    """Was this word placed wholly within the silence from `start` to `end`?"""
+    return word.start >= start - 0.05 and word.end <= end + 0.05
+
+
 def _segment_the_timeline(
     aligned: list[AlignedWord],
     script: list[int],
@@ -2745,6 +2782,7 @@ def _segment_the_timeline(
     repeated: list[bool] | None = None,
     hush: list[tuple[float, float]] | None = None,
     bar_scale: float = 1.0,
+    phrase_ends: list[tuple[float, int]] | None = None,
 ) -> tuple[list[Segment], list[list[AlignedWord]]]:
     """Cut the aligned word sequence into on-screen segments.
 
@@ -2794,6 +2832,7 @@ def _segment_the_timeline(
     waqf_pause = max(MIN_WAQF_PAUSE_SEC, WAQF_PAUSE_FACTOR * typical) * bar_scale
     marked_bar = max(MIN_PAUSE_SEC, MIN_MARKED_PAUSE_SEC * bar_scale)
     unmarked_bar = max(MIN_PAUSE_SEC, MIN_UNMARKED_PAUSE_SEC * bar_scale)
+    borderline_bar = max(MIN_PAUSE_SEC, BORDERLINE_PAUSE_SEC * bar_scale)
 
     def stopped_between(word: AlignedWord, nxt: AlignedWord) -> bool:
         """Did the reciter actually fall silent around this junction?
@@ -2881,6 +2920,15 @@ def _segment_the_timeline(
         if not begun:
             continue
         i = max(begun)
+        if i + 2 < len(aligned) and script[i + 2] <= script[i + 1] and _placed_inside(aligned[i + 1], pause_start, pause_end):
+            # The next word sits wholly inside this silence, which no word can
+            # be said in, and the reciter goes back right after it: the aligner
+            # pushed it there, and it was said before they stopped, since what
+            # follows the stop is the repeat. On Fussilat 41:31 فِى lay inside
+            # the 0.28s before the return to نَحْنُ, and the break before it left
+            # فِى alone on a caption. Away from a restart a word in a silence
+            # could belong to either side, so it is left where it was.
+            i += 1
         if i == len(aligned) - 1:
             # Inside or after the last word: nothing follows it to separate.
             # Leaving the last word out of the choice instead credited a
@@ -2915,6 +2963,11 @@ def _segment_the_timeline(
             continue
         bar = marked_bar if marked else unmarked_bar
         gap = aligned[i + 1].start - aligned[i].end
+        if not marked and gap >= waqf_pause and _read_out_ended_here(phrase_ends, script[i], pause_start, pause_end):
+            # Too short to stand alone, but the read-out ended a phrase on this
+            # same word and the words themselves were placed apart -- see
+            # `BORDERLINE_PAUSE_SEC`.
+            bar = borderline_bar
         held = gap <= MAX_NASAL_JOIN_SEC
         if _sustained_junction(aligned[i].text, aligned[i + 1].text) and not marked and held:
             # A ghunnah or a madd is held across this join, so quiet here is
@@ -3028,6 +3081,8 @@ class Grouping:
     ref_words: list[tuple[str, int, str]]
     quiet: list[tuple[float, float]]
     hush: list[tuple[float, float]]
+    #: Where the read-out ended a phrase -- see `decoded_phrase_ends`.
+    phrase_ends: list[tuple[float, int]] = field(default_factory=list)
 
 
 def prepare_grouping(
@@ -3036,6 +3091,7 @@ def prepare_grouping(
     script: list[int],
     repeated: list[bool],
     ref_words: list[tuple[str, int, str]],
+    phrase_ends: list[tuple[float, int]] | None = None,
 ) -> Grouping:
     """Measure this recording's pauses, at its own stop depth -- see `calibrated_drop`.
 
@@ -3045,7 +3101,7 @@ def prepare_grouping(
     drop = calibrated_drop(pcm, aligned, script=script)
     if drop < QUIET_DROP_DB:
         log.info("stops in this recording reach only %.1f dB down -- reading pauses at that depth", drop + STOP_LEVEL_MARGIN_DB)
-    return Grouping(pcm, aligned, script, repeated, ref_words, quiet_spans(pcm, drop=drop), hushes(pcm))
+    return Grouping(pcm, aligned, script, repeated, ref_words, quiet_spans(pcm, drop=drop), hushes(pcm), list(phrase_ends or ()))
 
 
 def group_recitation(grouping: Grouping, breaks: str = "normal") -> list[Segment]:
@@ -3059,9 +3115,32 @@ def group_recitation(grouping: Grouping, breaks: str = "normal") -> list[Segment
         grouping.repeated,
         grouping.hush,
         BREAK_SCALES[breaks],
+        grouping.phrase_ends,
     )
     segments = _extend_over_repeated_tail(segments, spans, grouping.ref_words, grouping.pcm)
     return _close_gaps(segments, duration, grouping.quiet)
+
+
+#: How well both phrases either side of a join must match the reference for the
+#: read-out's break there to count as evidence of a stop -- see
+#: `decoded_phrase_ends`.
+MIN_DECODE_BREAK_SCORE = float(os.getenv("ALIGN_MIN_DECODE_BREAK_SCORE", "0.8"))
+
+
+def decoded_phrase_ends(assignments: list[tuple[int, int, float, float, float]]) -> list[tuple[float, int]]:
+    """Where the read-out ended one well-matched phrase and began the next, as (time, last reference word).
+
+    The read-out cuts the recording at its quietest places and keeps a cut
+    only where the text on both sides reads better for it. That is a second,
+    independent judgement of where a phrase ends, from what was said rather
+    than how quiet it got, and it is what lets a short silence be told from a
+    breath (see `BORDERLINE_PAUSE_SEC`).
+    """
+    return [
+        (first[4], first[1])
+        for first, second in zip(assignments, assignments[1:])
+        if first[2] >= MIN_DECODE_BREAK_SCORE and second[2] >= MIN_DECODE_BREAK_SCORE
+    ]
 
 
 def _script_by_decode(
@@ -3071,9 +3150,17 @@ def _script_by_decode(
     emission,
     sec_per_frame: float,
     decoded_phrases: list[str] | None = None,
+    phrase_ends: list[tuple[float, int]] | None = None,
 ) -> tuple[list[int], list[bool]]:
-    """What was recited, by decoding each phrase and finding it in the reference: the script, and its repeats."""
+    """What was recited, by decoding each phrase and finding it in the reference: the script, and its repeats.
+
+    `phrase_ends`, when given, is filled with where the read-out ended one
+    phrase and began the next, as (time, last reference word) -- see
+    `decoded_phrase_ends`.
+    """
     assignments = assign_phrase_ranges_by_decode(pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame)
+    if phrase_ends is not None:
+        phrase_ends.extend(decoded_phrase_ends(assignments))
 
     # The script is every assigned range concatenated, so a restart appears as
     # the same reference words twice -- which is exactly what was recited, and
@@ -3159,8 +3246,10 @@ def align_recitation(
     # decoding each phrase otherwise.
     phoneme_reading = phoneme_reading or os.getenv("ALIGN_PHONEME_READING", "")
 
+    phrase_ends: list[tuple[float, int]] = []
+
     def by_decode() -> tuple[list[int], list[bool]]:
-        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases)
+        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases, phrase_ends)
 
     read = None
     if phoneme_reading:
@@ -3182,7 +3271,7 @@ def align_recitation(
 
         phoneme.retime_words(phoneme_timing, pcm, aligned)
 
-    grouping = prepare_grouping(pcm, aligned, script, repeated, ref_words)
+    grouping = prepare_grouping(pcm, aligned, script, repeated, ref_words, phrase_ends)
     segments = group_recitation(grouping, breaks)
 
     if decoded_phrases is None:

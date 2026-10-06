@@ -84,6 +84,55 @@ check(
     detail=f"got {ranges(segments)}",
 )
 
+# Fussilat 41:30 as the same clip has it: 0.24s of quiet after ٱسْتَقَـٰمُوا۟,
+# no stop mark, and the read-out ended its first phrase on that word.
+istaqamu = [
+    word("41:30", 4, "ٱللَّهُ", 3.83, 3.91),
+    word("41:30", 5, "ثُمَّ", 4.47, 5.18),
+    word("41:30", 6, "ٱسْتَقَـٰمُوا۟", 5.26, 6.30),
+    word("41:30", 7, "تَتَنَزَّلُ", 6.70, 7.82),
+    word("41:30", 8, "عَلَيْهِمُ", 7.89, 8.61),
+]
+short_stop = [(6.48, 6.72)]
+alone, _ = align._segment_the_timeline(istaqamu, [4, 5, 6, 7, 8], 9.0, pauses=short_stop)
+agreed, _ = align._segment_the_timeline(istaqamu, [4, 5, 6, 7, 8], 9.0, pauses=short_stop, phrase_ends=[(6.59, 6)])
+elsewhere, _ = align._segment_the_timeline(istaqamu, [4, 5, 6, 7, 8], 9.0, pauses=short_stop, phrase_ends=[(6.59, 7)])
+# The same, with the next word placed straight after: the read-out's cut and
+# the quiet alone do not make a stop the timing shows no sign of.
+close = istaqamu[:3] + [word("41:30", 7, "تَتَنَزَّلُ", 6.38, 7.82)] + istaqamu[4:]
+together, _ = align._segment_the_timeline(close, [4, 5, 6, 7, 8], 9.0, pauses=short_stop, phrase_ends=[(6.59, 6)])
+check(
+    "nor where the aligner placed the two words together",
+    ok=ranges(together) == [("41:30", 5, 9)],
+    detail=f"got {ranges(together)}",
+)
+check(
+    "a short unmarked stop breaks a caption only where the read-out ended a phrase on the same word",
+    ok=ranges(alone) == [("41:30", 5, 9)]
+    and ranges(agreed) == [("41:30", 5, 7), ("41:30", 8, 9)]
+    and ranges(elsewhere) == [("41:30", 5, 9)],
+    detail=f"alone {ranges(alone)}, agreed {ranges(agreed)}, other word {ranges(elsewhere)}",
+)
+
+# Fussilat 41:31: the aligner put فِى wholly inside the 0.28s before the
+# reciter went back to نَحْنُ, so the stop is after فِى, not before it.
+before_restart = [
+    word("41:31", 0, "نَحْنُ", 24.64, 25.20),
+    word("41:31", 1, "أَوْلِيَآؤُكُمْ", 25.20, 27.91),
+    word("41:31", 2, "فِى", 28.47, 28.71),
+    word("41:31", 0, "نَحْنُ", 28.71, 29.35),
+    word("41:31", 1, "أَوْلِيَآؤُكُمْ", 29.35, 31.50),
+]
+segments, _ = align._segment_the_timeline(
+    before_restart, [0, 1, 2, 0, 1], 32.0, pauses=[(28.46, 28.74)],
+    repeated=[False, False, False, True, True], bar_scale=align.BREAK_SCALES["more"],
+)
+check(
+    "a word placed inside a silence goes with the words before it",
+    ok=ranges(segments) == [("41:31", 1, 3), ("41:31", 1, 2)],
+    detail=f"got {ranges(segments)}",
+)
+
 tur = [
     word("52:1", 0, "وَٱلطُّورِ", 0.2, 1.2),
     word("52:2", 0, "وَكِتَـٰبٍۢ", 2.0, 2.8),

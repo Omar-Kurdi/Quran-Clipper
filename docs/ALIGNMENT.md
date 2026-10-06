@@ -225,6 +225,28 @@ below. A silence was matched to the word it began in, but the last word was neve
 candidate, so this one was credited to the word before it, and مَا ended a caption with the
 last word left alone.
 
+That still left Fussilat at 4 of 8, and the screen-break setting showed why no single bar
+works. At **More** it scored 7, as did test4 and test5, while test_this, the At-Tur clip,
+Al-Furqan and 038 lost captions to the same setting. Choosing the best setting per clip would
+have scored 260 of 273. So a short unmarked silence (0.20-0.34s, `ALIGN_BORDERLINE_PAUSE_SEC`)
+now ends a line only when three independent signals agree:
+- the room goes quiet there;
+- the phrase read-out, which cuts at dips and keeps a cut only where the text on both sides reads
+  better for it, ended a well-matched phrase on that same word (`decoded_phrase_ends`, both
+  phrases at 0.8 or better);
+- the aligner placed the two words at least the clip's stop gap apart.
+
+Each signal on its own misfires; the last one is what keeps ٱلطَّرْفِ | أَتْرَابٌ (0.08s apart) and
+حُسْنُ ٱلثَّوَابِ (0.24s) together.
+
+Before a restart, a word the aligner put wholly inside the silence goes with the words before
+it, because what follows the stop is the repeat. Fussilat's فِى lay inside the 0.28s before the
+return to نَحْنُ. Away from a restart the same rule would guess, so it is not applied there. An
+unrestricted version cost test_this three captions and test3 two.
+
+Together these took Fussilat to 8 of 8 and test5 to 31 of 31, 250 to 256 of 273, with no clip
+worse.
+
 Two further rules fall out of getting this wrong once each. Quiet lying wholly inside a word is
 that word's own stop consonant, not a break. And silence must actually *separate* two words —
 the run-out at the end of a recording is silence after the last word, not between anything, and
