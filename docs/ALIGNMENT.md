@@ -209,6 +209,22 @@ Where they don't reach the usual drop, the drop follows them down, to within
 the drop never goes below 6 dB. This happens inside the match, once the words are placed:
 nothing is run beforehand. It took that clip from 20 to 25 of 28 and changed no other clip.
 
+A short passage may not have three ayah ends. A restart is as certain a stop as an ayah end,
+since going back means having stopped, so where the ayah ends fall short the restarts make up
+the count. A YouTube recitation of Fussilat 41:30-31 has one ayah end and three restarts, each
+8.3-9.7 dB down. At the usual 10 dB the clip measured two silences in 45 seconds, and the
+return to وَأَبْشِرُوا۟ ran on in the previous caption. Restarts only make up a shortfall. Where
+the ayah ends suffice they decide alone, because folding in a long passage's restarts as well
+moved `Abdullah_Almusa.mp3`'s depth and cost it two captions. The change took that clip from
+2 to 4 of 8 and `test.mp3` from 9 to 11 of 11 (246 to 250 of 273 overall), and no clip got
+worse.
+
+A deeper reading also finds quiet that the usual drop never reached. One such spot is the held
+closure of the دّ in تَدَّعُونَ, the last word of that clip, and it exposed a gap in the rule
+below. A silence was matched to the word it began in, but the last word was never a
+candidate, so this one was credited to the word before it, and مَا ended a caption with the
+last word left alone.
+
 Two further rules fall out of getting this wrong once each. Quiet lying wholly inside a word is
 that word's own stop consonant, not a break. And silence must actually *separate* two words —
 the run-out at the end of a recording is silence after the last word, not between anything, and

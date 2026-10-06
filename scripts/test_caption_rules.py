@@ -70,6 +70,20 @@ check(
     detail=f"got {ranges(segments)}",
 )
 
+# Fussilat 41:31's last words as the new ground-truth clip has them: the held
+# closure of the دّ in تَدَّعُونَ reads as 0.36s of quiet, 0.08s into the word.
+fussilat = [
+    word("41:31", 13, "فِيهَا", 41.71, 42.27),
+    word("41:31", 14, "مَا", 42.51, 42.59),
+    word("41:31", 15, "تَدَّعُونَ", 42.98, 44.98),
+]
+segments, _ = align._segment_the_timeline(fussilat, [13, 14, 15], 45.0, pauses=[(43.06, 43.42)])
+check(
+    "a silence inside the last word does not cut the caption before it",
+    ok=ranges(segments) == [("41:31", 14, 16)],
+    detail=f"got {ranges(segments)}",
+)
+
 tur = [
     word("52:1", 0, "وَٱلطُّورِ", 0.2, 1.2),
     word("52:2", 0, "وَكِتَـٰبٍۢ", 2.0, 2.8),
@@ -186,6 +200,20 @@ pcm, words = recitation(-8.4, ayahs=2)
 check(
     "two ayah ends are too few to judge a room by",
     ok=align.calibrated_drop(pcm, words) == align.QUIET_DROP_DB,
+)
+# One ayah end is too few on its own, but the reciter went back twice: each
+# return is a stop as certain as an ayah end, and three are enough to read the
+# room by. Each ayah is said twice, with the same 8.4 dB stop after every one.
+pcm, _ = recitation(-8.4, ayahs=4)
+went_back = [
+    word("1:1", 0, "كَلِمَة", 0.0, 2.0), word("1:1", 0, "كَلِمَة", 2.6, 4.6),
+    word("1:2", 0, "كَلِمَة", 5.2, 7.2), word("1:2", 0, "كَلِمَة", 7.8, 9.8),
+]
+check(
+    "a restart counts as a stop to read the room by, as an ayah end does",
+    ok=7.0 < align.calibrated_drop(pcm, went_back, script=[0, 0, 1, 1]) < align.QUIET_DROP_DB
+    and align.calibrated_drop(pcm, went_back) == align.QUIET_DROP_DB,
+    detail=f"drop {align.calibrated_drop(pcm, went_back, script=[0, 0, 1, 1]):.1f} dB with the restarts",
 )
 
 # Fewer / More re-cut a match the sidecar still holds, through the one grouping

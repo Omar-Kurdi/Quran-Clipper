@@ -2354,8 +2354,9 @@ QUIET_DROP_DB = float(os.getenv("ALIGN_QUIET_DROP_DB", "10"))
 #: instead (to 8 or 9 dB) helped this one and broke stops in three others.
 STOP_LEVEL_MARGIN_DB = float(os.getenv("ALIGN_STOP_LEVEL_MARGIN_DB", "0.5"))
 
-#: The fewest ayah ends a clip's stop level is read from. Fewer, and one odd
-#: join -- a reciter running straight on into the next ayah -- would set it.
+#: The fewest stops -- ayah ends and restarts -- a clip's stop level is read
+#: from. Fewer, and one odd join -- a reciter running straight on into the
+#: next ayah -- would set it.
 MIN_CALIBRATION_STOPS = 3
 
 #: However shallow a clip's stops, a pause still has to be this far under its
@@ -2563,13 +2564,39 @@ def quiet_spans(pcm: np.ndarray, window_sec: float = 0.02, drop: float = QUIET_D
     return [(a, b) for a, b in merged if b - a >= MIN_PAUSE_SEC]
 
 
-def calibrated_drop(pcm: np.ndarray, aligned: list[AlignedWord], window_sec: float = 0.02) -> float:
+def _known_stops(aligned: list[AlignedWord], script: list[int] | None):
+    """Each join the reciter certainly stopped at: every ayah end, and with `script` every restart."""
+    for i, (word, nxt) in enumerate(zip(aligned, aligned[1:])):
+        went_back = script is not None and i + 1 < len(script) and script[i + 1] <= script[i]
+        if word.verse_key != nxt.verse_key or went_back:
+            yield word, nxt
+
+
+def _stop_level(db: np.ndarray, word: AlignedWord, nxt: AlignedWord, window_sec: float, quietest: int) -> float | None:
+    """The level the quietest stretch of a known stop between two words stays under, or None if too short to read."""
+    lo = max(0, int((word.end - 0.3) / window_sec))
+    hi = max(int((nxt.start + 0.1) / window_sec), lo + quietest + 5)
+    stop = np.sort(db[lo:hi])
+    return float(stop[quietest - 1]) if len(stop) >= quietest else None
+
+
+def calibrated_drop(
+    pcm: np.ndarray, aligned: list[AlignedWord], window_sec: float = 0.02, script: list[int] | None = None
+) -> float:
     """How far under this clip's speech level its own stops fall -- see `STOP_LEVEL_MARGIN_DB`.
 
-    Read at the ayah ends, from shortly before the last word is placed to end
-    until just after the next begins, since the aligner often stretches a word
-    over the silence that follows it. A stop's level is the one its quietest
-    0.2s stays under, which is the shortest pause `quiet_spans` keeps.
+    Read at the ayah ends, and with `script` at the restarts too, from shortly
+    before the last word is placed to end until just after the next begins,
+    since the aligner often stretches a word over the silence that follows it.
+    A stop's level is the one its quietest 0.2s stays under, which is the
+    shortest pause `quiet_spans` keeps.
+
+    A restart is as certain a stop as an ayah end -- going back means having
+    stopped -- and a short passage may have too few ayah ends to judge by, so
+    there the restarts make up the count. On
+    Fussilat 41:30-31 there is one, so the clip kept the usual 10 dB its
+    reverberant room never reaches, and the reciter's three returns, each a
+    stop 8.3-9.7 dB down, told it nothing.
     """
     hop = max(1, int(window_sec * SAMPLE_RATE))
     frames = np.array(
@@ -2580,15 +2607,17 @@ def calibrated_drop(pcm: np.ndarray, aligned: list[AlignedWord], window_sec: flo
     db = 20 * np.log10(frames + 1e-12)
     speech = float(np.percentile(db, 70))
     quietest = int(round(MIN_PAUSE_SEC / window_sec))
-    levels = []
-    for word, nxt in zip(aligned, aligned[1:]):
-        if word.verse_key == nxt.verse_key:
-            continue
-        lo = max(0, int((word.end - 0.3) / window_sec))
-        hi = max(int((nxt.start + 0.1) / window_sec), lo + quietest + 5)
-        stop = np.sort(db[lo:hi])
-        if len(stop) >= quietest:
-            levels.append(float(stop[quietest - 1]) - speech)
+    ayah_ends: list[float] = []
+    restarts: list[float] = []
+    for word, nxt in _known_stops(aligned, script):
+        level = _stop_level(db, word, nxt, window_sec, quietest)
+        if level is not None:
+            (ayah_ends if word.verse_key != nxt.verse_key else restarts).append(level - speech)
+    # The restarts only make up a shortfall. Where the ayah ends are enough on
+    # their own they decide, as they always have: folding a long passage's
+    # restarts in as well moved Abdullah_Almusa.mp3's depth and cost it two
+    # captions it had right.
+    levels = ayah_ends if len(ayah_ends) >= MIN_CALIBRATION_STOPS else ayah_ends + restarts
     if len(levels) < MIN_CALIBRATION_STOPS:
         return QUIET_DROP_DB
     reached = -float(np.median(levels)) - STOP_LEVEL_MARGIN_DB
@@ -2848,10 +2877,17 @@ def _segment_the_timeline(
         # The word the reciter had reached when the silence began. Chosen by
         # where each word *started*, so a word stretched over the silence is
         # still the one the pause follows.
-        begun = [i for i, word in enumerate(aligned[:-1]) if word.start <= pause_start]
+        begun = [i for i, word in enumerate(aligned) if word.start <= pause_start]
         if not begun:
             continue
         i = max(begun)
+        if i == len(aligned) - 1:
+            # Inside or after the last word: nothing follows it to separate.
+            # Leaving the last word out of the choice instead credited a
+            # silence inside it to the word before -- the held closure of the
+            # دّ in تَدَّعُونَ, 0.08s after the word began, put مَا at the end
+            # of a caption and the last word alone in the next.
+            continue
         marked = _stop_licence(aligned[i].text) in ("allowed", "always", "paired")
         # At a mark, the word's dropped final vowel may be what the aligner
         # laid past the silence -- see `MAX_WAQF_VOWEL_INSET`.
@@ -3006,7 +3042,7 @@ def prepare_grouping(
     Asked once the words are placed, because the ayah ends are where this
     clip's stops are known to be.
     """
-    drop = calibrated_drop(pcm, aligned)
+    drop = calibrated_drop(pcm, aligned, script=script)
     if drop < QUIET_DROP_DB:
         log.info("stops in this recording reach only %.1f dB down -- reading pauses at that depth", drop + STOP_LEVEL_MARGIN_DB)
     return Grouping(pcm, aligned, script, repeated, ref_words, quiet_spans(pcm, drop=drop), hushes(pcm))
