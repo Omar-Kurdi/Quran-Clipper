@@ -331,8 +331,7 @@ export const ar: Dictionary = {
     needUpload: 'اختر تسجيلًا قبل مطابقته.',
     queued: (position: number, wait: string | null) =>
       `في الانتظار، رقم ${position}${wait ? ` -- نحو ${wait}` : ''}. تُطابَق تسجيلات آخرين قبلك.`,
-    aligning:
-      'جارٍ محاذاة نطاق الآيات المحدد على تسجيلك (التشغيل الأول يحمّل النموذج — وقد يستغرق وقتًا أطول)...',
+    aligning: 'جارٍ توقيت المقاطع على التلاوة…',
     timingPublished: 'جارٍ توقيت المقطع من توقيتات القارئ المنشورة لكل كلمة...',
     sendingToGemini: 'جارٍ إرسال الصوت إلى Gemini للتحليل...',
     notConfigured: 'أداة المطابقة غير مهيّأة. وقّت هذا التسجيل يدويًا بدلًا من ذلك.',
@@ -699,7 +698,8 @@ export const ar: Dictionary = {
       crossfade: 'تلاشٍ متداخل',
       fadeThrough: 'تلاشٍ متتابع',
       slide: 'انزلاق للأعلى',
-      zoom: 'تكبير'
+      zoom: 'تكبير',
+      focus: 'تركيز ناعم'
     },
     motionSpeedLabel: 'السرعة:',
     motionSpeeds: {

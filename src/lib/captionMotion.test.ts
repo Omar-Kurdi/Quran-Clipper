@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  captionLayers, transitionWindow, leadingLayer, revealedWords, recitedWord,
+  captionLayers, parkedOnCaption, transitionWindow, leadingLayer, revealedWords, recitedWord,
   asCaptionTransition, TRANSITION_SECONDS, WORD_FADE_SECONDS, type CaptionMotion
 } from './captionMotion';
 
@@ -15,7 +15,7 @@ describe('captionLayers at rest', () => {
     for (const time of [0, 0.5, 3.99, 4.7, 5, 7.99, 8, 20]) {
       const layers = captionLayers(captions, time, motion('cut'), 'show');
       const expected = [...captions].reverse().find(c => time >= c.startTime) ?? captions[0];
-      expect(layers).toEqual([{ verse: expected, opacity: 1, translationOpacity: 1, dy: 0, scale: 1 }]);
+      expect(layers).toEqual([{ verse: expected, opacity: 1, translationOpacity: 1, dy: 0, scale: 1, blur: 0 }]);
     }
   });
 
@@ -38,7 +38,7 @@ describe('captionLayers between two ayahs', () => {
     expect(middle[1].opacity).toBeCloseTo(0.5, 5);
     // From the next caption's start: that caption alone, fully in.
     expect(captionLayers(captions, 5, motion('crossfade'), 'show')).toEqual([
-      { verse: captions[1], opacity: 1, translationOpacity: 1, dy: 0, scale: 1 },
+      { verse: captions[1], opacity: 1, translationOpacity: 1, dy: 0, scale: 1, blur: 0 },
     ]);
   });
 
@@ -159,5 +159,32 @@ describe('recitedWord', () => {
     expect(recitedWord([1, 2, 3], 4, 2.5)).toBe(1);
     expect(recitedWord([1, undefined, 3], 4, 3.5)).toBe(2);
     expect(recitedWord([1, 2, 3], 4, 4)).toBe(-1);
+  });
+});
+
+describe('captionLayers in soft focus', () => {
+  it('blurs an ayah out of focus and brings the next into focus, sharp once each is fully shown', () => {
+    const d = TRANSITION_SECONDS.normal;
+    const early = captionLayers(captions, 5 - d * 0.8, motion('focus'), 'show');
+    const late = captionLayers(captions, 5 - d * 0.2, motion('focus'), 'show');
+    const outgoing = early.find(l => l.verse === captions[0])!;
+    const incoming = late.find(l => l.verse === captions[1])!;
+    expect(outgoing.blur).toBeGreaterThan(0);
+    expect(incoming.blur).toBeGreaterThan(0);
+    expect(outgoing.dy).toBe(0);
+    expect(outgoing.scale).toBe(1);
+    expect(captionLayers(captions, 2, motion('focus'), 'show')[0].blur).toBe(0);
+    expect(captionLayers(captions, 6, motion('focus'), 'show')[0].blur).toBe(0);
+    expect(captionLayers(captions, 5 - d * 0.8, motion('slide'), 'show').every(l => l.blur === 0)).toBe(true);
+  });
+});
+
+describe('parkedOnCaption', () => {
+  it('is true only on a caption\'s first moment, where selecting one puts the playhead', () => {
+    expect(parkedOnCaption(captions, 5)).toBe(true);
+    expect(parkedOnCaption(captions, 0.5)).toBe(true);
+    expect(parkedOnCaption(captions, 5.2)).toBe(false);
+    expect(parkedOnCaption(captions, 4.8)).toBe(false);
+    expect(parkedOnCaption([], 5)).toBe(false);
   });
 });

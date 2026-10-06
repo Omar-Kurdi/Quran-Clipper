@@ -241,6 +241,10 @@ export default function VideoCreatorPage() {
   // Whatever was picked before, a public studio matches locally: it offers
   // only that engine, and its route refuses the others.
   const matchProvider = studio.mode === 'public' ? 'align' : chosenProvider;
+  // A public visitor is making a video, not testing the timing engines: where
+  // the timings came from and the other ways of getting them are for the
+  // person running the studio.
+  const isPublic = studio.mode === 'public';
   /** Built-in reciters with a QUL timing export on this machine. */
   const [qulTimedReciters, setQulTimedReciters] = useState<string[]>([]);
   const [providerStatus, setProviderStatus] = useState<{
@@ -1016,6 +1020,10 @@ export default function VideoCreatorPage() {
     accept?: (verses: VerseData[]) => string | null
   ) => {
     setIsMatching(true);
+    // A built-in reciter's passage keeps its loaded timings when this fails,
+    // and its summary already says whether those are estimates and offers to
+    // align again, so a public visitor is not shown the server's reason too.
+    const quietFailure = isPublic && source.kind === 'url';
     setMatchStatus({
       text: matchProvider === 'gemini' ? t.match.sendingToGemini
         : source.kind === 'url' && source.skipAligner ? t.match.timingPublished : t.match.aligning,
@@ -1075,14 +1083,15 @@ export default function VideoCreatorPage() {
         // An upstream reason is passed through as it came: it names a key, a
         // status code or a service, and translating it would make it
         // unsearchable.
-        setMatchStatus({ text: data?.error || t.match.notConfigured, tone: 'error' });
+        setMatchStatus(quietFailure ? null : { text: data?.error || t.match.notConfigured, tone: 'error' });
         setIsMatching(false);
         return;
       }
 
+      // An empty reason vetoes the result without a word: what was there stays.
       const rejection = accept?.(data.verses || []);
-      if (rejection) {
-        setMatchStatus({ text: rejection, tone: 'error' });
+      if (rejection != null) {
+        setMatchStatus(rejection ? { text: rejection, tone: 'error' } : null);
         setIsMatching(false);
         return;
       }
@@ -1111,7 +1120,8 @@ export default function VideoCreatorPage() {
       // README.md). So when the range wasn't the user's own choice, ask them to
       // check it explicitly rather than implying the match verified itself.
       const confirmRange = data.provider === 'align' || data.provider === 'qul' || isPhonemeProvider(data.provider);
-      setMatchStatus({
+      if (isPublic && data.timedFrom) setMatchStatus(null);
+      else setMatchStatus({
         text: data.timedFrom
           ? t.match.publishedTimed(
               (data.verses || []).length,
@@ -1125,7 +1135,7 @@ export default function VideoCreatorPage() {
       });
       setIsMatching(false);
     } catch {
-      setMatchStatus({ text: t.match.failed, tone: 'error' });
+      setMatchStatus(quietFailure ? null : { text: t.match.failed, tone: 'error' });
       setIsMatching(false);
     }
   };
@@ -1243,7 +1253,7 @@ export default function VideoCreatorPage() {
     const health = await fetch('/api/health', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
     const alignerUp = health?.aligner?.state === 'up' && health.aligner.ready !== false;
     if (!alignerUp && !timed) {
-      setMatchStatus({ text: t.match.noAlignerOnLoad, tone: 'error' });
+      setMatchStatus(isPublic ? null : { text: t.match.noAlignerOnLoad, tone: 'error' });
       return;
     }
     await runAutoMatch({ kind: 'url', url, start, end }, aligned => {
@@ -1255,9 +1265,8 @@ export default function VideoCreatorPage() {
       const asked = new Set(loaded.map(v => v.verseKey));
       const got = new Set(aligned.map(v => v.verseKey));
       const missing = [...asked].filter(key => !got.has(key));
-      return missing.length
-        ? t.match.alignLostAyahs(missing.length, missing.slice(0, 4).join(', '))
-        : null;
+      if (!missing.length) return null;
+      return isPublic ? '' : t.match.alignLostAyahs(missing.length, missing.slice(0, 4).join(', '));
     });
   };
 
@@ -2777,7 +2786,7 @@ export default function VideoCreatorPage() {
                         />
                       )}
                       {matchStatusBlock}
-                {hasClip && loadResult && (
+                {hasClip && loadResult && !(isPublic && loadResult.ok && !loadResult.againstUpload && loadResult.timingSource === 'measured') && (
                   <div
                     role="status"
                     className={`mt-2 rounded-lg border p-2.5 text-xs ${
@@ -2814,16 +2823,17 @@ export default function VideoCreatorPage() {
                         reciter's own recording gives the phrase-level
                         boundaries an uploaded file gets. */}
                     {loadResult.ok && !loadResult.againstUpload && (
-                      <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div className={`mt-2 grid gap-2 ${isPublic ? 'grid-cols-1' : 'grid-cols-2'}`}>
                         <button
                           onClick={handleAutoMatchReciter}
                           disabled={isMatching}
                           title={t.match.alignReciterTitle}
                           className="py-2 px-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
                         >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>{isMatching ? t.match.aligning : t.match.alignReciter}</span>
+                          {isMatching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                          <span>{t.match.alignReciter}</span>
                         </button>
+                        {!isPublic && (<>
                         {/* The third way to time a recitation, and the only one
                             that is not inference. Offered only where it exists:
                             three of the built-in reciters have no quran.com id
@@ -2856,6 +2866,7 @@ export default function VideoCreatorPage() {
                           <Library className="w-3.5 h-3.5 text-amber-400" />
                           <span>{t.match.qulSegments}</span>
                         </button>
+                        </>)}
                       </div>
                     )}
                   </div>

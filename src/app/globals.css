@@ -299,6 +299,30 @@
   font-display: swap;
 }
 
+/* An icon beside a label keeps its size. As a flex item it would otherwise
+   shrink when the label wraps -- on a phone a long label squeezed the icon
+   to a dot at the button's edge. */
+@layer base {
+  button svg, a svg, summary svg, label svg {
+    flex-shrink: 0;
+  }
+}
+
+/* On a touch screen every button is at least 44px across (the interaction
+   floor below), so a small icon-only button grows around its icon -- and one
+   that was not a centred flex box left the icon at its start edge. In the
+   base layer, so a button's own display classes (`hidden`, `sm:inline-flex`)
+   still win. */
+@media (pointer: coarse) {
+  @layer base {
+    button:has(> svg:only-child) {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+}
+
 @layer utilities {
   .font-display {
     font-family: var(--font-display);

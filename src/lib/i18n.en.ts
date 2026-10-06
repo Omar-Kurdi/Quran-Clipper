@@ -335,8 +335,7 @@ export const en = {
     needUpload: 'Choose a recording before matching it.',
     queued: (position: number, wait: string | null) =>
       `In the queue, number ${position}${wait ? ` -- about ${wait}` : ''}. Other people are matching first.`,
-    aligning:
-      'Force-aligning the selected ayah range against your audio (first run loads the model — may take longer)...',
+    aligning: 'Timing the captions to the recitation…',
     timingPublished: 'Timing the passage from the reciter\u2019s published word timings...',
     sendingToGemini: 'Sending audio to Gemini for analysis...',
     notConfigured: 'The matcher is not configured. Time this recording by hand instead.',
@@ -715,7 +714,8 @@ export const en = {
       crossfade: 'Cross-fade',
       fadeThrough: 'Fade through',
       slide: 'Slide up',
-      zoom: 'Zoom'
+      zoom: 'Zoom',
+      focus: 'Soft focus'
     },
     motionSpeedLabel: 'Speed:',
     motionSpeeds: {

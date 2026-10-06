@@ -13,7 +13,7 @@
  * fully drawn: exactly what every project drew before this existed.
  */
 
-export const CAPTION_TRANSITIONS = ['cut', 'crossfade', 'fadeThrough', 'slide', 'zoom'] as const;
+export const CAPTION_TRANSITIONS = ['cut', 'crossfade', 'fadeThrough', 'slide', 'zoom', 'focus'] as const;
 export type CaptionTransition = typeof CAPTION_TRANSITIONS[number];
 
 export const WORD_EFFECTS = ['none', 'reveal', 'highlight'] as const;
@@ -59,6 +59,8 @@ const SLIDE_DISTANCE = 0.03;
 /** How small a zooming caption starts, and how large an outgoing one ends. */
 const ZOOM_IN_FROM = 0.94;
 const ZOOM_OUT_TO = 1.04;
+/** How soft a caption is at the far end of a focus change, as a share of the frame's height. */
+const FOCUS_BLUR = 0.008;
 /** How far behind the Arabic the incoming translation starts, as a share of its arrival. */
 const TRANSLATION_LAG = 0.3;
 
@@ -81,13 +83,15 @@ export interface CaptionLayer<V extends Timed> {
   dy: number;
   /** Size about the text's own centre; 1 is as laid out. */
   scale: number;
+  /** How out of focus, as a blur radius in shares of the frame's height; 0 is sharp. */
+  blur: number;
 }
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 const easeInOut = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
 
 const still = <V extends Timed>(verse: V): CaptionLayer<V> =>
-  ({ verse, opacity: 1, translationOpacity: 1, dy: 0, scale: 1 });
+  ({ verse, opacity: 1, translationOpacity: 1, dy: 0, scale: 1, blur: 0 });
 
 /**
  * When the change from `from` to `to` runs, as [start, end) in seconds.
@@ -129,6 +133,7 @@ function between<V extends Timed>(
       translationOpacity: opacity,
       dy: transition === 'slide' ? -SLIDE_DISTANCE * outgoing : 0,
       scale: transition === 'zoom' ? 1 + (ZOOM_OUT_TO - 1) * outgoing : 1,
+      blur: transition === 'focus' ? FOCUS_BLUR * outgoing : 0,
     });
   }
   layers.push({
@@ -137,6 +142,7 @@ function between<V extends Timed>(
     translationOpacity: clamp01((incoming - TRANSLATION_LAG) / (1 - TRANSLATION_LAG)),
     dy: transition === 'slide' ? SLIDE_DISTANCE * (1 - incoming) : 0,
     scale: transition === 'zoom' ? ZOOM_IN_FROM + (1 - ZOOM_IN_FROM) * incoming : 1,
+    blur: transition === 'focus' ? FOCUS_BLUR * (1 - incoming) : 0,
   });
   return layers;
 }
@@ -173,6 +179,20 @@ export function captionLayers<V extends Timed>(
 
   if (current >= 0) return [still(sorted[current])];
   return beforeFirst === 'show' ? [still(sorted[0])] : [];
+}
+
+/**
+ * Whether a paused preview is parked on a caption's first moment -- where
+ * selecting a caption, or stepping to the next or previous, puts the playhead.
+ *
+ * That moment usually falls inside the change into the caption, so the card
+ * showed it half-arrived, or blank at the empty middle of a fade through,
+ * exactly when someone asked to look at it. The preview draws it at rest
+ * there instead; the change still plays when the clip does. Every other
+ * paused moment is drawn as the export draws it.
+ */
+export function parkedOnCaption(sorted: readonly Timed[], time: number): boolean {
+  return sorted.some(caption => Math.abs(caption.startTime - time) < 0.001);
 }
 
 /** The layer that speaks for the frame -- the badge follows it: the incoming one once it is the more visible. */

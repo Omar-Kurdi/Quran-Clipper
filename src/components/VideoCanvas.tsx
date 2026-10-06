@@ -20,7 +20,7 @@ import { frameLayout, blockTop, textFits, splitFits } from '@/lib/frameLayout';
 import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { fillArabicLine } from '@/lib/waqfMarks';
 import {
-  captionLayers, leadingLayer, revealedWords, recitedWord, asCaptionTransition, asWordEffect, asMotionSpeed,
+  captionLayers, parkedOnCaption, leadingLayer, revealedWords, recitedWord, asCaptionTransition, asWordEffect, asMotionSpeed,
   type CaptionLayer, type CaptionMotion
 } from '@/lib/captionMotion';
 import { drawnWordTimes, fillLineByWord } from '@/lib/arabicWords';
@@ -827,6 +827,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       time: number;
       /** The captions to show, bottom up, already resolved for that moment by `captionLayers`. */
       captions: CaptionLayer<VerseData>[];
+      /** The preview is parked on a caption (`parkedOnCaption`): every word shown, as at rest. */
+      whole?: boolean;
       /** Frequency magnitudes for the bars, or null to leave them out. */
       spectrum: Uint8Array | null;
       /** Background to paint under it, already positioned for this frame. */
@@ -1023,6 +1025,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.scale(layer.scale, layer.scale);
         ctx.translate(-width / 2, -centreY);
         ctx.globalAlpha = layer.opacity;
+        // A soft-focus change. A browser without the 2D filter (older Safari)
+        // ignores it and draws the same change as a fade through.
+        if (layer.blur > 0) ctx.filter = `blur(${layer.blur * height}px)`;
         // One block per chosen translation, in the order they were chosen. A
         // language whose text has not arrived yet is absent rather than blank,
         // so the card never reserves space for nothing.
@@ -1189,7 +1194,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // Each drawn word's recited time, when a word effect is on and the
         // drawing lines up with the word list; otherwise the lines are drawn
         // whole, as with no effect.
-        const wordTimes = motion.words === 'none'
+        const wordTimes = motion.words === 'none' || frame.whole
           ? null : drawnWordTimes(activeVerse.words, layout.arabicLines.map(line => line.text));
         const allTimes = wordTimes?.flat() ?? [];
         // The highlight is the reveal with the words to come left faint
@@ -1333,9 +1338,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       // position the studio holds, which is where a scrub left it.
       const time = isPlaying && playhead ? playhead() : currentTime;
       if (!syncBackgroundVideo) keepInsideLoop(bgMediaRef.current);
+      const parked = !isPlaying && parkedOnCaption(sortedVerses, time);
       paintFrame(ctx, {
         time,
-        captions: captionLayers(sortedVerses, time, motion, 'show'),
+        captions: captionLayers(sortedVerses, time, parked ? { ...motion, transition: 'cut' } : motion, 'show'),
+        whole: parked,
         spectrum: audioAnalyser ? spectrum : null,
         media: bgMediaRef.current,
       });
