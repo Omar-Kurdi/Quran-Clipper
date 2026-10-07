@@ -173,6 +173,15 @@ print("\nopenings -- an isti'adha or basmala heard before the passage")
 check("found inside whatever else was said", ok=phoneme_reading.best_match([1, 2, 3], [9, 1, 2, 3, 9])[:1] == (0,))
 check("a symbol misheard costs one", ok=phoneme_reading.best_match([1, 2, 3], [9, 1, 7, 3, 9])[0] == 1)
 check("nothing like it is far off", ok=phoneme_reading.best_match([1, 2, 3], [5, 5, 5])[0] == 3)
+# Al-Falaq: the basmala's بِ heard as ءِ began the basmala on its س, and the بِ stayed on the isti'adha.
+reading = ([4, 4, 9, 2, 3], [10, 12, 20, 25, 30])
+distance, first, last = phoneme_reading.best_match([1, 2, 3], reading[0])
+onset = phoneme_reading._onset([1, 2, 3], reading, first, last, distance)
+check("a first sound heard wrong is still the opening's", ok=onset[0] == 2, detail=f"got {onset}")
+check("its card comes up in the pause before it, not as it is said",
+      ok=12 * phoneme.FRAME_SEC < onset[1] < 20 * phoneme.FRAME_SEC, detail=f"got {onset}")
+check("a sound before an opening heard right is not taken in",
+      ok=phoneme_reading._onset([1, 2, 3], ([4, 9, 1, 2, 3], [0, 5, 10, 15, 20]), 2, 5, 0)[0] == 2)
 
 print("\nlab -- the stages the dev-only lab hands to a phoneme model")
 

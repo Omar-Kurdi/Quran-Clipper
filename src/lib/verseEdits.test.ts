@@ -643,6 +643,11 @@ describe('the Arabic is not editable', () => {
     expect([next[0].startTime, next[0].endTime]).toEqual([0, 5]);
   });
 
+  it("leaves an isti'adha or basmala as it is, since neither has an ayah number", () => {
+    const verses = [{ ...timeline()[0], verseKey: 'basmala', verseNumber: 0 }];
+    expect(setVerseNumber(verses, 0, 5)).toBe(verses);
+  });
+
   it('changes nothing when the ayah number is the one already there', () => {
     const verses = timeline();
     expect(setVerseNumber(verses, 0, 21)).toBe(verses);

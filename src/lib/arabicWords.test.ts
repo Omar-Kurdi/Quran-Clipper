@@ -13,6 +13,16 @@ describe('drawnWordTimes', () => {
     expect(drawnWordTimes(words, ['بِسْمِ ٱللَّهِ', 'ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ'])).toEqual([[1, 1.6], [2.4, 3.5]]);
   });
 
+  it("gives a hizb mark drawn before its word that word's time", () => {
+    // 57:16 opens on `۞ أَلَمْ`, one entry drawn as two pieces (QPC glyphs `ﲠ ﲡ`).
+    const words = [
+      { arabic: '۞ أَلَمْ', timestamp: 0.08 },
+      { arabic: 'يَأْنِ', timestamp: 0.65 },
+    ];
+    expect(drawnWordTimes(words, ['ﲠ ﲡ ﲢ'])).toEqual([[0.08, 0.08, 0.65]]);
+    expect(drawnWordTimes(words, ['۞ أَلَمْ يَأْنِ'])).toEqual([[0.08, 0.08, 0.65]]);
+  });
+
   it('counts a waqf sign joined to its word as part of that word', () => {
     // `wrapCaption` draws the sign with no space before it, so two entries of
     // the word list are one drawn word.

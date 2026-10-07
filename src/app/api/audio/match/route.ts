@@ -6,6 +6,7 @@ import { runForcedAlignMatch, screenBreaksFrom } from '@/lib/forcedAligner';
 import {
   fetchVersesByDetectedSegments,
   enforceTimelineOrder,
+  reachClipEnds,
   getPrimaryTimelineSummary,
   estimateDurationFromSegments
 } from '@/lib/matchTimeline';
@@ -145,6 +146,16 @@ async function withOpenings(result: MatchResult, passage: VerseData[]): Promise<
   return [...openingVerses(result.openings, passage[0]?.startTime ?? 0, basmala?.words), ...passage];
 }
 
+/**
+ * The passage with what was said before it, reaching the clip's start and end
+ * when the clip is the upload itself. A reciter's window is padded into the
+ * ayahs either side, and the passage's cards must not cover those.
+ */
+async function onScreen(result: MatchResult, passage: VerseData[], wholeClip: boolean, audioDuration: number): Promise<VerseData[]> {
+  const timeline = await withOpenings(result, passage);
+  return wholeClip ? reachClipEnds(timeline, 0, audioDuration) : timeline;
+}
+
 /** The provider's own confidence where it gave one, otherwise the timeline's average. */
 function matchConfidence(result: MatchResult, timeline: { matchConfidence?: number }[]): number {
   if (typeof result.confidence === 'number') return Math.max(0, Math.min(1, result.confidence));
@@ -159,7 +170,7 @@ function matchConfidence(result: MatchResult, timeline: { matchConfidence?: numb
  */
 export async function timelineBody(
   result: MatchResult,
-  params: { provider: string; selectedSurah: number; windowStart: number; clientDuration: number }
+  params: { provider: string; selectedSurah: number; windowStart: number; clientDuration: number; wholeClip: boolean }
 ): Promise<{ error: string; status: number } | { confidence: number; body: Record<string, unknown> }> {
   const { provider, selectedSurah } = params;
   const segments = result.segments;
@@ -168,7 +179,7 @@ export async function timelineBody(
     return { status: 422, error: `${providerLabel} did not return any detected ayah segments. Try a clearer/shorter audio clip or use manual matching.` };
   }
   const { audioDuration, rawTimeline, timeline: passage } = await timelineOf(result, params);
-  const timeline = await withOpenings(result, passage);
+  const timeline = await onScreen(result, passage, params.wholeClip, audioDuration);
 
   // `enforceTimelineOrder` drops segments that start past the end of the
   // audio. If that emptied a timeline that had rows going in, the duration is
@@ -411,7 +422,8 @@ export async function POST(req: NextRequest) {
       provider,
       selectedSurah,
       windowStart: hasWindow ? windowStart : 0,
-      clientDuration: Number(formData.get('audioDuration') || 0)
+      clientDuration: Number(formData.get('audioDuration') || 0),
+      wholeClip: !hasWindow
     });
     if ('error' in built) {
       return NextResponse.json({ success: false, provider, error: built.error }, { status: built.status });

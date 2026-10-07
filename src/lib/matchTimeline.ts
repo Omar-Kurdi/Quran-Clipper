@@ -247,3 +247,22 @@ export function enforceTimelineOrder(verses: VerseData[], audioDuration: number)
   }
   return sorted;
 }
+
+/**
+ * Stretches the first caption back to where the clip starts and the last to
+ * where it ends.
+ *
+ * The aligner starts a caption on its first word and ends it on its last, so
+ * the breath before the reciter begins and the tail of the final madd had no
+ * caption: Al-Falaq's opened 0.56s in and its last ayah ended 1s before the
+ * audio did, and the export drew an empty card at both ends.
+ */
+export function reachClipEnds(verses: VerseData[], clipStart: number, clipEnd: number): VerseData[] {
+  if (verses.length === 0) return verses;
+  const out = [...verses];
+  const first = out[0];
+  if (first.startTime > clipStart) out[0] = { ...first, startTime: clipStart };
+  const last = out[out.length - 1];
+  if (Number.isFinite(clipEnd) && last.endTime < clipEnd) out[out.length - 1] = { ...last, endTime: clipEnd };
+  return out;
+}

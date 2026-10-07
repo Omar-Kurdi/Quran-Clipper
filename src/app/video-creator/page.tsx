@@ -1103,7 +1103,8 @@ export default function VideoCreatorPage() {
         surah: data.surahNumber ?? selectedSurah,
         start: data.ayahStart ?? ayahStart,
         end: data.ayahEnd ?? ayahEnd,
-        audioDuration: data.audioDuration ?? audioDuration
+        audioDuration: data.audioDuration ?? audioDuration,
+        wholeClip: source.kind === 'file'
       });
       const providerLabel =
         data.provider === 'qul' ? 'Forced alignment + QUL'

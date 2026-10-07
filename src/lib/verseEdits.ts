@@ -10,6 +10,7 @@
  */
 
 import { VerseData, VerseWord, SURAHS_LIST } from '@/lib/quranData';
+import { isOpening } from '@/lib/openings';
 
 /** Timeline values are stored to one decimal; keeping that in one place stops drift. */
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -212,7 +213,8 @@ export function setText(
 export function setVerseNumber(verses: VerseData[], index: number, value: number): VerseData[] {
   const updated = [...verses];
   const current = updated[index];
-  if (!current) return verses;
+  // An isti'adha or basmala has no surah in its key to renumber within.
+  if (!current || isOpening(current)) return verses;
   const currentSurah = current.verseKey.split(':')[0] || '1';
   const verseNumber = Math.max(1, Math.round(value || current.verseNumber));
   if (verseNumber === current.verseNumber) return verses;

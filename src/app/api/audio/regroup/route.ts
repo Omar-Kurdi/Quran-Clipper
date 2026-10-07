@@ -56,7 +56,8 @@ export async function GET(req: NextRequest) {
     provider,
     selectedSurah: surah,
     windowStart: Number(form.get('windowStart')) || 0,
-    clientDuration: Number(form.get('audioDuration') || 0)
+    clientDuration: Number(form.get('audioDuration') || 0),
+    wholeClip: form.get('wholeClip') === '1'
   });
   if ('error' in built) {
     return NextResponse.json({ success: false, provider, error: built.error }, { status: built.status });

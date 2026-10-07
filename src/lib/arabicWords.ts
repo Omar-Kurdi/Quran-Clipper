@@ -60,6 +60,14 @@ export function drawnWordTimes(words: readonly TimedWord[] | undefined, lines: r
       if (index === 0 || !isMarkOnly(word.arabic.trim())) times.push(word.timestamp);
     });
   }
+  if (times.length !== count) {
+    // One entry drawn as two: 57:16's first word is `۞ أَلَمْ`, the hizb mark
+    // and the word, so the caption opening an ayah with it had one drawn word
+    // more than entries and lost its reveal and highlight. Each piece takes
+    // its entry's time.
+    const pieces = shown.flatMap(word => (word.arabic ? tokensOf(word.arabic) : ['']).map(() => word.timestamp));
+    if (pieces.length === count) times = pieces;
+  }
   if (times.length !== count || !times.some(at => typeof at === 'number')) return null;
   let next = 0;
   return drawn.map(tokens => tokens.map(() => times[next++]));

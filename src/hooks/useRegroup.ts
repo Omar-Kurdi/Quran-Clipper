@@ -17,6 +17,8 @@ export interface HeldMatch {
   start: number;
   end: number;
   audioDuration: number;
+  /** Matched as a whole clip (an upload), not a window cut from a reciter's chapter. */
+  wholeClip: boolean;
 }
 
 /** The studio's answer to a match or a re-cut, as `/api/audio/match` sends it. */
@@ -33,7 +35,8 @@ function regroupQuery(held: HeldMatch, breaks: ScreenBreaks): URLSearchParams {
     surah: String(held.surah),
     start: String(held.start),
     end: String(held.end),
-    audioDuration: String(held.audioDuration)
+    audioDuration: String(held.audioDuration),
+    wholeClip: held.wholeClip ? '1' : '0'
   });
 }
 

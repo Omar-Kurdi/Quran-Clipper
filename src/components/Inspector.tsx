@@ -7,6 +7,7 @@ import { wordFace, pagesUsedBy, ensureQpcPages, QPC_V2 } from '@/lib/mushafFonts
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { Trash2, Copy, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, SplitSquareHorizontal, Combine, AlertTriangle } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
+import { isOpening } from '@/lib/openings';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
 import {
   selectedOptions, knownTranslationName, captionText, DEFAULT_TRANSLATION_ID,
@@ -350,7 +351,8 @@ export const Inspector: React.FC<InspectorProps> = ({
             </Button>
             <Button icon={<Plus className="w-3.5 h-3.5" />} onClick={onAdd}>{t.inspector.addCaption}</Button>
           </div>
-          <label className="flex items-center gap-3">
+          {/* An isti'adha or basmala is no ayah, so it has no number to change. */}
+          {!isOpening(verse) && <label className="flex items-center gap-3">
             <span className="text-xs font-semibold text-slate-300">{t.inspector.ayahNumber}</span>
             <input
               type="number"
@@ -360,7 +362,7 @@ export const Inspector: React.FC<InspectorProps> = ({
               dir="ltr"
               className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-100 font-mono"
             />
-          </label>
+          </label>}
         </div>
       </details>
     </div>

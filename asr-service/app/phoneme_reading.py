@@ -369,6 +369,12 @@ MIN_LEAD_SEC = 1.5
 #: How far a heard opening may differ from its spelling, as a share of its symbols.
 MAX_DIFFERENCE = 0.35
 
+#: At most this many sounds just before a heard opening are taken as its own, misheard.
+MAX_MISHEARD_ONSET = 2
+
+#: At most this far before its first sound is heard does a later opening's card come up.
+MAX_OPENING_LEAD_SEC = 0.3
+
 
 def best_match(target: list[int], heard: list[int]) -> tuple[int, int, int]:
     """Where ``target`` best fits inside ``heard``: (edit distance, first heard index, end heard index).
@@ -455,8 +461,36 @@ def _hear_opening(model, kind: str, reading: tuple[list[int], list[int]]) -> dic
     distance, first, last = best_match(target, heard) if heard else (len(target), 0, 0)
     if distance > MAX_DIFFERENCE * len(target) or last <= first:
         return None
+    first, start = _onset(target, reading, first, last, distance)
     # Each word starts where its first symbol was heard, read off the same match.
-    return {"kind": kind, "text": text, "words": text.split(), "starts": _word_starts(per_word, heard[first:last], frames[first:last])}
+    starts = _word_starts(per_word, heard[first:last], frames[first:last])
+    starts[0] = start
+    return {"kind": kind, "text": text, "words": text.split(), "starts": starts}
+
+
+def _onset(target: list[int], reading: tuple[list[int], list[int]], first: int, last: int, distance: int) -> tuple[int, float]:
+    """Where an opening begins: its first heard symbol, and the time its card comes up.
+
+    The match may start anywhere for free, so a first sound heard wrong is
+    simply left out of it and the opening begins on its second. Al-Falaq's
+    reciter says the basmala's بِ, the model hears ءِ, and the basmala began on
+    its س -- the بِ stayed on the isti'adha's card. A sound just before the
+    match is taken back in when the target's first symbol had no match anyway.
+
+    A symbol is read on the frame it is first heard, a little after its sound
+    begins, so the card comes up in the pause before it rather than on it.
+    """
+    heard, frames = reading
+    skipped = 0
+    while (skipped < MAX_MISHEARD_ONSET and first - skipped > 0
+           and best_match(target[skipped + 1 :], heard[first:last])[0] < distance - skipped):
+        skipped += 1
+    first -= skipped
+    heard_at = frames[first] * phoneme.FRAME_SEC
+    if first == 0:
+        return first, heard_at
+    before = frames[first - 1] * phoneme.FRAME_SEC
+    return first, max(heard_at - MAX_OPENING_LEAD_SEC, (before + heard_at) / 2)
 
 
 def _as_reported(opening: dict, end: float, offset: float) -> dict:

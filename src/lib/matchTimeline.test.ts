@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   getPrimaryTimelineSummary,
   enforceTimelineOrder,
+  reachClipEnds,
   parseVerseKey,
   estimateDurationFromSegments,
   fetchVersesByDetectedSegments,
@@ -304,5 +305,18 @@ describe('fetchVersesByDetectedSegments word times', () => {
       audioDuration: 10,
     });
     expect(timeline[0].words?.every(w => w.timestamp === undefined)).toBe(true);
+  });
+});
+
+describe('reachClipEnds', () => {
+  it('starts the first caption with the clip and ends the last with it, so neither end shows an empty card', () => {
+    const reached = reachClipEnds([verse('113:1', 0.56, 9.6), verse('113:5', 26.4, 30.5)], 0, 34.7);
+    expect([reached[0].startTime, reached[1].endTime]).toEqual([0, 34.7]);
+    expect(reached[0].endTime).toBe(9.6);
+  });
+
+  it('leaves captions already reaching the ends alone', () => {
+    const verses = [verse('1:1', 0, 10)];
+    expect(reachClipEnds(verses, 0, 10)).toEqual(verses);
   });
 });
