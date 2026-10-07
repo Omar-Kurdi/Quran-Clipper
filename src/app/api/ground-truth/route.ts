@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { existsSync } from 'node:fs';
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { groundTruthAudioName, groundTruthFileName } from '@/lib/groundTruth';
+import { groundTruthAudioName, groundTruthFileName, unsavedClipName, withClipName } from '@/lib/groundTruth';
 import { studioMode } from '@/lib/studioMode';
 
 /**
@@ -38,21 +39,22 @@ export async function POST(req: NextRequest) {
 
   try {
     const form = await req.formData();
-    // Sent as a Blob so the multipart encoder cannot rewrite its newlines --
-    // a text field would arrive with CRLF on every line.
+    // A Blob, so the multipart encoder cannot turn its newlines into CRLF.
     const field = form.get('contents');
-    const contents = field instanceof Blob ? await field.text() : String(field || '');
-    const clipName = String(form.get('clipName') || '');
+    const sent = field instanceof Blob ? await field.text() : String(field || '');
+    const dir = path.join(process.cwd(), 'scripts');
+    // Beside an earlier save of the same name, never over it.
+    const clipName = unsavedClipName(String(form.get('clipName') || ''), relative => existsSync(path.join(dir, relative)));
+    const contents = withClipName(sent, groundTruthAudioName(clipName));
     const audio = form.get('audio');
 
-    if (!contents.trim()) {
+    if (!sent.trim()) {
       return NextResponse.json({ success: false, error: 'nothing to write' }, { status: 400 });
     }
 
     // Both names come from `groundTruthBaseName`, which keeps `[A-Za-z0-9_-]`
     // and nothing else -- so neither can climb out of `scripts/`, and the two
     // agree on their stem, which is what lets `# clip:` find the audio.
-    const dir = path.join(process.cwd(), 'scripts');
     const textName = groundTruthFileName(clipName);
     const written: string[] = [textName];
 

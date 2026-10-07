@@ -62,7 +62,9 @@ export function asLab(value: unknown): PhonemeLab {
 /** The sidecar's `lab` field: the stages handed to a phoneme model, as `reading=v31;timing=old`. */
 export function labStages(lab: PhonemeLab): string {
   return [
-    lab.reading !== 'fastconformer' ? `reading=${lab.reading}` : '',
+    // Always named: the sidecar reads restart by restart unless told otherwise,
+    // so the phrase read-out alone has to be asked for.
+    `reading=${lab.reading}`,
     lab.timing !== 'fastconformer' ? `timing=${lab.timing}` : ''
   ].filter(Boolean).join(';');
 }

@@ -412,7 +412,9 @@ export const Timeline: React.FC<TimelineProps> = ({
     const visible = viewSpan / zoom;
     const step = [1, 2, 5, 10, 15, 30, 60, 120, 300].find(s => s >= visible / 8) ?? 300;
     const out: number[] = [];
-    for (let t = Math.ceil(viewStart / step) * step; t <= viewStart + viewSpan; t += step) out.push(t);
+    // Not so close to the end that its label runs into the end's own -- see below.
+    const end = viewStart + viewSpan;
+    for (let t = Math.ceil(viewStart / step) * step; t <= end - step * 0.4; t += step) out.push(t);
     return out;
   }, [viewStart, viewSpan, zoom]);
 
@@ -661,6 +663,12 @@ export const Timeline: React.FC<TimelineProps> = ({
                 {formatTime(t)}
               </span>
             ))}
+            {/* The end, labelled at the edge: the ticks fall on round numbers,
+                so the last one stopped short and the timeline's full length
+                could not be read anywhere. */}
+            <span className="absolute top-0 bottom-0 right-0 border-r border-slate-700 pr-1 text-[9px] font-mono text-slate-300 leading-5 whitespace-nowrap pointer-events-none">
+              {formatTime(viewStart + viewSpan)}
+            </span>
             <span
               className="absolute inset-y-0 -ml-px w-0.5 bg-lapis-bright pointer-events-none"
               style={{ left: `${pct(currentTime)}%` }}

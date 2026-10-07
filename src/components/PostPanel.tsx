@@ -5,7 +5,7 @@ import { ChevronDown, ExternalLink, Monitor, Share2, Upload } from 'lucide-react
 import type { PublishMetadata } from '@/lib/publishMetadata';
 import { postTargets, postText, renderedFor, shareableFile, UPLOAD_PAGES, type Platform } from '@/lib/postTargets';
 import { youtubeClientId } from '@/lib/youtubeUpload';
-import { YouTubeUpload } from './YouTubeUpload';
+import { YouTubeUpload, type UnsentUpload } from './YouTubeUpload';
 import { useT } from './LocaleProvider';
 
 interface PostPanelProps {
@@ -18,6 +18,8 @@ interface PostPanelProps {
   caption: () => Promise<PublishMetadata>;
   /** The "This computer" row's buttons, which the result screen owns. */
   download: React.ReactNode;
+  /** Whether a YouTube upload is set up and not yet sent -- see `YouTubeUpload`. */
+  onYouTubeUnsent?: (pending: UnsentUpload) => void;
 }
 
 type Status = { tone: 'ok' | 'warn'; text: string } | null;
@@ -101,7 +103,7 @@ const Destination: React.FC<{
  * rendered for first, and only one row open at a time. The person signs in to
  * the platform, never to the studio -- see `postTargets`.
  */
-export const PostPanel: React.FC<PostPanelProps> = ({ blob, fileName, presetIds, caption, download }) => {
+export const PostPanel: React.FC<PostPanelProps> = ({ blob, fileName, presetIds, caption, download, onYouTubeUnsent }) => {
   const t = useT();
   const { file, status, share, open } = usePosting({ blob, fileName, caption });
   const clientId = youtubeClientId();
@@ -121,7 +123,7 @@ export const PostPanel: React.FC<PostPanelProps> = ({ blob, fileName, presetIds,
         {postTargets(presetIds).map(platform => platform === 'youtube' && clientId ? (
           <Destination key={platform} icon={<Upload className="w-5 h-5" />} title={t.post.platforms.youtube} help={t.post.uploadsHelp}
             highlight={renderedFor(platform, presetIds)} open={expanded === 'youtube'} onToggle={() => toggle('youtube')}>
-            <YouTubeUpload clientId={clientId} blob={blob} caption={caption} />
+            <YouTubeUpload clientId={clientId} blob={blob} caption={caption} onUnsent={onYouTubeUnsent} />
             <button onClick={() => open('youtube')} className="self-start text-[11px] text-slate-400 hover:text-emerald-300 underline">
               {t.post.youtubePage}
             </button>

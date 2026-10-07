@@ -133,6 +133,21 @@ check(
     detail=f"got {ranges(segments)}",
 )
 
+print("\nreading what was said -- the mushaf's spelling, and holes before a restart")
+check(
+    "the mushaf's ىٰ inside a word is read as the ā a decoder spells",
+    ok=align._skeleton("وَمَأْوَىٰهُمْ") == align._skeleton("وَمَأْوَاهُمْ"),
+    detail=f"got {align._skeleton('وَمَأْوَىٰهُمْ')!r} against {align._skeleton('وَمَأْوَاهُمْ')!r}",
+)
+check(
+    "the words after the last one said are offered when the reciter goes back next",
+    ok=align._carried_on([20, 21, 22, 21, 22], 2, 2, 30) == [23, 24],
+)
+check(
+    "but not where the reciter simply goes on, nor past the passage's end",
+    ok=align._carried_on([20, 21, 22, 23], 2, 1, 30) is None and align._carried_on([20, 29, 28], 1, 1, 30) is None,
+)
+
 tur = [
     word("52:1", 0, "وَٱلطُّورِ", 0.2, 1.2),
     word("52:2", 0, "وَكِتَـٰبٍۢ", 2.0, 2.8),

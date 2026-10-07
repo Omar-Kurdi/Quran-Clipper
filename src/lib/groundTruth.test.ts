@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groundTruthFile, groundTruthFileName, groundTruthAudioName } from './groundTruth';
+import { groundTruthFile, groundTruthFileName, groundTruthAudioName, unusedClipName, unsavedClipName, withClipName } from './groundTruth';
 import type { VerseData } from './quranData';
 
 const verse = (verseKey: string, textUthmani: string, extra: Partial<VerseData> = {}): VerseData => ({
@@ -191,5 +191,24 @@ describe('clips whose names do not survive the strip', () => {
     expect(groundTruthFileName('test5.mp3')).toBe('expected_test5.txt');
     expect(groundTruthFileName('my clip (2).mp3')).toBe('expected_my_clip_2_.txt');
     expect(groundTruthAudioName('Aal-E-Imran-trimmed.wav')).toBe('Aal-E-Imran-trimmed.wav');
+  });
+});
+
+describe('unusedClipName', () => {
+  it('keeps a free name, and numbers one already saved instead of replacing it', () => {
+    const saved = new Set(['013-trimmed.wav', '013-trimmed-2.wav']);
+    expect(unusedClipName('test5.mp3', name => saved.has(name))).toBe('test5.mp3');
+    expect(unusedClipName('013-trimmed.wav', name => saved.has(name))).toBe('013-trimmed-3.wav');
+    expect(groundTruthFileName(unusedClipName('013-trimmed.wav', name => saved.has(name)))).toBe('expected_013-trimmed-3.txt');
+  });
+
+  it('counts a clip as saved when either its text or its audio is', () => {
+    const onDisk = new Set(['expected_013-trimmed.txt', 'audio/013-trimmed-2.wav']);
+    expect(unsavedClipName('013-trimmed.wav', path => onDisk.has(path))).toBe('013-trimmed-3.wav');
+  });
+
+  it('points the file\'s clip line at the name it was saved under', () => {
+    expect(withClipName('# a\n# clip: 013-trimmed.wav\n# passage: 13:18-18\n', '013-trimmed-2.wav'))
+      .toBe('# a\n# clip: 013-trimmed-2.wav\n# passage: 13:18-18\n');
   });
 });

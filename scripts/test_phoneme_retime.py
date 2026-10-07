@@ -177,6 +177,7 @@ check("nothing like it is far off", ok=phoneme_reading.best_match([1, 2, 3], [5,
 print("\nlab -- the stages the dev-only lab hands to a phoneme model")
 
 check("reading and timing by name", ok=phoneme.lab_stages("reading=v31;timing=old") == {"phoneme_reading": "v31", "phoneme_timing": "old"})
+check("the phrase read-out asked for by name", ok=phoneme.lab_stages("reading=fastconformer") == {"phoneme_reading": "fastconformer"})
 check("anything else ignored", ok=phoneme.lab_stages("reading=whisper;starts=old;x") == {} and phoneme.lab_stages("") == {})
 
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")

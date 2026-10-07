@@ -28,8 +28,8 @@ describe('asLab', () => {
 });
 
 describe('labStages', () => {
-  it('names only the stages handed to a phoneme model', () => {
+  it('always names the reading, and the timing only when a phoneme model is handed it', () => {
     expect(labStages({ ...LAB_DEFAULTS, reading: 'v31', timing: 'old' })).toBe('reading=v31;timing=old');
-    expect(labStages({ ...LAB_DEFAULTS, reading: 'fastconformer', timing: 'fastconformer' })).toBe('');
+    expect(labStages({ ...LAB_DEFAULTS, reading: 'fastconformer', timing: 'fastconformer' })).toBe('reading=fastconformer');
   });
 });

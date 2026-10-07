@@ -1206,7 +1206,7 @@ npx next dev --webpack
 | النموذج | الاستعمال | الرخصة |
 |---|---|---|
 | [Muno459/fastconformer-quran](https://huggingface.co/Muno459/fastconformer-quran) | المطابقة: إيجاد المقطع وتوقيت كل كلمة | رخصة Quran-Lab لعدم الربح 1.1 |
-| [Muno459/zipformer_p-quran](https://huggingface.co/Muno459/zipformer_p-quran) | بداية كل كلمة (إعادة التوقيت الافتراضية)، وكشف الاستعاذة والبسملة | رخصة Quran-Lab لعدم الربح 1.1 |
+| [Muno459/zipformer_p-quran](https://huggingface.co/Muno459/zipformer_p-quran) | قراءة مواضع رجوع القارئ (إعادةً بإعادة)؛ وبداية كل كلمة (إعادة التوقيت الافتراضية)، وكشف الاستعاذة والبسملة | رخصة Quran-Lab لعدم الربح 1.1 |
 | [Quran-Lab/zipformer_p-arabic-v3](https://huggingface.co/Quran-Lab/zipformer_p-arabic-v3) | مختبر الصوتيات (للتطوير فقط) | رخصة Quran-Lab لعدم الربح 1.2 |
 
 نموذج fastconformer-quran مضبوط انطلاقًا من نموذج NVIDIA

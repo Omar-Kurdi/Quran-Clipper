@@ -98,7 +98,7 @@ def lab_stages(lab: str) -> dict[str, str]:
     stages: dict[str, str] = {}
     for part in (lab or "").split(";"):
         stage, _, name = part.partition("=")
-        if stage.strip() in LAB_STAGES and (name.strip() in MODELS or (stage.strip() == "reading" and name.strip() in ("best", "mixed"))):
+        if stage.strip() in LAB_STAGES and (name.strip() in MODELS or (stage.strip() == "reading" and name.strip() in ("best", "mixed", "fastconformer"))):
             stages[LAB_STAGES[stage.strip()]] = name.strip()
     return stages
 

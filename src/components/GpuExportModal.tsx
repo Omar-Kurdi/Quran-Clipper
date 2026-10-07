@@ -13,6 +13,7 @@ import { exportRoute } from '@/lib/exportRoute';
 import { DestinationPicker, Segmented } from './ExportChoices';
 import { Dialog } from './Dialog';
 import { ExportResult } from './ExportResult';
+import type { UnsentUpload } from './YouTubeUpload';
 import { StudioVideo } from './StudioVideo';
 import { buildPublishMetadata, captionFileText, PublishInput } from '@/lib/publishMetadata';
 import { creditedTranslationNames } from '@/lib/translations';
@@ -157,6 +158,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [starvedSeconds, setStarvedSeconds] = useState<number>(0);
   const [pauses, setPauses] = useState<number>(0);
   const [downloadFileName, setDownloadFileName] = useState<string>('QuranClipper.webm');
+  // A YouTube upload set up on the result screen and not yet sent, or still
+  // going, and whether the person has been asked about closing over it.
+  const [youtubePending, setYoutubePending] = useState<UnsentUpload>(null);
+  const [confirmLeave, setConfirmLeave] = useState<(() => void) | null>(null);
   /**
    * The throwaway preview, if one has been made.
    *
@@ -305,9 +310,21 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
 
   /** Closing mid-render means stopping it, not leaving it running unseen. */
   const handleClose = () => {
+    setConfirmLeave(null);
     if (queue.running) queue.cancel();
     else if (isExporting) onCancelExport();
     onClose();
+  };
+
+  /**
+   * Leaving the result screen, by Done, the close button or Render another.
+   * An upload set up and not sent would be lost without a word -- one was:
+   * a schedule set, Done pressed, and the dialog simply closed -- so that is
+   * asked first.
+   */
+  const leaveResult = (then: () => void) => {
+    if (youtubePending) setConfirmLeave(() => then);
+    else then();
   };
 
   const dropPreview = () => {
@@ -374,12 +391,15 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       // grounds that closing would orphan the recorder -- but that left the
       // only visible control inert at exactly the moment someone wants out,
       // with no way to stop a ten-minute render. Closing now cancels it.
-      dismissible
+      // Except over a finished render: its result screen holds choices -- a
+      // download, an upload being set up -- that a stray click outside or an
+      // Escape would throw away. It closes from its own buttons there.
+      dismissible={!exportedBlobUrl}
       panelClassName="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl overflow-hidden"
     >
       <div>
         <button
-          onClick={handleClose}
+          onClick={() => (exportedBlobUrl ? leaveResult(handleClose) : handleClose())}
           aria-label={isExporting ? t.exportModal.cancelRender : t.common.close}
           title={isExporting ? t.exportModal.cancelRender : t.common.close}
           className="absolute top-4 end-4 p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
@@ -632,9 +652,23 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
             onDownloadWithCaption={downloadWithCaption}
             // Renders are repeatable -- the previous blob URL is left alive on
             // purpose so the saved export record keeps working.
-            onRenderAnother={() => { setExportedBlobUrl(null); setExportedBlob(null); }}
-            onDone={handleClose}
+            onRenderAnother={() => leaveResult(() => { setConfirmLeave(null); setExportedBlobUrl(null); setExportedBlob(null); })}
+            onDone={() => leaveResult(handleClose)}
+            onYouTubeUnsent={setYoutubePending}
           />
+        )}
+        {exportedBlobUrl && confirmLeave && (
+          <div role="alertdialog" aria-label={t.exportModal.closeAnyway} className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100 flex flex-col gap-2">
+            <p>{youtubePending === 'uploading' ? t.exportModal.youtubeUploading : t.exportModal.youtubeUnsent}</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmLeave(null)} className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold">
+                {t.exportModal.stay}
+              </button>
+              <button onClick={confirmLeave} className="py-1.5 px-3 rounded-lg border border-amber-500/50 text-amber-200 hover:bg-amber-500/10 font-semibold">
+                {t.exportModal.closeAnyway}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </Dialog>

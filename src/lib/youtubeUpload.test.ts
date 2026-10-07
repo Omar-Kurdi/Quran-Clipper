@@ -92,4 +92,10 @@ describe('scheduling', () => {
     expect(defaultScheduleValue(now)).toBe('2026-10-05T16:00');
     expect(scheduleTime(defaultScheduleValue(now), now)).not.toBe('past');
   });
+
+  it('offers a set hour today while it is an hour or more away, and tomorrow once it is not', () => {
+    expect(defaultScheduleValue(new Date(2026, 9, 5, 9, 30), 18)).toBe('2026-10-05T18:00');
+    expect(defaultScheduleValue(new Date(2026, 9, 5, 17, 30), 18)).toBe('2026-10-06T18:00');
+    expect(defaultScheduleValue(new Date(2026, 9, 5, 21, 0), 18)).toBe('2026-10-06T18:00');
+  });
 });

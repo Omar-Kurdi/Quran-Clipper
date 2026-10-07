@@ -1708,8 +1708,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         await holdScreenAwake();
         paintedAtStart = paintedFramesRef.current;
 
-        audioElement.play();
-        expAudio.play();
+        // Refused when the export is stopped as it starts -- the dialog closed
+        // and its media went with it. Left uncaught, that surfaced as an
+        // AbortError in development; the stop itself is already handled.
+        void audioElement.play().catch(() => {});
+        void expAudio.play().catch(() => {});
         rec.start();
 
         let frames = 0;

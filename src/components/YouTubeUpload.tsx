@@ -8,13 +8,25 @@ import {
   type Privacy, type UploadFailure
 } from '@/lib/youtubeUpload';
 import { forgetToken, heldToken, loadGoogleSignIn, requestToken } from '@/lib/googleSignIn';
+import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { useT } from './LocaleProvider';
 
 interface YouTubeUploadProps {
   clientId: string;
   blob: Blob;
   caption: () => Promise<PublishMetadata>;
+  /**
+   * Told whether closing now would lose an upload: one set up and not sent,
+   * or still on its way. The export dialog asks before closing over one.
+   */
+  onUnsent?: (pending: UnsentUpload) => void;
 }
+
+/** An upload closing the dialog would lose: set up and not sent, or on its way; null for none. */
+export type UnsentUpload = 'unsent' | 'uploading' | null;
+
+/** The hour a personal studio schedules its uploads for by default. */
+const PERSONAL_SCHEDULE_HOUR = 18;
 
 type Stage =
   | { kind: 'idle' }
@@ -138,6 +150,21 @@ const ScheduleField: React.FC<{ value: string; onChange: (value: string) => void
   );
 };
 
+/** The one action: sign in if needed, then send. */
+const UploadButton: React.FC<{ onClick: () => void; busy: boolean }> = ({ onClick, busy }) => {
+  const t = useT();
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
+    >
+      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+      {t.youtube.upload}
+    </button>
+  );
+};
+
 /**
  * Uploads the render to the user's YouTube channel, signed in to Google in a
  * pop-up -- see `youtubeUpload`. Only shown when the studio has a Google
@@ -145,13 +172,26 @@ const ScheduleField: React.FC<{ value: string; onChange: (value: string) => void
  */
 export const YouTubeUpload: React.FC<YouTubeUploadProps> = props => {
   const t = useT();
-  const [choice, setChoice] = useState<Choice>('private');
-  const [scheduleAt, setScheduleAt] = useState(defaultScheduleValue);
+  const { mode } = useStudioConfig();
+  // A personal studio is someone posting to their own channel on a routine:
+  // scheduled, for six in the evening. A public one starts private.
+  const [picked, setPicked] = useState<Choice | null>(null);
+  const choice: Choice = picked ?? (mode === 'personal' ? 'scheduled' : 'private');
+  const [scheduleAt, setScheduleAt] = useState(() =>
+    defaultScheduleValue(new Date(), mode === 'personal' ? PERSONAL_SCHEDULE_HOUR : undefined)
+  );
+  const [touched, setTouched] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const { stage, upload, cancel } = useYouTubeUpload(props);
   const busy = stage.kind === 'signing' || stage.kind === 'uploading';
 
+  const pending: UnsentUpload = busy ? 'uploading' : touched && stage.kind !== 'done' ? 'unsent' : null;
+  const { onUnsent } = props;
+  useEffect(() => { onUnsent?.(pending); }, [onUnsent, pending]);
+  useEffect(() => () => onUnsent?.(null), [onUnsent]);
+
   const start = () => {
+    setTouched(true);
     if (choice !== 'scheduled') return upload(choice);
     // Checked before signing in: a time already gone is not worth a pop-up.
     const when = scheduleTime(scheduleAt);
@@ -162,16 +202,11 @@ export const YouTubeUpload: React.FC<YouTubeUploadProps> = props => {
 
   return (
     <div className="flex flex-col gap-2">
-      <VisibilityChoice value={choice} onChange={next => { setChoice(next); setProblem(null); }} disabled={busy} />
-      {choice === 'scheduled' && <ScheduleField value={scheduleAt} onChange={setScheduleAt} disabled={busy} problem={problem} />}
-      <button
-        onClick={start}
-        disabled={busy}
-        className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
-      >
-        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-        {t.youtube.upload}
-      </button>
+      <VisibilityChoice value={choice} onChange={next => { setPicked(next); setTouched(true); setProblem(null); }} disabled={busy} />
+      {choice === 'scheduled' && (
+        <ScheduleField value={scheduleAt} onChange={next => { setScheduleAt(next); setTouched(true); }} disabled={busy} problem={problem} />
+      )}
+      <UploadButton onClick={start} busy={busy} />
       <details className="text-[11px] leading-relaxed text-slate-400">
         <summary className="cursor-pointer select-none">{t.youtube.privateUntilVerified}</summary>
         <p className="mt-1">{t.youtube.help}</p>

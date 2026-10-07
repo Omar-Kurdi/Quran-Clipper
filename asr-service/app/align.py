@@ -1143,6 +1143,10 @@ def span_decoder(
     return decode
 
 
+#: ى, any vowel marks, then a superscript alef: the mushaf's spelling of ā.
+_ALEF_MAQSURA_LONG_A = re.compile("\u0649[\u064B-\u065F]*\u0670")
+
+
 def _skeleton(word: str) -> str:
     """Loose comparison form: consonant skeleton, alef and weak final letters dropped.
 
@@ -1157,6 +1161,11 @@ def _skeleton(word: str) -> str:
     spellings onto one form, the same trick the trailing weak-letter strip
     already uses for waqf/wasl endings.
     """
+    # ى carrying a superscript alef inside a word is a long ā written the
+    # mushaf's way -- وَمَأْوَىٰهُمْ is said and decoded وَمَأْوَاهُمْ -- so it goes
+    # with the alefs below rather than becoming ي: as ي it kept a repeated
+    # «وَمَأْوَىٰهُمْ جَهَنَّمُ» in Ar-Ra'd 13:18 from matching what was heard.
+    word = _ALEF_MAQSURA_LONG_A.sub("ا", word)
     base = normalize_for_vocab(word.replace("\u06E7", "ي")).replace("ة", "ه")
     base = base.replace("ؤ", "و").replace("ئ", "ي").replace("ء", "")
     base = base.replace("ا", "") or base
@@ -2053,6 +2062,7 @@ def _fill_gaps_with_repeats(
             break
 
         best = None  # (matched chars, recall, insert_at, sequence)
+        carried_on = None  # the same, for words the reciter went on to before going back
         for k in range(len(aligned) - 1):
             if aligned[k + 1].start - aligned[k].end <= REPEAT_GAP_SEC:
                 continue
@@ -2075,6 +2085,9 @@ def _fill_gaps_with_repeats(
                     runs.append(script[k + 1 : k + 1 + length])
                 if length == MAX_REPEAT_WORDS:
                     runs += _ayah_said_again(script, k, ref_words)
+                ahead = _carried_on(script, k, length, len(ref_words))
+                if ahead:
+                    runs.append(ahead)
                 for sequence in runs:
                     spelled = "".join(spelling[i] for i in sequence)
                     if len(spelled) < MIN_REPEAT_CHARS:
@@ -2086,8 +2099,21 @@ def _fill_gaps_with_repeats(
                         continue
                     # More of the candidate actually heard wins, so a longer
                     # real repeat beats a short one that merely fits.
-                    if best is None or (matched, recall) > best[:2]:
+                    if sequence is ahead:
+                        if carried_on is None or (recall, matched) > (carried_on[1], carried_on[0]):
+                            carried_on = (matched, recall, k + 1, list(sequence))
+                    elif best is None or (matched, recall) > best[:2]:
                         best = (matched, recall, k + 1, list(sequence))
+
+        # Going on and then back is more usual than going back twice running,
+        # and a longer repeat outscores it on matched letters partly by the
+        # tail of the word before, which the hole's lead takes in. So where
+        # the words that come next fit the hole better, they are what it held.
+        # Ar-Ra'd 13:11: «سُوٓءًا فَلَا» was read short of مَرَدَّ لَهُۥ, and the
+        # hole after it -- 'لا مَرَدَّ ل' -- was filled with a third فَلَا مَرَدَّ
+        # لَهُۥ at 83% rather than the مَرَدَّ لَهُۥ it heard whole.
+        if carried_on is not None and (best is None or carried_on[1] > best[1]):
+            best = carried_on
 
         if best is None:
             best = _phrase_said_twice(pcm, ref_words, script, aligned, spelling)
@@ -2116,6 +2142,17 @@ def _fill_gaps_with_repeats(
         aligned, _ = align_script(emission, ref_words, script, sec_per_frame)
 
     return script, applied, inserted
+
+
+def _carried_on(script: list[int], k: int, length: int, words: int) -> list[int] | None:
+    """The `length` words after `script[k]`, when the reciter goes back right after it -- or None.
+
+    A hole just before a restart may be the reciter carrying the phrase on
+    before going back over it, not saying something again.
+    """
+    if k + 1 >= len(script) or script[k + 1] > script[k] or script[k] + length >= words:
+        return None
+    return list(range(script[k] + 1, script[k] + 1 + length))
 
 
 #: Tanween, and the vowels whose absence leaves a letter sākin.
@@ -3184,6 +3221,20 @@ def _script_by_decode(
     return script, repeated
 
 
+#: How what was recited is read when nothing else is asked for: restart by
+#: restart (`phoneme_reading.mixed`), the phoneme model's reading of where the
+#: reciter went back, joined with the phrase read-out's where it is sure.
+#: Measured on the gauge's 21 clips (2026-10-07) it scored 265/273 against the
+#: phrase read-out's 256, better on both At-Tawbah clips' dense restarts (+4,
+#: +5) and worse on none. Where the phoneme model cannot be loaded or cannot
+#: read the passage, the phrase read-out is used as before.
+DEFAULT_PHONEME_READING = "mixed"
+
+#: Names that ask for the phrase read-out alone, as before restart-by-restart
+#: reading was the default -- how the lab and the gauge still compare with it.
+DECODE_READINGS = {"fastconformer", "decode", "none"}
+
+
 def align_recitation(
     pcm: np.ndarray,
     ref_words: list[tuple[str, int, str]],
@@ -3241,10 +3292,13 @@ def align_recitation(
     if boundaries is None:
         boundaries = detect_boundaries(pcm)
 
-    # What was recited, restarts included: read by a phoneme model when one is
-    # asked for and can read this passage (`phoneme_reading`, a trial), and by
-    # decoding each phrase otherwise.
-    phoneme_reading = phoneme_reading or os.getenv("ALIGN_PHONEME_READING", "")
+    # What was recited, restarts included: read restart by restart by default
+    # (`DEFAULT_PHONEME_READING`), by another phoneme model when one is asked
+    # for, and by decoding each phrase when that is asked for or no model can
+    # read this passage.
+    phoneme_reading = phoneme_reading or os.getenv("ALIGN_PHONEME_READING", "") or DEFAULT_PHONEME_READING
+    if phoneme_reading in DECODE_READINGS:
+        phoneme_reading = ""
 
     phrase_ends: list[tuple[float, int]] = []
 

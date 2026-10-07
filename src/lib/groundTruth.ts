@@ -166,6 +166,36 @@ function shortDigest(text: string): string {
   return hash.toString(36).padStart(6, '0').slice(-6);
 }
 
+/**
+ * A clip name that names no file already saved: the name itself, else `-2`,
+ * `-3`... before its extension.
+ *
+ * A clip cut twice from one recording carries the same name both times --
+ * `013-trimmed.wav` for Ar-Ra'd 13:10-11 and again for 13:18 -- and the second
+ * save replaced the first, its corrected timeline and its audio, with nothing
+ * to say so.
+ */
+export function unusedClipName(clipName: string | undefined, taken: (clipName: string) => boolean): string {
+  const name = clipName || 'timeline.wav';
+  if (!taken(name)) return name;
+  const dot = name.lastIndexOf('.');
+  const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+  for (let n = 2; ; n++) {
+    const candidate = `${stem}-${n}${extension}`;
+    if (!taken(candidate)) return candidate;
+  }
+}
+
+/** `unusedClipName` against what is saved: `exists` is asked for paths under `scripts/`. */
+export function unsavedClipName(clipName: string | undefined, exists: (relativePath: string) => boolean): string {
+  return unusedClipName(clipName, name => exists(groundTruthFileName(name)) || exists(`audio/${groundTruthAudioName(name)}`));
+}
+
+/** The ground-truth file's `# clip:` line, pointed at `clipName`. */
+export function withClipName(contents: string, clipName: string): string {
+  return contents.replace(/^# clip: .*$/m, `# clip: ${clipName}`);
+}
+
 /** `expected_test5.txt` -- what `eval_segments.py` should be pointed at. */
 export function groundTruthFileName(clipName?: string): string {
   return `expected_${groundTruthBaseName(clipName)}.txt`;

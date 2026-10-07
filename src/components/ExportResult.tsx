@@ -9,6 +9,7 @@ import { formatBytes } from '@/lib/exportPresets';
 import { RenderCheckPanel } from './RenderCheckPanel';
 import { PublishCaption } from './PublishCaption';
 import { PostPanel } from './PostPanel';
+import type { UnsentUpload } from './YouTubeUpload';
 import { StudioVideo } from './StudioVideo';
 import { useT } from './LocaleProvider';
 
@@ -33,6 +34,7 @@ export interface ExportResultProps {
   onDownloadWithCaption: () => void;
   onRenderAnother: () => void;
   onDone: () => void;
+  onYouTubeUnsent?: (pending: UnsentUpload) => void;
 }
 
 /** What the render produced, and whether it is watchable, in one compact row. */
@@ -140,6 +142,7 @@ export const ExportResult: React.FC<ExportResultProps> = props => {
         presetIds={props.presetIds}
         caption={props.caption}
         download={<DownloadActions {...props} />}
+        onYouTubeUnsent={props.onYouTubeUnsent}
       />
       <div className="mt-1 flex items-center justify-between border-t border-slate-800 pt-3">
         <button

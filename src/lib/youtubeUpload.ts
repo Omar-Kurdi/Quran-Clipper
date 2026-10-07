@@ -52,10 +52,19 @@ export function scheduleTime(local: string, now: Date = new Date()): { publishAt
   return { publishAt: when.toISOString() };
 }
 
-/** A sensible first offer for the schedule: the top of the hour after next, as a `datetime-local` value. */
-export function defaultScheduleValue(now: Date = new Date()): string {
+/**
+ * A sensible first offer for the schedule, as a `datetime-local` value: the
+ * top of the hour after next, or with `atHour` the next time that hour comes
+ * round -- today while it is still at least an hour off, else tomorrow.
+ */
+export function defaultScheduleValue(now: Date = new Date(), atHour?: number): string {
   const when = new Date(now);
-  when.setHours(when.getHours() + 2, 0, 0, 0);
+  if (atHour === undefined) {
+    when.setHours(when.getHours() + 2, 0, 0, 0);
+  } else {
+    when.setHours(atHour, 0, 0, 0);
+    if (when.getTime() - now.getTime() < 60 * 60 * 1000) when.setDate(when.getDate() + 1);
+  }
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}T${pad(when.getHours())}:${pad(when.getMinutes())}`;
 }

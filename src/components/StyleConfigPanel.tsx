@@ -43,6 +43,7 @@ import { PresetGallery } from './PresetGallery';
 import { StyleSection } from './StyleSection';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 import { FRAME_LAYOUTS, asFrameLayout } from '@/lib/frameLayout';
+import { GALLERY_SORTS, DEFAULT_GALLERY_SORT, sortGallery, type GallerySort } from '@/lib/gallerySort';
 import { CAPTION_TRANSITIONS, WORD_EFFECTS, MOTION_SPEEDS, asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour } from '@/lib/captionMotion';
 import { PRESETS as COLOUR_PRESETS } from './ColorField';
 import { BADGE_STYLES, SURAH_NAME_FONT_ID, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
@@ -278,6 +279,8 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     gallery.filter(bg => bg.url && !bg.missing && bg.kind === 'video').map(bg => bg.url as string),
     openSections.includes('background')
   );
+  const [gallerySort, setGallerySort] = useState<GallerySort>(DEFAULT_GALLERY_SORT);
+  const sortedGallery = sortGallery(gallery, gallerySort, clipLengths);
 
   /** What each closed section is set to, in a few words. */
   const textSummary = `${FONTS_ARABIC.find(f => f.id === config.fontArabic)?.name ?? config.fontArabic} · ${config.arabicFontSize}px`;
@@ -1004,19 +1007,31 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           </div>
 
           <div>
-            <label className="font-semibold text-slate-200 text-sm block mb-2">
-              {customBackground
-                ? t.style.galleryLabelLane
-                : (config.bgMode || 'single') === 'single'
-                  ? t.style.galleryLabelSingle
-                  : t.style.galleryLabelMulti}
-            </label>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="font-semibold text-slate-200 text-sm">
+                {customBackground
+                  ? t.style.galleryLabelLane
+                  : (config.bgMode || 'single') === 'single'
+                    ? t.style.galleryLabelSingle
+                    : t.style.galleryLabelMulti}
+              </span>
+              <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                {t.style.gallerySortLabel}
+                <select
+                  value={gallerySort}
+                  onChange={e => setGallerySort(e.target.value as GallerySort)}
+                  className="rounded-md border border-slate-700 bg-slate-900 px-1.5 py-1 text-xs text-slate-200"
+                >
+                  {GALLERY_SORTS.map(id => <option key={id} value={id}>{t.style.gallerySorts[id]}</option>)}
+                </select>
+              </label>
+            </div>
             <p className="text-xs text-slate-400 mb-2">{t.style.galleryHelp}</p>
             {/* No inner scroller. Capping this at 224px put a second scrollbar
                 inside a panel that was already scrolling, and showed four
                 thumbnails above a screen of empty space. */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {gallery.map((bg) => {
+              {sortedGallery.map((bg) => {
                 const inUse = !bg.url ? false : customBackground
                   ? laneSegments.some(seg => seg.url === bg.url)
                   : multiBackground ? bgSequence.includes(bg.url) : config.bgUrl === bg.url;

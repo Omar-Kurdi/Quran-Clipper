@@ -1351,7 +1351,7 @@ Face Hub, and each stays under its own licence, not this project's.
 | Model | Used for | Licence |
 |---|---|---|
 | [Muno459/fastconformer-quran](https://huggingface.co/Muno459/fastconformer-quran) | Matching: finding the passage and timing every word | Quran-Lab No-Profit License 1.1 |
-| [Muno459/zipformer_p-quran](https://huggingface.co/Muno459/zipformer_p-quran) | Each word's start (the default re-timing); isti'adha and basmala detection | Quran-Lab No-Profit License 1.1 |
+| [Muno459/zipformer_p-quran](https://huggingface.co/Muno459/zipformer_p-quran) | Reading where the reciter went back (restart by restart); each word's start (the default re-timing); isti'adha and basmala detection | Quran-Lab No-Profit License 1.1 |
 | [Quran-Lab/zipformer_p-arabic-v3](https://huggingface.co/Quran-Lab/zipformer_p-arabic-v3) | Phoneme lab (development only) | Quran-Lab No-Profit License 1.2 |
 
 fastconformer-quran is fine-tuned from NVIDIA's

@@ -1760,13 +1760,35 @@ export default function VideoCreatorPage() {
     return { payload: storedAudio ? payload : { ...payload, audioKey: '' }, storedAudio };
   };
 
+  /**
+   * Which saved project the clip on screen is: one per clip, so saving it
+   * again, and every render of it, updates that row instead of adding
+   * another. Each render used to save a project of its own and a hand save
+   * yet another, so one clip filled the list with copies of itself. Tied to
+   * the passage and the recording, so changing either starts a new project
+   * rather than overwriting the old one with a different clip.
+   */
+  const clipProject = useRef<{ id: string; clip: string } | null>(null);
+  const clipIdentity = (payload: Record<string, unknown>) =>
+    `${payload.surahNumber}:${payload.ayahStart}-${payload.ayahEnd}|${payload.audioKey || payload.audioUrl || ''}`;
+  const clipProjectId = (payload: Record<string, unknown>) =>
+    clipProject.current?.clip === clipIdentity(payload)
+      ? clipProject.current.id
+      : `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const rememberClipProject = (id: string, payload: Record<string, unknown>) => {
+    clipProject.current = { id, clip: clipIdentity(payload) };
+  };
+
   const handleSaveProject = async () => {
     setSaveStatus({ text: t.header.saving, kind: 'pending' });
     try {
-      const { payload, storedAudio } = await storeUploadFor(currentProjectPayload());
-      const res = await saveProject(payload, studio.mode);
+      const current = currentProjectPayload();
+      const id = clipProjectId(current);
+      const { payload, storedAudio } = await storeUploadFor(current);
+      const res = await saveProject({ ...payload, id }, studio.mode);
 
       if (res.ok) {
+        rememberClipProject(id, current);
         const data = await res.json().catch(() => null) as { source?: string } | null;
         // The route falls back to in-memory storage when DATABASE_URL is unset;
         // say so rather than implying the project survived a restart. A public
@@ -2098,27 +2120,19 @@ export default function VideoCreatorPage() {
   /**
    * The project each render was made from, so any exported video can be
    * reopened and rendered again. Taken when the render starts -- the export
-   * queue changes the shape between jobs -- and saved when it finishes, as a
-   * project of its own: a render never overwrites one saved by hand.
+   * queue changes the shape between jobs -- and saved when it finishes, into
+   * the clip's own project (`clipProjectId`), never as a new one.
    */
   const renderedProject = useRef<Record<string, unknown> | null>(null);
-  /**
-   * What has been saved this session, by content, so rendering the same thing
-   * twice lists it once. A render in another shape is another project.
-   */
-  const savedRenders = useRef(new Map<string, string>());
 
-  /** Saves the project behind a render, and says under which id. */
-  const saveRenderedProject = async (planned: Record<string, unknown> | null, fileName: string): Promise<string | null> => {
+  /** Saves the project behind a render, into this clip's project, and says under which id. */
+  const saveRenderedProject = async (planned: Record<string, unknown> | null): Promise<string | null> => {
     if (!planned) return null;
-    const content = JSON.stringify(planned);
-    const saved = savedRenders.current.get(content);
-    if (saved) return saved;
-    const id = `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = clipProjectId(planned);
     const { payload } = await storeUploadFor(planned);
-    const res = await saveProject({ ...payload, id, title: `${planned.title} → ${fileName}` }, studio.mode).catch(() => null);
+    const res = await saveProject({ ...payload, id }, studio.mode).catch(() => null);
     if (!res?.ok) return null;
-    savedRenders.current.set(content, id);
+    rememberClipProject(id, planned);
     return id;
   };
 
@@ -2140,10 +2154,7 @@ export default function VideoCreatorPage() {
   const buildServerRender = async (plan: ExportPlan) => {
     const audio = audioElementRef.current;
     const fileName = exportFileName(surahNameEnglish, clipPassage.surahNumber, clipPassage.start, clipPassage.end, 'mp4');
-    const projectId = await saveRenderedProject(
-      { ...currentProjectPayload(), aspectRatio: plan.aspectRatio },
-      withAspect(fileName, plan.aspectRatio)
-    );
+    const projectId = await saveRenderedProject({ ...currentProjectPayload(), aspectRatio: plan.aspectRatio });
     return buildRenderForm({
       config: { ...canvasConfig, aspectRatio: plan.aspectRatio },
       verses,
@@ -2190,7 +2201,7 @@ export default function VideoCreatorPage() {
 
   const handleSaveExportRecord = async ({ fileName, fileSizeBytes, durationSec, renderMs }: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => {
     try {
-      const projectId = await saveRenderedProject(renderedProject.current, fileName);
+      const projectId = await saveRenderedProject(renderedProject.current);
       // A public studio keeps no render log; the project is in this browser.
       if (studio.mode === 'public') return;
       await fetch('/api/exports', {
@@ -2292,6 +2303,8 @@ export default function VideoCreatorPage() {
    */
   const handleLoadSavedProject = async (proj: any) => {
     if (!proj) return;
+    // Saving or rendering it from here updates this project.
+    if (typeof proj.id === 'string') rememberClipProject(proj.id, proj);
     setSelectedSurah(proj.surahNumber || 1);
     setAyahStart(proj.ayahStart || 1);
     setAyahEnd(proj.ayahEnd || 7);

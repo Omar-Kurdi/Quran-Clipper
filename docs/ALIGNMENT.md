@@ -247,6 +247,37 @@ unrestricted version cost test_this three captions and test3 two.
 Together these took Fussilat to 8 of 8 and test5 to 31 of 31, 250 to 256 of 273, with no clip
 worse.
 
+**Restart by restart is the default reading (2026-10-07).** What was recited is now read by
+the older phoneme model, which hears where the reciter went back, joined with the phrase
+read-out where that is sure (`phoneme_reading.mixed`). Before, the phrase read-out alone was
+used. Every reading and timing pairing was gauged over the same 21 clips:
+
+| Reading | timing: fastconformer | older zipformer | zipformer v3.1 |
+|---|---|---|---|
+| phrase read-out | 256 | 236 | 243 |
+| restart by restart | **265** | 245 | 252 |
+| zipformer v3.1 | 235 | 213 | 224 |
+
+Restart by restart gained on the two At-Tawbah clips with dense restarts (+4 and +5) and lost
+on none. The timings stay fastconformer's, since every phoneme timing scored lower. Asking for
+`fastconformer` (or `ALIGN_PHONEME_READING=fastconformer`) still reads by phrase alone, which
+is how the lab and the gauge compare against it. If the phoneme model cannot load, the phrase
+read-out is used.
+
+A hole just before a restart may hold the reciter carrying on, not saying something twice.
+On Ar-Ra'd 13:11 the read-out cut «سُوٓءًا فَلَا» short, and the hole after it read
+'لا مَرَدَّ ل'. The repeat-filling pass offered only the words just said or the words about to
+be said, so it put a third فَلَا مَرَدَّ لَهُۥ there at 83%. The reciter had said it twice. The
+words that come next are now a candidate too (`_carried_on`), and they win where they fit
+better. Here مَرَدَّ لَهُۥ fit at 100%, which took that clip from 7 to 8 of 8.
+
+The read-out compares letter skeletons, which drop every alef so that the mushaf's spelling and
+a decoder's agree. An ى carrying a small alef inside a word (وَمَأْوَىٰهُمْ) is that same long ā,
+but it became ي, so the word never matched what was heard. On Ar-Ra'd 13:18 a perfectly
+decoded repeat of «وَمَأْوَىٰهُمْ جَهَنَّمُ» therefore scored 0.62, under the 0.75 a repeat needs,
+and the return went uncaptioned. It is now dropped with the alefs, which took that clip from
+3 to 4 of 5 and the gauge to 269 of 278.
+
 Two further rules fall out of getting this wrong once each. Quiet lying wholly inside a word is
 that word's own stop consonant, not a break. And silence must actually *separate* two words —
 the run-out at the end of a recording is silence after the last word, not between anything, and
