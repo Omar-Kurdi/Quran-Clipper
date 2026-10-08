@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { openingVerses, isOpening, type HeardOpening } from './openings';
+import { openingVerses, isOpening, passageAfterOpenings, type HeardOpening } from './openings';
 
 const basmala: HeardOpening = {
   kind: 'basmala',
@@ -52,5 +52,20 @@ describe('isOpening', () => {
   it('tells an opening from an ayah by its key', () => {
     expect(isOpening({ verseKey: 'basmala' })).toBe(true);
     expect(isOpening({ verseKey: '1:1' })).toBe(false);
+  });
+});
+
+describe('passageAfterOpenings', () => {
+  const passage = [{ verseKey: '1:1', startTime: 4.3 }, { verseKey: '1:2', startTime: 6.1 }];
+
+  it("starts the first caption where the isti'adha was heard to end, when the aligner started it later", () => {
+    // Al-Sudais's Al-Fatihah: the isti'adha ends in the pause at 3.18s, and the aligner put the basmala at 4.3s.
+    const starting = passageAfterOpenings(passage, [{ ...istiadha, end: 3.18 }]);
+    expect(starting.map(verse => verse.startTime)).toEqual([3.18, 6.1]);
+  });
+
+  it('leaves a passage that already starts where the openings end', () => {
+    expect(passageAfterOpenings(passage, [{ ...istiadha, end: 4.3 }])).toBe(passage);
+    expect(passageAfterOpenings(passage, [])).toBe(passage);
   });
 });

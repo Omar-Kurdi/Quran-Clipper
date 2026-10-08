@@ -324,64 +324,123 @@ export const SAMPLE_PROJECTS = [
     reciterName: "Abdul Rahman Al-Sudais",
     audioUrl: "https://server11.mp3quran.net/download/sds/001.mp3",
     audioDuration: "00:36",
+    // Timed from this recording by the studio's own match (2026-10-08), the
+    // isti'adha included: the hand-written timings this replaced had 1:7 start
+    // twelve seconds late and run past the end of the audio.
     verses: [
+      {
+        verseNumber: 0,
+        verseKey: "istiadha",
+        textUthmani: "أَعُوذُ بِٱللَّهِ مِنَ ٱلشَّيْطَـٰنِ ٱلرَّجِيمِ",
+        translation: "I seek refuge in Allah from Satan, the accursed.",
+        startTime: 0,
+        endTime: 3.18,
+        words: [
+          { arabic: "أَعُوذُ", translation: "", timestamp: 0.48 },
+          { arabic: "بِٱللَّهِ", translation: "", timestamp: 0.8 },
+          { arabic: "مِنَ", translation: "", timestamp: 1.32 },
+          { arabic: "ٱلشَّيْطَـٰنِ", translation: "", timestamp: 1.68 },
+          { arabic: "ٱلرَّجِيمِ", translation: "", timestamp: 2.04 }
+        ]
+      },
       {
         verseNumber: 1,
         verseKey: "1:1",
         textUthmani: "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
         translation: "In the name of Allah, the Entirely Merciful, the Especially Merciful.",
-        startTime: 0.0,
-        endTime: 6.2
+        startTime: 3.18,
+        endTime: 6.1,
+        words: [
+          { arabic: "بِسْمِ", translation: "In (the) name", glyph: "ﱁ", glyphPage: 1, glyphLine: 2, timestamp: 4.31 },
+          { arabic: "ٱللَّهِ", translation: "(of) Allah", glyph: "ﱂ", glyphPage: 1, glyphLine: 2, timestamp: 4.389 },
+          { arabic: "ٱلرَّحْمَـٰنِ", translation: "the Most Gracious", glyph: "ﱃ", glyphPage: 1, glyphLine: 2, timestamp: 4.729 },
+          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱄ", glyphPage: 1, glyphLine: 2, timestamp: 5.409 }
+        ]
       },
       {
         verseNumber: 2,
         verseKey: "1:2",
         textUthmani: "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ",
         translation: "[All] praise is [due] to Allah, Lord of the worlds.",
-        startTime: 6.2,
-        endTime: 11.5
+        startTime: 6.1,
+        endTime: 10.2,
+        words: [
+          { arabic: "ٱلْحَمْدُ", translation: "All praises and thanks", glyph: "ﱆ", glyphPage: 1, glyphLine: 3, timestamp: 6.409 },
+          { arabic: "لِلَّهِ", translation: "(be) to Allah", glyph: "ﱇ", glyphPage: 1, glyphLine: 3, timestamp: 6.969 },
+          { arabic: "رَبِّ", translation: "the Lord", glyph: "ﱈ", glyphPage: 1, glyphLine: 3, timestamp: 7.849 },
+          { arabic: "ٱلْعَـٰلَمِينَ", translation: "of the universe", glyph: "ﱉ", glyphPage: 1, glyphLine: 3, timestamp: 8.289 }
+        ]
       },
       {
         verseNumber: 3,
         verseKey: "1:3",
         textUthmani: "ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
         translation: "The Entirely Merciful, the Especially Merciful,",
-        startTime: 11.5,
-        endTime: 16.8
+        startTime: 10.2,
+        endTime: 11.9,
+        words: [
+          { arabic: "ٱلرَّحْمَـٰنِ", translation: "The Most Gracious", glyph: "ﱋ", glyphPage: 1, glyphLine: 4, timestamp: 10.489 },
+          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱌ", glyphPage: 1, glyphLine: 4, timestamp: 11.449 }
+        ]
       },
       {
         verseNumber: 4,
         verseKey: "1:4",
-        textUthmani: "مَـٰلِكِ يَوْمِ ٱلدَّينِ",
+        textUthmani: "مَـٰلِكِ يَوْمِ ٱلدِّينِ",
         translation: "Sovereign of the Day of Recompense.",
-        startTime: 16.8,
-        endTime: 21.4
+        startTime: 11.9,
+        endTime: 14.1,
+        words: [
+          { arabic: "مَـٰلِكِ", translation: "(The) Master", glyph: "ﱎ", glyphPage: 1, glyphLine: 4, timestamp: 12.049 },
+          { arabic: "يَوْمِ", translation: "(of the) Day", glyph: "ﱏ", glyphPage: 1, glyphLine: 4, timestamp: 12.689 },
+          { arabic: "ٱلدِّينِ", translation: "(of the) Judgment", glyph: "ﱐ", glyphPage: 1, glyphLine: 4, timestamp: 13.329 }
+        ]
       },
       {
         verseNumber: 5,
         verseKey: "1:5",
         textUthmani: "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ",
         translation: "It is You we worship and You we ask for help.",
-        startTime: 21.4,
-        endTime: 27.6
+        startTime: 14.1,
+        endTime: 18,
+        words: [
+          { arabic: "إِيَّاكَ", translation: "You Alone", glyph: "ﱒ", glyphPage: 1, glyphLine: 5, timestamp: 14.289 },
+          { arabic: "نَعْبُدُ", translation: "we worship", glyph: "ﱓ", glyphPage: 1, glyphLine: 5, timestamp: 15.169 },
+          { arabic: "وَإِيَّاكَ", translation: "and You Alone", glyph: "ﱔ", glyphPage: 1, glyphLine: 5, timestamp: 15.849 },
+          { arabic: "نَسْتَعِينُ", translation: "we ask for help", glyph: "ﱕ", glyphPage: 1, glyphLine: 5, timestamp: 16.889 }
+        ]
       },
       {
         verseNumber: 6,
         verseKey: "1:6",
         textUthmani: "ٱهْدِنَا ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ",
         translation: "Guide us to the straight path -",
-        startTime: 27.6,
-        endTime: 33.1
+        startTime: 18,
+        endTime: 21.6,
+        words: [
+          { arabic: "ٱهْدِنَا", translation: "Guide us", glyph: "ﱗ", glyphPage: 1, glyphLine: 5, timestamp: 18.409 },
+          { arabic: "ٱلصِّرَٰطَ", translation: "(to) the path", glyph: "ﱘ", glyphPage: 1, glyphLine: 6, timestamp: 19.129 },
+          { arabic: "ٱلْمُسْتَقِيمَ", translation: "the straight", glyph: "ﱙ", glyphPage: 1, glyphLine: 6, timestamp: 19.889 }
+        ]
       },
       {
         verseNumber: 7,
         verseKey: "1:7",
-        textUthmani: "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ",
+        textUthmani: "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ",
         translation: "The path of those upon whom You have bestowed favor, not of those who have evoked [Your] anger or of those who are astray.",
-        startTime: 33.1,
-        // The recording is 36.1s; this said 43.0, and the last caption ran
-        // seven seconds past the end of the audio on the timeline.
-        endTime: 36.1
+        startTime: 21.6,
+        endTime: 36.1,
+        words: [
+          { arabic: "صِرَٰطَ", translation: "(The) path", glyph: "ﱛ", glyphPage: 1, glyphLine: 6, timestamp: 22.049 },
+          { arabic: "ٱلَّذِينَ", translation: "(of) those", glyph: "ﱜ", glyphPage: 1, glyphLine: 6, timestamp: 22.769 },
+          { arabic: "أَنْعَمْتَ", translation: "You have bestowed (Your) Favors", glyph: "ﱝ", glyphPage: 1, glyphLine: 6, timestamp: 23.409 },
+          { arabic: "عَلَيْهِمْ", translation: "on them", glyph: "ﱞ", glyphPage: 1, glyphLine: 7, timestamp: 24.289 },
+          { arabic: "غَيْرِ", translation: "not (of)", glyph: "ﱟ", glyphPage: 1, glyphLine: 7, timestamp: 25.089 },
+          { arabic: "ٱلْمَغْضُوبِ", translation: "those who earned (Your) wrath", glyph: "ﱠ", glyphPage: 1, glyphLine: 7, timestamp: 25.529 },
+          { arabic: "عَلَيْهِمْ", translation: "on themselves", glyph: "ﱡ", glyphPage: 1, glyphLine: 7, timestamp: 26.449 },
+          { arabic: "وَلَا", translation: "and not", glyph: "ﱢ", glyphPage: 1, glyphLine: 8, timestamp: 27.276 },
+          { arabic: "ٱلضَّآلِّينَ", translation: "(of) those who go astray", glyph: "ﱣ", glyphPage: 1, glyphLine: 8, timestamp: 27.889 }
+        ]
       }
     ]
   },

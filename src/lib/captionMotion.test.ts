@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  motionForNewMatch,
   captionLayers, parkedOnCaption, transitionWindow, leadingLayer, revealedWords, recitedWord,
   asCaptionTransition, TRANSITION_SECONDS, WORD_FADE_SECONDS, type CaptionMotion
 } from './captionMotion';
@@ -186,5 +187,18 @@ describe('parkedOnCaption', () => {
     expect(parkedOnCaption(captions, 5.2)).toBe(false);
     expect(parkedOnCaption(captions, 4.8)).toBe(false);
     expect(parkedOnCaption([], 5)).toBe(false);
+  });
+});
+
+describe('motionForNewMatch', () => {
+  it('picks a moving caption change, never the cut, and starts the words all at once', () => {
+    const picked = [0, 0.2, 0.4, 0.6, 0.8, 0.999999].map(r => motionForNewMatch('cut', () => r));
+    expect(new Set(picked.map(m => m.captionTransition))).toEqual(new Set(['crossfade', 'fadeThrough', 'slide', 'zoom', 'focus']));
+    expect(picked.every(m => m.wordEffect === 'none')).toBe(true);
+  });
+
+  it('never gives the next clip the change the last one had', () => {
+    const picked = [0, 0.3, 0.6, 0.999999].map(r => motionForNewMatch('slide', () => r).captionTransition);
+    expect(picked).not.toContain('slide');
   });
 });

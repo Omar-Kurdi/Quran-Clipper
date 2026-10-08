@@ -40,6 +40,19 @@ export const MOTION_DEFAULTS = {
   highlightColor: '',
 };
 
+/**
+ * The caption change a freshly loaded or matched clip gets: one of the moving
+ * ones at random, never the one the last clip had, so clips made one after
+ * another do not all look alike. The words always start all at once. Either
+ * can be changed in Style afterwards.
+ */
+export function motionForNewMatch(
+  previous?: string, random: () => number = Math.random
+): { captionTransition: CaptionTransition; wordEffect: WordEffect } {
+  const moving = CAPTION_TRANSITIONS.filter(id => id !== 'cut' && id !== previous);
+  return { captionTransition: moving[Math.min(moving.length - 1, Math.floor(random() * moving.length))], wordEffect: 'none' };
+}
+
 export const asCaptionTransition = (value: unknown): CaptionTransition =>
   CAPTION_TRANSITIONS.includes(value as CaptionTransition) ? value as CaptionTransition : DEFAULT_CAPTION_TRANSITION;
 export const asWordEffect = (value: unknown): WordEffect =>

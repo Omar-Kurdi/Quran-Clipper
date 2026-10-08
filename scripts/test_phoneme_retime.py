@@ -180,6 +180,11 @@ onset = phoneme_reading._onset([1, 2, 3], reading, first, last, distance)
 check("a first sound heard wrong is still the opening's", ok=onset[0] == 2, detail=f"got {onset}")
 check("its card comes up in the pause before it, not as it is said",
       ok=12 * phoneme.FRAME_SEC < onset[1] < 20 * phoneme.FRAME_SEC, detail=f"got {onset}")
+# Al-Sudais's Al-Fatihah: the isti'adha ends in the pause at 3.18s; the aligner started 1:1 at 4.31s.
+heard_istiadha = {"kind": "istiadha", "text": "", "words": [], "starts": [0.48], "end": 3.18}
+check("an opening ends in the pause after it when the passage was started later",
+      ok=phoneme_reading._as_reported(heard_istiadha, 4.31, 0.0)["end"] == 3.18
+      and phoneme_reading._as_reported(heard_istiadha, 3.0, 10.0)["end"] == 13.0)
 check("a sound before an opening heard right is not taken in",
       ok=phoneme_reading._onset([1, 2, 3], ([4, 9, 1, 2, 3], [0, 5, 10, 15, 20]), 2, 5, 0)[0] == 2)
 

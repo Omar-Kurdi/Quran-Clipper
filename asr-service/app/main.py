@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -142,6 +143,31 @@ def health() -> dict:
         # exports are on this machine.
         "qulAssist": qul.available(),
     }
+
+
+def _istiadha_before_basmala(pcm: np.ndarray, first_verse: str, listen_sec: float = 15.0) -> float | None:
+    """Where an isti'adha said before 1:1 ends, so the aligner can be kept off it; None when there is none.
+
+    A passage from 1:1 has the basmala as its first ayah, and the isti'adha
+    before it shares بِٱللَّهِ with it: the aligner laid بِسْمِ on the
+    isti'adha's بِٱللَّهِ, 1:1's caption swallowed the isti'adha, and with no
+    audio left before the first word, the openings were listened for in none
+    (the studio's own Al-Fatihah sample, Al-Sudais, 0.5-2.6s). Listened for
+    over the opening seconds instead of before the first aligned word.
+    """
+    if first_verse != "1:1":
+        return None
+    heard = phoneme_reading.find_openings(pcm, min(duration_seconds(pcm), listen_sec), first_verse)
+    return next((opening["end"] for opening in heard if opening["kind"] == "istiadha"), None)
+
+
+def _without_istiadha(pcm: np.ndarray, ends_at: float | None) -> np.ndarray:
+    """The recording with everything before `ends_at` silenced, or as it is when there is nothing to silence."""
+    if not ends_at:
+        return pcm
+    quiet = pcm.copy()
+    quiet[: int(ends_at * SAMPLE_RATE)] = 0
+    return quiet
 
 
 def _shifted(entry: dict, window_offset: float) -> dict:
@@ -328,13 +354,17 @@ async def align_endpoint(
             summary = ", ".join(f"{r.surah}:{r.start_ayah}-{r.end_ayah}" for r in detected.ranges)
             raise HTTPException(status_code=422, detail=f"Detected {summary} but found no text for it.")
 
+    # An isti'adha before 1:1 is silenced for the aligner, which otherwise lays
+    # the basmala on it (see `_istiadha_before_basmala`); the openings are still
+    # heard from the recording itself.
+    aligner_pcm = _without_istiadha(pcm, _istiadha_before_basmala(pcm, ref_words[0][0]))
     try:
-        result = align.align_recitation(pcm, ref_words, boundaries, decoded_phrases, breaks, **phoneme.lab_stages(lab))
+        result = align.align_recitation(aligner_pcm, ref_words, boundaries, decoded_phrases, breaks, **phoneme.lab_stages(lab))
     except align.AlignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     aligned, segments = result.words, result.segments
-    retimed = phoneme.retime(retime, pcm, aligned, segments)
+    retimed = phoneme.retime(retime, aligner_pcm, aligned, segments)
     mean_score = result.mean_score
     coverage = result.reference_coverage
     agreement = result.decode_agreement

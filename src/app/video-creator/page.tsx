@@ -58,7 +58,7 @@ import {
 } from '@/lib/backgroundTimeline';
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY, NEW_PROJECT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
-import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour, MOTION_DEFAULTS } from '@/lib/captionMotion';
+import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour, MOTION_DEFAULTS, motionForNewMatch } from '@/lib/captionMotion';
 import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
 import { nextToCheck, captionChecks } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
@@ -662,6 +662,7 @@ export default function VideoCreatorPage() {
   // Fetch Verses on Surah / Reciter / Ayah change
   const handleLoadSurahVerses = async () => {
     beginClip();
+    setCanvasConfig(prev => ({ ...prev, ...motionForNewMatch(prev.captionTransition) }));
     // Back to the clip's summary in Source, which reports how the load went.
     setSourceEditing(false);
     setIsLoadingVerses(true);
@@ -1173,6 +1174,7 @@ export default function VideoCreatorPage() {
 
   const handleAutoMatchUploadedAudio = () => {
     beginClip();
+    setCanvasConfig(prev => ({ ...prev, ...motionForNewMatch(prev.captionTransition) }));
     setSourceEditing(false);
     if (!customAudioFile) {
       setMatchStatus({ text: t.match.needUpload, tone: 'error' });

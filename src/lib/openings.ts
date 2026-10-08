@@ -66,3 +66,19 @@ export function openingVerses(
     };
   });
 }
+
+/**
+ * The passage, its first caption starting where the openings were heard to
+ * end when that is before where the aligner started it.
+ *
+ * The aligner can start the passage's first word late -- 0.7s on the studio's
+ * own Al-Fatihah sample, where Al-Sudais's basmala begins at 3.6s and the
+ * aligner put it at 4.3s -- while the isti'adha was heard to end in the pause
+ * before it. Its card stayed up over the basmala.
+ */
+export function passageAfterOpenings<V extends { startTime: number }>(passage: V[], heard: HeardOpening[] | undefined): V[] {
+  const first = passage[0];
+  if (!first || !heard?.length) return passage;
+  const end = Math.max(...heard.map(opening => opening.end));
+  return end < first.startTime ? [{ ...first, startTime: end }, ...passage.slice(1)] : passage;
+}

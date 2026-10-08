@@ -326,7 +326,6 @@ def _symbols(model, script: list[int], ref_words: list[tuple[str, int, str]]) ->
     return [s for unit in units for s in tokenize(unit.phonemes, model.tokens)]
 
 
-# ---------------------------------------------------------------------------
 # Before the passage: the isti'adha and basmala
 # ---------------------------------------------------------------------------
 #
@@ -420,7 +419,8 @@ def find_openings(pcm: np.ndarray, before: float, first_verse: str, offset: floa
     """The openings heard in the first ``before`` seconds, in order, with times against the whole recording.
 
     Each is ``{kind, text, start, end, words: [{text, start}]}``; ``end`` is
-    where the next one, or the passage, begins. Listened for by the model that
+    where the next one, or the passage, begins -- or the pause after it, when
+    that comes first. Listened for by the model that
     re-times every match (`phoneme.chosen`): nothing more to download, and
     nothing at all where re-timing is turned off.
     """
@@ -465,7 +465,9 @@ def _hear_opening(model, kind: str, reading: tuple[list[int], list[int]]) -> dic
     # Each word starts where its first symbol was heard, read off the same match.
     starts = _word_starts(per_word, heard[first:last], frames[first:last])
     starts[0] = start
-    return {"kind": kind, "text": text, "words": text.split(), "starts": starts}
+    # Where it ends: in the pause before whatever was heard next.
+    ends_at = (frames[last - 1] + frames[last]) / 2 if last < len(frames) else frames[last - 1] + 8
+    return {"kind": kind, "text": text, "words": text.split(), "starts": starts, "end": ends_at * phoneme.FRAME_SEC}
 
 
 def _onset(target: list[int], reading: tuple[list[int], list[int]], first: int, last: int, distance: int) -> tuple[int, float]:
@@ -494,11 +496,14 @@ def _onset(target: list[int], reading: tuple[list[int], list[int]], first: int, 
 
 
 def _as_reported(opening: dict, end: float, offset: float) -> dict:
+    # It ends where the next one or the passage begins, or in the pause after
+    # it where that came first: the aligner can start the passage's first word
+    # late (Al-Sudais's 1:1, 0.7s), and the opening's card stayed up over it.
     return {
         "kind": opening["kind"],
         "text": opening["text"],
         "start": round(opening["starts"][0] + offset, 3),
-        "end": round(end + offset, 3),
+        "end": round(min(end, opening["end"]) + offset, 3),
         "words": [{"text": w, "start": round(s + offset, 3)} for w, s in zip(opening["words"], opening["starts"])],
     }
 

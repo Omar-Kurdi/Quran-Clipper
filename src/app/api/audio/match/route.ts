@@ -17,7 +17,7 @@ import { timedFromPublished } from '@/lib/publishedPhrases';
 import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
 import { hostAllowed } from '@/app/api/audio/proxy/route';
 import { studioMode } from '@/lib/studioMode';
-import { openingVerses } from '@/lib/openings';
+import { openingVerses, passageAfterOpenings } from '@/lib/openings';
 import { getVerseByKey } from '@/lib/quranCorpus';
 import { PHONEME_PROVIDERS, asLab, isPhonemeProvider, labStages, phonemeTrialOffered, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { matchQueue, ticketFrom, visitorFrom, QueueFullError, VisitorBusyError, AbandonedError } from '@/lib/matchQueue';
@@ -143,7 +143,8 @@ async function withOpenings(result: MatchResult, passage: VerseData[]): Promise<
   if (!result.openings?.length) return passage;
   // The basmala is drawn from 1:1's own page, like any ayah.
   const basmala = result.openings.some(opening => opening.kind === 'basmala') ? await getVerseByKey('1:1') : null;
-  return [...openingVerses(result.openings, passage[0]?.startTime ?? 0, basmala?.words), ...passage];
+  const starting = passageAfterOpenings(passage, result.openings);
+  return [...openingVerses(result.openings, starting[0]?.startTime ?? 0, basmala?.words), ...starting];
 }
 
 /**
