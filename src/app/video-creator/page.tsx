@@ -96,7 +96,9 @@ import { applyContentSync } from '@/lib/contentSyncCore';
 import type { CorpusVerse } from '@/lib/quranCorpus';
 import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
 import { InspectorSkeleton } from '@/components/Skeleton';
-import { HowItWorksDialog } from '@/components/HowItWorksDialog';
+import { WelcomeGuide } from '@/components/WelcomeGuide';
+import { useWelcomeGuide } from '@/hooks/useWelcomeGuide';
+import { TrimStep } from '@/components/TrimStep';
 import { BatchMatchDialog } from '@/components/BatchMatchDialog';
 import type { BatchResult } from '@/lib/batchMatch';
 import { buildRenderForm } from '@/lib/serverRenderForm';
@@ -1915,8 +1917,8 @@ export default function VideoCreatorPage() {
 
 
 
-  /** "How it works", from the Help menu -- the studio no longer tours itself on a first visit. */
-  const [isHowOpen, setIsHowOpen] = useState(false);
+  /** The welcome guide: once per language by itself, and from the Help menu. */
+  const guide = useWelcomeGuide(locale, !pendingDraft);
 
   const frameIndex = useSyncExternalStore(framePreference.subscribe, framePreference.get, framePreference.getServerSnapshot);
   const showSafeArea = useSyncExternalStore(safeAreaPreference.subscribe, safeAreaPreference.get, safeAreaPreference.getServerSnapshot);
@@ -1940,9 +1942,9 @@ export default function VideoCreatorPage() {
   const helpItems: OverflowItem[] = [
     {
       key: 'how',
-      label: t.source.howItWorks,
+      label: t.guide.open,
       icon: <BookOpen className="w-4 h-4" />,
-      onSelect: () => setIsHowOpen(true)
+      onSelect: guide.open
     },
     {
       key: 'shortcuts',
@@ -3130,6 +3132,13 @@ export default function VideoCreatorPage() {
                           <span id="recitation-upload-help" className="text-xs leading-relaxed text-slate-400">{t.source.dropHelp}</span>
                         </div>
 
+                        {customAudioFile && (
+                          <TrimStep
+                            length={customAudioDuration > 0 ? formatDuration(customAudioDuration) : ''}
+                            onTrim={() => setShowTrimModal(true)}
+                          />
+                        )}
+
                         {engineSettings}
 
                         <div className="flex flex-col gap-2">
@@ -3145,11 +3154,6 @@ export default function VideoCreatorPage() {
                             <div className="flex flex-wrap items-center gap-2">
                               <Button icon={<Clock className="w-3.5 h-3.5 text-amber-400" />} onClick={handleManualMatchUploadedAudio}>
                                 {t.source.timeByHand}
-                              </Button>
-                              <Button icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />} onClick={() => setShowTrimModal(true)} disabled={!customAudioFile}>
-                                {customAudioDuration > 0
-                                  ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
-                                  : t.header.trimAudio}
                               </Button>
                             </div>
                           ) : (
@@ -3447,7 +3451,7 @@ export default function VideoCreatorPage() {
 
       {/* Saved Projects Drawer */}
       <ShortcutsDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
-      <HowItWorksDialog isOpen={isHowOpen} onClose={() => setIsHowOpen(false)} />
+      <WelcomeGuide isOpen={guide.isOpen} onClose={guide.close} />
       <BatchMatchDialog
         isOpen={isBatchOpen}
         onClose={() => setIsBatchOpen(false)}

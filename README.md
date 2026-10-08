@@ -20,6 +20,17 @@ it, and exports the finished clip, all in the browser. Free for personal and non
 - **Every frame:** 9:16, 1:1, 4:5 and 16:9 presets for TikTok, Reels, Shorts and YouTube, exported up to 4K.
 - **English and Arabic interface,** eight themes.
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Passage.gif" alt="Picking Surah Al-Mulk, ayahs 1 to 2, from the Source tab and pressing Load ayahs and audio: the passage appears on the timeline as two captions, and the preview shows the first ayah with its translation."><br><sub><b>Pick a passage.</b> The captions are timed to the recitation for you.</sub></td>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Captions.gif" alt="Playing the clip with Highlight as recited: each word lights up in gold as it is recited, the playhead moves along the timeline, and clicking the second caption opens its words in the Captions tab."><br><sub><b>Check the captions.</b> Words light up as they are recited.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Style.gif" alt="The Style tab: choosing the Gold Kaaba and then the Starlight preset changes the preview's background, fonts and card, and the Motion section is set to highlight words as recited."><br><sub><b>Make it yours.</b> Presets, fonts, translations, backgrounds and motion.</sub></td>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Export.gif" alt="The Export dialog: YouTube Shorts and Instagram Feed are picked and Render 2 videos queues them; the first finishes as a 14 MB file while the second renders."><br><sub><b>Export.</b> Rendered in your browser, for every platform at once.</sub></td>
+  </tr>
+</table>
+
 Its distinguishing feature is how it times uploaded audio. Instead of asking a model to guess
 what was recited and when, it takes the *known* Quran text as a fixed constraint and solves
 only for timing. A word cannot go missing, come back garbled, or land in the wrong surah —
