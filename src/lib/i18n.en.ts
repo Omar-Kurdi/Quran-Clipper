@@ -431,24 +431,24 @@ export const en = {
       indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq on a card under a moonlit minaret, a small corner tag, amber accents.' }
     }
   },
-  guide: {
-    label: 'Welcome guide',
-    open: 'Welcome guide',
-    welcome: 'Welcome to Quran Clipper',
-    progress: (step: number, total: number) => `${step} of ${total}`,
+  tour: {
+    open: 'Guided tour',
+    progress: (step: number, total: number) => `Step ${step} of ${total}`,
     skip: 'Skip',
     back: 'Back',
     next: 'Next',
     done: 'Start creating',
-    goTo: (step: number) => `Go to step ${step}`,
-    passageTitle: 'Pick a passage',
-    passageBody: 'Choose a reciter, a surah and the ayahs, then Load. The captions are timed to the recitation for you. Or upload your own recording.',
-    captionsTitle: 'Check the captions',
-    captionsBody: 'Play it through. Each caption is a block on the timeline: tap one to fix its words, or drag its edges.',
-    styleTitle: 'Make it yours',
-    styleBody: 'In Style, pick the fonts, translations, background and how one caption gives way to the next.',
-    exportTitle: 'Export and share',
-    exportBody: 'Export makes the video right here in your browser, ready to download or post. You can open this guide again from the menu.'
+    sourceTitle: '1 · Source',
+    sourceBody: 'Start here. Pick a built-in reciter, a surah and the ayahs, or upload your own recording, audio or video. The captions are timed to the recitation for you.',
+    captionsTitle: '2 · Captions',
+    captionsBody: 'Check each caption: choose its translations, and tap a word to show or hide it on screen.',
+    styleTitle: '3 · Style',
+    styleBody: 'The look of the video: the layout, fonts and colours, the background, and the motion between captions.',
+    timelineTitle: 'The timeline',
+    timelineBody: 'Each block is one caption, as long as it is recited. Press Space to play, drag a block\u2019s edges to adjust it, or press B as a caption ends.',
+    timelineBodyCompact: 'Each block is one caption, as long as it is recited. Play it, and drag a block\u2019s edges to adjust it.',
+    exportTitle: 'Export',
+    exportBody: 'When it looks right, Export makes the video right here in your browser, ready to download or post. This tour is in the Help menu whenever you want it again.'
   },
   shortcuts: {
     open: 'Shortcuts',

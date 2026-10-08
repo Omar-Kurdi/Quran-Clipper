@@ -1,9 +1,8 @@
 # Demo clips and GIFs
 
-The welcome guide's clips (`src/assets/guide/`, animated WebP with a still for
-reduced motion) and the READMEs' GIFs (`docs/screenshots/QuranClipper_Demo_*.gif`,
-Arabic under `docs/screenshots/ar/`) are recorded from the studio itself, so they
-can be made again whenever the interface changes.
+The READMEs' demo GIFs (`docs/screenshots/QuranClipper_Demo_*.gif`, Arabic
+under `docs/screenshots/ar/`) are recorded from the studio itself, so they can
+be made again whenever the interface changes.
 
 1. Build and start a production studio in public mode on 45709. The dev build
    draws its render statistics over the preview.
@@ -18,7 +17,7 @@ can be made again whenever the interface changes.
    npm i --no-save playwright && npx playwright install chromium
    ```
 
-3. Record each scene in each language, and cut its clip, still and GIF.
+3. Record each scene in each language, and cut its GIF.
 
    ```bash
    export STUDIO_URL=http://localhost:45709
@@ -29,4 +28,4 @@ can be made again whenever the interface changes.
 
 The scenes use a built-in reciter (Al-Mulk 67:1-2, Abdul Rahman Al-Sudais),
 never a personal recording. They need no sidecar: a timed reciter loads from its
-published timings. `encode.py` needs `ffmpeg` with `libwebp`.
+published timings. `encode.py` needs `ffmpeg`.

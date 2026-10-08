@@ -96,8 +96,8 @@ import { applyContentSync } from '@/lib/contentSyncCore';
 import type { CorpusVerse } from '@/lib/quranCorpus';
 import { hydrateLibrary, withStoredBackgrounds, withRestoredBackgrounds } from '@/lib/backgroundLibrary';
 import { InspectorSkeleton } from '@/components/Skeleton';
-import { WelcomeGuide } from '@/components/WelcomeGuide';
-import { useWelcomeGuide } from '@/hooks/useWelcomeGuide';
+import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
+import { useGuidedTour } from '@/hooks/useGuidedTour';
 import { TrimStep } from '@/components/TrimStep';
 import { BatchMatchDialog } from '@/components/BatchMatchDialog';
 import type { BatchResult } from '@/lib/batchMatch';
@@ -1917,8 +1917,23 @@ export default function VideoCreatorPage() {
 
 
 
-  /** The welcome guide: once per language by itself, and from the Help menu. */
-  const guide = useWelcomeGuide(locale, !pendingDraft);
+  /**
+   * The guided tour: once per language by itself, and from the Help menu.
+   * Each step points at the part of the studio it describes, and opens it --
+   * on a phone only one surface shows at a time.
+   */
+  const guide = useGuidedTour(locale, !pendingDraft);
+  const tourSteps: (TourStep & { panel: PanelTab })[] = [
+    { target: 'tab-source', tab: 'mtab-source', panel: 'source', light: true, title: t.tour.sourceTitle, body: t.tour.sourceBody },
+    { target: 'tab-captions', tab: 'mtab-captions', panel: 'captions', light: true, title: t.tour.captionsTitle, body: t.tour.captionsBody },
+    { target: 'tab-style', tab: 'mtab-style', panel: 'style', light: true, title: t.tour.styleTitle, body: t.tour.styleBody },
+    { target: 'timeline', panel: 'captions', title: t.tour.timelineTitle, body: t.tour.timelineBody, compactBody: t.tour.timelineBodyCompact },
+    { target: 'export', panel: 'captions', title: t.tour.exportTitle, body: t.tour.exportBody }
+  ];
+  const closeTour = () => {
+    guide.close();
+    setPanelTab('source');
+  };
 
   const frameIndex = useSyncExternalStore(framePreference.subscribe, framePreference.get, framePreference.getServerSnapshot);
   const showSafeArea = useSyncExternalStore(safeAreaPreference.subscribe, safeAreaPreference.get, safeAreaPreference.getServerSnapshot);
@@ -1942,7 +1957,7 @@ export default function VideoCreatorPage() {
   const helpItems: OverflowItem[] = [
     {
       key: 'how',
-      label: t.guide.open,
+      label: t.tour.open,
       icon: <BookOpen className="w-4 h-4" />,
       onSelect: guide.open
     },
@@ -2692,7 +2707,7 @@ export default function VideoCreatorPage() {
             }
           />
 
-          <Button variant="primary" size="md" onClick={() => setIsExportModalOpen(true)} icon={<Sparkles className="w-4 h-4 fill-current" />}>
+          <Button variant="primary" size="md" onClick={() => setIsExportModalOpen(true)} icon={<Sparkles className="w-4 h-4 fill-current" />} data-tour="export">
             {t.header.export}
           </Button>
         </div>
@@ -3342,7 +3357,7 @@ export default function VideoCreatorPage() {
         </div>
 
         {/* Not on a phone's Source tab, which has nothing on it yet worth timing. */}
-        <div className={panelTab === 'source' ? 'max-lg:hidden' : ''}>
+        <div className={panelTab === 'source' ? 'max-lg:hidden' : ''} data-tour="timeline">
         <Timeline
           verses={verses}
           audioUrl={customAudioUrl || audioUrl}
@@ -3399,6 +3414,7 @@ export default function VideoCreatorPage() {
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
+            data-tour={`mtab-${id}`}
             onClick={() => setPanelTab(id)}
             aria-current={panelTab === id ? 'page' : undefined}
             className={`min-h-11 flex items-center justify-center gap-1.5 rounded-lg text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
@@ -3451,7 +3467,7 @@ export default function VideoCreatorPage() {
 
       {/* Saved Projects Drawer */}
       <ShortcutsDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
-      <WelcomeGuide isOpen={guide.isOpen} onClose={guide.close} />
+      <OnboardingTour steps={tourSteps} isOpen={guide.isOpen} onClose={closeTour} onStep={index => setPanelTab(tourSteps[index].panel)} />
       <BatchMatchDialog
         isOpen={isBatchOpen}
         onClose={() => setIsBatchOpen(false)}

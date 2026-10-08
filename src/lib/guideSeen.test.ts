@@ -23,7 +23,7 @@ describe('guideSeen', () => {
     expect(guideSeen('ar')).toBe(false);
   });
 
-  it('does not count the old first-visit tour as having seen it', () => {
+  it('does not count the tour from before the redesign as having seen it', () => {
     store.set('quranclipper.tour.v1', '1');
     expect(guideSeen('en')).toBe(false);
   });

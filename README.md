@@ -37,7 +37,7 @@ only for timing. A word cannot go missing, come back garbled, or land in the wro
 those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio with a matched recording: the Captions tab on the left showing a caption marked for checking and its words, the preview with the frame bar above it, and the timeline across the bottom with the captions to check marked.">
+  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio with a matched recording of Surah Al-Falaq: the Captions tab on the left showing the selected caption, 113:2, with its words, translation and timing, the preview with the frame bar above it, and the timeline across the bottom with the isti'adha, the basmala and the five ayahs.">
 </p>
 <p align="center"><sub>One screen: the working panel (Source, Captions, Style), the preview, the timeline. Eight themes ship, seven dark and one light, switchable at runtime from the header's ⋯ menu.</sub></p>
 
@@ -143,9 +143,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   again in the new order, each keeping its length.
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Timeline.png" alt="The timeline: transport controls with Mark caption end, the captions-to-check button and the drag setting, a time ruler, the background lane, and one block per caption drawn over the waveform.">
+  <img src="docs/screenshots/QuranClipper_Timeline.png" alt="The timeline: transport controls with Mark caption end, the drag setting and Trim audio, a time ruler ending at the clip's length, the background lane, and one block per caption drawn over the waveform: the isti'adha, the basmala and Al-Falaq 113:1 to 113:5.">
 </p>
-<p align="center"><sub>The lane above the ayah blocks names the background and marks each repeat — <code>×2.4</code> here means the clip plays through twice and a bit.</sub></p>
+<p align="center"><sub>The lane above the ayah blocks names the background and marks each repeat — <code>×2.1</code> here means the clip plays through twice and a bit.</sub></p>
 
 - **Trim / crop uploaded audio** with a waveform editor — a scrubbable playhead and a time
   ruler show exactly where you are, zoom (up to 16×) resolves the waveform for fine cuts, and
@@ -188,8 +188,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   files cannot survive a reload, so their names are kept instead, which at least says what to
   pick again.
 - **<kbd>?</kbd> lists every keyboard shortcut.**
-- **No tour to sit through.** The panel's tabs are in working order and the sample says what to
-  do; *How it works*, in the header's Help menu, lays the six steps out for whoever asks.
+- **A short guided tour on the first visit,** in each language: it points at Source, Captions,
+  Style, the timeline and Export in turn. Skip it, or take it again from the header's Help menu.
 - **Works on a phone.** The bottom bar is the same Source / Captions / Style as on a desktop. On
   Captions and Style the preview stays pinned above the panel, over a slimmer timeline; on Source
   the form gets the whole height. The header keeps Undo and Export in reach and moves the rest,

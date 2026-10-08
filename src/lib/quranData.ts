@@ -323,7 +323,7 @@ export const SAMPLE_PROJECTS = [
     reciterId: "sudais",
     reciterName: "Abdul Rahman Al-Sudais",
     audioUrl: "https://server11.mp3quran.net/download/sds/001.mp3",
-    audioDuration: "00:43",
+    audioDuration: "00:36",
     verses: [
       {
         verseNumber: 1,
@@ -379,7 +379,9 @@ export const SAMPLE_PROJECTS = [
         textUthmani: "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ",
         translation: "The path of those upon whom You have bestowed favor, not of those who have evoked [Your] anger or of those who are astray.",
         startTime: 33.1,
-        endTime: 43.0
+        // The recording is 36.1s; this said 43.0, and the last caption ran
+        // seven seconds past the end of the audio on the timeline.
+        endTime: 36.1
       }
     ]
   },

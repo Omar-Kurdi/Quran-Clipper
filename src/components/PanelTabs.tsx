@@ -30,6 +30,7 @@ export const PanelTabs: React.FC<{ value: PanelTab; onChange: (tab: PanelTab) =>
         <button
           key={tab}
           id={`panel-tab-${tab}`}
+          data-tour={`tab-${tab}`}
           role="tab"
           aria-selected={value === tab}
           aria-controls={`panel-${tab}`}

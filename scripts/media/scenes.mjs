@@ -1,5 +1,5 @@
 /**
- * Records one scene of the welcome guide and the READMEs, in one language,
+ * Records one scene of the READMEs' demo GIFs, in one language,
  * against a running production studio in public mode, and prints what
  * `encode.py` needs to cut it.
  *

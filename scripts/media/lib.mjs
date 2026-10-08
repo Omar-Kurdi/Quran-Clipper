@@ -1,6 +1,6 @@
 /**
  * Shared by the media recordings (see docs/MEDIA.md): a browser in the
- * studio's language with the welcome guide marked seen, and a drawn pointer,
+ * studio's language with the guided tour marked seen, and a drawn pointer,
  * since a headless recording has none.
  *
  * Playwright is not a dependency of the app; install it for the run with
