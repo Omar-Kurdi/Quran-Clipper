@@ -20,12 +20,13 @@ be made again whenever the interface changes.
 3. Record each scene in each language, and cut its GIF.
 
    ```bash
-   export STUDIO_URL=http://localhost:45709
+   export STUDIO_URL=http://localhost:45709 DEMO_RECORDING=/path/to/Al-Falaq.wav
    for locale in en ar; do for scene in passage captions style export; do
      python3 scripts/media/encode.py $(node scripts/media/scenes.mjs $locale /tmp/qc-media $scene)
    done; done
    ```
 
-The scenes use a built-in reciter (Al-Mulk 67:1-2, Abdul Rahman Al-Sudais),
-never a personal recording. They need no sidecar: a timed reciter loads from its
-published timings. `encode.py` needs `ffmpeg`.
+The scenes use a built-in reciter (Al-Mulk 67:1-2, Abdul Rahman Al-Sudais).
+The passage scene also uploads `DEMO_RECORDING`, a recitation of Al-Falaq
+113:1-5 that may be published, under a plain file name, and matches it, so it
+needs the sidecar running; the other scenes do not. `encode.py` needs `ffmpeg`.

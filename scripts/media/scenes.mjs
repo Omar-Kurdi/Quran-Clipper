@@ -11,8 +11,8 @@ import { open, click, BASE } from './lib.mjs';
 import fs from 'fs';
 const [locale, outDir, scene] = process.argv.slice(2);
 const L = {
-  en: { surah: 'Surah', to: 'To ayah', load: 'Load ayahs & audio', style: 'Style', captions: 'Captions', motion: 'Motion', between: 'Between captions:', words: 'Words:', play: 'Play recitation', exp: 'Export', render: 'Render', kaaba: 'Gold Kaaba', starlight: 'Starlight', feed: 'Instagram Feed' },
-  ar: { surah: 'السورة', to: 'إلى الآية', load: 'تحميل الآيات والصوت', style: 'التنسيق', captions: 'المقاطع', motion: 'الحركة', between: 'بين المقاطع:', words: 'الكلمات:', play: 'تشغيل التلاوة', exp: 'تصدير', render: 'صدّر', kaaba: 'الكعبة الذهبية', starlight: 'ضوء النجوم', feed: null },
+  en: { rec: 'My recording', match: 'Match recording', surah: 'Surah', to: 'To ayah', load: 'Load ayahs & audio', style: 'Style', captions: 'Captions', motion: 'Motion', between: 'Between captions:', words: 'Words:', play: 'Play recitation', exp: 'Export', render: 'Render', kaaba: 'Gold Kaaba', starlight: 'Starlight', feed: 'Instagram Feed' },
+  ar: { rec: 'تسجيلي', match: 'طابِق التسجيل', surah: 'السورة', to: 'إلى الآية', load: 'تحميل الآيات والصوت', style: 'التنسيق', captions: 'المقاطع', motion: 'الحركة', between: 'بين المقاطع:', words: 'الكلمات:', play: 'تشغيل التلاوة', exp: 'تصدير', render: 'صدّر', kaaba: 'الكعبة الذهبية', starlight: 'ضوء النجوم', feed: null },
 }[locale];
 
 async function loadPassage(page, onCamera) {
@@ -36,9 +36,20 @@ async function motionSetting(page, which, value) {
 }
 
 const scenes = {
+  // Both ways in: a built-in reciter's passage, then a recording of one's
+  // own, matched and timed word by word (DEMO_RECORDING, docs/MEDIA.md).
   async passage(page, mark) {
     await mark('start');
     await loadPassage(page, true);
+    await page.waitForTimeout(2000);
+    await click(page, page.getByRole('button', { name: /^(Edit source|عدّل المصدر)/ }));
+    await page.waitForTimeout(700);
+    await click(page, page.getByText(L.rec, { exact: true }).first());
+    await page.waitForTimeout(700);
+    await page.locator('#recitation-upload').setInputFiles(process.env.DEMO_RECORDING);
+    await page.waitForTimeout(1500);
+    await click(page, page.getByRole('button', { name: L.match }));
+    await page.getByRole('button', { name: /^113:5/ }).waitFor({ timeout: 120000 });
     await page.waitForTimeout(2500);
     await mark('end');
   },

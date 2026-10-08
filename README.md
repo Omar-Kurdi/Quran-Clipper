@@ -22,7 +22,7 @@ it, and exports the finished clip, all in the browser. Free for personal and non
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Passage.gif" alt="Picking Surah Al-Mulk, ayahs 1 to 2, from the Source tab and pressing Load ayahs and audio: the passage appears on the timeline as two captions, and the preview shows the first ayah with its translation."><br><sub><b>Pick a passage.</b> The captions are timed to the recitation for you.</sub></td>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Passage.gif" alt="The Source tab, both ways in. First a built-in reciter: Surah Al-Mulk, ayahs 1 to 2, Load ayahs and audio, and the passage appears on the timeline. Then My recording: an uploaded recitation of Al-Falaq, the Trim it first step, Match recording, and the timeline fills with the isti'adha, the basmala and the five ayahs, each timed to the audio."><br><sub><b>Pick a reciter, or upload your own recitation.</b> Uploads are matched: the passage is found and every word timed to your audio.</sub></td>
     <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Captions.gif" alt="Playing the clip with Highlight as recited: each word lights up in gold as it is recited, the playhead moves along the timeline, and clicking the second caption opens its words in the Captions tab."><br><sub><b>Check the captions.</b> Words light up as they are recited.</sub></td>
   </tr>
   <tr>
@@ -239,8 +239,6 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Text section of the Style tab: the Arabic calligraphy face, text sizes and the colour fields." width="30%">
-</p>
-<p align="center">
   <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and Watermark sections of the Style tab: layout, badge, card opacity and border, the audio visualiser and the watermark." width="30%">
 </p>
 
