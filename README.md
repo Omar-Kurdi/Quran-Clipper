@@ -992,6 +992,21 @@ index its place at the front of the file.
 The frame-by-frame encoder builds its own canvas at the chosen size, so a 4K render is only
 larger numbers — nothing in the painting code is written in fixed pixels.
 
+### Uploading to YouTube
+
+With `NEXT_PUBLIC_YOUTUBE_CLIENT_ID` set (see `.env.example`), a finished render can go straight
+to your channel: private, unlisted, public or scheduled. The video goes from the browser to
+Google; the studio never holds it.
+
+Add the same OAuth client's `GOOGLE_CLIENT_SECRET` and you sign in once per browser. The server
+trades that sign-in for a refresh token, sealed with AES-256-GCM in an httpOnly cookie on that
+browser, and every later upload gets a fresh token from it with no pop-up. *Disconnect*, under
+the upload button, revokes it at Google. Without the secret, Google asks again every hour.
+
+Two things only you can do in Google Cloud: **publish the OAuth consent screen** (in Testing,
+Google ends these sign-ins after 7 days), and pass YouTube's API audit, until which every
+upload stays private whatever was chosen.
+
 ---
 
 ## API reference

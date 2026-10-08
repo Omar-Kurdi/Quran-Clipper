@@ -962,8 +962,13 @@ export const en = {
         'YouTube refused the upload. The Google account may have no YouTube channel yet, or not be a test user of this studio\'s Google app.',
       network: 'The connection dropped during the upload. Press the button to start again.',
       other: 'YouTube did not accept the upload. Download the file and upload it on youtube.com instead.',
-      cancelled: 'Upload cancelled.'
-    }
+      cancelled: 'Upload cancelled.',
+      lasting:
+        'Google gave no lasting sign-in, because this studio already had access from before. Remove it at myaccount.google.com/permissions, then press the button again.'
+    },
+    keptSignedIn: 'Signed in to YouTube on this browser.',
+    disconnect: 'Disconnect',
+    signInAgain: 'The YouTube sign-in on this browser has ended. The next upload asks you to sign in again.'
   },
   post: {
     sendTo: 'Send it to',

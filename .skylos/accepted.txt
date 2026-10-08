@@ -84,3 +84,11 @@ src/app/api/audio/proxy/route.ts  SKY-U001  1
 # now. The renderer is also off in production unless RENDER_ENABLED=1. Adding
 # an auth library to satisfy the scanner would protect nothing more. Accepted by
 # the project owner on 2026-09-19.
+#
+# The same, for the three YouTube sign-in routes (src/app/api/youtube/connect,
+# token and disconnect, all POST), also in baseline.portable.json. Behind the
+# same STUDIO_TOKEN middleware, and each refuses anything but a same-origin POST
+# carrying the studio's X-Requested-With header (`fromStudio` in
+# src/lib/youtubeVault.ts). None of them reaches shared state: each acts only on
+# the refresh token in the caller's own httpOnly cookie. Accepted by the project
+# owner on 2026-10-08.

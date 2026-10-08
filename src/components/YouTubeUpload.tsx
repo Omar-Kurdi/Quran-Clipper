@@ -7,7 +7,7 @@ import {
   defaultScheduleValue, scheduleTime, sendVideo, startUpload, studioLink, watchLink, UploadError, YOUTUBE_UPLOAD_SCOPE,
   type Privacy, type UploadFailure
 } from '@/lib/youtubeUpload';
-import { forgetToken, heldToken, loadGoogleSignIn, requestToken } from '@/lib/googleSignIn';
+import { connect, disconnect, forgetToken, heldToken, loadGoogleSignIn, requestToken, vaultState, type VaultState } from '@/lib/googleSignIn';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { useT } from './LocaleProvider';
 
@@ -33,24 +33,54 @@ type Stage =
   | { kind: 'signing' }
   | { kind: 'uploading'; progress: number }
   | { kind: 'done'; id: string; publishAt?: string }
-  | { kind: 'failed'; failure: UploadFailure | 'cancelled' };
+  | { kind: 'failed'; failure: UploadFailure | 'cancelled' | 'lasting' };
+
+/**
+ * The token for this upload, or the sign-in that gets one. Called inside the
+ * click, with no await before it: a pop-up has to open there.
+ *
+ * Kept by the server for this browser: asked for, no pop-up. Offered but not
+ * yet kept: Google's pop-up once, for good. Not offered, or not known yet:
+ * the browser-only sign-in, good for an hour.
+ */
+function tokenFor(clientId: string, vault: VaultState | null): Promise<string> {
+  const held = heldToken();
+  if (held) return Promise.resolve(held);
+  if (vault?.connected) {
+    return vaultState().then(state => state.token?.accessToken ?? Promise.reject(new UploadError('signin', 'The kept sign-in was refused.')));
+  }
+  if (vault?.configured) return connect(clientId, YOUTUBE_UPLOAD_SCOPE);
+  return requestToken(clientId, YOUTUBE_UPLOAD_SCOPE);
+}
+
+/** Why a sign-in or upload stopped, as the panel says it. */
+function failureOf(err: unknown): UploadFailure | 'cancelled' | 'lasting' {
+  if (err instanceof UploadError) return err.failure;
+  if ((err as Error)?.name === 'AbortError') return 'cancelled';
+  // The server was given no refresh token: Google had been asked before.
+  return (err as Error)?.message === 'no-refresh' ? 'lasting' : 'signin';
+}
 
 /** Signing in, uploading and what happened, for one render. */
 function useYouTubeUpload({ clientId, blob, caption }: YouTubeUploadProps) {
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
+  const [vault, setVault] = useState<VaultState | null>(null);
   const abort = useRef<AbortController | null>(null);
 
-  // Google's script is fetched when the panel appears, so the click can open
-  // the sign-in pop-up at once -- see `googleSignIn`.
-  useEffect(() => { void loadGoogleSignIn(); }, []);
+  // Google's script, and whether this browser is kept signed in, are both
+  // asked for when the panel appears, so the click can open a pop-up at once.
+  useEffect(() => {
+    void loadGoogleSignIn();
+    void vaultState().then(setVault);
+  }, []);
   useEffect(() => () => abort.current?.abort(), []);
 
   const upload = async (privacy: Privacy, publishAt?: string) => {
-    // No await before this: the pop-up has to open inside the click.
-    const tokenOrSignIn = heldToken() ?? requestToken(clientId, YOUTUBE_UPLOAD_SCOPE);
+    const tokenOrSignIn = tokenFor(clientId, vault);
     setStage({ kind: 'signing' });
     try {
       const token = await tokenOrSignIn;
+      if (vault?.configured && !vault.connected) setVault({ configured: true, connected: true });
       setStage({ kind: 'uploading', progress: 0 });
       const meta = await caption();
       const location = await startUpload(token, meta, privacy, blob, publishAt);
@@ -58,17 +88,21 @@ function useYouTubeUpload({ clientId, blob, caption }: YouTubeUploadProps) {
       const { id } = await sendVideo(location, blob, progress => setStage({ kind: 'uploading', progress }), abort.current.signal);
       setStage({ kind: 'done', id, publishAt });
     } catch (err) {
-      if (err instanceof UploadError) {
-        if (err.failure === 'signin') forgetToken();
-        setStage({ kind: 'failed', failure: err.failure });
-      } else {
-        // The pop-up closed, consent refused, or the upload cancelled.
-        setStage({ kind: 'failed', failure: (err as Error)?.name === 'AbortError' ? 'cancelled' : 'signin' });
+      const failure = failureOf(err);
+      if (failure === 'signin') {
+        forgetToken();
+        // A kept sign-in Google no longer honours: the next click signs in again.
+        if (vault?.connected) void vaultState().then(setVault);
       }
+      setStage({ kind: 'failed', failure });
     }
   };
+  const signOut = async () => {
+    await disconnect();
+    setVault(current => (current ? { ...current, connected: false } : current));
+  };
 
-  return { stage, upload, cancel: () => abort.current?.abort() };
+  return { stage, upload, cancel: () => abort.current?.abort(), vault, signOut };
 }
 
 /** What happened, once something has. */
@@ -150,6 +184,20 @@ const ScheduleField: React.FC<{ value: string; onChange: (value: string) => void
   );
 };
 
+/** Whether this browser is kept signed in, with the way out; or that a kept sign-in has ended. */
+const KeptSignIn: React.FC<{ vault: VaultState | null; onDisconnect: () => Promise<void>; busy: boolean }> = ({ vault, onDisconnect, busy }) => {
+  const t = useT();
+  if (vault?.connected) {
+    return (
+      <p className="text-[11px] text-slate-400">
+        {t.youtube.keptSignedIn}{' '}
+        <button onClick={() => void onDisconnect()} disabled={busy} className="underline hover:text-slate-200">{t.youtube.disconnect}</button>
+      </p>
+    );
+  }
+  return vault?.expired ? <p className="text-[11px] text-amber-300/90">{t.youtube.signInAgain}</p> : null;
+};
+
 /** The one action: sign in if needed, then send. */
 const UploadButton: React.FC<{ onClick: () => void; busy: boolean }> = ({ onClick, busy }) => {
   const t = useT();
@@ -182,7 +230,7 @@ export const YouTubeUpload: React.FC<YouTubeUploadProps> = props => {
   );
   const [touched, setTouched] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const { stage, upload, cancel } = useYouTubeUpload(props);
+  const { stage, upload, cancel, vault, signOut } = useYouTubeUpload(props);
   const busy = stage.kind === 'signing' || stage.kind === 'uploading';
 
   const pending: UnsentUpload = busy ? 'uploading' : touched && stage.kind !== 'done' ? 'unsent' : null;
@@ -207,6 +255,7 @@ export const YouTubeUpload: React.FC<YouTubeUploadProps> = props => {
         <ScheduleField value={scheduleAt} onChange={next => { setScheduleAt(next); setTouched(true); }} disabled={busy} problem={problem} />
       )}
       <UploadButton onClick={start} busy={busy} />
+      <KeptSignIn vault={vault} onDisconnect={signOut} busy={busy} />
       <details className="text-[11px] leading-relaxed text-slate-400">
         <summary className="cursor-pointer select-none">{t.youtube.privateUntilVerified}</summary>
         <p className="mt-1">{t.youtube.help}</p>

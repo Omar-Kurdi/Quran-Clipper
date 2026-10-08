@@ -2,9 +2,11 @@
  * Uploading a finished clip to the user's own YouTube channel, from the tab.
  *
  * The person signs in to Google in a pop-up and the studio gets a short-lived
- * token for `youtube.upload` and nothing else. The token lives in this tab only:
- * no studio account, nothing stored, nothing sent to our server -- the video
- * goes from the browser straight to Google (FutureIdeas #59).
+ * token for `youtube.upload` and nothing else, and the video goes from the
+ * browser straight to Google (FutureIdeas #59). Where the server has the OAuth
+ * client's secret, the sign-in is kept for that browser (`youtubeVault`);
+ * otherwise the token lives in the browser for its hour, and nothing about it
+ * reaches our server.
  *
  * The upload is YouTube's resumable protocol: one request that describes the
  * video and returns an upload address, then the file itself to that address.

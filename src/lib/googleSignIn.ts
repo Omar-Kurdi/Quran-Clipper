@@ -1,6 +1,12 @@
 /**
  * Google sign-in for one permission, through Google Identity Services.
  *
+ * Where the server holds the OAuth client's secret, signing in happens once:
+ * the pop-up hands over a one-time code, the server keeps a refresh token for
+ * this browser, and every later upload gets its token from the server with no
+ * pop-up at all (`youtubeVault`, `connect` and `vaultToken` below). Without the
+ * secret it is the browser-only sign-in that follows.
+ *
  * The token client opens Google's own pop-up and hands back an access token
  * for the scope asked for -- no client secret and no redirect. Google's tokens
  * last an hour, and the token is kept in this browser's storage until then, so
@@ -19,6 +25,8 @@ const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
 
 interface TokenResponse { access_token?: string; expires_in?: number; error?: string; error_description?: string }
 interface TokenClient { requestAccessToken(overrides?: { prompt?: string }): void }
+interface CodeResponse { code?: string; error?: string; error_description?: string }
+interface CodeClient { requestCode(): void }
 interface GoogleOAuth2 {
   initTokenClient(config: {
     client_id: string;
@@ -26,6 +34,13 @@ interface GoogleOAuth2 {
     callback: (response: TokenResponse) => void;
     error_callback?: (error: { type?: string; message?: string }) => void;
   }): TokenClient;
+  initCodeClient(config: {
+    client_id: string;
+    scope: string;
+    ux_mode: 'popup';
+    callback: (response: CodeResponse) => void;
+    error_callback?: (error: { type?: string; message?: string }) => void;
+  }): CodeClient;
 }
 type GoogleWindow = Window & { google?: { accounts?: { oauth2?: GoogleOAuth2 } } };
 
@@ -117,4 +132,73 @@ export function requestToken(clientId: string, scope: string): Promise<string> {
     // granted here, an empty prompt reuses the signed-in account and consent.
     client.requestAccessToken(readStore(GRANTED_KEY) ? { prompt: '' } : undefined);
   });
+}
+
+/** Google's tokens, as the studio's server hands them over. */
+export type ServerToken = { accessToken: string; expiresIn: number };
+/** Whether this studio keeps the sign-in, and whether this browser has one kept; with a token when it has. */
+export type VaultState = { configured: boolean; connected: boolean; expired?: boolean; token?: ServerToken };
+
+const vaultPost = (path: string, body?: unknown) =>
+  fetch(`/api/youtube/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'quranclipper' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+/** Keeps a token the server handed over, as the browser-only sign-in keeps its own. */
+function keep(token: ServerToken): string {
+  held = { token: token.accessToken, until: Date.now() + token.expiresIn * 1000 };
+  writeStore(STORE_KEY, JSON.stringify(held));
+  return token.accessToken;
+}
+
+/** What the server holds for this browser, with a fresh token if it holds one. */
+export async function vaultState(): Promise<VaultState> {
+  try {
+    const res = await vaultPost('token');
+    const body = (await res.json()) as { configured?: boolean; connected?: boolean; expired?: boolean; accessToken?: string; expiresIn?: number };
+    const token = body.accessToken ? { accessToken: body.accessToken, expiresIn: body.expiresIn ?? 3600 } : undefined;
+    if (token) keep(token);
+    return { configured: Boolean(body.configured), connected: Boolean(body.connected), expired: body.expired, token };
+  } catch {
+    return { configured: false, connected: false };
+  }
+}
+
+/**
+ * Signs in once, for good: Google's pop-up for a one-time code, which the
+ * server trades for a refresh token kept on this browser. Must be called from
+ * the click itself, like `requestToken`. Rejects with the server's reason --
+ * `no-refresh` when Google, having been asked before, gave no lasting grant.
+ */
+export function connect(clientId: string, scope: string): Promise<string> {
+  const oauth2 = (window as GoogleWindow).google?.accounts?.oauth2;
+  if (!oauth2) return Promise.reject(new Error('Google sign-in is not loaded.'));
+  return new Promise((resolve, reject) => {
+    const client = oauth2.initCodeClient({
+      client_id: clientId,
+      scope,
+      ux_mode: 'popup',
+      callback: response => {
+        if (!response.code) return reject(new Error(response.error_description || response.error || 'No code.'));
+        vaultPost('connect', { code: response.code })
+          .then(async res => {
+            const body = (await res.json().catch(() => ({}))) as { accessToken?: string; expiresIn?: number; error?: string };
+            if (!res.ok || !body.accessToken) throw new Error(body.error || 'failed');
+            resolve(keep({ accessToken: body.accessToken, expiresIn: body.expiresIn ?? 3600 }));
+          })
+          .catch(reject);
+      },
+      error_callback: error => reject(new Error(error.message || error.type || 'Sign-in was closed.'))
+    });
+    client.requestCode();
+  });
+}
+
+/** Signs this browser out of YouTube: the grant revoked at Google, and nothing kept here. */
+export async function disconnect(): Promise<void> {
+  forgetToken();
+  writeStore(GRANTED_KEY, null);
+  await vaultPost('disconnect').catch(() => undefined);
 }
