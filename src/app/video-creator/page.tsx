@@ -1927,9 +1927,9 @@ export default function VideoCreatorPage() {
    */
   const guide = useGuidedTour(locale, !pendingDraft);
   const tourSteps: (TourStep & { panel: PanelTab })[] = [
-    { target: 'tab-source', tab: 'mtab-source', panel: 'source', light: true, title: t.tour.sourceTitle, body: t.tour.sourceBody },
-    { target: 'tab-captions', tab: 'mtab-captions', panel: 'captions', light: true, title: t.tour.captionsTitle, body: t.tour.captionsBody },
-    { target: 'tab-style', tab: 'mtab-style', panel: 'style', light: true, title: t.tour.styleTitle, body: t.tour.styleBody },
+    { target: 'tab-source', tab: 'mtab-source', focus: 'panel-source', panel: 'source', light: true, title: t.tour.sourceTitle, body: t.tour.sourceBody },
+    { target: 'tab-captions', tab: 'mtab-captions', focus: 'panel-captions', panel: 'captions', light: true, title: t.tour.captionsTitle, body: t.tour.captionsBody },
+    { target: 'tab-style', tab: 'mtab-style', focus: 'panel-style', panel: 'style', light: true, title: t.tour.styleTitle, body: t.tour.styleBody },
     { target: 'timeline', panel: 'captions', title: t.tour.timelineTitle, body: t.tour.timelineBody, compactBody: t.tour.timelineBodyCompact },
     { target: 'export', panel: 'captions', title: t.tour.exportTitle, body: t.tour.exportBody }
   ];
@@ -2741,6 +2741,7 @@ export default function VideoCreatorPage() {
               role="tabpanel"
               aria-labelledby="panel-tab-source"
               hidden={panelTab !== 'source'}
+              data-tour="panel-source"
               className="flex-1 overflow-y-auto p-3"
             >
               {pendingDraft && (
@@ -3227,7 +3228,7 @@ export default function VideoCreatorPage() {
               </div>
             </div>
             {panelTab === 'captions' && (
-              <div id="panel-captions" role="tabpanel" aria-labelledby="panel-tab-captions" className="flex-1 overflow-y-auto">
+              <div id="panel-captions" role="tabpanel" aria-labelledby="panel-tab-captions" data-tour="panel-captions" className="flex-1 overflow-y-auto">
                 {isLoadingVerses ? (
                   <InspectorSkeleton />
                 ) : (
@@ -3262,7 +3263,7 @@ export default function VideoCreatorPage() {
               </div>
             )}
             {panelTab === 'style' && (
-              <div id="panel-style" role="tabpanel" aria-labelledby="panel-tab-style" className="flex-1 overflow-y-auto">
+              <div id="panel-style" role="tabpanel" aria-labelledby="panel-tab-style" data-tour="panel-style" className="flex-1 overflow-y-auto">
                 <StyleConfigPanel
                   config={canvasConfig}
                   onChangeConfig={setCanvasConfig}
