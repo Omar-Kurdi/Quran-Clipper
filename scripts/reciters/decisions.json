@@ -1,0 +1,30 @@
+{
+  "_about": "What was decided by ear, for build.py and regions.py. 'confirmed': a start heard by ear (phoneme decode, listen.py) where no matcher could confirm it -- [seconds, why]. 'rejected': a move the tools made that listening showed wrong -- the ayah opens with words the ayah before also says, and what was heard was the ayah before. 'regions': a measured stretch corrected by hand -- a caption split out where an ayah was heard folded into another.",
+  "jalil": {
+    "confirmed": {
+      "29:21": [
+        267.0,
+        "يُعَذِّبُ heard from 267.0s straight after 29:20's قَدِيرٌ; QUL lists it from 271.1s, its وَيَرْحَمُ"
+      ]
+    },
+    "rejected": {
+      "29:54": "801.6s is Jalil restarting 29:53 (وَيَسْتَعْجِلُونَكَ بِٱلْعَذَابِ وَلَوْلَآ); 29:54 (وَإِنَّ جَهَنَّمَ) begins at 819.2s, as published"
+    },
+    "regions": {
+      "44:43-49": [
+        {
+          "inside": "44:45",
+          "at": 453.76,
+          "ayah": "44:46",
+          "lastWord": 1,
+          "why": "the second pass's 44:46 (كَغَلْىِ ٱلْحَمِيمِ) is heard from 453.96s; the aligner had folded it into 44:45"
+        }
+      ]
+    }
+  },
+  "shatri": {
+    "rejected": {
+      "2:107": "2192s is 2:106's own أَلَمْ تَعْلَمْ أَنَّ ٱللَّهَ عَلَىٰ كُلِّ شَىْءٍ قَدِيرٌ; 2:107 (لَهُۥ مُلْكُ) begins at 2198.6s, as published"
+    }
+  }
+}

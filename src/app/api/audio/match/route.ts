@@ -14,6 +14,7 @@ import type { MatchResult } from '@/lib/matchTypes';
 import type { VerseData } from '@/lib/quranData';
 import { publishedPassage } from '@/lib/publishedTiming';
 import { timedFromPublished } from '@/lib/publishedPhrases';
+import { measuredPassage } from '@/lib/measuredRecitations';
 import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
 import { hostAllowed } from '@/app/api/audio/proxy/route';
 import { studioMode } from '@/lib/studioMode';
@@ -319,10 +320,12 @@ export async function POST(req: NextRequest) {
      * source is named in the response. The aligner is then only asked where
      * the reciter paused -- see `publishedPhrases`.
      */
-    const published =
-      isLocal(provider) && hasWindow && String(formData.get('timing') || '') === 'published'
-        ? await publishedPassage(reciter, selectedSurah, selectedStart, selectedEnd, audioUrl)
-        : null;
+    const timedReciter = isLocal(provider) && hasWindow && String(formData.get('timing') || '') === 'published';
+    /** A recording this studio measured itself, its published timings being wrong for it: see `measuredRecitations`. */
+    const measured = timedReciter ? measuredPassage(reciter, selectedSurah, selectedStart, selectedEnd, audioUrl) : null;
+    const published = timedReciter && !measured
+      ? await publishedPassage(reciter, selectedSurah, { start: selectedStart, end: selectedEnd }, audioUrl, { start: windowStart, end: windowEnd })
+      : null;
     /** Whether the captions were cut at pauses the aligner heard, rather than only per ayah. */
     let pausesFromAudio = false;
 
@@ -340,15 +343,17 @@ export async function POST(req: NextRequest) {
         const autoDetect = !published && String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
         // The sidecar reads one recording at a time; everyone else waits their
         // turn here, and can see where they stand -- see `matchQueue`.
-        result = skipAligner ? { segments: [] } : await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
+        // This studio's own measurement needs no aligner: it is the aligner's
+        // result, checked and kept.
+        result = measured ?? (skipAligner ? { segments: [] } : await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
           serviceUrl,
           source: audio instanceof File
             ? { kind: 'file', audio }
             : { kind: 'url', audioUrl, windowStart, windowEnd },
           autoDetect,
           surah: selectedSurah,
-          start: selectedStart,
-          end: selectedEnd,
+          start: published?.aligned.start ?? selectedStart,
+          end: published?.aligned.end ?? selectedEnd,
           assist: provider === 'qul' ? 'qul' : undefined,
           breaks: screenBreaksFrom(formData.get('breaks')),
           retime: lab?.starts,
@@ -358,7 +363,7 @@ export async function POST(req: NextRequest) {
           // queue, and a visitor who closes the tab gives up their place.
           visitor: studioMode() === 'public' ? visitorFrom(req.headers) ?? undefined : undefined,
           signal: req.signal,
-        });
+        }));
       } catch (err) {
         if (err instanceof QueueFullError) {
           return NextResponse.json({ success: false, provider, error: err.message }, { status: 503 });
@@ -438,7 +443,7 @@ export async function POST(req: NextRequest) {
       needsReview: needsReview(provider, built.confidence, Boolean(result.warning)),
       ...built.body,
       /** Whose published timings the captions use, or null when the aligner timed them. */
-      timedFrom: published?.provider ?? null,
+      timedFrom: published?.provider ?? (measured ? 'measured' : null),
       pausesFromAudio,
       /** The published timings were asked for alone, so no pauses were looked for. */
       alignerSkipped: skipAligner

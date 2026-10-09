@@ -95,6 +95,7 @@ export const ar: Dictionary = {
     groundTruthTitle:
       'احفظ هذا المسار الزمني وملفه الصوتي في scripts/ ليُقاس أي تغيير في المحاذاة على المقاطع التي صحّحتها سمعًا',
     groundTruthWriting: 'يُكتب مرجع التقييم…',
+    groundTruthFailed: 'لم يُحفظ مرجع التقييم',
     groundTruthWritten: 'حُفظ مرجع التقييم',
     groundTruthDownloaded: 'نُزّل مرجع التقييم',
     groundTruthNeedsAudio: name =>
@@ -272,6 +273,7 @@ export const ar: Dictionary = {
     trimRangeFailed: 'تعذّر قص هذا الملف. جرّب نافذة قص الصوت، فهي تبيّن سبب الخطأ.',
     alignLostAyahs: (count, keys) =>
       `حُمّلت الآيات بتوقيتاتها المنشورة. وجُرّبت قراءة التسجيل أيضًا لكنها أسقطت ${count} آية (${keys})، فأُبقيت التوقيتات المحمّلة — استعمل «محاذاة على الصوت» إن أردت التقطيع بالعبارات رغم ذلك.`,
+    measuredTimed: captions => `وُقّت من قياس الاستوديو المُتحقَّق منه لهذا التسجيل — ${captions} مقطعًا، مقسّمة حيث يقف القارئ أو يعيد.`,
     publishedTimed: (captions, source, split) =>
       split === 'pauses'
         ? `وُقّتت من توقيتات الكلمات المنشورة في ${source} — ${captions} مقطعًا، لا تُقسَم إلا حيث يقف القارئ أو يعيد.`

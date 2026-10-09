@@ -1,8 +1,10 @@
-import { RECITERS } from './quranData';
+import { RECITERS, SURAHS_LIST } from './quranData';
 import { getRange } from './quranCorpus';
 import { qulSurah } from './qulRecitations';
 import { chooseReciterTiming, type QuranComTimings, type TimingChoice } from './reciterTimingChoice';
 import { timingPair } from './timingAudit';
+import { publishedAyahBounds, soundTimings, type PublishedAyah } from './publishedPhrases';
+import { measuredBounds, measuredRegions, type MeasuredRegion, type MeasuredSurah } from './measuredRecitations';
 
 /**
  * Measured per-ayah timings for a reciter's chapter recording.
@@ -71,11 +73,41 @@ export async function reciterTiming(reciterId: string, surah: number, verseKeys:
 }
 
 /**
+ * Exports whose timings drift against the recording the studio plays, so that
+ * each ayah is moved to where the aligner heard it -- see `heardOffset`.
+ * Surveyed across every reciter (2026-10-08): only Hani ar-Rifai's QUL export,
+ * up to 1.6s; the rest agree with their recordings within a quarter second.
+ */
+const DRIFTING_EXPORTS = new Set(['rifai']);
+
+/**
+ * The ayahs to give the aligner for a passage: the passage, and those either
+ * side whose recitation is inside `window` (seconds).
+ *
+ * The studio pads the window ten seconds or more either side, and given only
+ * the passage's text the aligner has nothing to put that audio on: on
+ * Al-Sudais's 91:2-5, whose ayahs take three seconds each, it placed three
+ * words of fourteen. Given the text of what is said there too, it hears the
+ * neighbours as themselves.
+ */
+function ayahsAround(choice: TimingChoice, surah: number, start: number, end: number, window: { start: number; end: number }) {
+  const ayahs = SURAHS_LIST.find(s => s.number === surah)?.numberOfAyahs ?? end;
+  let first = start;
+  let last = end;
+  while (first > 1 && (choice.boundsFor(`${surah}:${first - 1}`)?.end ?? -Infinity) > window.start) first--;
+  while (last < ayahs && (choice.boundsFor(`${surah}:${last + 1}`)?.start ?? Infinity) < window.end) last++;
+  return { start: first, end: last };
+}
+
+/**
  * A passage's published timings, when `audioUrl` is the recording they were
  * measured on -- the studio's proxy address for it, from any origin, or the
  * address itself. Null for any other audio, which is then aligned as before.
+ * With the aligner's `window`, also the ayahs to align over it: see `ayahsAround`.
  */
-export async function publishedPassage(reciterId: string, surah: number, start: number, end: number, audioUrl: string) {
+export async function publishedPassage(
+  reciterId: string, surah: number, { start, end }: { start: number; end: number }, audioUrl: string, window?: { start: number; end: number }
+) {
   let source = audioUrl;
   try {
     const url = new URL(audioUrl);
@@ -87,9 +119,55 @@ export async function publishedPassage(reciterId: string, surah: number, start: 
   if (!passage.length) return null;
   const choice = await reciterTiming(reciterId, surah, passage.map(verse => verse.verseKey));
   if (!choice.provider || choice.audioUrl !== source) return null;
+  // Timings past believing are no timings: the aligner times the passage.
+  if (!soundTimings(passage.map(verse => ({ timing: choice.published(verse.verseKey), wordCount: verse.words.length })))) return null;
   return {
     provider: choice.provider,
-    passage: passage.map(verse => ({ verseKey: verse.verseKey, wordCount: verse.words.length })),
-    timings: new Map(passage.map(verse => [verse.verseKey, choice.published(verse.verseKey)!]))
+    passage: passage.map(verse => ({ verseKey: verse.verseKey, wordCount: verse.words.length, words: verse.words.map(word => word.arabic) })),
+    timings: new Map(passage.map(verse => [verse.verseKey, choice.published(verse.verseKey)!])),
+    aligned: window ? ayahsAround(choice, surah, start, end, window) : { start, end },
+    drifts: choice.provider === 'qul' && DRIFTING_EXPORTS.has(reciterId),
+    regions: measuredRegions(reciterId, surah, start, end, source)
   };
+}
+
+/**
+ * Where a load's estimated ayahs begin, in seconds, when it has no bounds to
+ * show (0 when it has, as nothing is estimated): at the first ayah's published start, past believing as the
+ * timings are, rather than at 0s -- from 0s, Shuraim's 12:75 loaded over the
+ * surah's opening and the aligner read 12:1-6 there.
+ */
+export function estimatesFrom(
+  repaired: Map<string, { start: number; end: number }> | null, choice: TimingChoice, firstAyah: { verse_key: string } | undefined
+): number {
+  if (repaired || !firstAyah) return 0;
+  return choice.boundsFor(firstAyah.verse_key)?.start ?? 0;
+}
+
+/**
+ * Each ayah's span for a reciter load, in seconds: this studio's own
+ * measurement where it has one, else the published timings repaired as the
+ * match repairs them, else none -- the timings past believing, and the aligner
+ * times the passage from the recording.
+ */
+export function loadBounds(
+  measured: MeasuredSurah | null,
+  choice: TimingChoice,
+  passage: PublishedAyah[],
+  reciterId = ''
+): Map<string, { start: number; end: number }> | null {
+  if (measured) return measuredBounds(measured, passage.map(ayah => ayah.verseKey));
+  if (!choice.provider) return null;
+  const published = new Map(passage.flatMap(ayah => {
+    const timing = choice.published(ayah.verseKey);
+    return timing ? [[ayah.verseKey, timing] as const] : [];
+  }));
+  return publishedAyahBounds(passage, published, regionsOf(reciterId, choice, passage));
+}
+
+/** The measured stretches a load of `passage` holds (see `measuredRegions`). */
+function regionsOf(reciterId: string, choice: TimingChoice, passage: PublishedAyah[]): MeasuredRegion[] {
+  const [surah, first] = (passage[0]?.verseKey ?? '0:0').split(':').map(Number);
+  const last = Number(passage[passage.length - 1]?.verseKey.split(':')[1]);
+  return choice.audioUrl ? measuredRegions(reciterId, surah, first, last, choice.audioUrl) : [];
 }

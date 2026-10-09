@@ -5,6 +5,8 @@ import { primaryTranslation } from '@/lib/localTranslations';
 import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 import { qulSurah } from '@/lib/qulRecitations';
+import { measuredSurah } from '@/lib/measuredRecitations';
+import { estimatesFrom, loadBounds } from '@/lib/publishedTiming';
 import { chooseReciterTiming } from '@/lib/reciterTimingChoice';
 import { fetchReciterTimings } from '@/lib/publishedTiming';
 import { timingPair } from '@/lib/timingAudit';
@@ -132,20 +134,30 @@ export async function GET(req: NextRequest) {
           qulSurah(reciter, surahNumber),
           timingPair(reciterMeta.id, surahNumber)
         );
+        // A recording whose published timings are wrong for it is timed from
+        // this studio's own measurement instead -- see `measuredRecitations`.
+        const measured = measuredSurah(reciterMeta.id, surahNumber);
         // A QUL-only reciter has no estimate to fall back on: its recording is
         // QUL's, and the timings the export has for this passage are broken.
-        if (reciterMeta.needsQul && !choice.provider) {
+        if (reciterMeta.needsQul && !choice.provider && !measured) {
           return NextResponse.json(
             { success: false, error: `QUL's timings for ${reciterMeta.name} are broken somewhere in this passage. Choose another reciter or range.` },
             { status: 422 }
           );
         }
 
-        let currentOffset = 0;
+        const repaired = loadBounds(
+          measured,
+          choice,
+          filtered.map(v => ({ verseKey: v.verse_key, wordCount: verseWords(v).length, words: verseWords(v).map(word => word.arabic) })),
+          reciterMeta.id
+        );
+
+        let currentOffset = estimatesFrom(repaired, choice, filtered[0]);
         const mappedVerses = filtered.map(v => {
           const words = verseWords(v);
 
-          const timing = choice.boundsFor(v.verse_key);
+          const timing = repaired?.get(v.verse_key) ?? null;
           let verseStart: number;
           let verseEnd: number;
           if (timing) {
@@ -189,12 +201,12 @@ export async function GET(req: NextRequest) {
           // served straight from mp3quran.net, which publishes an AAAA record --
           // so on a machine with no IPv6 route that one reciter failed while the
           // timed ones worked.
-          audioUrl: proxiedAudioUrl(choice.audioUrl ?? getReciterAudioUrl(reciter, surahNumber)),
+          audioUrl: proxiedAudioUrl(measured?.audioUrl ?? choice.audioUrl ?? getReciterAudioUrl(reciter, surahNumber)),
           audioDuration: `${Math.floor(totalSeconds / 60)}:${Math.floor(totalSeconds % 60).toString().padStart(2, '0')}`,
           /** 'measured' means the boundaries came from the recording; 'estimated' means they were guessed from text length. */
-          timingSource: choice.provider ? 'measured' : 'estimated',
+          timingSource: choice.provider || measured ? 'measured' : 'estimated',
           /** Whose measurements: quran.com's, or QUL's for a reciter quran.com has not timed. */
-          timingProvider: choice.provider,
+          timingProvider: measured ? 'measured' : choice.provider,
           verses: mappedVerses
         });
       }

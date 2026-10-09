@@ -96,6 +96,7 @@ export const en = {
     groundTruthTitle:
       'Save this timeline and its audio into scripts/, so a change to the aligner can be scored against the captions you corrected by ear',
     groundTruthWriting: 'Writing ground truth…',
+    groundTruthFailed: 'Ground truth not saved',
     groundTruthWritten: 'Ground truth saved',
     groundTruthDownloaded: 'Ground truth downloaded',
     groundTruthNeedsAudio: (name: string) =>
@@ -276,6 +277,8 @@ export const en = {
     trimRangeFailed: 'Could not trim this file. Try the Trim audio dialog, which reports what went wrong.',
     alignLostAyahs: (count: number, keys: string) =>
       `Ayahs loaded with their published timings. Reading the recording was tried too, but it lost ${count} ayah(s) (${keys}), so the loaded timings were kept instead \u2014 use \u201cAlign to audio\u201d if you want the phrase-level split anyway.`,
+    measuredTimed: (captions: number) =>
+      `Timed from this studio\u2019s own checked measurement of this recording \u2014 ${captions} caption(s), split where the reciter pauses or repeats.`,
     publishedTimed: (captions: number, source: string, split: 'pauses' | 'skipped' | 'unheard') =>
       split === 'pauses'
         ? `Timed from ${source}\u2019s published word timings \u2014 ${captions} caption(s), split only where the reciter pauses or repeats.`

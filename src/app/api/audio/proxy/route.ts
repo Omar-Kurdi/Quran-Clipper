@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import https from 'node:https';
 import { Readable } from 'node:stream';
 import { NextRequest, NextResponse } from 'next/server';
+import { cachedAudio, fillAudioCache, servedFromCache } from '@/lib/audioCache';
 
 /**
  * Streams a reciter recording from quran.com's audio CDN through this server.
@@ -73,6 +74,14 @@ function resolveTarget(req: NextRequest): URL | null {
 const MAX_HOPS = 3;
 
 /**
+ * Connections kept open between requests. ffmpeg reads a recording in many
+ * range requests -- one per seek -- and a new connection for each was what the
+ * CDN started refusing (ECONNREFUSED from download.quranicaudio.com's edge,
+ * 2026-10-08) when several were read at once.
+ */
+const KEEP_ALIVE = new https.Agent({ keepAlive: true, maxSockets: 16 });
+
+/**
  * One upstream request, over `node:https` rather than `fetch`.
  *
  * Measured in this server against download.quranicaudio.com: `fetch` drained a
@@ -91,11 +100,45 @@ function requestOnce(
   signal: AbortSignal
 ): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
-    const req = https.request(url, { method, headers, signal }, resolve);
+    const req = https.request(url, { method, headers, signal, agent: KEEP_ALIVE }, resolve);
     req.on('error', reject);
     req.end();
   });
 }
+
+/**
+ * `requestOnce`, tried again after a moment when the connection itself fails.
+ *
+ * A dropped connection or a failed lookup used to answer 502 at once, and the
+ * sidecar reading a reciter's recording through here then gave up on the
+ * match: the load kept its published timings with no isti'adha and no pauses
+ * heard, and nothing said so. Seen in bursts against download.quranicaudio.com
+ * (2026-10-08), each gone a second later. An HTTP answer, even an error, is
+ * the server's and is passed on as it is.
+ */
+async function requestWithRetry(
+  url: URL,
+  method: 'GET' | 'HEAD',
+  headers: Record<string, string> | undefined,
+  signal: AbortSignal,
+  attempt = 1
+): Promise<IncomingMessage> {
+  const last = attempt >= CONNECT_ATTEMPTS;
+  try {
+    const res = await requestOnce(url, method, headers, signal);
+    // A CDN edge failing for a moment (BunnyCDN answers 502/503 from one
+    // edge while the next is fine) is no answer about the file.
+    if ((res.statusCode ?? 0) < 500 || last) return res;
+    res.resume();
+  } catch (err) {
+    if (signal.aborted || last) throw err;
+  }
+  await new Promise(resolve => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+  return requestWithRetry(url, method, headers, signal, attempt + 1);
+}
+
+/** Tries at connecting before the proxy gives up on the audio server. */
+const CONNECT_ATTEMPTS = 4;
 
 /**
  * Fetches `target`, following redirects **only** to hosts on the allowlist.
@@ -112,7 +155,7 @@ async function fetchAllowedOnly(
 ): Promise<IncomingMessage | null> {
   let url = target;
   for (let hop = 0; hop <= MAX_HOPS; hop++) {
-    const res = await requestOnce(url, init.method, init.headers, init.signal);
+    const res = await requestWithRetry(url, init.method, init.headers, init.signal);
     const status = res.statusCode ?? 502;
     if (status < 300 || status >= 400) return res;
 
@@ -141,6 +184,13 @@ async function forward(req: NextRequest, method: 'GET' | 'HEAD') {
   // Range is forwarded verbatim: seeking in the player and the export pipeline
   // both depend on partial requests being answered as partial requests.
   const range = req.headers.get('range');
+
+  // Fetched once already: from this server's disk -- see `audioCache`.
+  const cached = method === 'GET' ? cachedAudio(target.href) : null;
+  if (cached) {
+    const served = servedFromCache(cached, range, 'audio/mpeg');
+    return new NextResponse(served.body, { status: served.status, headers: served.headers });
+  }
   const upstream = await fetchAllowedOnly(target, {
     method,
     headers: range ? { Range: range } : undefined,
@@ -158,6 +208,12 @@ async function forward(req: NextRequest, method: 'GET' | 'HEAD') {
   if (!headers.has('accept-ranges')) headers.set('accept-ranges', 'bytes');
   headers.set('cache-control', 'public, max-age=86400');
 
+  // Kept for next time, fetched whole in the background; this answer streams as before.
+  const status = upstream.statusCode ?? 502;
+  if (method === 'GET' && (status === 200 || status === 206)) {
+    fillAudioCache(target.href, () => fetchAllowedOnly(target, { method: 'GET', signal: AbortSignal.timeout(10 * 60_000) }));
+  }
+
   // Cancelling the web stream destroys `upstream`, which ends the request.
   let body: ReadableStream<Uint8Array> | null = null;
   if (method === 'HEAD') upstream.resume();
@@ -172,7 +228,9 @@ async function forward(req: NextRequest, method: 'GET' | 'HEAD') {
 export async function GET(req: NextRequest) {
   try {
     return await forward(req, 'GET');
-  } catch {
+  } catch (err) {
+    const { code, message } = err as NodeJS.ErrnoException;
+    console.warn(`[audio proxy] could not reach the audio server: ${code ?? ''} ${message}`);
     return NextResponse.json({ error: 'Could not reach the audio server.' }, { status: 502 });
   }
 }

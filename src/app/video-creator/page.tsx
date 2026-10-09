@@ -67,6 +67,7 @@ import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
 import { ShortcutsDialog } from '@/components/ShortcutsDialog';
 import { groundTruthFile, groundTruthFileName, groundTruthAudioName } from '@/lib/groundTruth';
+import { groundTruthClip, saveGroundTruth } from '@/lib/groundTruthSave';
 import { useAudioPlayback } from '@/hooks/useAudioPlayback';
 import { useTransportKeys } from '@/hooks/useTransportKeys';
 import { useVideoExport } from '@/hooks/useVideoExport';
@@ -1126,7 +1127,9 @@ export default function VideoCreatorPage() {
       const confirmRange = data.provider === 'align' || data.provider === 'qul' || isPhonemeProvider(data.provider);
       if (isPublic && data.timedFrom) setMatchStatus(null);
       else setMatchStatus({
-        text: data.timedFrom
+        text: data.timedFrom === 'measured'
+          ? t.match.measuredTimed((data.verses || []).length)
+          : data.timedFrom
           ? t.match.publishedTimed(
               (data.verses || []).length,
               data.timedFrom === 'qul' ? 'QUL' : 'quran.com',
@@ -1669,7 +1672,13 @@ export default function VideoCreatorPage() {
      * with no cut to reproduce: hence `trim: null` on this path, and the window
      * kept only as provenance under `from`.
      */
-    const saved = groundTruthAudioName(customAudioName);
+    setSaveStatus({ text: t.header.groundTruthWriting, kind: 'pending' });
+    const clip = groundTruthClip(
+      customAudioFile ? { file: customAudioFile, name: customAudioName } : null,
+      { url: audioUrl, id: selectedReciter, surah: selectedSurah, start: ayahStart, end: ayahEnd },
+      verses
+    );
+    const saved = groundTruthAudioName(clip?.name ?? customAudioName);
     const withAudio = groundTruthFile(verses, {
       clipName: saved,
       duration,
@@ -1678,34 +1687,21 @@ export default function VideoCreatorPage() {
         ? { name: uploadOriginalName, start: trimWindow.start, end: trimWindow.end }
         : null,
     });
-    if (!withAudio) return;
+    if (!withAudio) {
+      setSaveStatus(null);
+      return;
+    }
 
-    if (customAudioFile) {
-      setSaveStatus({ text: t.header.groundTruthWriting, kind: 'pending' });
-      try {
-        const body = new FormData();
-        // A Blob, not a string: a multipart encoder normalises the newlines in
-        // a *text* field to CRLF, and the file it wrote then carried `\r` on
-        // every line -- enough for `gauge.sh` to read `# trim: none` as a trim
-        // window and label an untrimmed clip "(trimmed)". Blob bytes go
-        // through untouched.
-        body.set('contents', new Blob([withAudio], { type: 'text/plain;charset=utf-8' }));
-        body.set('clipName', customAudioName);
-        body.set('audio', customAudioFile, saved);
-        const res = await fetch('/api/ground-truth', { method: 'POST', body });
-        const data = await res.json().catch(() => null);
-        if (res.ok && data?.success) {
-          setSaveStatus({
-            text: t.header.groundTruthWritten,
-            kind: 'ok',
-            detail: (data.written as string[]).map(name => `scripts/${name}`).join('  ·  '),
-          });
-          setTimeout(() => setSaveStatus(null), 8000);
-          return;
-        }
-      } catch {
-        // Falls through to the download below.
-      }
+    const outcome = clip ? await saveGroundTruth(withAudio, clip, saved) : null;
+    if (outcome && 'written' in outcome) {
+      setSaveStatus({ text: t.header.groundTruthWritten, kind: 'ok', detail: outcome.written.map(name => `scripts/${name}`).join('  ·  ') });
+      setTimeout(() => setSaveStatus(null), 8000);
+      return;
+    }
+    // A reciter's passage has nothing to download in its place: say why.
+    if (outcome && !outcome.fallback) {
+      setSaveStatus({ text: t.header.groundTruthFailed, kind: 'error', detail: outcome.error });
+      return;
     }
 
     // No server able to write, or no audio to write: the text file on its own,
@@ -1717,7 +1713,10 @@ export default function VideoCreatorPage() {
       duration,
       trim: trimWindow,
     });
-    if (!contents) return;
+    if (!contents) {
+      setSaveStatus(null);
+      return;
+    }
     const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -1726,6 +1725,8 @@ export default function VideoCreatorPage() {
     if (customAudioFile) {
       setSaveStatus({ text: t.header.groundTruthDownloaded, kind: 'ok', detail: t.header.groundTruthNeedsAudio(uploadOriginalName || customAudioName) });
       setTimeout(() => setSaveStatus(null), 10000);
+    } else {
+      setSaveStatus(null);
     }
     // Revoking immediately can cancel the download in some browsers; a tick is
     // enough for it to have been handed over.

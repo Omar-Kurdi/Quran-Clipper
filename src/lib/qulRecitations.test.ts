@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseExport } from './qulRecitations';
+import { parseExport, withCorrections } from './qulRecitations';
 
 /** The two files of a QUL surah-by-surah export, as its exporter writes them. */
 const surahs = {
@@ -43,5 +43,21 @@ describe('parseExport', () => {
       '1:3': { timestamp_from: 'soon' }
     });
     expect([...(parsed?.timings.keys() || [])]).toEqual(['1:1', '1:2']);
+  });
+});
+
+describe('withCorrections', () => {
+  const retimed = { from: 300, to: 4500, segments: [[1, 300, 1000], [2, 1000, 1600]] };
+
+  it('puts the re-timed ayahs in place of the export\u2019s', () => {
+    const fixes = { audio: { '1': 'https://audio.example/ghamdi/001.mp3' }, ayahs: { '1:1': retimed } };
+    const held = withCorrections(parseExport(surahs, segments), fixes);
+    expect(held?.timings.get('1:1')).toEqual(retimed);
+    expect(held?.timings.get('1:2')).toEqual({ from: 4585, to: 9585, segments: undefined });
+  });
+
+  it('leaves an export alone whose recording is not the one they were measured on', () => {
+    const fixes = { audio: { '1': 'https://audio.example/another/001.mp3' }, ayahs: { '1:1': retimed } };
+    expect(withCorrections(parseExport(surahs, segments), fixes)?.timings.get('1:1')?.from).toBe(361);
   });
 });

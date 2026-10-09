@@ -32,10 +32,11 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { RECITERS } from './quranData';
 import type { ReciterVerseTiming } from './reciterSegments';
+import corrections from './qulCorrections.json';
 
 const ROOT = () => path.join(process.cwd(), 'data', 'qul', 'recitations');
 
-interface Export {
+export interface Export {
   /** Surah number -> the export's audio for it. */
   audio: Map<number, string>;
   timings: Map<string, ReciterVerseTiming>;
@@ -132,12 +133,45 @@ export function parseExport(surahs: Record<string, unknown> | null, segments: Re
   return audio.size && timings.size ? { audio, timings } : null;
 }
 
+/** Ayahs of one reciter's export re-timed by this studio, and the recording each surah's were measured on. */
+export interface Corrections {
+  audio: Record<string, string>;
+  ayahs: Record<string, ReciterVerseTiming>;
+}
+
+/**
+ * An export with the ayahs this studio re-timed in place of its own, for the
+ * surahs whose recording is the one they were measured on.
+ *
+ * Khalid al-Jalil's recordings are taraweeh prayers, and his export gets them
+ * wrong where he repeats: an ayah's opening folded into the words of the ayah
+ * before (74:9 starting five seconds late, 2:123 nine), his repeat of an
+ * ayah's end counted as the next one's start (3:31), and its words labelled
+ * one on after a restart (57:4). Four other exports start a few ayahs late
+ * after a gap (Al-Shatri's 3:91 by ten seconds). Each correction was heard
+ * with the phoneme model -- see "Built-in reciters" in `docs/ALIGNMENT.md`.
+ */
+export function withCorrections(held: Export | null, fixes: Corrections | undefined): Export | null {
+  if (!held || !fixes) return held;
+  const timings = new Map(held.timings);
+  for (const [verseKey, timing] of Object.entries(fixes.ayahs)) {
+    const surah = Number(verseKey.split(':')[0]);
+    if (held.audio.get(surah) === fixes.audio[String(surah)]) timings.set(verseKey, timing);
+  }
+  return { ...held, timings };
+}
+
 function load(reciterId: string): Export | null {
   if (cache.has(reciterId)) return cache.get(reciterId) ?? null;
   // Only a studio reciter's id is ever joined onto the path.
   const known = RECITERS.some(reciter => reciter.id === reciterId);
   const dir = path.join(ROOT(), reciterId);
-  const parsed = known ? parseExport(readJson(find(dir, 'surah.json')), readJson(find(dir, 'segments.json'))) : null;
+  const parsed = known
+    ? withCorrections(
+      parseExport(readJson(find(dir, 'surah.json')), readJson(find(dir, 'segments.json'))),
+      (corrections as Record<string, Corrections>)[reciterId]
+    )
+    : null;
   cache.set(reciterId, parsed);
   return parsed;
 }

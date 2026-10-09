@@ -136,7 +136,17 @@ function alignmentForm(params: AlignRequest): FormData {
 }
 
 async function requestAlignment(params: AlignRequest): Promise<AlignResponse> {
-  return askSidecar(params.serviceUrl, '/align', alignmentForm(params));
+  try {
+    return await askSidecar(params.serviceUrl, '/align', alignmentForm(params));
+  } catch (err) {
+    // A recording the sidecar could not read -- the CDN refusing a moment, on
+    // the far side of the studio's proxy -- is asked for once more. Failing
+    // there failed the whole match, for a built-in reciter silently: the
+    // captions then had no pauses heard and no isti'adha.
+    if (params.source.kind !== 'url' || !/could not read/i.test((err as Error).message)) throw err;
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return askSidecar(params.serviceUrl, '/align', alignmentForm(params));
+  }
 }
 
 /** Call the sidecar -- POSTing `formData` when there is one -- turning its error bodies into an `AlignRequestError`. */

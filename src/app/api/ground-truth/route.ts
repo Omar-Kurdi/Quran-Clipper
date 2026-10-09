@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { existsSync } from 'node:fs';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { groundTruthAudioName, groundTruthFileName, unsavedClipName, withClipName } from '@/lib/groundTruth';
 import { studioMode } from '@/lib/studioMode';
+import { writeGroundTruthAudio } from '@/lib/groundTruthCut';
 
 /**
  * Writes a ground-truth file and its audio straight into `scripts/`.
@@ -29,8 +30,6 @@ import { studioMode } from '@/lib/studioMode';
  */
 export const runtime = 'nodejs';
 
-/** Bigger than any clip worth aligning, and small enough to not be a way in. */
-const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   if (studioMode() === 'public') {
@@ -46,7 +45,6 @@ export async function POST(req: NextRequest) {
     // Beside an earlier save of the same name, never over it.
     const clipName = unsavedClipName(String(form.get('clipName') || ''), relative => existsSync(path.join(dir, relative)));
     const contents = withClipName(sent, groundTruthAudioName(clipName));
-    const audio = form.get('audio');
 
     if (!sent.trim()) {
       return NextResponse.json({ success: false, error: 'nothing to write' }, { status: 400 });
@@ -60,19 +58,11 @@ export async function POST(req: NextRequest) {
 
     await writeFile(path.join(dir, textName), contents, 'utf8');
 
-    if (audio instanceof File && audio.size > 0) {
-      if (audio.size > MAX_AUDIO_BYTES) {
-        return NextResponse.json(
-          { success: false, error: 'audio too large' },
-          { status: 413 }
-        );
-      }
-      const audioDir = path.join(dir, 'audio');
-      await mkdir(audioDir, { recursive: true });
-      const audioName = groundTruthAudioName(clipName);
-      await writeFile(path.join(audioDir, audioName), Buffer.from(await audio.arrayBuffer()));
-      written.push(path.join('audio', audioName));
+    const audioWritten = await writeGroundTruthAudio(form, dir, clipName);
+    if (audioWritten && 'error' in audioWritten) {
+      return NextResponse.json({ success: false, error: audioWritten.error, written }, { status: audioWritten.status });
     }
+    if (audioWritten) written.push(audioWritten.written);
 
     return NextResponse.json({ success: true, written });
   } catch (error) {
@@ -82,3 +72,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

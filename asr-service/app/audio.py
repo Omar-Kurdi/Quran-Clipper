@@ -94,7 +94,9 @@ ALLOWED_AUDIO_HOSTS = frozenset(
     host.strip()
     for host in os.getenv(
         "ALIGN_ALLOWED_AUDIO_HOSTS",
-        "download.quranicaudio.com,audio.qurancdn.com,verses.quran.com,.mp3quran.net",
+        # audio-cdn.tarteel.ai: QUL's own recordings, which several reciters'
+        # timings were measured on; the studio's proxy has carried it since.
+        "download.quranicaudio.com,audio.qurancdn.com,verses.quran.com,audio-cdn.tarteel.ai,.mp3quran.net",
     ).split(",")
     if host.strip()
 )
