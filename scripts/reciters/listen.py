@@ -19,8 +19,10 @@ def decoded(ear: common.Ear, who: str, surah: int, span: tuple[float, float], *,
     symbols, frames = ear.heard(who, surah, *span)
     names = {v: k for k, v in ear.model.tokens.items()}
     out, last = "", -9.0
+    # `heard` reads from 0s when the span starts before it, so the marks must too.
+    origin = max(0.0, span[0])
     for symbol, frame in zip(symbols, frames):
-        at = span[0] + frame * 0.04
+        at = origin + frame * 0.04
         if marks and at - last >= 1.0:
             out, last = out + f" [{at:.1f}] ", at
         out += names.get(symbol, "?")
