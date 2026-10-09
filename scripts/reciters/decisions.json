@@ -37,5 +37,10 @@
     "rejected": {
       "101:2": "0.7s is 101:1's own ٱلْقَارِعَةُ; 101:2 (مَا ٱلْقَارِعَةُ) is heard from 2.8s, as published (2.2s)"
     }
+  },
+  "muaiqly": {
+    "rejected": {
+      "101:2": "8.8s is 101:1's own ٱلْقَارِعَةُ; 101:2 (مَا ٱلْقَارِعَةُ) is heard from 12.2s, as published (11.5s)"
+    }
   }
 }
