@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from './LocaleProvider';
+import { HALO, phoneCardPosition, type Rect } from '@/lib/tourPlacement';
 
 export interface TourStep {
   /** A `data-tour` value on the element this step points at. */
@@ -13,6 +14,12 @@ export interface TourStep {
    * picked out nothing; the tab is what someone new needs to find again.
    */
   tab?: string;
+  /**
+   * On a phone, the `data-tour` value of what this step describes on the
+   * surface its tab opens. It is lit up beside the tab, and the card is placed
+   * clear of it.
+   */
+  focus?: string;
   title: string;
   body: string;
   /** Said instead of `body` in the phone layout, where the keyboard and the three columns it describes are not there. */
@@ -40,12 +47,8 @@ interface OnboardingTourProps {
 /** The studio's phone layout: one surface at a time, switched by the bottom tabs. Below Tailwind's `lg`. */
 const COMPACT_LAYOUT = '(max-width: 1023.98px)';
 
-/** Room around the highlighted element, so its border is not flush with the cut-out. */
-const HALO = 6;
 /** The card's width; it is placed beside the target when that fits, below or above otherwise. */
 const CARD_WIDTH = 320;
-
-type Rect = { top: number; left: number; width: number; height: number };
 
 /**
  * The first-visit walkthrough: a step for each part of the studio, pointing at
@@ -67,7 +70,9 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({ steps, isOpen, o
   const targetRect = useTargetRect(isOpen ? step?.target : undefined);
   // The tabs are only laid out below `lg`, so this measures nothing on a wide screen.
   const tabRect = useTargetRect(isOpen ? step?.tab : undefined);
-  const rect = tabRect ?? targetRect;
+  const focusRect = useTargetRect(isOpen && step?.tab ? step.focus : undefined);
+  // On a phone the step's own surface is lit, and the tab that opens it ringed.
+  const rect = tabRect ? (focusRect ?? tabRect) : targetRect;
 
   useEffect(() => {
     if (isOpen) onStep?.(index);
@@ -89,9 +94,11 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({ steps, isOpen, o
   return createPortal(
     <div className="fixed inset-0 z-[80]" onKeyDown={tourKeys({ finish, next, back })}>
       <Spotlight rect={rect} light={Boolean(tabRect) || Boolean(step.light)} />
+      {tabRect && focusRect && <Ring rect={tabRect} />}
       <TourCard
         rect={rect}
-        docked={Boolean(tabRect)}
+        tab={tabRect}
+        focus={focusRect}
         step={step}
         index={index}
         total={steps.length}
@@ -111,16 +118,25 @@ function useTargetRect(target: string | undefined): Rect | null {
   // covering the timeline it was describing.
   const [measured, setMeasured] = useState<{ target: string; rect: Rect | null } | null>(null);
   const measure = useCallback(() => {
-    if (!target) return;
+    if (!target) return false;
     const element = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
     const box = element?.getBoundingClientRect();
-    setMeasured({ target, rect: box && box.width > 0 ? { top: box.top, left: box.left, width: box.width, height: box.height } : null });
+    const rect = box && box.width > 0 ? { top: box.top, left: box.left, width: box.width, height: box.height } : null;
+    setMeasured({ target, rect });
+    return rect !== null;
   }, [target]);
 
   useLayoutEffect(() => {
     if (!target) return;
-    // The page's surface switch for this step lands on the next frame.
-    const frame = requestAnimationFrame(measure);
+    // The page's surface switch for this step lands a frame or more later --
+    // the Style panel was not there yet on the first -- so look again for up
+    // to a second until the target is on screen.
+    let frame = 0;
+    let tries = 0;
+    const look = () => {
+      if (!measure() && ++tries < 60) frame = requestAnimationFrame(look);
+    };
+    frame = requestAnimationFrame(look);
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
     return () => {
@@ -171,12 +187,24 @@ function Spotlight({ rect, light }: { rect: Rect | null; light: boolean }) {
   );
 }
 
+/** A second highlight, with no cut-out of its own: the tab beside a lit surface. */
+function Ring({ rect }: { rect: Rect }) {
+  return (
+    <div
+      aria-hidden
+      className="absolute rounded-xl ring-2 ring-amber-400/80 pointer-events-none"
+      style={{ top: rect.top - HALO, left: rect.left - HALO, width: rect.width + HALO * 2, height: rect.height + HALO * 2 }}
+    />
+  );
+}
+
 function TourCard({
-  rect, docked, step, index, total, onSkip, onBack, onNext
+  rect, tab, focus, step, index, total, onSkip, onBack, onNext
 }: {
   rect: Rect | null;
-  /** Pointing at a bottom tab: sit just above the tab bar, full width. */
-  docked: boolean;
+  /** Pointing at a bottom tab: across the screen, clear of `focus` where it fits. */
+  tab: Rect | null;
+  focus: Rect | null;
   step: TourStep;
   index: number;
   total: number;
@@ -189,37 +217,66 @@ function TourCard({
   useEffect(() => {
     primaryRef.current?.focus();
   }, [index]);
+  const { cardRef, position } = useCardPlacement(rect, tab, focus);
   return (
     <div
+      ref={cardRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="tour-title"
       aria-describedby="tour-body"
-      className="absolute rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl p-4"
-      style={{ width: CARD_WIDTH, ...(docked && rect ? dockedPosition(rect) : cardPosition(rect)) }}
+      className="absolute rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl p-4 max-lg:p-3 transition-[top,bottom] duration-200"
+      style={{ width: CARD_WIDTH, ...position }}
     >
       <p className="text-[11px] font-mono text-amber-400">{t.tour.progress(index + 1, total)}</p>
       <h2 id="tour-title" className="mt-1 text-sm font-bold">{step.title}</h2>
       <p id="tour-body" className="mt-1.5 text-xs text-slate-300 leading-relaxed">{stepBody(step)}</p>
-      <div className="mt-3 flex items-center gap-2">
-        <button onClick={onSkip} className="me-auto text-[11px] text-slate-400 hover:text-slate-200 px-1 py-1">
-          {t.tour.skip}
-        </button>
-        {onBack && (
-          <button onClick={onBack} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200 hover:bg-slate-800">
-            {t.tour.back}
-          </button>
-        )}
-        <button
-          ref={primaryRef}
-          onClick={onNext}
-          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold"
-        >
-          {index === total - 1 ? t.tour.done : t.tour.next}
-        </button>
-      </div>
+      <TourButtons last={index === total - 1} primaryRef={primaryRef} onSkip={onSkip} onBack={onBack} onNext={onNext} />
     </div>
   );
+}
+
+function TourButtons({
+  last, primaryRef, onSkip, onBack, onNext
+}: {
+  last: boolean;
+  primaryRef: React.RefObject<HTMLButtonElement | null>;
+  onSkip: () => void;
+  onBack?: () => void;
+  onNext: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="mt-3 max-lg:mt-2 flex items-center gap-2">
+      <button onClick={onSkip} className="me-auto text-[11px] text-slate-400 hover:text-slate-200 px-1 py-1">
+        {t.tour.skip}
+      </button>
+      {onBack && (
+        <button onClick={onBack} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200 hover:bg-slate-800">
+          {t.tour.back}
+        </button>
+      )}
+      <button
+        ref={primaryRef}
+        onClick={onNext}
+        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold"
+      >
+        {last ? t.tour.done : t.tour.next}
+      </button>
+    </div>
+  );
+}
+
+/** Where the card goes; on a phone its measured height decides whether it fits above or below the step's surface. */
+function useCardPlacement(rect: Rect | null, tab: Rect | null, focus: Rect | null) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState(180);
+  useLayoutEffect(() => {
+    const measured = cardRef.current?.offsetHeight;
+    if (measured && measured !== height) setHeight(measured);
+  });
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  return { cardRef, position: tab ? phoneCardPosition(focus, tab, height, viewport) : cardPosition(rect) };
 }
 
 /** Keeps Tab and Shift+Tab cycling inside `container`. */
@@ -240,13 +297,6 @@ function trapFocus(event: React.KeyboardEvent, container: HTMLElement | null) {
 /** What the step says here: its phone wording, where it has one and this is the phone layout. */
 function stepBody(step: TourStep): string {
   return step.compactBody && window.matchMedia(COMPACT_LAYOUT).matches ? step.compactBody : step.body;
-}
-
-/** Just above the bottom tab bar, across the screen, so the surface above the card stays in view. */
-function dockedPosition(rect: Rect): React.CSSProperties {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  return { bottom: vh - rect.top + HALO + 10, left: 12, width: vw - 24 };
 }
 
 /**
