@@ -672,9 +672,9 @@ their published times (`agreesWithPublished`).
 
 **Re-timed exports.** Al-Rifai's 16 and Khalid al-Jalil's 103-104 are this studio's own
 measurement (`measuredRecitations.json`). Other ayahs of seven QUL exports are corrected in
-`qulCorrections.json` -- Al-Jalil 397, Abdul Basit 19, Al-Shatri 20, Al-Ghamdi 5, Al-Tunaiji 5,
-Al-Sudais 2, Al-Muaiqly 1 (an ayah counts when its start moved, or when it ends earlier because the
-next one did).
+`qulCorrections.json` -- Al-Jalil 397, Al-Muaiqly 137, Abdul Basit 19, Al-Shatri 20, Al-Ghamdi 5,
+Al-Tunaiji 6, Al-Sudais 2 (an ayah counts when its start or end moved, or when it ends earlier because
+the next one did).
 Al-Jalil's recordings are taraweeh prayers, and his export goes wrong where he repeats: an ayah's
 opening folded into the words of the ayah before (74:9 five seconds late, 2:123 nine, 44:39
 twenty-two), his repeat of an ayah's end counted as the next one's start (3:31 five seconds
@@ -693,6 +693,12 @@ middle: its opening was heard in audio the export gives to no ayah, but too loos
 to move it (a long first syllable blurs the match). The start checks of every export were searched
 for the same and nine more found, Abdul Basit's and Al-Shatri's, 5-23s late. All ten were listened
 to and are in `decisions.json`, and `listen.py gaps` now lists every such opening.
+Al-Muaiqly's export ends each ayah where its last word's syllables end and gives the pause to no
+ayah, and 136 times it ended one while he was still holding its final madd: 1:5's نَسْتَعِينُ
+went off the screen 1.5s before he finished it, Ha-Mim's حمٓ (42:1, 46:1) three seconds before.
+`ends.py` follows the recording's loudness on from every listed end, and an ayah ends where the
+voice stops, short of the next one (one more in Al-Tunaiji's, 69:2; none in the other exports). A
+sample, the longest among them, was listened to.
 Every ayah whose last word label repeats was compared word by word with the
 aligner, block by block: a block that fits one word on is relabelled, and an ayah that fits
 neither way, or whose start moved, takes the aligner's words inside its confirmed bounds.

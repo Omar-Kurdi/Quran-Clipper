@@ -6,8 +6,9 @@
 From .run/reciters/<reciter>/: where each ayah starts (starts/, gaps, second, cascade, both -- in that order, a later
 step's move standing over an earlier one's, except gaps and cascade which only ever move a start earlier), what was
 decided by ear (decisions.json: starts heard by ear, moves undone), the word-label fits (labels.txt) and the aligner's
-own words (words/). An ayah is corrected when
+own words (words/), and where each ayah's last word stops being held (ends/). An ayah is corrected when
   - its start moved: it starts there, and the ayah before ends there if it ran past;
+  - its last word is held past its listed end (ends.py `held`): it ends where the voice stops;
   - a block of its words fits the recording one word on, clearly (<= FIT, better than as labelled): relabelled;
   - its start moved or a block fits neither way: it takes the aligner's words, when that reading is whole, clamped
     inside the ayah's confirmed bounds.
@@ -157,6 +158,26 @@ def ended_by_next(heard: dict[str, dict], key: str, end: int, segments: list[lis
     return end, [[i, s, min(e, end)] for i, s, e in segments if s < end]
 
 
+def held_ends(who: str) -> dict[str, float]:
+    """ends.py: the ayahs whose last word is still held past their listed end, and until when (seconds)."""
+    return {r["key"]: r["voicedTo"] for surah in common.read_folder(who, "ends") for r in surah if r[STATUS] == "held"}
+
+
+def ended_when_held(heard: dict[str, dict], key: str, voiced: float | None, end: int,
+                    segments: list[list]) -> tuple[int, list[list]]:
+    """The ayah ended where its last word stops being held, never past where the next one is heard to start."""
+    if voiced is None or not segments:
+        return end, segments
+    surah, ayah = common.by_key(key)
+    following = heard.get(f"{surah}:{ayah + 1}") or {}
+    limit = round(following["start"] * 1000) - 50 if following.get(STATUS) in MOVED else None
+    until = min(round(voiced * 1000), limit) if limit else round(voiced * 1000)
+    if until <= end:
+        return end, segments
+    last = max(range(len(segments)), key=lambda i: segments[i][2])
+    return until, [[i, s, until if n == last else e] for n, (i, s, e) in enumerate(segments)]
+
+
 def words_for(who: str, key: str, start: int, timing: dict, relabelled_words: tuple[list[list], int, int], *,
               moved: bool = False) -> tuple[list[list], int]:
     """The ayah's words: the aligner's where its start moved or a block fits neither way, else the export's, relabelled.
@@ -167,12 +188,15 @@ def words_for(who: str, key: str, start: int, timing: dict, relabelled_words: tu
     return ([s for s in segments if s[1] >= start - 300] if start > timing["timestamp_from"] + 50 else segments), changed
 
 
-def corrected(who: str, key: str, timing: dict, heard: dict[str, dict], blocks: list | None) -> dict | None:
+def corrected(who: str, key: str, timing: dict, heard: dict[str, dict], blocks: list | None,
+              voiced: float | None = None) -> dict | None:
     record = heard.get(key) or {}
     moved = record.get(STATUS) in MOVED
     start = round(record["start"] * 1000) if moved else timing["timestamp_from"]
     segments, changed = words_for(who, key, start, timing, relabelled(blocks, common.words_of(timing)), moved=moved)
     end, segments = ended_by_next(heard, key, timing["timestamp_to"], segments)
+    if end == timing["timestamp_to"]:
+        end, segments = ended_when_held(heard, key, voiced, end, segments)
     if not changed and start == timing["timestamp_from"] and end == timing["timestamp_to"]:
         return None
     return {"from": start, "to": end, "segments": segments}
@@ -181,9 +205,10 @@ def corrected(who: str, key: str, timing: dict, heard: dict[str, dict], blocks: 
 def build(who: str) -> dict:
     heard = starts(who)
     blocks = fits(who)
+    held = held_ends(who)
     ayahs = {}
     for key, timing in sorted(common.qul(who).items(), key=lambda kv: common.by_key(kv[0])):
-        fixed = corrected(who, key, timing, heard, blocks.get(key))
+        fixed = corrected(who, key, timing, heard, blocks.get(key), held.get(key))
         if fixed:
             ayahs[key] = fixed
     held = {key.split(":")[0] for key in ayahs}
