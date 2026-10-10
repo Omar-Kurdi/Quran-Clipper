@@ -1347,14 +1347,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                 dir="ltr"
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono text-start"
               />
-              <label className="mt-2 flex items-center gap-2 text-slate-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={Boolean(config.watermarkLogo)}
-                  onChange={(e) => updateConfig('watermarkLogo', e.target.checked)}
-                />
-                <span>{t.style.watermarkLogo}</span>
-              </label>
             </div>
 
             <div>
