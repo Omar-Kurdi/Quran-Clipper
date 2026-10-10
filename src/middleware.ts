@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { studioMode, closedInPublicMode } from '@/lib/studioMode';
+import { studioMode, closedInPublicMode, publicPage } from '@/lib/studioMode';
 
 /**
  * A shared secret in front of the whole studio, for the day it is not local.
@@ -43,6 +43,11 @@ export function middleware(req: NextRequest) {
   // Health stays open so an uptime check does not need the secret. It reports
   // whether services are reachable and never touches project data.
   if (req.nextUrl.pathname === '/api/health') return NextResponse.next();
+
+  // So do the front page, the privacy policy and the terms, and the front
+  // page's demo media: they hold nothing of anyone's, and Google's OAuth
+  // consent screen links to the policy and terms for anyone to read.
+  if (publicPage(req.nextUrl.pathname)) return NextResponse.next();
 
   // `?token=...` is the way in: it is exchanged for a cookie and stripped from
   // the URL immediately, so the secret is not left in history, in a bookmark,

@@ -17,18 +17,6 @@ const nextConfig: NextConfig = {
      * this admits is bounded by what a person can pick in a file dialog.
      */
     proxyClientMaxBodySize: '256mb'
-  },
-  async redirects() {
-    return [
-      {
-        // The studio is the product. There is no signup, no dashboard and no
-        // content to browse, so a marketing page in front of it only added a
-        // click between opening the app and using it.
-        source: "/",
-        destination: "/video-creator",
-        permanent: false
-      }
-    ];
   }
 };
 

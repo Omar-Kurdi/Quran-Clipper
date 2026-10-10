@@ -30,3 +30,10 @@ The scenes use a built-in reciter (Al-Mulk 67:1-2, Abdul Rahman Al-Sudais).
 The passage scene also uploads `DEMO_RECORDING`, a recitation of Al-Falaq
 113:1-5 that may be published, under a plain file name, and matches it, so it
 needs the sidecar running; the other scenes do not. `encode.py` needs `ffmpeg`.
+
+4. Cut the front page's step clips from the new GIFs (`public/landing/`, MP4s
+   with a poster frame each, a tenth of the GIFs' size):
+
+   ```bash
+   scripts/media/landing.sh
+   ```
