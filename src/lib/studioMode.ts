@@ -27,3 +27,13 @@ const CLOSED_IN_PUBLIC = ['/api/projects', '/api/exports', '/api/ground-truth', 
 export function closedInPublicMode(pathname: string): boolean {
   return CLOSED_IN_PUBLIC.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
+
+/**
+ * Pages anyone may read whatever `STUDIO_TOKEN` says: the front page, the
+ * privacy policy and the terms, and the front page's demo media. They hold
+ * nothing of anyone's, and Google's OAuth consent screen links to the policy
+ * and terms for anyone to open.
+ */
+export function publicPage(pathname: string): boolean {
+  return ['/', '/privacy', '/terms'].includes(pathname) || pathname.startsWith('/landing/');
+}

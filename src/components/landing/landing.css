@@ -1,0 +1,491 @@
+/* ---------------------------------------------------------------------------
+   The public pages: the front page and the legal pages.
+
+   Every colour is the studio's own palette variable, so these pages wear the
+   palette picked in the studio, and the way in looks like the place it leads.
+   Everything is scoped under `.landing` or `.legal`; nothing here reaches the
+   studio.
+   --------------------------------------------------------------------------- */
+
+.landing,
+.legal {
+  --lp-gutter: clamp(16px, 4vw, 40px);
+  --lp-width: 1160px;
+  min-height: 100vh;
+  background: var(--p-bg);
+  color: var(--p-text);
+  font-family: var(--font-sans);
+}
+
+.landing a:focus-visible,
+.landing button:focus-visible,
+.legal a:focus-visible,
+.legal button:focus-visible {
+  outline: 2px solid var(--p-accent-bright);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* -- Header and footer -------------------------------------------------- */
+
+.lp-top,
+.lp-footer {
+  max-width: var(--lp-width);
+  margin: 0 auto;
+  padding: 20px var(--lp-gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.lp-wordmark {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  line-height: 1;
+  color: var(--p-text);
+  text-decoration: none;
+}
+
+.lp-top nav,
+.lp-footer nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.lp-lang {
+  background: none;
+  border: 0;
+  color: var(--p-muted);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 6px 2px;
+}
+.lp-lang:hover { color: var(--p-text); }
+.lp-lang:lang(ar) { font-family: 'IBM Plex Sans Arabic', sans-serif; }
+.lp-lang:lang(en) { font-family: 'IBM Plex Sans', sans-serif; }
+
+.lp-open {
+  color: var(--p-text);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  border: 1px solid var(--p-edge);
+  border-radius: 999px;
+}
+.lp-open:hover { border-color: var(--p-accent); color: var(--p-accent-bright); }
+
+.lp-footer {
+  border-top: 1px solid var(--p-edge);
+  margin-top: 40px;
+  padding-top: 28px;
+  padding-bottom: 40px;
+  color: var(--p-muted);
+}
+.lp-footer .lp-wordmark { font-size: 1.2rem; color: var(--p-muted); }
+.lp-footer a { color: var(--p-muted); text-decoration: none; font-size: 0.92rem; }
+.lp-footer nav a:hover { color: var(--p-text); }
+
+/* -- Shared type -------------------------------------------------------- */
+
+.landing main > section {
+  max-width: var(--lp-width);
+  margin-inline: auto;
+  padding-inline: var(--lp-gutter);
+}
+
+.landing h1,
+.landing h2,
+.landing h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--p-text);
+  letter-spacing: -0.01em;
+}
+:root[lang="ar"] .landing h1,
+:root[lang="ar"] .landing h2,
+:root[lang="ar"] .landing h3 { font-weight: 700; letter-spacing: 0; }
+
+.landing h2 {
+  font-size: clamp(2rem, 3.4vw, 2.8rem);
+  line-height: 1.1;
+  margin: 0 0 12px;
+}
+
+.lp-lede {
+  max-width: 62ch;
+  color: color-mix(in srgb, var(--p-muted) 45%, var(--p-text));
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.lp-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--p-accent);
+  color: var(--p-bg);
+  font-weight: 600;
+  font-size: 1.02rem;
+  text-decoration: none;
+  padding: 14px 24px;
+  border-radius: 12px;
+  transition: background 0.15s;
+}
+.lp-cta:hover { background: var(--p-accent-bright); }
+
+/* -- Hero ------------------------------------------------------------------ */
+
+.lp-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  grid-template-areas:
+    "text stage"
+    "timeline timeline";
+  column-gap: clamp(24px, 5vw, 72px);
+  align-items: center;
+  padding-top: clamp(24px, 5vw, 56px);
+}
+
+.lp-hero-text { grid-area: text; }
+.lp-hero-text h1 {
+  font-size: clamp(2.6rem, 5.4vw, 4.6rem);
+  line-height: 1.02;
+  margin: 0 0 22px;
+}
+:root[lang="ar"] .lp-hero-text h1 { line-height: 1.35; font-size: clamp(2.3rem, 4.6vw, 3.9rem); }
+.lp-hero-text p {
+  max-width: 50ch;
+  font-size: 1.12rem;
+  line-height: 1.7;
+  color: color-mix(in srgb, var(--p-muted) 45%, var(--p-text));
+  margin: 0 0 30px;
+}
+
+.hero-demo { display: contents; }
+.hero-stage {
+  grid-area: stage;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* The clip, in the studio's frame: gold corner marks round a 9:16 screen. */
+.phone {
+  --mark: var(--p-accent);
+  margin: 0;
+  padding: 10px;
+  width: min(330px, 82vw);
+  background:
+    linear-gradient(var(--mark) 0 0) top left / 22px 2px,
+    linear-gradient(var(--mark) 0 0) top left / 2px 22px,
+    linear-gradient(var(--mark) 0 0) top right / 22px 2px,
+    linear-gradient(var(--mark) 0 0) top right / 2px 22px,
+    linear-gradient(var(--mark) 0 0) bottom left / 22px 2px,
+    linear-gradient(var(--mark) 0 0) bottom left / 2px 22px,
+    linear-gradient(var(--mark) 0 0) bottom right / 22px 2px,
+    linear-gradient(var(--mark) 0 0) bottom right / 2px 22px;
+  background-repeat: no-repeat;
+}
+
+.phone-screen {
+  aspect-ratio: 9 / 16;
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 26px 18px;
+  background:
+    radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--p-live) 16%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--p-surface) 70%, var(--p-live) 6%), var(--p-bg));
+  box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.8), inset 0 0 0 1px var(--p-edge);
+}
+
+.phone-surah {
+  font-family: 'Amiri', serif;
+  font-size: 1rem;
+  color: var(--p-text);
+  border: 1px solid color-mix(in srgb, var(--p-text) 35%, transparent);
+  border-radius: 999px;
+  padding: 2px 18px;
+  margin: 0;
+}
+
+.phone-card {
+  width: 100%;
+  background: color-mix(in srgb, var(--p-surface) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--p-text) 9%, transparent);
+  border-radius: 16px;
+  padding: 20px 16px 18px;
+  text-align: center;
+}
+
+.phone-ayah {
+  font-family: 'Amiri', serif;
+  font-size: 1.65rem;
+  line-height: 2.05;
+  margin: 0 0 12px;
+}
+.phone-ayah span { transition: color 0.18s, opacity 0.18s; }
+.phone-ayah .w-next { color: var(--p-text); opacity: 0.32; }
+.phone-ayah .w-said { color: var(--p-text); }
+.phone-ayah .w-now { color: var(--p-accent-bright); }
+.phone-number { color: var(--p-accent); font-size: 1.1rem; }
+
+.phone-translation {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--p-muted) 40%, var(--p-text));
+  margin: 0;
+}
+
+.phone-caption {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--p-muted);
+}
+
+.hero-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.listen {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--p-text);
+  border: 1px solid var(--p-edge);
+  border-radius: 999px;
+  padding: 9px 18px;
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.listen:hover,
+.listen[aria-pressed="true"] { border-color: var(--p-live); color: var(--p-live-bright); }
+.caption-count { font-family: var(--font-mono); font-size: 0.8rem; color: var(--p-muted); }
+
+/* The studio's own timeline for the clip, under everything. */
+.timeline {
+  grid-area: timeline;
+  margin-top: clamp(32px, 5vw, 56px);
+  background: var(--p-surface);
+  border: 1px solid var(--p-edge);
+  border-radius: 14px;
+  padding: 10px 14px 14px;
+}
+.timeline-ruler {
+  position: relative;
+  height: 20px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--p-muted);
+}
+.timeline-ruler span { position: absolute; top: 0; transform: translateX(-50%); }
+.timeline-ruler span:first-child { transform: none; }
+.timeline-ruler span:last-child { transform: translateX(-100%); }
+.timeline-track { position: relative; height: 88px; }
+.timeline-wave {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.5;
+}
+.timeline-wave i {
+  flex: 1;
+  background: color-mix(in srgb, var(--p-edge) 40%, var(--p-muted));
+  border-radius: 2px;
+}
+.timeline-block {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--p-edge) 60%, var(--p-muted));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--p-surface) 55%, transparent);
+  overflow: hidden;
+  transition: border-color 0.2s, background 0.2s;
+}
+.timeline-block.is-on {
+  border-color: var(--p-accent);
+  background: color-mix(in srgb, var(--p-accent) 13%, transparent);
+}
+.timeline-key { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--p-muted); }
+.timeline-block.is-on .timeline-key { color: var(--p-accent-bright); }
+.timeline-text {
+  font-family: 'Amiri', serif;
+  font-size: 1.05rem;
+  color: var(--p-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.timeline-head {
+  position: absolute;
+  top: -22px;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--p-live);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--p-live) 60%, transparent);
+}
+
+/* -- Steps ------------------------------------------------------------------ */
+
+.lp-steps { margin-top: clamp(80px, 11vw, 140px); }
+.lp-steps ol { list-style: none; margin: 48px 0 0; padding: 0; }
+.lp-steps li {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: center;
+  padding: 36px 0;
+  border-top: 1px solid var(--p-edge);
+}
+.lp-steps li:nth-child(even) { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); }
+.lp-steps li:nth-child(even) .lp-window { order: -1; }
+.lp-tab {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--p-accent-bright);
+}
+:root[lang="ar"] .lp-tab { font-family: var(--font-sans); font-weight: 600; }
+.lp-steps h3 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); margin: 8px 0 10px; }
+.lp-steps p { color: color-mix(in srgb, var(--p-muted) 45%, var(--p-text)); line-height: 1.7; margin: 0; }
+.lp-window {
+  border: 1px solid var(--p-edge);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--p-surface);
+  box-shadow: 0 30px 70px -40px rgba(0, 0, 0, 0.75);
+}
+.lp-window video { display: block; width: 100%; aspect-ratio: 8 / 5; object-fit: cover; }
+
+/* -- Reciters --------------------------------------------------------------- */
+
+.lp-reciters { margin-top: clamp(80px, 10vw, 120px); }
+.lp-reciters ul {
+  list-style: none;
+  margin: 40px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  column-gap: 32px;
+}
+.lp-reciters li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 0;
+  border-top: 1px solid var(--p-edge);
+}
+.lp-reciters .ar { font-family: 'Amiri', serif; font-size: 1.55rem; line-height: 1.5; color: var(--p-text); }
+.lp-reciters .en { font-family: 'IBM Plex Sans', sans-serif; font-size: 0.86rem; color: var(--p-muted); }
+.lp-reciters .own { justify-content: center; }
+.lp-reciters .own .en { font-family: var(--font-sans); font-size: 1rem; color: var(--p-accent-bright); }
+
+/* -- Facts ------------------------------------------------------------------ */
+
+.lp-facts { margin-top: clamp(80px, 10vw, 120px); }
+.lp-facts dl {
+  margin: 32px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 28px 32px;
+}
+.lp-facts dt { font-weight: 600; margin-bottom: 6px; }
+.lp-facts dd { margin: 0; color: color-mix(in srgb, var(--p-muted) 45%, var(--p-text)); line-height: 1.65; font-size: 0.96rem; }
+
+/* -- Closing ------------------------------------------------------------------ */
+
+.lp-closing {
+  margin-top: clamp(90px, 12vw, 150px);
+  text-align: center;
+}
+.lp-closing h2 { font-size: clamp(2.2rem, 4.4vw, 3.4rem); }
+.lp-closing p { color: var(--p-muted); margin: 0 0 26px; }
+
+/* -- Narrow screens ------------------------------------------------------------ */
+
+@media (max-width: 860px) {
+  .lp-hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "text" "stage" "timeline";
+    row-gap: 36px;
+  }
+  .lp-steps li,
+  .lp-steps li:nth-child(even) { grid-template-columns: minmax(0, 1fr); }
+  .lp-steps li:nth-child(even) .lp-window { order: 0; }
+  .timeline-track { height: 72px; }
+  .timeline-text { font-size: 0.95rem; }
+  .lp-top .lp-open { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-ayah span,
+  .timeline-block,
+  .lp-cta { transition: none; }
+}
+
+/* -- Legal pages ---------------------------------------------------------------- */
+
+.legal-body {
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 56px) var(--lp-gutter) 24px;
+  line-height: 1.75;
+  color: color-mix(in srgb, var(--p-muted) 30%, var(--p-text));
+}
+.legal-body h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.3rem, 4.5vw, 3.2rem);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--p-text);
+  margin: 0 0 6px;
+}
+.legal-body h2 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--p-text);
+  margin: 40px 0 8px;
+}
+:root[lang="ar"] .legal-body h1,
+:root[lang="ar"] .legal-body h2 { font-weight: 700; }
+.legal-updated { font-size: 0.9rem; color: var(--p-muted); margin: 0 0 28px; }
+.legal-note {
+  font-size: 0.92rem;
+  border-inline-start: 2px solid var(--p-accent);
+  padding-inline-start: 12px;
+}
+.legal-body ul { list-style: disc; padding-inline-start: 1.2em; }
+.legal-body li { margin: 6px 0; }
+.legal-body a { color: var(--p-accent-bright); text-underline-offset: 3px; }
+.legal-body code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--p-surface);
+  border: 1px solid var(--p-edge);
+  border-radius: 5px;
+  padding: 1px 5px;
+}

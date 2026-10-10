@@ -71,6 +71,8 @@ asr-service/=*
 # export path, and the .mp4 WhatsApp wraps a voice note in.
 *.mkv
 *.mp4
+# Except the landing page's own demo clips, cut from docs/screenshots' GIFs.
+!public/landing/**/*.mp4
 
 # Where the studio's "Ground truth" button saves the recording a set of expected
 # captions describes. The extensions above cover most of it; this covers the
