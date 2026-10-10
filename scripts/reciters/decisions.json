@@ -26,11 +26,55 @@
     "rejected": {
       "2:107": "2192s is 2:106's own أَلَمْ تَعْلَمْ أَنَّ ٱللَّهَ عَلَىٰ كُلِّ شَىْءٍ قَدِيرٌ; 2:107 (لَهُۥ مُلْكُ) begins at 2198.6s, as published",
       "69:2": "0.6s is 69:1's own ٱلْحَآقَّةُ; 69:2 (مَا ٱلْحَآقَّةُ) is heard from 4.9s, as published (4.58s)"
+    },
+    "confirmed": {
+      "6:80": [
+        1506.4,
+        "وَحَآجَّهُۥ قَوْمُهُۥ heard from 1506.4s straight after 6:79; QUL lists it from 1529.4s, inside his repeat of قَالَ أَتُحَـٰٓجُّوٓنِّى فِى ٱللَّهِ, leaving 23s to no ayah (cost 0.21)"
+      ],
+      "11:21": [
+        456.7,
+        "أُو۟لَـٰٓئِكَ ٱلَّذِينَ خَسِرُوٓا۟ heard from 456.7s after 11:20; QUL lists it from 464.8s, its وَضَلَّ عَنْهُم (cost 0.22)"
+      ],
+      "11:26": [
+        535.8,
+        "أَن لَّا تَعْبُدُوٓا۟ heard from 535.8s after 11:25's مُّبِينٌ; QUL lists it from 540.6s, its إِنِّىٓ أَخَافُ (cost 0.23)"
+      ],
+      "12:96": [
+        1955.7,
+        "فَلَمَّآ أَن جَآءَ ٱلْبَشِيرُ heard from 1955.7s after 12:95; QUL lists it from 1966.9s, its قَالَ أَلَمْ أَقُل (cost 0.21)"
+      ],
+      "15:27": [
+        253.0,
+        "وَٱلْجَآنَّ heard from 253.0s after 15:26's مَّسْنُونٍ, its madd held to 257.8s; QUL lists it from 261.2s, its مِن قَبْلُ (cost 0.25)"
+      ],
+      "21:87": [
+        1101.0,
+        "وَذَا ٱلنُّونِ heard from 1101.0s after 21:86; QUL lists it from 1114.6s, its أَن لَّآ إِلَـٰهَ (cost 0.28)"
+      ],
+      "40:16": [
+        251.8,
+        "يَوْمَ هُم بَـٰرِزُونَ heard from 251.8s after 40:15's ٱلتَّلَاقِ; QUL lists it from 262.3s, its لِّمَنِ ٱلْمُلْكُ"
+      ]
     }
   },
   "basit": {
     "rejected": {
       "101:2": "0.8s is 101:1's own ٱلْقَارِعَةُ; 101:2 (مَا ٱلْقَارِعَةُ) is heard from 3.2s, as published (2.85s)"
+    },
+    "confirmed": {
+      "7:22": [
+        395.0,
+        "فَدَلَّىٰهُمَا heard from 395.0s straight after 7:21; QUL lists it from 418.0s, its وَنَادَىٰهُمَا, leaving 23s to no ayah (heard at cost 0.29, over the tools' 0.2)"
+      ],
+      "21:87": [
+        1352.7,
+        "وَذَا ٱلنُّونِ heard from 1352.7s straight after 21:86; QUL lists it from 1374.7s, its سُبْحَـٰنَكَ, leaving 23s to no ayah (cost 0.33)"
+      ],
+      "67:17": [
+        249.8,
+        "أَمْ أَمِنتُم heard from 249.8s after 67:16's تَمُورُ; QUL lists it from 255.7s, its أَن يُرْسِلَ (cost 0.31)"
+      ]
     }
   },
   "tunaiji": {

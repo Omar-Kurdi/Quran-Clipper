@@ -3,9 +3,15 @@
     asr-service/.venv/bin/python scripts/reciters/listen.py span jalil 82 0 26          # a stretch, marked every second
     asr-service/.venv/bin/python scripts/reciters/listen.py moves jalil                 # every start the tools moved
     asr-service/.venv/bin/python scripts/reciters/listen.py region jalil 44 43-49       # every caption of a region
+    asr-service/.venv/bin/python scripts/reciters/listen.py gaps shatri                 # openings heard in a gap, unmoved
 
 `moves` and `region` print, for each, the words that should begin there and what is heard from there: they must be
 the same words. Where an ayah opens with words the ayah before also says, listen on past them (`span`).
+
+`gaps` lists what no tool moved: an ayah whose opening starts.py heard over 1.5s before its published start, after
+the ayah before ends, but too loosely to move it (cost 0.2-0.34). A long first syllable blurs the match, and ten
+such openings of Abdul Basit and Al-Shatri were 5-23s before their listed start (Al-Shatri's 6:80 is listed inside
+his repeat of its middle). Each heard right goes in decisions.json under `confirmed`.
 """
 from __future__ import annotations
 
@@ -38,6 +44,27 @@ def moves(ear: common.Ear, who: str) -> None:
         print(key, f"{record.get('q', 0):.1f} -> {record['start']:.1f}", "|", words, "|", heard, flush=True)
 
 
+def heard_in_gap(record: dict, ended: float) -> list[tuple[float, float]]:
+    """Where starts.py heard the opening after the ayah before ended and over 1.5s before the published start."""
+    return [(o, c) for o, c in (record.get("heard") or []) + record.get("near", [])
+            if ended - 0.5 <= o < record["q"] - 1.5 and c <= common.HEARD]
+
+
+def gaps(ear: common.Ear, who: str) -> None:
+    export, held = common.qul(who), starts(who)
+    for record in sorted((r for surah in common.read_folder(who, "starts") for r in surah), key=lambda r: common.by_key(r["key"])):
+        surah, ayah = common.by_key(record["key"])
+        before = export.get(f"{surah}:{ayah - 1}")
+        if not before or held.get(record["key"], {}).get("status") in ("found", "twice"):
+            continue
+        ended = before["timestamp_to"] / 1000
+        heard = heard_in_gap(record, ended)
+        if heard:
+            words = " ".join(w["arabic"] for w in common.load(who, surah, ayah, ayah)["verses"][0]["words"][:3])
+            print(record["key"], f"{record['q']:.1f}", "heard", heard, "|", words, "|",
+                  decoded(ear, who, surah, (ended - 1, record["q"] + 1)), flush=True)
+
+
 def region(ear: common.Ear, who: str, surah: int, ayahs: str) -> None:
     held = (common.read_json(who, "regions.json") or {})[str(surah)]
     stretch = next(r for r in held if r["ayahs"] == list(map(int, ayahs.split("-"))))
@@ -56,5 +83,7 @@ if __name__ == "__main__":
         print(decoded(ear_, who_, int(sys.argv[3]), (float(sys.argv[4]), float(sys.argv[5]))))
     elif what == "moves":
         moves(ear_, who_)
+    elif what == "gaps":
+        gaps(ear_, who_)
     else:
         region(ear_, who_, int(sys.argv[3]), sys.argv[4])

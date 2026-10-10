@@ -30,7 +30,7 @@ heard; a start heard by ear that no tool could confirm goes under `confirmed`.
 | 3 | `both.py <r>` | where stretched words hide the boundary: checked both ways | ~0.5 |
 | 4 | `gaps.py <r> qul` | ayahs starting well after the one before ends | minutes |
 | 5 | `cascade.py <r>` | the next ayah's first reading inside a moved ayah's old span | minutes |
-| 6 | `listen.py moves <r>` | **listen**; record rejections in `decisions.json` | -- |
+| 6 | `listen.py moves <r>`, `listen.py gaps <r>` | **listen**; record rejections, and openings heard in a gap that no tool moved, in `decisions.json` | -- |
 | 7 | `labels.py <r>` | word labels vs the aligner, block by block | ~1 |
 | 8 | `words.py <r>` | the aligner's own words for moved and mislabelled ayahs | ~0.5 |
 | 9 | `regions.py <r> <ayah>...` | stretches read on into and gone back over; then `listen.py region` | minutes |

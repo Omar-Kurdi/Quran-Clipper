@@ -672,7 +672,7 @@ their published times (`agreesWithPublished`).
 
 **Re-timed exports.** Al-Rifai's 16 and Khalid al-Jalil's 103-104 are this studio's own
 measurement (`measuredRecitations.json`). Other ayahs of six QUL exports are corrected in
-`qulCorrections.json` -- Al-Jalil 397, Abdul Basit 16, Al-Shatri 10, Al-Ghamdi 5, Al-Tunaiji 5,
+`qulCorrections.json` -- Al-Jalil 397, Abdul Basit 19, Al-Shatri 20, Al-Ghamdi 5, Al-Tunaiji 5,
 Al-Muaiqly 1 (an ayah counts when its start moved, or when it ends earlier because the next one did).
 Al-Jalil's recordings are taraweeh prayers, and his export goes wrong where he repeats: an ayah's
 opening folded into the words of the ayah before (74:9 five seconds late, 2:123 nine, 44:39
@@ -687,6 +687,11 @@ model as Al-Jalil's were (a second opinion from the aligner, run on 340 of their
 moved one that the gap check had already found, and was stopped there). Each of the 160-odd moves
 was listened to; six that the shared words of neighbouring ayahs had fooled were undone -- three of
 them 101:2 (مَا ٱلْقَارِعَةُ heard in 101:1's own ٱلْقَارِعَةُ) and Al-Shatri's 69:2 the same.
+The random check below then flagged Al-Shatri's 6:80, listed 23s late inside his repeat of its
+middle: its opening was heard in audio the export gives to no ayah, but too loosely for any tool
+to move it (a long first syllable blurs the match). The start checks of every export were searched
+for the same and nine more found, Abdul Basit's and Al-Shatri's, 5-23s late. All ten were listened
+to and are in `decisions.json`, and `listen.py gaps` now lists every such opening.
 Every ayah whose last word label repeats was compared word by word with the
 aligner, block by block: a block that fits one word on is relabelled, and an ayah that fits
 neither way, or whose start moved, takes the aligner's words inside its confirmed bounds.
