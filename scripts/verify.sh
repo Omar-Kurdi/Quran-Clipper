@@ -76,6 +76,7 @@ if [[ -n "$PY" ]]; then
   run "caption rules"   caption-rules   "$PY" scripts/test_caption_rules.py
   run "QUL assist"      qul-assist      "$PY" scripts/test_qul_assist.py
   run "phoneme retime"  phoneme-retime  "$PY" scripts/test_phoneme_retime.py
+  run "reciter tools"   reciter-tools   "$PY" scripts/test_reciter_tools.py
   # The Skylos gate decides whether a change ships, so the rule it applies is
   # checked here rather than only in the gate that applies it.
   run "gate matcher" skylos-accepted "$PY" scripts/test_skylos_accepted.py
