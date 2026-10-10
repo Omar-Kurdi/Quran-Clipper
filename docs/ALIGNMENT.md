@@ -671,9 +671,10 @@ their published times (`agreesWithPublished`).
   the aligner reads the right audio.
 
 **Re-timed exports.** Al-Rifai's 16 and Khalid al-Jalil's 103-104 are this studio's own
-measurement (`measuredRecitations.json`). Other ayahs of six QUL exports are corrected in
+measurement (`measuredRecitations.json`). Other ayahs of seven QUL exports are corrected in
 `qulCorrections.json` -- Al-Jalil 397, Abdul Basit 19, Al-Shatri 20, Al-Ghamdi 5, Al-Tunaiji 5,
-Al-Muaiqly 1 (an ayah counts when its start moved, or when it ends earlier because the next one did).
+Al-Sudais 2, Al-Muaiqly 1 (an ayah counts when its start moved, or when it ends earlier because the
+next one did).
 Al-Jalil's recordings are taraweeh prayers, and his export goes wrong where he repeats: an ayah's
 opening folded into the words of the ayah before (74:9 five seconds late, 2:123 nine, 44:39
 twenty-two), his repeat of an ayah's end counted as the next one's start (3:31 five seconds
@@ -682,8 +683,8 @@ ayah starts was checked with the phoneme model; where it could not confirm one, 
 stretched words hid the boundary, the aligner read the ayah and the one before together and a
 start moved only where the phoneme model heard the opening there too. In the other exports, every
 ayah starting more than 1.5s after the one before ends was checked for its opening in the gap, and
-every ayah start of Abdul Basit, Al-Shatri, Al-Ghamdi, Al-Tunaiji and Al-Muaiqly with the phoneme
-model as Al-Jalil's were (a second opinion from the aligner, run on 340 of their unconfirmed starts,
+every ayah start of Abdul Basit, Al-Shatri, Al-Ghamdi, Al-Tunaiji and Al-Muaiqly, and of the surahs
+Al-Sudais and Ad-Dossary are timed from QUL, with the phoneme model as Al-Jalil's were (a second opinion from the aligner, run on 340 of their unconfirmed starts,
 moved one that the gap check had already found, and was stopped there). Each of the 160-odd moves
 was listened to; six that the shared words of neighbouring ayahs had fooled were undone -- three of
 them 101:2 (مَا ٱلْقَارِعَةُ heard in 101:1's own ٱلْقَارِعَةُ) and Al-Shatri's 69:2 the same.
