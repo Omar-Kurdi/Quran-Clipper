@@ -34,7 +34,8 @@ heard; a start heard by ear that no tool could confirm goes under `confirmed`.
 | 7 | `labels.py <r>` | word labels vs the aligner, block by block | ~1 |
 | 8 | `words.py <r>` | the aligner's own words for moved and mislabelled ayahs | ~0.5 |
 | 9 | `regions.py <r> <ayah>...` | stretches read on into and gone back over; then `listen.py region` | minutes |
-| 10 | `build.py <r> ...` | writes both JSON files | seconds |
+| 10 | `ends.py <r>` | ayahs listed as ending while their last word is still held (loudness, no model) | minutes |
+| 11 | `build.py <r> ...` | writes both JSON files | seconds |
 
 Steps 1-3 and 7-8 matter for an export with Khalid al-Jalil's faults (taraweeh repeats); for the others, step 4 and
 step 9 found what there was. Then run `check.py run <reciters> 15 <seed>` and the fast tier (`npm run verify`), and

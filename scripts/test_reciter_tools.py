@@ -5,6 +5,7 @@ Run from the repo root:
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 from types import SimpleNamespace
@@ -12,6 +13,11 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "reciters"))
 
 import listen  # noqa: E402
+
+# By path, as test_eval_segments.py loads eval_segments: imported by name, CI's Skylos reads `ends` as a PyPI package.
+_spec = importlib.util.spec_from_file_location("ends", os.path.join(os.path.dirname(__file__), "reciters", "ends.py"))
+ends = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(ends)
 
 FAILED: list[str] = []
 
@@ -52,9 +58,23 @@ def openings_in_gaps() -> None:
           ok=listen.heard_in_gap({"q": 30.3, "near": [[30.6, 0.1]]}, 30.1) == [])
 
 
+def held_ends() -> None:
+    # Al-Muaiqly's 1:5: listed to 36.43s, his نَسْتَعِينُ held to about 37.96s, a pause, 1:6 at 38.2s.
+    frames = [-20.0] * int(37.96 / ends.HOP) + [-60.0] * int(1.0 / ends.HOP)
+    held = ends.check(frames, -40.0, "1:5", 36.43, 38.2)
+    check("an ayah whose last word is still held ends where the voice stops",
+          ok=held["status"] == "held" and abs(held["voicedTo"] - 37.96) < 0.05, detail=str(held))
+    quiet = ends.check([-20.0] * int(36.5 / ends.HOP) + [-60.0] * 100, -40.0, "1:5", 36.43, 38.2)
+    check("an ayah followed by a pause keeps its end", ok=quiet["status"] == "kept", detail=str(quiet))
+    onward = ends.check([-20.0] * int(40 / ends.HOP), -40.0, "1:5", 36.43, 38.2)
+    check("voice running into the next ayah is left for listening, not moved",
+          ok=onward["status"] == "review", detail=str(onward))
+
+
 if __name__ == "__main__":
     marks_from_zero()
     openings_in_gaps()
+    held_ends()
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         sys.exit(1)
