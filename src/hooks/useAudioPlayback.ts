@@ -13,6 +13,11 @@ import { useVolume, volumePreference } from './useVolume';
  * is the part with the clearest edge: nothing here needs to know what a verse
  * is.
  */
+/** Reloads of one recording before its error is shown. */
+const MAX_RETRIES = 3;
+/** The wait before the first reload; each later one waits this much longer. */
+const RETRY_DELAY_MS = 800;
+
 export function useAudioPlayback() {
   const elementRef = useRef<HTMLAudioElement | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
@@ -40,6 +45,9 @@ export function useAudioPlayback() {
    * the recording that was playing a moment ago.
    */
   const pendingSeekRef = useRef<{ url: string; time: number } | null>(null);
+
+  /** Reloads tried for the recording now selected; a new recording starts again from none. */
+  const retriesRef = useRef<{ src: string; count: number }>({ src: '', count: 0 });
 
   const togglePlayPause = useCallback(() => {
     const audio = elementRef.current;
@@ -124,6 +132,37 @@ export function useAudioPlayback() {
     if (elementRef.current) setCurrentTime(elementRef.current.currentTime);
   }, []);
 
+  /**
+   * Try the recording again after a failed load or a dropped stream, from where
+   * it was and playing if it was. True while a retry is under way, so the
+   * caller holds its error back.
+   *
+   * One failure used to be final: a reciter's file the audio server was slow to
+   * hand over, or a connection dropped mid-recitation, left an error on screen
+   * -- over a recording that, as often as not, then played on from its buffer
+   * (the Arabic captions demo was filmed like that).
+   */
+  const recover = useCallback(() => {
+    const audio = elementRef.current;
+    const src = audio?.currentSrc;
+    if (!audio || !src) return false;
+    const tries = retriesRef.current.src === src ? retriesRef.current.count : 0;
+    if (tries >= MAX_RETRIES) return false;
+    retriesRef.current = { src, count: tries + 1 };
+    const at = audio.currentTime;
+    const wasPlaying = !audio.paused;
+    if (at > 0) pendingSeekRef.current = { url: src, time: at };
+    window.setTimeout(() => {
+      if (audio.currentSrc !== src && audio.src !== src) return;
+      audio.load();
+      if (wasPlaying) audio.play().catch(() => {});
+    }, RETRY_DELAY_MS * (tries + 1));
+    return true;
+  }, []);
+
+  /** The recording is playable again: whatever went wrong before no longer stands. */
+  const onCanPlay = useCallback(() => setError(null), []);
+
   const onLoadedMetadata = useCallback(() => {
     const audio = elementRef.current;
     if (!audio) return;
@@ -141,6 +180,18 @@ export function useAudioPlayback() {
    * full. Syncing here covers the load, a change from another tab, and a
    * recording being swapped underneath.
    */
+  /**
+   * A load that failed before the page was interactive reached no handler: the
+   * element arrives from the server with its `src` and starts loading at once,
+   * and a refused request came back in a few hundred milliseconds -- leaving no
+   * audio, no retry and no message. Handed to the element's own error handler
+   * once that is attached.
+   */
+  useEffect(() => {
+    const audio = elementRef.current;
+    if (audio?.error) audio.dispatchEvent(new Event('error'));
+  }, []);
+
   useEffect(() => {
     const audio = elementRef.current;
     if (!audio) return;
@@ -165,5 +216,7 @@ export function useAudioPlayback() {
     applyPendingSeek,
     onTimeUpdate,
     onLoadedMetadata,
+    onCanPlay,
+    recover,
   };
 }
