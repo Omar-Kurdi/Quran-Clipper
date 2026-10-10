@@ -42,8 +42,19 @@ def marks_from_zero() -> None:
     check("listen marks a span from its start", ok=out.strip() == "[12.0] m", detail=out)
 
 
+def openings_in_gaps() -> None:
+    # Al-Shatri's 6:80: 6:79 ends at 1506.49s, QUL lists 6:80 from 1529.44s, its opening heard at 1509.36s (cost 0.214).
+    record = {"q": 1529.44, "near": [[1529.9, 0.1]], "heard": [[1509.36, 0.214], [1528.5, 0.1], [1505.0, 0.1], [1510.0, 0.4]]}
+    found = listen.heard_in_gap(record, 1506.49)
+    check("an opening heard loosely in the gap before a published start is listed", ok=found == [(1509.36, 0.214)],
+          detail=str(found))
+    check("nothing is listed when the opening is heard only at the published start",
+          ok=listen.heard_in_gap({"q": 30.3, "near": [[30.6, 0.1]]}, 30.1) == [])
+
+
 if __name__ == "__main__":
     marks_from_zero()
+    openings_in_gaps()
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         sys.exit(1)
