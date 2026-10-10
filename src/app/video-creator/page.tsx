@@ -146,6 +146,14 @@ function savedStatusText(
   return header.saved;
 }
 
+/**
+ * What plays before a passage is loaded: Al-Sudais's Al-Fatihah, through the
+ * studio's own proxy, like every other recording. It was fetched straight from
+ * mp3quran.net, which now redirects it to another host, so it played only
+ * while that host answered a cross-origin request.
+ */
+const DEFAULT_AUDIO_URL = `/api/audio/proxy?url=${encodeURIComponent('https://server11.mp3quran.net/download/sds/001.mp3')}`;
+
 export default function VideoCreatorPage() {
   const { locale, t } = useLocale();
   // Personal or public, and which fonts this server has -- see `/api/studio`.
@@ -266,7 +274,7 @@ export default function VideoCreatorPage() {
   // Loaded Surah / Verse Data
   const [surahNameArabic, setSurahNameArabic] = useState<string>('الفاتحة');
   const [surahNameEnglish, setSurahNameEnglish] = useState<string>('Al-Fatihah');
-  const [audioUrl, setAudioUrl] = useState<string>('https://server11.mp3quran.net/download/sds/001.mp3');
+  const [audioUrl, setAudioUrl] = useState<string>(DEFAULT_AUDIO_URL);
   const { verses, setVerses, selectedIndex, setSelectedIndex, edit, reorderAt } = useTimelineEditing(SAMPLE_PROJECTS[0].verses);
   /**
    * The studio opens with Al-Fatihah already in the timeline so the preview is
@@ -371,6 +379,8 @@ export default function VideoCreatorPage() {
     applyPendingSeek,
     onTimeUpdate: handleTimeUpdate,
     onLoadedMetadata: handleLoadedMetadata,
+    onCanPlay: handleCanPlay,
+    recover: recoverAudio,
   } = useAudioPlayback();
   
   const [isLoadingVerses, setIsLoadingVerses] = useState<boolean>(false);
@@ -2334,7 +2344,7 @@ export default function VideoCreatorPage() {
     setSurahNameArabic(proj.surahNameArabic || 'الفاتحة');
     setSurahNameEnglish(proj.surahNameEnglish || 'Al-Fatihah');
     setSelectedReciter(proj.reciterId || 'sudais');
-    setAudioUrl(proj.audioUrl || 'https://server11.mp3quran.net/download/sds/001.mp3');
+    setAudioUrl(proj.audioUrl || DEFAULT_AUDIO_URL);
     setVerses(proj.versesJson || []);
     setIsSampleProject(false);
     // Overrides the url just set whenever this project came from an upload --
@@ -2588,10 +2598,12 @@ export default function VideoCreatorPage() {
         src={audioUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        onCanPlay={handleCanPlay}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}
         onError={(e) => {
+          if (recoverAudio()) return;
           const audio = e.currentTarget;
           const err = audio.error;
           const codes: Record<number, string> = {
