@@ -38,7 +38,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
     title: 'Privacy policy',
     updated: 'Last updated ' + UPDATED.en,
     intro: [
-      'Quran Clipper (“we”) is a free web studio for making Quran recitation videos. This policy explains what information the studio handles when you use it at this address, why, and what you can do about it.',
+      'Quran-Clipper (“we”) is a free web studio for making Quran recitation videos. This policy explains what information the studio handles when you use it at this address, why, and what you can do about it.',
     ],
     sections: [
       {
@@ -84,7 +84,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
           'Posting to YouTube is optional. If you choose it, you sign in with Google and grant the studio a single permission: to upload videos to your YouTube channel (the `youtube.upload` scope). The studio does not ask for your email address, your contacts or anything else in your Google account, and it cannot read, change or delete your existing videos.',
           'How it is used. Only to upload the video you chose, with the title, description, tags and visibility you entered, when you press upload. The video goes from your browser straight to YouTube.',
           'How it is kept. If you are not kept signed in, the access Google gives the studio lives in your browser for up to an hour and never reaches our server. Where the studio keeps you signed in, Google gives our server a refresh token, which it encrypts (AES-256-GCM) and returns to your browser in a cookie only our server can read. Our server keeps no copy; it can use the token only when your browser sends it to make an upload you asked for.',
-          'How it is shared. It is not. Your Google data is not sold, not shared with anyone, not used for advertising and not used to train any AI model. Quran Clipper’s use and transfer of information received from Google APIs will adhere to the [Google API Services User Data Policy](' + USER_DATA_POLICY + '), including the Limited Use requirements.',
+          'How it is shared. It is not. Your Google data is not sold, not shared with anyone, not used for advertising and not used to train any AI model. Quran-Clipper’s use and transfer of information received from Google APIs will adhere to the [Google API Services User Data Policy](' + USER_DATA_POLICY + '), including the Limited Use requirements.',
           'How to remove it. Choose Disconnect in the studio’s YouTube panel: the studio revokes its access with Google and deletes the cookie. You can also remove the studio’s access at any time in your [Google account permissions](' + GOOGLE_PERMISSIONS + ').',
           'Uploading uses YouTube API Services. By posting to YouTube you agree to the [YouTube Terms of Service](' + YOUTUBE_TERMS + '), and Google’s handling of your data is described in the [Google Privacy Policy](' + GOOGLE_PRIVACY + ').',
         ],
@@ -129,7 +129,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
     updated: 'آخر تحديث ' + UPDATED.ar,
     governs: 'هذه ترجمة للنص الإنجليزي، وعند الاختلاف يُعتمد النص الإنجليزي.',
     intro: [
-      'Quran Clipper («نحن») استوديو مجاني على الويب لصنع فيديوهات التلاوة القرآنية. توضّح هذه السياسة ما يتعامل معه الاستوديو من معلومات حين تستعمله على هذا العنوان، ولماذا، وما الذي يمكنك فعله.',
+      'Quran-Clipper («نحن») استوديو مجاني على الويب لصنع فيديوهات التلاوة القرآنية. توضّح هذه السياسة ما يتعامل معه الاستوديو من معلومات حين تستعمله على هذا العنوان، ولماذا، وما الذي يمكنك فعله.',
     ],
     sections: [
       {
@@ -175,7 +175,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
           'النشر على YouTube اختياري. إن اخترته، تسجّل الدخول بـ Google وتمنح الاستوديو إذنًا واحدًا: رفع الفيديوهات إلى قناتك على YouTube (نطاق `youtube.upload`). لا يطلب الاستوديو بريدك الإلكتروني ولا جهات اتصالك ولا أي شيء آخر في حسابك، ولا يستطيع قراءة فيديوهاتك الموجودة أو تغييرها أو حذفها.',
           'كيف يُستعمل. لرفع الفيديو الذي اخترته فقط، بالعنوان والوصف والوسوم ومستوى الظهور التي أدخلتها، حين تضغط زر الرفع. ويذهب الفيديو من متصفحك إلى YouTube مباشرة.',
           'كيف يُحفظ. إن لم تبقَ متصلًا، يبقى الإذن الذي تمنحه Google للاستوديو في متصفحك مدة أقصاها ساعة ولا يصل إلى خادمنا. وحيث يُبقيك الاستوديو متصلًا، تعطي Google خادمنا رمز تحديث، فيشفّره (AES-256-GCM) ويعيده إلى متصفحك في ملف تعريف ارتباط لا يقرؤه إلا خادمنا. لا يحتفظ خادمنا بنسخة منه، ولا يستطيع استعماله إلا حين يرسله متصفحك لرفع طلبته أنت.',
-          'كيف يُشارك. لا يُشارك. لا تُباع بياناتك على Google ولا تُعطى لأحد ولا تُستعمل للإعلانات ولا لتدريب أي نموذج ذكاء اصطناعي. يلتزم Quran Clipper في استعمال المعلومات المتلقّاة من واجهات Google ونقلها بـ [سياسة بيانات المستخدم لخدمات واجهات Google](' + USER_DATA_POLICY + ')، بما فيها متطلبات الاستعمال المحدود.',
+          'كيف يُشارك. لا يُشارك. لا تُباع بياناتك على Google ولا تُعطى لأحد ولا تُستعمل للإعلانات ولا لتدريب أي نموذج ذكاء اصطناعي. يلتزم Quran-Clipper في استعمال المعلومات المتلقّاة من واجهات Google ونقلها بـ [سياسة بيانات المستخدم لخدمات واجهات Google](' + USER_DATA_POLICY + ')، بما فيها متطلبات الاستعمال المحدود.',
           'كيف تزيله. اختر «قطع الاتصال» في لوحة YouTube في الاستوديو: يُلغي الاستوديو إذنه لدى Google ويحذف ملف تعريف الارتباط. ويمكنك أيضًا إزالة إذن الاستوديو متى شئت من [أذونات حسابك على Google](' + GOOGLE_PERMISSIONS + ').',
           'الرفع يستعمل خدمات واجهة YouTube البرمجية. بالنشر على YouTube توافق على [شروط خدمة YouTube](' + YOUTUBE_TERMS + ')، وتعامل Google مع بياناتك موضّح في [سياسة خصوصية Google](' + GOOGLE_PRIVACY + ').',
         ],
@@ -220,13 +220,13 @@ export const TERMS: Record<Locale, LegalDocument> = {
     title: 'Terms of service',
     updated: 'Last updated ' + UPDATED.en,
     intro: [
-      'These terms apply when you use Quran Clipper (“the studio”) at this address. By using it you agree to them. If you do not agree, please do not use the studio.',
+      'These terms apply when you use Quran-Clipper (“the studio”) at this address. By using it you agree to them. If you do not agree, please do not use the studio.',
     ],
     sections: [
       {
         heading: 'The studio',
         paragraphs: [
-          'Quran Clipper is a free tool for making Quran recitation videos: it times captions to a recitation, adds translations and renders a video in your browser. It is offered as it is, without an account, and it may change, be limited or stop at any time.',
+          'Quran-Clipper is a free tool for making Quran recitation videos: it times captions to a recitation, adds translations and renders a video in your browser. It is offered as it is, without an account, and it may change, be limited or stop at any time.',
         ],
       },
       {
@@ -293,13 +293,13 @@ export const TERMS: Record<Locale, LegalDocument> = {
     updated: 'آخر تحديث ' + UPDATED.ar,
     governs: 'هذه ترجمة للنص الإنجليزي، وعند الاختلاف يُعتمد النص الإنجليزي.',
     intro: [
-      'تسري هذه الشروط حين تستعمل Quran Clipper («الاستوديو») على هذا العنوان، وباستعماله توافق عليها. إن لم توافق، فلا تستعمل الاستوديو من فضلك.',
+      'تسري هذه الشروط حين تستعمل Quran-Clipper («الاستوديو») على هذا العنوان، وباستعماله توافق عليها. إن لم توافق، فلا تستعمل الاستوديو من فضلك.',
     ],
     sections: [
       {
         heading: 'الاستوديو',
         paragraphs: [
-          'Quran Clipper أداة مجانية لصنع فيديوهات التلاوة القرآنية: يضبط توقيت المقاطع على التلاوة، ويضيف الترجمات، ويصنع الفيديو في متصفحك. يُقدَّم كما هو، دون حساب، وقد يتغيّر أو يُقيَّد أو يتوقف في أي وقت.',
+          'Quran-Clipper أداة مجانية لصنع فيديوهات التلاوة القرآنية: يضبط توقيت المقاطع على التلاوة، ويضيف الترجمات، ويصنع الفيديو في متصفحك. يُقدَّم كما هو، دون حساب، وقد يتغيّر أو يُقيَّد أو يتوقف في أي وقت.',
         ],
       },
       {

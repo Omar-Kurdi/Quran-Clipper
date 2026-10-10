@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useLocale } from '@/components/LocaleProvider';
 import type { LandingCopy } from './landingCopy';
@@ -11,7 +12,10 @@ export function SiteHeader({ copy }: { copy: LandingCopy }) {
   const { locale, setLocale } = useLocale();
   return (
     <header className="lp-top">
-      <Link href="/" className="lp-wordmark">Quran Clipper</Link>
+      <Link href="/" className="lp-wordmark">
+        <Image src="/landing/logo-96.png" alt="" width={34} height={34} />
+        Quran-Clipper
+      </Link>
       <nav>
         <button
           type="button"
@@ -31,7 +35,10 @@ export function SiteHeader({ copy }: { copy: LandingCopy }) {
 export function SiteFooter({ copy }: { copy: LandingCopy }) {
   return (
     <footer className="lp-footer">
-      <span className="lp-wordmark">{copy.footer.rights}</span>
+      <span className="lp-wordmark">
+        <Image src="/landing/logo-96.png" alt="" width={24} height={24} />
+        {copy.footer.rights}
+      </span>
       <nav>
         <Link href="/privacy">{copy.footer.privacy}</Link>
         <Link href="/terms">{copy.footer.terms}</Link>

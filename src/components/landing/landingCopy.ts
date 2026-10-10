@@ -11,7 +11,7 @@ export const LANDING_COPY = {
     hero: {
       title: 'Recitation clips, captioned to the voice.',
       body:
-        'Choose a reciter and a passage, or bring a recording of your own. Quran Clipper times every ayah to the recitation, adds the translation you pick, and makes a vertical video for Shorts, Reels and TikTok — in your browser, free.',
+        'Choose a reciter and a passage, or bring a recording of your own. Quran-Clipper times every ayah to the recitation, adds the translation you pick, and makes a vertical video for Shorts, Reels and TikTok — in your browser, free.',
       open: 'Open the studio',
       listen: 'Listen',
       pause: 'Pause',
@@ -70,14 +70,14 @@ export const LANDING_COPY = {
       ],
     },
     closing: { title: 'Make your first clip', body: 'It takes a minute with a built-in reciter.', open: 'Open the studio' },
-    footer: { privacy: 'Privacy policy', terms: 'Terms of service', source: 'Source code', rights: 'Quran Clipper' },
+    footer: { privacy: 'Privacy policy', terms: 'Terms of service', source: 'Source code', rights: 'Quran-Clipper' },
   },
   ar: {
     nav: { open: 'افتح الاستوديو', language: 'English', languageLabel: 'Read this page in English' },
     hero: {
       title: 'مقاطع تلاوة تظهر آياتها مع صوت القارئ.',
       body:
-        'اختر قارئًا ومقطعًا، أو ارفع تسجيلًا من عندك. يضبط Quran Clipper توقيت كل آية على التلاوة، ويضيف الترجمة التي تختارها، ويصنع مقطعًا عموديًا لـ Shorts وReels وTikTok — في متصفحك، مجانًا.',
+        'اختر قارئًا ومقطعًا، أو ارفع تسجيلًا من عندك. يضبط Quran-Clipper توقيت كل آية على التلاوة، ويضيف الترجمة التي تختارها، ويصنع مقطعًا عموديًا لـ Shorts وReels وTikTok — في متصفحك، مجانًا.',
       open: 'افتح الاستوديو',
       listen: 'استمع',
       pause: 'إيقاف',
@@ -133,7 +133,7 @@ export const LANDING_COPY = {
       ],
     },
     closing: { title: 'اصنع أول مقطع لك', body: 'يستغرق دقيقة مع قارئ مدمج.', open: 'افتح الاستوديو' },
-    footer: { privacy: 'سياسة الخصوصية', terms: 'شروط الخدمة', source: 'الشيفرة المصدرية', rights: 'Quran Clipper' },
+    footer: { privacy: 'سياسة الخصوصية', terms: 'شروط الخدمة', source: 'الشيفرة المصدرية', rights: 'Quran-Clipper' },
   },
 } satisfies Record<Locale, unknown>;
 

@@ -77,6 +77,7 @@ function PhoneFrame({ caption, spoken, label, mushaf }: { caption: DemoCaption; 
   return (
   <figure className="phone" aria-label={label}>
     <div className="phone-screen">
+      <ClipBackground />
       <p className="phone-surah" dir="rtl" lang="ar" style={{ fontFamily: TEXT_FACE }}>سورة الملك</p>
       <div className="phone-card">
         <p className="phone-ayah" dir="rtl" lang="ar" style={{ fontFamily: face }} aria-label={caption.words.map(w => w.text).join(' ')}>
@@ -92,6 +93,27 @@ function PhoneFrame({ caption, spoken, label, mushaf }: { caption: DemoCaption; 
     </div>
     <figcaption className="phone-caption">{label}</figcaption>
   </figure>
+  );
+}
+
+/**
+ * Behind the caption, as in the studio: its default background, Illuminated
+ * Mosque & Moon (Pexels 18953366), a twelve-second loop cut small and blurred 6px
+ * so it stays behind the words. Held on its poster frame for anyone who asked
+ * for less motion.
+ */
+function ClipBackground() {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) ref.current?.play().catch(() => {});
+  }, []);
+  return (
+    <div className="phone-bg" aria-hidden>
+      <video ref={ref} muted loop playsInline preload="auto" poster="/landing/clip-bg.jpg">
+        <source src="/landing/clip-bg.webm" type="video/webm" />
+        <source src="/landing/clip-bg.mp4" type="video/mp4" />
+      </video>
+    </div>
   );
 }
 

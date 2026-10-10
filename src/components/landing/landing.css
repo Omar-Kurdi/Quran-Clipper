@@ -40,6 +40,9 @@
 }
 
 .lp-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-display);
   font-size: 1.55rem;
   line-height: 1;
@@ -208,6 +211,24 @@
     radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--p-live) 16%, transparent), transparent 70%),
     linear-gradient(180deg, color-mix(in srgb, var(--p-surface) 70%, var(--p-live) 6%), var(--p-bg));
   box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.8), inset 0 0 0 1px var(--p-edge);
+}
+
+.phone-screen { position: relative; isolation: isolate; }
+.phone-screen > :not(.phone-bg) { position: relative; }
+.phone-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.phone-bg video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(6px);
+  /* The blur pulls the frame's edges in; scaled past them so no light rim shows. */
+  transform: scale(1.06);
+}
+.phone-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.08), rgba(2, 6, 23, 0.32));
 }
 
 .phone-surah {
