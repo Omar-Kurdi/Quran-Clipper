@@ -311,7 +311,11 @@ export const SURAHS_LIST: Surah[] = [
   { number: 114, nameEnglish: "An-Nas", nameArabic: "الناس", englishTranslation: "Mankind", numberOfAyahs: 6, revelationType: "Meccan" }
 ];
 
-// High quality default pre-configured sample verses with exact timings
+// What the studio opens on: exactly what Load gives for this passage, so that
+// opening the studio and pressing Load play the same recording with the same
+// captions. Al-Sudais's Al-Fatihah on the recording quran.com timed (the one
+// `chooseReciterTiming` pairs with surah 1), from Load + Match on 2026-10-10
+// with the aligner hearing his pauses. This recording has no isti'adha.
 export const SAMPLE_PROJECTS = [
   {
     title: "Surah Al-Fatihah (Abdul Rahman Al-Sudais)",
@@ -322,281 +326,107 @@ export const SAMPLE_PROJECTS = [
     ayahEnd: 7,
     reciterId: "sudais",
     reciterName: "Abdul Rahman Al-Sudais",
-    audioUrl: "https://server11.mp3quran.net/download/sds/001.mp3",
-    audioDuration: "00:36",
-    // Timed from this recording by the studio's own match (2026-10-08), the
-    // isti'adha included: the hand-written timings this replaced had 1:7 start
-    // twelve seconds late and run past the end of the audio.
+    audioUrl: "https://download.quranicaudio.com/qdc/abdurrahmaan_as_sudais/murattal/1.mp3",
+    audioDuration: "00:34",
     verses: [
-      {
-        verseNumber: 0,
-        verseKey: "istiadha",
-        textUthmani: "أَعُوذُ بِٱللَّهِ مِنَ ٱلشَّيْطَـٰنِ ٱلرَّجِيمِ",
-        translation: "I seek refuge in Allah from Satan, the accursed.",
-        startTime: 0,
-        endTime: 3.18,
-        words: [
-          { arabic: "أَعُوذُ", translation: "", timestamp: 0.48 },
-          { arabic: "بِٱللَّهِ", translation: "", timestamp: 0.8 },
-          { arabic: "مِنَ", translation: "", timestamp: 1.32 },
-          { arabic: "ٱلشَّيْطَـٰنِ", translation: "", timestamp: 1.68 },
-          { arabic: "ٱلرَّجِيمِ", translation: "", timestamp: 2.04 }
-        ]
-      },
       {
         verseNumber: 1,
         verseKey: "1:1",
         textUthmani: "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
-        translation: "In the name of Allah, the Entirely Merciful, the Especially Merciful.",
-        startTime: 3.18,
-        endTime: 6.1,
+        translation: "In the Name of Allah—the Most Compassionate, Most Merciful.",
+        startTime: 0,
+        endTime: 3.1,
         words: [
-          { arabic: "بِسْمِ", translation: "In (the) name", glyph: "ﱁ", glyphPage: 1, glyphLine: 2, timestamp: 4.31 },
-          { arabic: "ٱللَّهِ", translation: "(of) Allah", glyph: "ﱂ", glyphPage: 1, glyphLine: 2, timestamp: 4.389 },
-          { arabic: "ٱلرَّحْمَـٰنِ", translation: "the Most Gracious", glyph: "ﱃ", glyphPage: 1, glyphLine: 2, timestamp: 4.729 },
-          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱄ", glyphPage: 1, glyphLine: 2, timestamp: 5.409 }
+          { arabic: "بِسْمِ", translation: "In (the) name", glyph: "ﱁ", glyphPage: 1, glyphLine: 2, timestamp: 0 },
+          { arabic: "ٱللَّهِ", translation: "(of) Allah", glyph: "ﱂ", glyphPage: 1, glyphLine: 2, timestamp: 0.65 },
+          { arabic: "ٱلرَّحْمَـٰنِ", translation: "the Most Gracious", glyph: "ﱃ", glyphPage: 1, glyphLine: 2, timestamp: 1.13 },
+          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱄ", glyphPage: 1, glyphLine: 2, timestamp: 1.86 }
         ]
       },
       {
         verseNumber: 2,
         verseKey: "1:2",
         textUthmani: "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ",
-        translation: "[All] praise is [due] to Allah, Lord of the worlds.",
-        startTime: 6.1,
-        endTime: 10.2,
+        translation: "All praise is for Allah—Lord of all worlds",
+        startTime: 3.1,
+        endTime: 7.6,
         words: [
-          { arabic: "ٱلْحَمْدُ", translation: "All praises and thanks", glyph: "ﱆ", glyphPage: 1, glyphLine: 3, timestamp: 6.409 },
-          { arabic: "لِلَّهِ", translation: "(be) to Allah", glyph: "ﱇ", glyphPage: 1, glyphLine: 3, timestamp: 6.969 },
-          { arabic: "رَبِّ", translation: "the Lord", glyph: "ﱈ", glyphPage: 1, glyphLine: 3, timestamp: 7.849 },
-          { arabic: "ٱلْعَـٰلَمِينَ", translation: "of the universe", glyph: "ﱉ", glyphPage: 1, glyphLine: 3, timestamp: 8.289 }
+          { arabic: "ٱلْحَمْدُ", translation: "All praises and thanks", glyph: "ﱆ", glyphPage: 1, glyphLine: 3, timestamp: 3.08 },
+          { arabic: "لِلَّهِ", translation: "(be) to Allah", glyph: "ﱇ", glyphPage: 1, glyphLine: 3, timestamp: 4.05 },
+          { arabic: "رَبِّ", translation: "the Lord", glyph: "ﱈ", glyphPage: 1, glyphLine: 3, timestamp: 4.92 },
+          { arabic: "ٱلْعَـٰلَمِينَ", translation: "of the universe", glyph: "ﱉ", glyphPage: 1, glyphLine: 3, timestamp: 5.51 }
         ]
       },
       {
         verseNumber: 3,
         verseKey: "1:3",
         textUthmani: "ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
-        translation: "The Entirely Merciful, the Especially Merciful,",
-        startTime: 10.2,
-        endTime: 11.9,
+        translation: "the Most Compassionate, Most Merciful",
+        startTime: 7.6,
+        endTime: 10.7,
         words: [
-          { arabic: "ٱلرَّحْمَـٰنِ", translation: "The Most Gracious", glyph: "ﱋ", glyphPage: 1, glyphLine: 4, timestamp: 10.489 },
-          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱌ", glyphPage: 1, glyphLine: 4, timestamp: 11.449 }
+          { arabic: "ٱلرَّحْمَـٰنِ", translation: "The Most Gracious", glyph: "ﱋ", glyphPage: 1, glyphLine: 4, timestamp: 7.57 },
+          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱌ", glyphPage: 1, glyphLine: 4, timestamp: 8.65 }
         ]
       },
       {
         verseNumber: 4,
         verseKey: "1:4",
         textUthmani: "مَـٰلِكِ يَوْمِ ٱلدِّينِ",
-        translation: "Sovereign of the Day of Recompense.",
-        startTime: 11.9,
+        translation: "Master of the Day of Judgment.",
+        startTime: 10.7,
         endTime: 14.1,
         words: [
-          { arabic: "مَـٰلِكِ", translation: "(The) Master", glyph: "ﱎ", glyphPage: 1, glyphLine: 4, timestamp: 12.049 },
-          { arabic: "يَوْمِ", translation: "(of the) Day", glyph: "ﱏ", glyphPage: 1, glyphLine: 4, timestamp: 12.689 },
-          { arabic: "ٱلدِّينِ", translation: "(of the) Judgment", glyph: "ﱐ", glyphPage: 1, glyphLine: 4, timestamp: 13.329 }
+          { arabic: "مَـٰلِكِ", translation: "(The) Master", glyph: "ﱎ", glyphPage: 1, glyphLine: 4, timestamp: 10.68 },
+          { arabic: "يَوْمِ", translation: "(of the) Day", glyph: "ﱏ", glyphPage: 1, glyphLine: 4, timestamp: 11.38 },
+          { arabic: "ٱلدِّينِ", translation: "(of the) Judgment", glyph: "ﱐ", glyphPage: 1, glyphLine: 4, timestamp: 12.1 }
         ]
       },
       {
         verseNumber: 5,
         verseKey: "1:5",
         textUthmani: "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ",
-        translation: "It is You we worship and You we ask for help.",
+        translation: "You [alone] we worship and You [alone] we ask for help.",
         startTime: 14.1,
-        endTime: 18,
+        endTime: 19.1,
         words: [
-          { arabic: "إِيَّاكَ", translation: "You Alone", glyph: "ﱒ", glyphPage: 1, glyphLine: 5, timestamp: 14.289 },
-          { arabic: "نَعْبُدُ", translation: "we worship", glyph: "ﱓ", glyphPage: 1, glyphLine: 5, timestamp: 15.169 },
-          { arabic: "وَإِيَّاكَ", translation: "and You Alone", glyph: "ﱔ", glyphPage: 1, glyphLine: 5, timestamp: 15.849 },
-          { arabic: "نَسْتَعِينُ", translation: "we ask for help", glyph: "ﱕ", glyphPage: 1, glyphLine: 5, timestamp: 16.889 }
+          { arabic: "إِيَّاكَ", translation: "You Alone", glyph: "ﱒ", glyphPage: 1, glyphLine: 5, timestamp: 14.13 },
+          { arabic: "نَعْبُدُ", translation: "we worship", glyph: "ﱓ", glyphPage: 1, glyphLine: 5, timestamp: 15.09 },
+          { arabic: "وَإِيَّاكَ", translation: "and You Alone", glyph: "ﱔ", glyphPage: 1, glyphLine: 5, timestamp: 15.84 },
+          { arabic: "نَسْتَعِينُ", translation: "we ask for help", glyph: "ﱕ", glyphPage: 1, glyphLine: 5, timestamp: 16.96 }
         ]
       },
       {
         verseNumber: 6,
         verseKey: "1:6",
         textUthmani: "ٱهْدِنَا ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ",
-        translation: "Guide us to the straight path -",
-        startTime: 18,
-        endTime: 21.6,
+        translation: "Guide us along the Straight Path",
+        startTime: 19.1,
+        endTime: 23.3,
         words: [
-          { arabic: "ٱهْدِنَا", translation: "Guide us", glyph: "ﱗ", glyphPage: 1, glyphLine: 5, timestamp: 18.409 },
-          { arabic: "ٱلصِّرَٰطَ", translation: "(to) the path", glyph: "ﱘ", glyphPage: 1, glyphLine: 6, timestamp: 19.129 },
-          { arabic: "ٱلْمُسْتَقِيمَ", translation: "the straight", glyph: "ﱙ", glyphPage: 1, glyphLine: 6, timestamp: 19.889 }
+          { arabic: "ٱهْدِنَا", translation: "Guide us", glyph: "ﱗ", glyphPage: 1, glyphLine: 5, timestamp: 19.07 },
+          { arabic: "ٱلصِّرَٰطَ", translation: "(to) the path", glyph: "ﱘ", glyphPage: 1, glyphLine: 6, timestamp: 19.55 },
+          { arabic: "ٱلْمُسْتَقِيمَ", translation: "the straight", glyph: "ﱙ", glyphPage: 1, glyphLine: 6, timestamp: 20.72 }
         ]
       },
       {
         verseNumber: 7,
         verseKey: "1:7",
         textUthmani: "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ",
-        translation: "The path of those upon whom You have bestowed favor, not of those who have evoked [Your] anger or of those who are astray.",
-        startTime: 21.6,
-        endTime: 36.1,
+        translation: "the Path of those You have blessed—not those You are displeased with, or those who are astray.",
+        startTime: 23.3,
+        endTime: 34.9,
         words: [
-          { arabic: "صِرَٰطَ", translation: "(The) path", glyph: "ﱛ", glyphPage: 1, glyphLine: 6, timestamp: 22.049 },
-          { arabic: "ٱلَّذِينَ", translation: "(of) those", glyph: "ﱜ", glyphPage: 1, glyphLine: 6, timestamp: 22.769 },
-          { arabic: "أَنْعَمْتَ", translation: "You have bestowed (Your) Favors", glyph: "ﱝ", glyphPage: 1, glyphLine: 6, timestamp: 23.409 },
-          { arabic: "عَلَيْهِمْ", translation: "on them", glyph: "ﱞ", glyphPage: 1, glyphLine: 7, timestamp: 24.289 },
-          { arabic: "غَيْرِ", translation: "not (of)", glyph: "ﱟ", glyphPage: 1, glyphLine: 7, timestamp: 25.089 },
-          { arabic: "ٱلْمَغْضُوبِ", translation: "those who earned (Your) wrath", glyph: "ﱠ", glyphPage: 1, glyphLine: 7, timestamp: 25.529 },
-          { arabic: "عَلَيْهِمْ", translation: "on themselves", glyph: "ﱡ", glyphPage: 1, glyphLine: 7, timestamp: 26.449 },
-          { arabic: "وَلَا", translation: "and not", glyph: "ﱢ", glyphPage: 1, glyphLine: 8, timestamp: 27.276 },
-          { arabic: "ٱلضَّآلِّينَ", translation: "(of) those who go astray", glyph: "ﱣ", glyphPage: 1, glyphLine: 8, timestamp: 27.889 }
+          { arabic: "صِرَٰطَ", translation: "(The) path", glyph: "ﱛ", glyphPage: 1, glyphLine: 6, timestamp: 23.28 },
+          { arabic: "ٱلَّذِينَ", translation: "(of) those", glyph: "ﱜ", glyphPage: 1, glyphLine: 6, timestamp: 24.2 },
+          { arabic: "أَنْعَمْتَ", translation: "You have bestowed (Your) Favors", glyph: "ﱝ", glyphPage: 1, glyphLine: 6, timestamp: 25.24 },
+          { arabic: "عَلَيْهِمْ", translation: "on them", glyph: "ﱞ", glyphPage: 1, glyphLine: 7, timestamp: 26.14 },
+          { arabic: "غَيْرِ", translation: "not (of)", glyph: "ﱟ", glyphPage: 1, glyphLine: 7, timestamp: 27.2 },
+          { arabic: "ٱلْمَغْضُوبِ", translation: "those who earned (Your) wrath", glyph: "ﱠ", glyphPage: 1, glyphLine: 7, timestamp: 27.85 },
+          { arabic: "عَلَيْهِمْ", translation: "on themselves", glyph: "ﱡ", glyphPage: 1, glyphLine: 7, timestamp: 28.89 },
+          { arabic: "وَلَا", translation: "and not", glyph: "ﱢ", glyphPage: 1, glyphLine: 8, timestamp: 30 },
+          { arabic: "ٱلضَّآلِّينَ", translation: "(of) those who go astray", glyph: "ﱣ", glyphPage: 1, glyphLine: 8, timestamp: 30.33 }
         ]
-      }
-    ]
-  },
-  {
-    title: "Surah Ad-Duha (Emotional Recitation)",
-    surahNumber: 93,
-    surahNameArabic: "الضحى",
-    surahNameEnglish: "Ad-Duha",
-    ayahStart: 1,
-    ayahEnd: 11,
-    reciterId: "sudais",
-    reciterName: "Abdul Rahman Al-Sudais",
-    audioUrl: "https://server11.mp3quran.net/download/sds/093.mp3",
-    audioDuration: "01:25",
-    verses: [
-      {
-        verseNumber: 1,
-        verseKey: "93:1",
-        textUthmani: "وَٱلضُّحَىٰ",
-        translation: "By the morning brightness",
-        startTime: 0.0,
-        endTime: 4.5
-      },
-      {
-        verseNumber: 2,
-        verseKey: "93:2",
-        textUthmani: "وَٱلَّيْلِ إِذَا سَجَىٰ",
-        translation: "And [by] the night when it covers with darkness,",
-        startTime: 4.5,
-        endTime: 9.8
-      },
-      {
-        verseNumber: 3,
-        verseKey: "93:3",
-        textUthmani: "مَا وَدَّعَكَ رَبُّكَ وَمَا قَلَىٰ",
-        translation: "Your Lord has not taken leave of you, [O Muhammad], nor has He detested [you].",
-        startTime: 9.8,
-        endTime: 16.2
-      },
-      {
-        verseNumber: 4,
-        verseKey: "93:4",
-        textUthmani: "وَلَلْـَٔاخِرَةُ خَيْرٌۭ لَّكَ مِنَ ٱلْأُولَىٰ",
-        translation: "And the Hereafter is better for you than the first [life].",
-        startTime: 16.2,
-        endTime: 23.5
-      },
-      {
-        verseNumber: 5,
-        verseKey: "93:5",
-        textUthmani: "وَلَسَوْفَ يُعْطِيكَ رَبُّكَ فَتَرْضَىٰ",
-        translation: "And your Lord is going to give you, and you will be satisfied.",
-        startTime: 23.5,
-        endTime: 31.0
-      },
-      {
-        verseNumber: 6,
-        verseKey: "93:6",
-        textUthmani: "أَلَمْ يَجِدْكَ يَتِيمًۭا فَـَٔاوَىٰ",
-        translation: "Did He not find you an orphan and give [you] refuge?",
-        startTime: 31.0,
-        endTime: 37.8
-      },
-      {
-        verseNumber: 7,
-        verseKey: "93:7",
-        textUthmani: "وَوَجَدَكَ ضَآلًّۭا فَهَدَىٰ",
-        translation: "And He found you lost and guided [you].",
-        startTime: 37.8,
-        endTime: 44.5
-      },
-      {
-        verseNumber: 8,
-        verseKey: "93:8",
-        textUthmani: "وَوَجَدَكَ عَآئِلًۭا فَأَغْنَىٰ",
-        translation: "And He found you poor and made [you] self-sufficient.",
-        startTime: 44.5,
-        endTime: 51.8
-      },
-      {
-        verseNumber: 9,
-        verseKey: "93:9",
-        textUthmani: "فَأَمَّا ٱلْيَتِيمَ فَلَا تَقْهَرْ",
-        translation: "So as for the orphan, do not oppress [him].",
-        startTime: 51.8,
-        endTime: 57.5
-      },
-      {
-        verseNumber: 10,
-        verseKey: "93:10",
-        textUthmani: "وَأَمَّا ٱلسَّآئِلَ فَلَا تَنْهَرْ",
-        translation: "And as for the petitioner, do not repel [him].",
-        startTime: 57.5,
-        endTime: 64.0
-      },
-      {
-        verseNumber: 11,
-        verseKey: "93:11",
-        textUthmani: "وَأَمَّا بِنِعْمَةِ رَبِّكَ فَحَدِّثْ",
-        translation: "And as for the favor of your Lord, report [it].",
-        startTime: 64.0,
-        endTime: 73.0
-      }
-    ]
-  },
-  {
-    title: "Surah Al-Mulk (Verses 1-5)",
-    surahNumber: 67,
-    surahNameArabic: "الملك",
-    surahNameEnglish: "Al-Mulk",
-    ayahStart: 1,
-    ayahEnd: 5,
-    reciterId: "sudais",
-    reciterName: "Abdul Rahman Al-Sudais",
-    audioUrl: "https://server11.mp3quran.net/download/sds/067.mp3",
-    audioDuration: "01:10",
-    verses: [
-      {
-        verseNumber: 1,
-        verseKey: "67:1",
-        textUthmani: "تَبَـٰرَكَ ٱلَّذِى بِيَدِهِ ٱلْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَىْءٍۢ قَدِيرٌ",
-        translation: "Blessed is He in whose hand is dominion, and He is over all things competent -",
-        startTime: 0.0,
-        endTime: 12.0
-      },
-      {
-        verseNumber: 2,
-        verseKey: "67:2",
-        textUthmani: "ٱلَّذِى خَلَقَ ٱلْمَوْتَ وَٱلْحَيَوٰةَ لِيَبْلُوَكُمْ أَيُّكُمْ أَحْسَنُ عَمَلًۭا ۚ وَهُوَ ٱلْعَزِيزُ ٱلْغَفُورُ",
-        translation: "[He] who created death and life to test you [as to] which of you is best in deed - and He is the Exalted in Might, the Forgiving -",
-        startTime: 12.0,
-        endTime: 26.5
-      },
-      {
-        verseNumber: 3,
-        verseKey: "67:3",
-        textUthmani: "ٱلَّذِى خَلَقَ سَبْعَ سَمَـٰوَٰتٍۢ طِبَاقًۭا ۖ مَّا تَرَىٰ فِى خَلْقِ ٱلرَّحْمَـٰنِ مِن تَفَـٰوُتٍۢ ۖ فَٱرْجِعِ ٱلْبَصَرَ هَلْ تَرَىٰ مِن فُطُورٍۢ",
-        translation: "[And] who created seven heavens in layers. You do not see in the creation of the Most Merciful any inconsistency. So return [your] vision; do you see any breaks?",
-        startTime: 26.5,
-        endTime: 44.0
-      },
-      {
-        verseNumber: 4,
-        verseKey: "67:4",
-        textUthmani: "ثُمَّ ٱرْجِعِ ٱلْبَصَرَ كَرَّتَيْنِ يَنقَلِبْ إِلَيْكَ ٱلْبَصَرُ خَاسِئًۭا وَهُوَ حَسِيرٌۭ",
-        translation: "Then return [your] vision twice again. [Your] vision will return to you humbled while it is fatigued.",
-        startTime: 44.0,
-        endTime: 56.5
-      },
-      {
-        verseNumber: 5,
-        verseKey: "67:5",
-        textUthmani: "وَلَقَدْ زَيَّنَّا ٱلسَّمَآءَ ٱلدُّنْيَا بِمَصَـٰبِيحَ وَجَعَلْنَـٰهَا رُجُومًۭا لِّلشَّيَـٰطِينِ ۖ وَأَعْتَدْنَا لَهُمْ عَذَابَ ٱلسَّعِيرِ",
-        translation: "And We have certainly beautified the nearest heaven with lamps and have made [from] them what is thrown at the devils and have prepared for them the punishment of the Blaze.",
-        startTime: 56.5,
-        endTime: 70.0
       }
     ]
   }

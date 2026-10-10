@@ -87,8 +87,12 @@ function usableWords<T extends { from: number; to: number; segments?: number[][]
  * the other source's recording rather than their own -- QUL's Sudais
  * Al-Ma'idah was measured on the quranicaudio file, not the tarteel one its
  * export names. Null when no timings fit any recording.
+ *
+ * `qulFallback` is set on a quran.com pairing where QUL's timings were also
+ * found to fit QUL's own recording (`timingFallbacks.json`): the surah can be
+ * loaded from QUL, on QUL's file, when quran.com does not answer.
  */
-export type TimingPair = { timings: 'quran.com' | 'qul'; audioUrl?: string } | null;
+export type TimingPair = { timings: 'quran.com' | 'qul'; audioUrl?: string; qulFallback?: boolean } | null;
 
 /** Whether an ayah's bounds are a recitation's: quran.com's in seconds, QUL's in milliseconds. */
 function plausibleAyah(timing: { start?: number; end?: number; from?: number; to?: number }): boolean {
@@ -194,10 +198,46 @@ export function chooseReciterTiming(
     if (pair.timings === 'quran.com' && quranCom && covers(quranCom.timings)) {
       return fromQuranCom(quranCom, pair.audioUrl ?? quranCom.audioUrl);
     }
+    // quran.com did not answer at all: QUL, with QUL's recording, only where
+    // that pairing was audited too. Not when quran.com answered without
+    // covering the passage -- the surah's recording is quran.com's then.
+    if (pair.timings === 'quran.com' && !quranCom && pair.qulFallback && qul && covers(qul.timings)) {
+      return fromQul(qul, qul.audioUrl);
+    }
     if (pair.timings === 'qul' && qul && covers(qul.timings)) return fromQul(qul, pair.audioUrl ?? qul.audioUrl);
     return NO_TIMING;
   }
   if (quranCom && covers(quranCom.timings)) return fromQuranCom(quranCom, quranCom.audioUrl);
   if (qul && covers(qul.timings)) return fromQul(qul, qul.audioUrl);
   return NO_TIMING;
+}
+
+/**
+ * The recording a reciter's surah plays, whether or not the passage asked for
+ * has timings on it: the one `chooseReciterTiming` would time it on.
+ *
+ * A passage whose timings are unusable is still recited on that file, and the
+ * aligner times it there. Falling back to another one -- the reciter's
+ * mp3quran file -- made the same surah a different recitation depending on
+ * which ayahs were asked for, or on whether quran.com answered.
+ *
+ * Null where no source times this surah, so the reciter's own default file is
+ * as good as any. Throws where one does but did not answer: which recording it
+ * is cannot be known, and the load should say so instead of guessing.
+ * `quranComAsked` is whether quran.com times this reciter at all, so that its
+ * silence on a surah never audited is not read as "no timings".
+ */
+export function pairedRecording(
+  quranCom: QuranComTimings | null,
+  qul: QulTimings | null,
+  pair: TimingPair | undefined,
+  quranComAsked: boolean
+): string | null {
+  if (pair === null) return null;
+  if (pair?.audioUrl) return pair.audioUrl;
+  const named = pair?.timings === 'quran.com' ? quranCom?.audioUrl ?? (pair.qulFallback ? qul?.audioUrl : undefined)
+    : pair?.timings === 'qul' ? qul?.audioUrl
+    : quranCom?.audioUrl ?? (quranComAsked ? undefined : qul?.audioUrl ?? null);
+  if (named === undefined) throw new Error('the source that names this recording did not answer');
+  return named;
 }

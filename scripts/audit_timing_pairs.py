@@ -29,6 +29,17 @@ checked is left out -- the old order applies -- and printed for review.
     asr-service/.venv/bin/python scripts/audit_timing_pairs.py run sudais basit
     asr-service/.venv/bin/python scripts/audit_timing_pairs.py table
 
+Where a surah passed on quran.com, QUL was never tried -- the order stops at
+the first pass -- so nothing said whether QUL's timings fit QUL's own file
+there. `fallback` checks exactly that pairing for those surahs, so a load can
+use QUL when quran.com does not answer, and only where it was found to fit:
+
+    asr-service/.venv/bin/python scripts/audit_timing_pairs.py fallback run sudais
+    asr-service/.venv/bin/python scripts/audit_timing_pairs.py fallback table
+
+Results go to .run/timing-fallback-<reciter>.jsonl; the table to
+src/lib/timingFallbacks.json, reciter -> the surahs whose QUL pairing passed.
+
 Results go to .run/timing-audit-<reciter>.jsonl.
 
 `run` is resumable and takes a while -- tens of seconds per long surah -- so
@@ -58,6 +69,7 @@ logging.disable(logging.CRITICAL)
 QUL = os.path.join(ROOT, "data", "qul", "recitations")
 RESULTS = os.path.join(ROOT, ".run")
 TABLE = os.path.join(ROOT, "src", "lib", "timingPairs.json")
+FALLBACKS = os.path.join(ROOT, "src", "lib", "timingFallbacks.json")
 #: quran.com's reciter ids, for the reciters it has timed.
 QURAN_COM = {"sudais": 3, "yasser": 97, "shuraim": 10}
 #: Every reciter the studio offers with published timings; nothing else is read or written.
@@ -114,9 +126,10 @@ def append_result(path: Path, row: dict) -> None:
         f.write(json.dumps(row) + "\n")
 
 
-def results_file(reciter: str) -> Path:
+def results_file(reciter: str, *, fallback: bool = False) -> Path:
+    """The audit's results, or with `fallback` the QUL check's below."""
     os.makedirs(RESULTS, exist_ok=True)
-    return Path(RESULTS) / f"timing-audit-{known(reciter)}.jsonl"
+    return Path(RESULTS) / f"timing-{'fallback' if fallback else 'audit'}-{known(reciter)}.jsonl"
 
 
 def quran_com(reciter: str, surah: int) -> tuple[str, Timings]:
@@ -319,8 +332,50 @@ def table() -> None:
     report(found, review)
 
 
+def audit_fallbacks(reciter: str) -> None:
+    """QUL's timings on QUL's own file, for every surah the table gives to quran.com."""
+    with Path(TABLE).open() as f:
+        paired = json.load(f).get(known(reciter), {})
+    out = results_file(reciter, fallback=True)
+    done = {row["key"] for row in read_results(out)}
+    for surah in range(1, 115):
+        key = f"{reciter}:{surah}"
+        if paired.get(str(surah)) != "quran.com" or key in done:
+            continue
+        if str(surah) not in export(reciter)[0]:
+            row = {"key": key, "audio": "", "verdict": "no export", "scores": {}}
+        else:
+            try:
+                audio, scores, result = check(reciter, surah, "qul")
+            except Exception as e:
+                audio, scores, result = "", {"error": str(e)[:120]}, "error"
+            row = {"key": key, "audio": audio, "verdict": result, "scores": scores}
+        append_result(out, row)
+        print(key, row["verdict"], flush=True)
+
+
+def fallback_table() -> None:
+    found: dict[str, list[int]] = {}
+    for reciter in QURAN_COM:
+        rows = read_results(results_file(reciter, fallback=True))
+        found[reciter] = sorted(int(row["key"].split(":")[1]) for row in rows if row["verdict"] == "pass")
+        others = sorted((row["key"], row["verdict"]) for row in rows if row["verdict"] != "pass")
+        print(f"{reciter}: {len(found[reciter])} of {len(rows)} pass; not: {others or '-'}")
+    with Path(FALLBACKS).open("w") as out:
+        json.dump(found, out, indent=1, sort_keys=True)
+        out.write("\n")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) >= 3 and sys.argv[1] == "run":
+    if sys.argv[1:2] == ["fallback"]:
+        if sys.argv[2:3] == ["run"] and sys.argv[3:]:
+            for name in sys.argv[3:]:
+                audit_fallbacks(name)
+        elif sys.argv[2:] == ["table"]:
+            fallback_table()
+        else:
+            sys.exit(__doc__)
+    elif len(sys.argv) >= 3 and sys.argv[1] == "run":
         run(sys.argv[2:])
     elif sys.argv[1:] == ["table"]:
         table()

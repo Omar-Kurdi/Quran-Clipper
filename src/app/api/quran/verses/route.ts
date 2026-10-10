@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cleanHtml, verseWords } from '@/lib/quranCorpus';
 import { quranApiJson, translationIdsToRequest, preferredTranslation } from '@/lib/quranApi';
 import { primaryTranslation } from '@/lib/localTranslations';
-import { RECITERS, SAMPLE_PROJECTS, SURAHS_LIST } from '@/lib/quranData';
+import { RECITERS, SURAHS_LIST } from '@/lib/quranData';
 import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 import { qulSurah } from '@/lib/qulRecitations';
 import { measuredSurah } from '@/lib/measuredRecitations';
 import { estimatesFrom, loadBounds } from '@/lib/publishedTiming';
-import { chooseReciterTiming } from '@/lib/reciterTimingChoice';
+import { chooseReciterTiming, pairedRecording } from '@/lib/reciterTimingChoice';
 import { fetchReciterTimings } from '@/lib/publishedTiming';
 import { timingPair } from '@/lib/timingAudit';
 
@@ -71,30 +71,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Hand-authored sample, used as a shortcut for the ranges it covers -- but
-    // only for reciters quran.com has no timings for. Every sample here is
-    // Sudais, who does have them, so taking this shortcut would hand back
-    // estimated boundaries for exactly the surah/reciter/range the studio opens
-    // on: the first Load a new user clicks would be the one that is not timed.
-    const sample = SAMPLE_PROJECTS.find(
-      s => s.surahNumber === surahNumber && s.reciterId === reciter
-    );
-
-    if (sample && start === sample.ayahStart && end === sample.ayahEnd && !reciterMeta.quranApiId) {
-      return NextResponse.json({
-        success: true,
-        source: 'cached_sample',
-        surahNumber,
-        surahNameArabic: sample.surahNameArabic,
-        surahNameEnglish: sample.surahNameEnglish,
-        audioUrl: sample.audioUrl,
-        audioDuration: sample.audioDuration,
-        timingSource: 'estimated',
-        verses: sample.verses
-      });
-    }
-
-    // Otherwise query Quran.com API v4
+    // Query Quran.com API v4
     try {
       // Both the configured translation and the one that exists everywhere, so
       // a chapter the configured upstream does not hold still arrives with a
@@ -128,12 +105,10 @@ export async function GET(req: NextRequest) {
         // quran.com first, so a reciter it covers loads as before; QUL's export,
         // where this machine has one, for a reciter quran.com has not timed.
         // Where the surah was audited, the pairing it found decides instead.
-        const choice = chooseReciterTiming(
-          filtered.map(v => v.verse_key),
-          await fetchReciterTimings(reciterMeta.quranApiId, surahNumber),
-          qulSurah(reciter, surahNumber),
-          timingPair(reciterMeta.id, surahNumber)
-        );
+        const quranComTimings = await fetchReciterTimings(reciterMeta.quranApiId, surahNumber);
+        const qulTimings = qulSurah(reciter, surahNumber);
+        const pair = timingPair(reciterMeta.id, surahNumber);
+        const choice = chooseReciterTiming(filtered.map(v => v.verse_key), quranComTimings, qulTimings, pair);
         // A recording whose published timings are wrong for it is timed from
         // this studio's own measurement instead -- see `measuredRecitations`.
         const measured = measuredSurah(reciterMeta.id, surahNumber);
@@ -145,6 +120,13 @@ export async function GET(req: NextRequest) {
             { status: 422 }
           );
         }
+
+        // The surah's one recording, even where this passage has no usable
+        // timings on it: the aligner times it on that file. Where the source
+        // that names it did not answer this throws, and the load fails below
+        // rather than switching to another recording of the same surah.
+        const recording = measured?.audioUrl ?? choice.audioUrl ??
+          pairedRecording(quranComTimings, qulTimings, pair, Boolean(reciterMeta.quranApiId));
 
         const repaired = loadBounds(
           measured,
@@ -201,7 +183,7 @@ export async function GET(req: NextRequest) {
           // served straight from mp3quran.net, which publishes an AAAA record --
           // so on a machine with no IPv6 route that one reciter failed while the
           // timed ones worked.
-          audioUrl: proxiedAudioUrl(measured?.audioUrl ?? choice.audioUrl ?? getReciterAudioUrl(reciter, surahNumber)),
+          audioUrl: proxiedAudioUrl(recording ?? getReciterAudioUrl(reciter, surahNumber)),
           audioDuration: `${Math.floor(totalSeconds / 60)}:${Math.floor(totalSeconds % 60).toString().padStart(2, '0')}`,
           /** 'measured' means the boundaries came from the recording; 'estimated' means they were guessed from text length. */
           timingSource: choice.provider || measured ? 'measured' : 'estimated',
@@ -212,6 +194,15 @@ export async function GET(req: NextRequest) {
       }
     } catch {
       // API fallback
+    }
+
+    // A reciter with published timings is played on the recording they were
+    // measured on, which only its source can name -- so without it, no load.
+    if (reciterMeta.quranApiId || qulSurah(reciterMeta.id, surahNumber)) {
+      return NextResponse.json(
+        { success: false, error: `Could not reach quran.com for ${reciterMeta.name}'s recording and timings. Try again in a moment.` },
+        { status: 503 }
+      );
     }
 
     // Network/API fallback: keep the user's requested surah/range and reciter instead of silently switching to Al-Fatihah.

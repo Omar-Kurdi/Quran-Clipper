@@ -92,3 +92,17 @@ src/app/api/audio/proxy/route.ts  SKY-U001  1
 # src/lib/youtubeVault.ts). None of them reaches shared state: each acts only on
 # the refresh token in the caller's own httpOnly cookie. Accepted by the project
 # owner on 2026-10-08.
+
+# The three findings in the recordings download script, accepted by the project
+# owner on 2026-10-10. The script fills the audio cache by asking this machine's
+# own studio which recording each surah plays, so every request it makes goes to
+# http://localhost:<port> -- deliberately: a configurable host would let it be
+# pointed anywhere, which is what SKY-D216 warns about. Both fetch calls take
+# their address from `onStudio()`, which throws for anything off that origin,
+# and the studio's proxy applies its own host allowlist (`hostAllowed`) to the
+# recordings. The rules fire on the pattern, not on the check -- the proxy's own
+# fetch carries the same SKY-D216 in the baseline -- and avoiding them would mean
+# dropping the origin check or disguising the address. Any further SKY-D216 or
+# SKY-D248 in this file, or either rule anywhere else, still blocks.
+scripts/prefetch-audio.mjs  SKY-D216  2
+scripts/prefetch-audio.mjs  SKY-D248  1

@@ -10,24 +10,27 @@
  * failed the match, and a built-in reciter then lost its isti'adha and its
  * pauses without a word. Kept here, the recording is fetched once.
  *
- * A cache, nothing more: under the system's temporary directory, oldest
- * evicted past `MAX_CACHE_BYTES`, and any failure simply means the CDN is
- * asked as before.
+ * A cache, nothing more: oldest evicted past `MAX_CACHE_BYTES`, and any
+ * failure simply means the CDN is asked as before. Kept in the checkout's
+ * gitignored data/ rather than the system's temporary directory, which is
+ * memory on this machine and emptied on every restart -- so a crash put every
+ * recording back on the CDN. `scripts/prefetch-audio.mjs` fills it ahead of
+ * time with every built-in reciter's recordings (about 14 GB), so a load never
+ * waits on the CDN at all.
  */
 
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, statSync } from 'node:fs';
 import { mkdir, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
 import type { IncomingMessage } from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 /** Where recordings are kept; `QC_AUDIO_CACHE_DIR` moves it (tests give each run its own). */
-const cacheDir = () => process.env.QC_AUDIO_CACHE_DIR || path.join(os.tmpdir(), 'quranclipper-audio');
-/** Room for a dozen of the longest chapters. */
-const MAX_CACHE_BYTES = 2 * 1024 * 1024 * 1024;
+const cacheDir = () => process.env.QC_AUDIO_CACHE_DIR || path.join(process.cwd(), 'data', 'audio-cache');
+/** Room for every built-in reciter's whole Quran, prefetched, with some to spare. */
+const MAX_CACHE_BYTES = 40 * 1024 * 1024 * 1024;
 /** No chapter recording is near this; anything larger is not cached. */
 const MAX_FILE_BYTES = 300 * 1024 * 1024;
 
@@ -67,6 +70,10 @@ export function fillAudioCache(url: string, fetchWhole: () => Promise<IncomingMe
       }
       await mkdir(cacheDir(), { recursive: true });
       await pipeline(res, createWriteStream(partial));
+      // A connection the CDN closed early ends the stream without an error.
+      // Kept, that cut-off recording would be served for good.
+      const expected = Number(res.headers['content-length']);
+      if (expected && (await stat(partial)).size !== expected) throw new Error('recording arrived cut short');
       await rename(partial, target);
       await prune();
     } catch (err) {
@@ -110,6 +117,8 @@ export function servedFromCache(
   cached: { file: string; size: number }, rangeHeader: string | null, contentType: string
 ): { status: number; headers: Headers; body: ReadableStream<Uint8Array> | null } {
   const headers = new Headers({ 'content-type': contentType, 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=86400' });
+  // How `scripts/prefetch-audio.mjs` tells a kept recording from one still on the CDN.
+  headers.set('x-audio-cache', 'hit');
   const range = byteRange(rangeHeader, cached.size);
   if (range === 'unsatisfiable') {
     headers.set('content-range', `bytes */${cached.size}`);

@@ -23,6 +23,11 @@
 #   ./install.sh --personal
 #   ./install.sh --public --domain studio.example.com
 #   ./install.sh ... --no-apt        do not install system packages; only report them
+#   ./install.sh ... --no-recordings do not download the reciters' recordings
+#
+# Last, it downloads every built-in reciter's recordings (about 14 GB, half an
+# hour or so the first time) into data/audio-cache/, so the studio never waits on a
+# CDN or fails when one refuses. Already-kept recordings are skipped.
 #
 # On Debian or Ubuntu, as root or with sudo, it installs what the machine is
 # missing: Node.js 22 (from NodeSource where the distribution's is too old),
@@ -39,7 +44,7 @@
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")" || exit 1
 
-APT=1; USE=""; DOMAIN=""
+APT=1; USE=""; DOMAIN=""; RECORDINGS=1
 while (( $# )); do
   case "$1" in
     --apt) APT=1 ;;  # the default now; still accepted
@@ -47,7 +52,8 @@ while (( $# )); do
     --personal) USE="personal" ;;
     --public) USE="public" ;;
     --domain) DOMAIN="${2:-}"; shift ;;
-    -h|--help) sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-recordings) RECORDINGS="" ;;
+    -h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (see ./install.sh --help)" >&2; exit 2 ;;
   esac
   shift
@@ -67,6 +73,10 @@ fi
 
 RUN_DIR=".run"; mkdir -p "$RUN_DIR"
 LOG="$RUN_DIR/install.log"; : >"$LOG"
+# Everything shown is kept too, so the end can report every step in one place.
+SHOWN="$RUN_DIR/install-shown.txt"
+exec 3>&1 > >(tee "$SHOWN")
+TEE_PID=$!
 TODO=()
 todo() { TODO+=("$1"); }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -91,7 +101,7 @@ apt_has() { [[ "$(apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/ {print $
 apt_install() { $SUDO env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -qq "$@" >>"$LOG" 2>&1; }
 
 # --- system packages ----------------------------------------------------------
-printf '[1/8] system      ... '
+printf '[1/9] system      ... '
 if [[ -z "$APT" ]]; then
   echo "checking only (--no-apt)"
 elif ! have apt-get; then
@@ -166,7 +176,7 @@ gb() { printf '%d.%d' $(( $1 / 10 )) $(( $1 % 10 )); }
 (( DISK_10 >= 100 )) || todo "Only $(gb "$DISK_10") GB free here. The sidecar needs about 10 GB for its packages and model, so it was not installed; if another disk has room, install there."
 
 # --- web app ------------------------------------------------------------------
-printf '[2/8] web app     ... '
+printf '[2/9] web app     ... '
 if (( NODE_MAJOR < 20 )); then
   echo "skipped (no Node.js 20+)"
 elif [[ -d node_modules && ! package-lock.json -nt node_modules/.package-lock.json ]]; then
@@ -178,7 +188,7 @@ else
 fi
 
 # --- configuration ------------------------------------------------------------
-printf '[3/8] settings    ... '
+printf '[3/9] settings    ... '
 # The mode goes in a file of its own, which ./start.sh turns into
 # STUDIO_MODE for the processes it starts -- see src/lib/studioMode.ts. Kept
 # out of .env.local so that neither script has to read a file of secrets.
@@ -212,7 +222,7 @@ else
 fi
 
 # --- alignment sidecar --------------------------------------------------------
-printf '[4/8] sidecar     ... '
+printf '[4/9] sidecar     ... '
 PY="$(pick_python)"
 VENV="asr-service/.venv"
 # A venv made while python3.X-venv was missing has a python and no pip, and
@@ -264,7 +274,7 @@ fi
 # accepted its terms, every alignment fails with a 401. So this does not stop
 # at "a token is stored": it downloads the model, which is the one check that
 # proves access -- and means the first alignment does not wait on ~0.5 GB.
-printf '[5/8] model       ... '
+printf '[5/9] model       ... '
 MODEL="Muno459/fastconformer-quran"
 fetch_model() {
   # 0 downloaded, 2 no usable token, 3 token without access, 1 anything else.
@@ -303,7 +313,7 @@ else
       read -r -p "      Press Enter once accepted (or type skip): " ANSWER
       [[ "$ANSWER" == skip ]] && break
     fi
-    printf '[5/8] model       ... '
+    printf '[5/9] model       ... '
     fetch_model; RC=$?
   done
   case $RC in
@@ -318,7 +328,7 @@ else
 fi
 
 # --- database -------------------------------------------------------------------
-printf '[6/8] database    ... '
+printf '[6/9] database    ... '
 if [[ "$USE" == "public" ]]; then
   echo "not used (public: projects are kept in each visitor's browser)"
 elif ! have podman && ! have docker; then
@@ -347,7 +357,7 @@ fi
 # replaced unless it is Caddy's untouched default page, and the firewall gets
 # 80 and 443 opened only if it is already on -- every other port stays as it
 # was.
-printf '[7/8] https       ... '
+printf '[7/9] https       ... '
 CADDYFILE="/etc/caddy/Caddyfile"
 if [[ "$USE" != "public" ]]; then
   echo "not needed (personal)"
@@ -383,7 +393,7 @@ else
 fi
 
 # --- local-only data --------------------------------------------------------------
-printf '[8/8] local data  ... '
+printf '[8/9] local data  ... '
 MISSING=()
 [[ -n "$(ls -A public/fonts 2>/dev/null)" ]] || MISSING+=("mushaf fonts (public/fonts/)")
 [[ -d data/qul ]] || MISSING+=("QUL data (data/qul/)")
@@ -397,7 +407,70 @@ if [[ "$USE" == "public" && -d data/local-translations ]]; then
   todo "data/local-translations/ is on this server but is never served in public mode. Delete it if it should not be here at all."
 fi
 
+# --- recordings ---------------------------------------------------------------------
+# Every built-in reciter's recordings, kept on this disk so a load never waits
+# on -- or fails on -- a CDN. The studio decides which file each surah plays,
+# so the download asks it (scripts/prefetch-audio.mjs): the one on :3000 if it
+# is running, otherwise one started here for the purpose and stopped after.
+printf '[9/9] recordings  ... '
+KEPT_BEFORE="$(find data/audio-cache -name '*.audio' 2>/dev/null | wc -l)"
+DISK_NOW_10="$(df -Pk . | awk 'NR==2 {printf "%d", $4/104857.6}')"
+if [[ -z "$RECORDINGS" ]]; then
+  echo "skipped (--no-recordings): $KEPT_BEFORE kept"
+elif (( NODE_MAJOR < 20 )); then
+  echo "skipped (no Node.js 20+)"
+elif (( KEPT_BEFORE < 1140 && DISK_NOW_10 < 200 )); then
+  echo "skipped (only $(gb "$DISK_NOW_10") GB free, needs about 20)"
+  todo "The reciters' recordings need about 14 GB. Free some space and run: ./install.sh again (or ./install.sh --no-recordings to leave them to the CDNs)."
+else
+  if (( KEPT_BEFORE >= 1140 )); then echo "checking the $KEPT_BEFORE kept"
+  else echo "downloading -- about 14 GB, half an hour or so the first time (progress: $RUN_DIR/prefetch.log)"; fi
+  STUDIO_TOKEN="$(sed -n 's/^STUDIO_TOKEN=//p' .env.local 2>/dev/null | tail -n 1 | tr -d "\"'")"
+  AUTH=(); [[ -n "$STUDIO_TOKEN" ]] && AUTH=(-H "Authorization: Bearer $STUDIO_TOKEN")
+  # Whether a studio on :3000 says when it answers from its kept recordings,
+  # which the download waits for -- one built before that never does.
+  # Al-Fatihah is under 1 MB, so a studio that keeps it says so at once.
+  reports_kept() {
+    curl -sf --max-time 2 http://127.0.0.1:3000/api/health >/dev/null 2>&1 || return 1
+    for _ in $(seq 1 15); do
+      curl -s --max-time 30 -r 0-0 "${AUTH[@]}" -D - -o /dev/null \
+        'http://127.0.0.1:3000/api/audio/proxy?url=https%3A%2F%2Fdownload.quranicaudio.com%2Fqdc%2Fabdurrahmaan_as_sudais%2Fmurattal%2F1.mp3' \
+        2>/dev/null | grep -qi '^x-audio-cache: hit' && return 0
+      sleep 2
+    done
+    return 1
+  }
+  PORT=3000; TEMP_PID=""
+  if ! reports_kept; then
+    PORT=3999
+    setsid npx next dev -p "$PORT" >"$RUN_DIR/prefetch-studio.log" 2>&1 &
+    TEMP_PID=$!
+    for _ in $(seq 1 120); do
+      curl -sf --max-time 2 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && break
+      sleep 2
+    done
+  fi
+  STUDIO_TOKEN="$STUDIO_TOKEN" node scripts/prefetch-audio.mjs --port "$PORT" >"$RUN_DIR/prefetch.log" 2>&1
+  PREFETCH_OK=$?
+  [[ -n "$TEMP_PID" ]] && kill -- "-$TEMP_PID" 2>/dev/null
+  KEPT="$(find data/audio-cache -name '*.audio' 2>/dev/null | wc -l)"
+  SIZE="$(du -sh data/audio-cache 2>/dev/null | cut -f1)"
+  printf '[9/9] recordings  ... '
+  if (( PREFETCH_OK == 0 )); then
+    echo "all kept: $KEPT recordings, $SIZE"
+  else
+    echo "$KEPT kept ($SIZE); some failed -- see $RUN_DIR/prefetch.log"
+    todo "Some recordings did not download (a CDN refused, or the studio did not start). Run ./install.sh again to fetch just those; the studio plays the rest from the CDN meanwhile."
+  fi
+fi
+
 # --- summary ----------------------------------------------------------------------
+# Back to the terminal, and the copy finished, before reading it back.
+exec >&3 3>&-
+wait "$TEE_PID" 2>/dev/null
+echo
+echo "  Status:"
+grep -a '^\[[0-9]/9\]' "$SHOWN" | awk '{ last[$1] = $0; if (!($1 in seen)) { seen[$1] = 1; order[++n] = $1 } } END { for (i = 1; i <= n; i++) print "  " last[order[i]] }'
 echo
 if (( ${#TODO[@]} )); then
   echo "  Still to do:"

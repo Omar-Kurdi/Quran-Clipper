@@ -293,6 +293,11 @@ missing: Node.js 22, ffmpeg, Python 3.12 or 3.11 with venv, and podman (personal
 shows the end of its log right there. The mushaf fonts and QUL data are never downloaded for you -- see
 [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data).
 
+Last, it downloads every built-in reciter's recordings -- about 14 GB, half an hour or so the
+first time -- into `data/audio-cache/`, the exact files the studio plays, so it never waits on a CDN or
+fails when one refuses. Run again, it fetches only what is missing; `--no-recordings` leaves them
+to the CDNs. It ends with the status of every step, then the list of what is left for you.
+
 Once they are installed, this starts all three and says what came up:
 
 ```bash

@@ -147,12 +147,12 @@ function savedStatusText(
 }
 
 /**
- * What plays before a passage is loaded: Al-Sudais's Al-Fatihah, through the
- * studio's own proxy, like every other recording. It was fetched straight from
- * mp3quran.net, which now redirects it to another host, so it played only
- * while that host answered a cross-origin request.
+ * What plays before a passage is loaded: the sample's own recording, through
+ * the proxy like every other. Taken from the sample, whose captions were timed
+ * on it: this once named mp3quran's Al-Fatihah while Load played quran.com's,
+ * so the same passage opened and loaded as two different recitations.
  */
-const DEFAULT_AUDIO_URL = `/api/audio/proxy?url=${encodeURIComponent('https://server11.mp3quran.net/download/sds/001.mp3')}`;
+const DEFAULT_AUDIO_URL = `/api/audio/proxy?url=${encodeURIComponent(SAMPLE_PROJECTS[0].audioUrl)}`;
 
 export default function VideoCreatorPage() {
   const { locale, t } = useLocale();
@@ -1324,13 +1324,18 @@ export default function VideoCreatorPage() {
         `/api/quran/segments?surah=${selectedSurah}&start=${ayahStart}&end=${ayahEnd}&reciter=${apiId}`
       );
       const data = await res.json();
-      if (!res.ok || !data?.success || !Array.isArray(data.verses) || !data.verses.length) {
+      if (!res.ok || !data?.success || !Array.isArray(data.verses) || !data.verses.length || !data.audioUrl) {
         setMatchStatus({ text: t.match.segmentsNone, tone: 'error' });
         return;
       }
       setVerses(data.verses);
       setSelectedIndex(0);
+      // quran.com's recording, as the QUL button plays QUL's: these times were
+      // measured on it, and against whatever was loaded before they are not.
+      setAudioUrl(data.audioUrl);
       if (data.totalSeconds > 0) setAudioDuration(data.totalSeconds);
+      const firstStart = data.verses[0]?.startTime ?? 0;
+      if (firstStart > 0) queueSeek(data.audioUrl, firstStart);
       const { timedWords = 0, boundsOnly = 0 } = data.coverage || {};
       setMatchStatus({
         text: t.match.segmentsDone(data.verses.length, timedWords, boundsOnly),

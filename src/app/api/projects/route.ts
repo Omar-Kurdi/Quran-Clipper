@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveArabicFont } from '@/lib/quranData';
+import { resolveArabicFont, SAMPLE_PROJECTS } from '@/lib/quranData';
 import { desc, eq, isNull, lt, or } from 'drizzle-orm';
 import { BACKGROUND_MODES } from '@/lib/backgroundTimeline';
 import { asBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
@@ -146,7 +146,8 @@ export async function POST(req: NextRequest) {
       ayahEnd: body.ayahEnd || 7,
       reciterId: body.reciterId || 'sudais',
       reciterName: body.reciterName || 'Abdul Rahman Al-Sudais',
-      audioUrl: body.audioUrl || 'https://server11.mp3quran.net/download/sds/001.mp3',
+      // The defaults above are the studio's sample, so is its recording.
+      audioUrl: body.audioUrl || SAMPLE_PROJECTS[0].audioUrl,
       audioDuration: body.audioDuration || '00:43',
       // How a project built from an upload finds its recitation again: the key
       // to the copy held in that browser, plus the file name and window that

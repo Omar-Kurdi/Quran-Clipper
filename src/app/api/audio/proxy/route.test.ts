@@ -117,6 +117,8 @@ describe('audio proxy, when the CDN falters or the recording is held', () => {
     expect(upstreamRequests).toEqual([]);
     expect(res.status).toBe(206);
     expect(res.headers.get('content-range')).toBe('bytes 10-19/100');
+    // What the prefetch script waits for.
+    expect(res.headers.get('x-audio-cache')).toBe('hit');
     expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
   });
 });

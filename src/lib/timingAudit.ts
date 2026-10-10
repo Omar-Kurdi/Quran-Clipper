@@ -14,6 +14,7 @@
  * CDN changes a file.
  */
 import pairs from './timingPairs.json';
+import fallbacks from './timingFallbacks.json';
 import type { TimingPair } from './reciterTimingChoice';
 import { RECITERS } from './quranData';
 
@@ -35,7 +36,10 @@ function readEntry(entry: unknown): TimingPair | undefined {
  */
 export function timingPair(reciterId: string, surah: number): TimingPair | undefined {
   const surahs: Record<string, unknown> | undefined = (pairs as Record<string, Record<string, unknown>>)[reciterId];
-  return readEntry(surahs?.[String(surah)]);
+  const pair = readEntry(surahs?.[String(surah)]);
+  // Where QUL's own pairing was audited for a quran.com surah and fits.
+  const qulFits = (fallbacks as Record<string, number[]>)[reciterId]?.includes(surah);
+  return pair?.timings === 'quran.com' && !pair.audioUrl && qulFits ? { ...pair, qulFallback: true } : pair;
 }
 
 /**

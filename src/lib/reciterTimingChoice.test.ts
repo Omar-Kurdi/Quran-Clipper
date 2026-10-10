@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { chooseReciterTiming, type QuranComTimings, type QulTimings } from './reciterTimingChoice';
+import { chooseReciterTiming, pairedRecording, type QuranComTimings, type QulTimings } from './reciterTimingChoice';
+import { SAMPLE_PROJECTS } from './quranData';
 
 const quranCom = (keys: string[]): QuranComTimings => ({
   audioUrl: 'https://download.quranicaudio.com/qdc/x/40.mp3',
@@ -125,6 +126,17 @@ describe('chooseReciterTiming with an audited pairing', () => {
     expect(chooseReciterTiming(keys, quranCom(keys), null, { timings: 'quran.com' }).provider).toBe('quran.com');
   });
 
+  it("falls back to QUL's own recording only where that pairing was audited, and only when quran.com did not answer", () => {
+    const audited = { timings: 'quran.com' as const, qulFallback: true };
+    const down = chooseReciterTiming(keys, null, qul(keys), audited);
+    expect(down.provider).toBe('qul');
+    expect(down.audioUrl).toBe(qul(keys).audioUrl);
+    // Not audited: no timings rather than QUL's on an unchecked pairing.
+    expect(chooseReciterTiming(keys, null, qul(keys), { timings: 'quran.com' }).provider).toBeNull();
+    // quran.com answered without covering the passage: the recording is still quran.com's.
+    expect(chooseReciterTiming(keys, quranCom(['5:41']), qul(keys), audited).provider).toBeNull();
+  });
+
   it('keeps the old order for a surah never audited', () => {
     expect(chooseReciterTiming(keys, quranCom(keys), qul(keys), undefined).provider).toBe('quran.com');
   });
@@ -138,7 +150,10 @@ describe('timingPair', () => {
       audioUrl: 'https://download.quranicaudio.com/qdc/abdurrahmaan_as_sudais/murattal/5.mp3',
     });
     expect(timingPair('sudais', 3)).toEqual({ timings: 'qul' });
-    expect(timingPair('sudais', 1)).toEqual({ timings: 'quran.com' });
+    // quran.com's own file, with QUL's own pairing audited as a fallback (timingFallbacks.json).
+    expect(timingPair('sudais', 1)).toEqual({ timings: 'quran.com', qulFallback: true });
+    // QUL's timings miss its own Al-Qasas file from about ayah 17 (audit 2026-10-10): no fallback.
+    expect(timingPair('yasser', 28)).toEqual({ timings: 'quran.com' });
     expect(timingPair('nobody', 1)).toBeUndefined();
   });
 
@@ -149,5 +164,46 @@ describe('timingPair', () => {
     expect(quranComFits(3, 3)).toBe(false);
     expect(quranComFits(3, 5)).toBe(false);
     expect(quranComFits(9999, 5)).toBe(true);
+  });
+});
+
+describe('pairedRecording', () => {
+  const keys = ['40:1'];
+  const qdc = quranCom(keys).audioUrl;
+  const tarteel = qul(keys).audioUrl;
+
+  it("is the audited source's recording, or the file the audit named", () => {
+    expect(pairedRecording(quranCom(keys), qul(keys), { timings: 'quran.com' }, true)).toBe(qdc);
+    expect(pairedRecording(quranCom(keys), qul(keys), { timings: 'qul' }, true)).toBe(tarteel);
+    expect(pairedRecording(null, qul(keys), { timings: 'qul', audioUrl: qdc }, true)).toBe(qdc);
+  });
+
+  it('is unknown, not another recording, when the source that names it did not answer', () => {
+    // quran.com down: Sudais must not drop to mp3quran's or QUL's file of the same surah.
+    expect(() => pairedRecording(null, qul(keys), { timings: 'quran.com' }, true)).toThrow();
+    expect(() => pairedRecording(null, qul(keys), undefined, true)).toThrow();
+    expect(() => pairedRecording(quranCom(keys), null, { timings: 'qul' }, true)).toThrow();
+    expect(pairedRecording(null, qul(keys), { timings: 'quran.com', qulFallback: true }, true)).toBe(tarteel);
+    expect(() => pairedRecording(null, null, { timings: 'quran.com', qulFallback: true }, true)).toThrow();
+  });
+
+  it("leaves the reciter's own file only where nothing times the surah", () => {
+    expect(pairedRecording(quranCom(keys), qul(keys), null, true)).toBeNull();
+    expect(pairedRecording(null, null, undefined, false)).toBeNull();
+    expect(pairedRecording(null, qul(keys), undefined, false)).toBe(tarteel);
+  });
+
+  it('puts the studio on the recording Load plays for the passage it opens on', () => {
+    // The opening sample was mp3quran's Al-Fatihah while Load played quran.com's:
+    // the same passage as two recitations. quran.com names this file for
+    // Sudais (reciter 3) surah 1, as checked 2026-10-10.
+    const sample = SAMPLE_PROJECTS[0];
+    const named: QuranComTimings = {
+      ...quranCom(['1:1']),
+      audioUrl: 'https://download.quranicaudio.com/qdc/abdurrahmaan_as_sudais/murattal/1.mp3',
+    };
+    return import('./timingAudit').then(({ timingPair }) => {
+      expect(pairedRecording(named, qul(['1:1']), timingPair(sample.reciterId, sample.surahNumber), true)).toBe(sample.audioUrl);
+    });
   });
 });

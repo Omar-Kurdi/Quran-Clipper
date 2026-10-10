@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRange } from '@/lib/quranCorpus';
 import { versesFromReciterSegments, timingsByVerse, type QuranComTiming } from '@/lib/reciterSegments';
 import { quranComFits } from '@/lib/timingAudit';
+import { proxiedAudioUrl } from '@/app/api/audio/proxy/route';
 
 /** The request's numbers, or null when one it cannot do without is missing. */
 function requested(searchParams: URLSearchParams) {
@@ -64,7 +65,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       verses: built.verses,
-      audioUrl: typeof file?.audio_url === 'string' ? file.audio_url : '',
+      // The recording these timings were measured on, which the studio switches to.
+      audioUrl: typeof file?.audio_url === 'string' && file.audio_url ? proxiedAudioUrl(file.audio_url) : '',
       totalSeconds: Number.isFinite(file?.duration) ? file.duration / 1000 : 0,
       /** So the studio can say what it got rather than implying it timed everything. */
       coverage: {
