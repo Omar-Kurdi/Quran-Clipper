@@ -1,5 +1,5 @@
 /**
- * The landing page's demonstration: Al-Mulk 67:1-2 by Abdul Rahman Al-Sudais,
+ * The front page's demonstration: Al-Mulk 67:1-2 by Abdul Rahman Al-Sudais,
  * the passage the READMEs' demos use, captioned as the studio captions it.
  *
  * Word times are quran.com's published timings for this recording (reciter 3,
@@ -17,8 +17,10 @@ export interface DemoCaption {
   ayah: number;
   start: number;
   end: number;
-  /** Each word and when it begins, in seconds. */
-  words: { text: string; at: number }[];
+  /** Each word, its glyph on the mushaf page, and when it begins, in seconds. */
+  words: { text: string; glyph: string; at: number }[];
+  /** The ayah's end medallion, a glyph of the same page. */
+  endGlyph: string;
   translation: string;
 }
 
@@ -26,44 +28,53 @@ export const DEMO_CAPTIONS: DemoCaption[] = [
   {
     verseKey: '67:1',
     ayah: 1,
+    endGlyph: '\ufc4a',
     start: 0,
     end: 8.12,
     words: [
-      { text: 'تَبَـٰرَكَ', at: 0 },
-      { text: 'ٱلَّذِى', at: 1.16 },
-      { text: 'بِيَدِهِ', at: 1.99 },
-      { text: 'ٱلْمُلْكُ', at: 2.77 },
-      { text: 'وَهُوَ', at: 3.66 },
-      { text: 'عَلَىٰ', at: 4.19 },
-      { text: 'كُلِّ', at: 4.79 },
-      { text: 'شَىْءٍ', at: 5.38 },
-      { text: 'قَدِيرٌ', at: 6.47 },
+      { text: 'تَبَـٰرَكَ', glyph: '\ufc41', at: 0 },
+      { text: 'ٱلَّذِى', glyph: '\ufc42', at: 1.16 },
+      { text: 'بِيَدِهِ', glyph: '\ufc43', at: 1.99 },
+      { text: 'ٱلْمُلْكُ', glyph: '\ufc44', at: 2.77 },
+      { text: 'وَهُوَ', glyph: '\ufc45', at: 3.66 },
+      { text: 'عَلَىٰ', glyph: '\ufc46', at: 4.19 },
+      { text: 'كُلِّ', glyph: '\ufc47', at: 4.79 },
+      { text: 'شَىْءٍ', glyph: '\ufc48', at: 5.38 },
+      { text: 'قَدِيرٌ', glyph: '\ufc49', at: 6.47 },
     ],
     translation: 'Blessed is He in whose hand is dominion, and He is over all things competent.',
   },
   {
     verseKey: '67:2',
     ayah: 2,
+    endGlyph: '\ufc57',
     start: 8.12,
     end: 19.9,
     words: [
-      { text: 'ٱلَّذِى', at: 8.12 },
-      { text: 'خَلَقَ', at: 9.04 },
-      { text: 'ٱلْمَوْتَ', at: 9.66 },
-      { text: 'وَٱلْحَيَوٰةَ', at: 10.47 },
-      { text: 'لِيَبْلُوَكُمْ', at: 11.63 },
-      { text: 'أَيُّكُمْ', at: 12.96 },
-      { text: 'أَحْسَنُ', at: 13.95 },
-      { text: 'عَمَلًا ۚ', at: 14.69 },
-      { text: 'وَهُوَ', at: 15.56 },
-      { text: 'ٱلْعَزِيزُ', at: 16.55 },
-      { text: 'ٱلْغَفُورُ', at: 17.64 },
+      { text: 'ٱلَّذِى', glyph: '\ufc4b', at: 8.12 },
+      { text: 'خَلَقَ', glyph: '\ufc4c', at: 9.04 },
+      { text: 'ٱلْمَوْتَ', glyph: '\ufc4d', at: 9.66 },
+      { text: 'وَٱلْحَيَوٰةَ', glyph: '\ufc4e', at: 10.47 },
+      { text: 'لِيَبْلُوَكُمْ', glyph: '\ufc4f', at: 11.63 },
+      { text: 'أَيُّكُمْ', glyph: '\ufc50', at: 12.96 },
+      { text: 'أَحْسَنُ', glyph: '\ufc51', at: 13.95 },
+      { text: 'عَمَلًا ۚ', glyph: '\ufc52\ufc53', at: 14.69 },
+      { text: 'وَهُوَ', glyph: '\ufc54', at: 15.56 },
+      { text: 'ٱلْعَزِيزُ', glyph: '\ufc55', at: 16.55 },
+      { text: 'ٱلْغَفُورُ', glyph: '\ufc56', at: 17.64 },
     ],
     translation: '[He] who created death and life to test you [as to] which of you is best in deed — and He is the Exalted in Might, the Forgiving.',
   },
 ];
 
 export const DEMO_LENGTH = 20.2;
+
+/**
+ * The page of the Madani mushaf both ayahs are printed on, drawn from its own
+ * font as the studio's default "Madani Mushaf" face draws it: one glyph per
+ * word (`code_v2`), the ayah's end medallion included. See `mushafFonts.ts`.
+ */
+export const DEMO_PAGE = 562;
 
 export const DEMO_WAVEFORM = [
   0.27, 0.05, 0.23, 0.6, 0.8, 0.54, 0.26, 0.38, 0.38, 0.5, 0.37, 0.38, 0.35, 0.57, 0.45, 0.48, 0.45, 0.4, 0.44, 0.42,
