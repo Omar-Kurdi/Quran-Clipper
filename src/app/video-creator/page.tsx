@@ -495,6 +495,7 @@ export default function VideoCreatorPage() {
     cardBorder: true,
     watermarkText: 'Quran-Clipper',
     watermarkPosition: 'bottom-right',
+    watermarkLogo: true,
     fps: 60,
     gpuAccelerated: true
   });
@@ -2412,6 +2413,8 @@ export default function VideoCreatorPage() {
       cardBorder: proj.cardBorder ?? true,
       watermarkText: proj.watermarkText || 'Quran-Clipper',
       watermarkPosition: proj.watermarkPosition || 'bottom-right',
+      // A project from before the mark existed is exported as it was made.
+      watermarkLogo: proj.watermarkLogo ?? false,
       fps: proj.fps || 60,
       gpuAccelerated: proj.gpuAccelerated ?? true
     }));

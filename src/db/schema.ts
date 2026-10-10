@@ -95,6 +95,8 @@ export const projects = pgTable('projects', {
   // Branding
   watermarkText: text('watermark_text').default('Quran-Clipper'),
   watermarkPosition: text('watermark_position').default('bottom-right'),
+  // The Quran-Clipper mark beside it. Off for rows saved before it existed.
+  watermarkLogo: boolean('watermark_logo').notNull().default(false),
   
   // Timestamps JSON array: [{ verseNumber, verseKey, arabicText, translationText, startTime, endTime }]
   versesJson: jsonb('verses_json').notNull().default([]),

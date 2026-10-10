@@ -74,6 +74,25 @@ function keepInsideLoop(media: BackgroundMedia | null): void {
   }
 }
 
+/** The Quran-Clipper mark: a transparent white Q, cut from the channel's watermark image. */
+export const WATERMARK_LOGO = '/landing/logo-96.png';
+let logoImage: HTMLImageElement | null = null;
+
+/**
+ * The mark, once it has loaded; null until then. Asked for on the first frame
+ * that wants it and kept for the page's life, so the preview, which redraws
+ * every frame, shows it a moment later, and an export, which starts long
+ * after, has it from its first frame.
+ */
+function watermarkLogo(): HTMLImageElement | null {
+  if (typeof Image === 'undefined') return null;
+  if (!logoImage) {
+    logoImage = new Image();
+    logoImage.src = WATERMARK_LOGO;
+  }
+  return logoImage.complete && logoImage.naturalWidth > 0 ? logoImage : null;
+}
+
 const mediaSize = (el: BackgroundMedia) =>
   isFrame(el)
     ? { w: el.displayWidth || el.codedWidth, h: el.displayHeight || el.codedHeight }
@@ -145,6 +164,8 @@ export interface VideoCanvasConfig {
   cardBorder: boolean;
   watermarkText: string;
   watermarkPosition: string;
+  /** The Quran-Clipper mark beside the watermark text (`WATERMARK_LOGO`). */
+  watermarkLogo?: boolean;
   fps: number;
   gpuAccelerated: boolean;
 }
@@ -1300,8 +1321,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
       ctx.restore();
 
-      // 6. Watermark
-      if (config.watermarkText) {
+      // 6. Watermark: the text, with the mark before it when chosen.
+      const logo = config.watermarkLogo ? watermarkLogo() : null;
+      if (config.watermarkText || logo) {
         ctx.save();
         ctx.font = `600 20px 'Inter', sans-serif`;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
@@ -1312,7 +1334,18 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         if (config.watermarkPosition === 'bottom-left') { wx = 40; ctx.textAlign = 'left'; }
         else if (config.watermarkPosition === 'top-right') { wy = 50; }
         else if (config.watermarkPosition === 'top-left') { wx = 40; wy = 50; ctx.textAlign = 'left'; }
-        ctx.fillText(config.watermarkText, wx, wy);
+        const textWidth = config.watermarkText ? ctx.measureText(config.watermarkText).width : 0;
+        if (logo) {
+          // Sized to the text and centred on it; ahead of the text whichever
+          // corner it is in, as a name follows its mark.
+          const size = 32, gap = config.watermarkText ? 8 : 0;
+          const lx = ctx.textAlign === 'right' ? wx - textWidth - gap - size : wx;
+          ctx.globalAlpha = 0.85;
+          ctx.drawImage(logo, lx, wy - 7 - size / 2, size, size);
+          ctx.globalAlpha = 1;
+          if (ctx.textAlign === 'left') wx += size + gap;
+        }
+        if (config.watermarkText) ctx.fillText(config.watermarkText, wx, wy);
         ctx.restore();
       }
 

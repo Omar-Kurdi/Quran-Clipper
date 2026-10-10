@@ -705,6 +705,7 @@ export const en = {
 
     watermarkLabel: 'Watermark / Social Handle:',
     watermarkPlaceholder: '@MyDawahChannel',
+    watermarkLogo: 'Show the Quran-Clipper mark beside it',
     watermarkPositionLabel: 'Watermark Position:',
     watermarkPositions: {
       'bottom-right': 'Bottom Right',

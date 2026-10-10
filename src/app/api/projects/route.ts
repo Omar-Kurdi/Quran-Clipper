@@ -203,6 +203,7 @@ export async function POST(req: NextRequest) {
       cardBorder: body.cardBorder ?? true,
       watermarkText: body.watermarkText || 'Quran-Clipper',
       watermarkPosition: body.watermarkPosition || 'bottom-right',
+      watermarkLogo: body.watermarkLogo ?? false,
       versesJson: body.versesJson || [],
       fps: body.fps || 60,
       gpuAccelerated: body.gpuAccelerated ?? true,

@@ -688,6 +688,7 @@ export const ar: Dictionary = {
 
     watermarkLabel: 'العلامة المائية / المعرّف:',
     watermarkPlaceholder: '@MyDawahChannel',
+    watermarkLogo: 'إظهار شعار Quran-Clipper بجانبها',
     watermarkPositionLabel: 'موضع العلامة المائية:',
     watermarkPositions: {
       'bottom-right': 'أسفل اليمين',
