@@ -2236,6 +2236,13 @@ export default function VideoCreatorPage() {
   };
 
   const handleSaveExportRecord = async ({ fileName, fileSizeBytes, durationSec, renderMs }: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => {
+    // Counted on every studio, public included, with nothing to say who
+    // exported: the owner's /stats. Not waited on.
+    fetch('/api/export-count', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ surah: selectedSurah, durationSec: Math.round(durationSec), aspectRatio: canvasConfig.aspectRatio }),
+    }).catch(() => {});
     try {
       const projectId = await saveRenderedProject(renderedProject.current);
       // A public studio keeps no render log; the project is in this browser.

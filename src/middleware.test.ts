@@ -5,8 +5,8 @@ import { middleware } from './middleware';
 /**
  * The gate in front of the whole studio.
  *
- * Everything here goes through the exported `middleware`, because the
- * comparison it relies on is private -- which is the right way round: what
+ * Everything here goes through the exported `middleware` rather than the
+ * comparison it relies on (`tokenMatches`, shared with `/stats`): what
  * matters is what a request gets back, not how the check is spelled.
  *
  * `STUDIO_TOKEN` is read at call time rather than at import, so each test sets
@@ -167,5 +167,36 @@ describe('middleware in public mode', () => {
 
   it('serves the studio itself', () => {
     expect(middleware(request('http://localhost/video-creator')).status).toBe(200);
+  });
+});
+
+describe('the owner’s /stats', () => {
+  let stats: string | undefined;
+  beforeEach(() => { stats = process.env.STATS_TOKEN; process.env.STATS_TOKEN = 'stats-token-value'; process.env.STUDIO_MODE = 'public'; });
+  afterEach(() => {
+    if (stats === undefined) delete process.env.STATS_TOKEN;
+    else process.env.STATS_TOKEN = stats;
+    delete process.env.STUDIO_MODE;
+  });
+
+  it('swaps the right ?token= for a cookie kept to /stats, and takes it off the address', () => {
+    const res = middleware(request('http://localhost/stats?token=stats-token-value'));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toBe('http://localhost/stats');
+    const cookie = res.headers.get('set-cookie') ?? '';
+    expect(cookie).toContain('stats_token=stats-token-value');
+    expect(cookie).toContain('Path=/stats');
+    expect(cookie.toLowerCase()).toContain('httponly');
+  });
+
+  it('hands out nothing for a wrong token, or for the studio’s own', () => {
+    process.env.STUDIO_TOKEN = TOKEN;
+    for (const token of ['wrong', TOKEN]) {
+      expect(middleware(request(`http://localhost/stats?token=${token}`)).headers.get('set-cookie') ?? '').not.toContain('stats_token');
+    }
+  });
+
+  it('lets anyone count an export on a public studio', () => {
+    expect(middleware(request('http://localhost/api/export-count', { method: 'POST' })).status).toBe(200);
   });
 });

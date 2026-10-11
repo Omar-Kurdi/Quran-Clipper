@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { studioMode, closedInPublicMode, publicPage } from '@/lib/studioMode';
+import { STATS_COOKIE, tokenMatches } from '@/lib/exportCounts';
 
 /**
  * A shared secret in front of the whole studio, for the day it is not local.
@@ -22,20 +23,30 @@ import { studioMode, closedInPublicMode, publicPage } from '@/lib/studioMode';
  */
 const COOKIE = 'studio_token';
 
-/** Comparison that does not leak how much of the token was right. */
-function tokenMatches(supplied: string, expected: string): boolean {
-  if (supplied.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < supplied.length; i++) {
-    diff |= supplied.charCodeAt(i) ^ expected.charCodeAt(i);
-  }
-  return diff === 0;
+/** The same address without its `?token=`, setting the cookie that stands in for it from now on. */
+function exchanged(req: NextRequest, name: string, value: string, path: string): NextResponse {
+  const clean = req.nextUrl.clone();
+  clean.searchParams.delete('token');
+  const res = NextResponse.redirect(clean);
+  res.cookies.set(name, value, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: req.nextUrl.protocol === 'https:',
+    path,
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  return res;
 }
 
 export function middleware(req: NextRequest) {
   if (studioMode() === 'public' && closedInPublicMode(req.nextUrl.pathname)) {
     return NextResponse.json({ error: 'Not available on this public studio.' }, { status: 403 });
   }
+
+  // The owner's export counts, `/stats`, open with their own token, the same
+  // way as the studio's below: exchanged for a cookie and taken off the URL.
+  const statsToken = req.nextUrl.pathname === '/stats' ? req.nextUrl.searchParams.get('token') : null;
+  if (statsToken && tokenMatches(statsToken, process.env.STATS_TOKEN)) return exchanged(req, STATS_COOKIE, statsToken, '/stats');
 
   const expected = process.env.STUDIO_TOKEN;
   if (!expected) return NextResponse.next();
@@ -53,19 +64,7 @@ export function middleware(req: NextRequest) {
   // the URL immediately, so the secret is not left in history, in a bookmark,
   // or in the referrer of every outbound link on the page.
   const fromQuery = req.nextUrl.searchParams.get('token');
-  if (fromQuery && tokenMatches(fromQuery, expected)) {
-    const clean = req.nextUrl.clone();
-    clean.searchParams.delete('token');
-    const res = NextResponse.redirect(clean);
-    res.cookies.set(COOKIE, expected, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: req.nextUrl.protocol === 'https:',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30,
-    });
-    return res;
-  }
+  if (fromQuery && tokenMatches(fromQuery, expected)) return exchanged(req, COOKIE, expected, '/');
 
   const bearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   const cookie = req.cookies.get(COOKIE)?.value;

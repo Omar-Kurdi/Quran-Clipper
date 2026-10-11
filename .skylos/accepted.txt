@@ -106,3 +106,13 @@ src/app/api/audio/proxy/route.ts  SKY-U001  1
 # SKY-D248 in this file, or either rule anywhere else, still blocks.
 scripts/prefetch-audio.mjs  SKY-D216  2
 scripts/prefetch-audio.mjs  SKY-D248  1
+
+# The export counter, accepted by the owner on 2026-10-11. Every studio,
+# public included, counts each finished export so the owner's /stats can say
+# how many videos are made -- and a visitor exporting has no credential to
+# show, so a route-local authentication guard would stop the counting it exists
+# for. It stores the surah, the clip's length and its shape, nothing about who
+# sent it; what protects the count is the per-address limit in memory
+# (`createCountLimiter`), not authentication. SKY-D280 on any other route
+# still blocks.
+src/app/api/export-count/route.ts  SKY-D280  1

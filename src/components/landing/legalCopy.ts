@@ -5,7 +5,8 @@ import type { Locale } from '@/lib/i18n';
  * languages. Every statement about data here describes what the code does --
  * keep them true together: an upload's handling is `asr-service/app/audio.py`
  * and `regroup.py`, YouTube's is `youtubeUpload.ts` and `youtubeVault.ts`,
- * the cookies are `LOCALE_COOKIE`, `VAULT_COOKIE` and the middleware's.
+ * the cookies are `LOCALE_COOKIE`, `VAULT_COOKIE` and the middleware's, the
+ * export count is `exportCounts.ts`.
  *
  * Text is plain; `[label](url)` becomes a link, and `{contact}` where to write.
  */
@@ -25,7 +26,7 @@ export interface LegalDocument {
   governs?: string;
 }
 
-export const UPDATED = { en: '10 October 2026', ar: '١٠ أكتوبر ٢٠٢٦' };
+export const UPDATED = { en: '11 October 2026', ar: '١١ أكتوبر ٢٠٢٦' };
 
 const GOOGLE_PRIVACY = 'https://policies.google.com/privacy';
 const YOUTUBE_TERMS = 'https://www.youtube.com/t/terms';
@@ -45,7 +46,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
         heading: 'In short',
         list: [
           'There is no account. We do not ask who you are.',
-          'There are no ads, no analytics and no tracking cookies, and we sell nothing to anyone.',
+          'There are no ads, no analytics and no tracking cookies, and we sell nothing to anyone. We count how many videos are exported, and nothing about who exported them.',
           'Your projects are kept in your own browser, and your videos are made in your browser.',
           'A recording of your own is sent to our server only to time it, and it is not stored.',
           'If you post to YouTube, the studio can upload videos to your channel and do nothing else with your Google account.',
@@ -57,6 +58,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
           'Your own recordings. When you match a recording of your own, the file is sent to our server, where it is decoded and aligned with the Quran text so that the captions follow it. It touches the server’s disk only as a temporary file while it is decoded, and that file is deleted at once. The decoded audio is then held in the server’s memory, so that you can re-split captions without uploading again; the server holds about thirty minutes of audio from all visitors together and drops the oldest first, and anything held is gone when the server restarts. Your recording is never written to permanent storage, shown to anyone else or used for anything but your match.',
           'Background links. If you paste a link to a video on Pexels as a background, our server reads that Pexels page to find the video file to play.',
           'Built-in reciters. When you choose a built-in reciter, our server fetches the recitation from its public audio server and passes it to your browser. It may keep a copy of that public recording to serve it faster; nothing of yours is in it.',
+          'When an export finishes, your browser tells our server that one was made, with its surah, its length and its shape (such as 9:16). We keep that, with the time, to know how many videos the studio makes. Nothing in it identifies you or your device: no IP address, no identifier and no cookie, and the video and its file name are not sent.',
         ],
       },
       {
@@ -76,6 +78,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
           '`qc-lang`: the language you chose. Kept for a year.',
           '`qc_youtube`: only if you stay signed in to YouTube. Your encrypted Google sign-in, sent only to the studio’s YouTube routes. Kept for a year from its last use, or until you disconnect.',
           '`studio_token`: only on a private studio protected by its owner’s password.',
+          '`stats_token`: only for the studio’s owner, to open the export counts.',
         ],
       },
       {
@@ -136,7 +139,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
         heading: 'باختصار',
         list: [
           'لا يوجد حساب، ولا نسألك من أنت.',
-          'لا إعلانات ولا تحليلات ولا ملفات تعريف ارتباط للتتبّع، ولا نبيع شيئًا لأحد.',
+          'لا إعلانات ولا تحليلات ولا ملفات تعريف ارتباط للتتبّع، ولا نبيع شيئًا لأحد. نعدّ الفيديوهات التي تُصدَّر، ولا شيء عمّن صدّرها.',
           'تُحفظ مشاريعك في متصفحك أنت، وتُصنع فيديوهاتك في متصفحك.',
           'لا يُرسل تسجيلك الخاص إلى خادمنا إلا لضبط توقيته، ولا يُخزَّن.',
           'إن نشرت على YouTube، فبإمكان الاستوديو رفع الفيديوهات إلى قناتك، ولا شيء غير ذلك في حسابك على Google.',
@@ -148,6 +151,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
           'تسجيلاتك الخاصة. حين تطابق تسجيلًا من عندك، يُرسل الملف إلى خادمنا، فيُفكّ ترميزه ويُطابَق مع نص القرآن لتتبعه المقاطع. لا يمسّ قرص الخادم إلا ملفًا مؤقتًا أثناء فكّ الترميز، ويُحذف فورًا. ثم يُبقى الصوت في ذاكرة الخادم لتتمكن من إعادة تقسيم المقاطع دون رفعه مجددًا؛ ويحتفظ الخادم بنحو ثلاثين دقيقة من صوت جميع الزوار معًا ويحذف الأقدم أولًا، ويزول كل ذلك عند إعادة تشغيل الخادم. لا يُكتب تسجيلك أبدًا في تخزين دائم، ولا يُعرض على أحد، ولا يُستعمل لغير مطابقتك.',
           'روابط الخلفيات. إن ألصقت رابط فيديو من Pexels خلفيةً، يقرأ خادمنا تلك الصفحة ليجد ملف الفيديو.',
           'القرّاء المدمجون. حين تختار قارئًا مدمجًا، يجلب خادمنا التلاوة من خادم الصوت العام الخاص بها ويمرّرها إلى متصفحك، وقد يحتفظ بنسخة من ذلك التسجيل العام ليقدّمه أسرع؛ ولا شيء منك فيه.',
+          'حين يكتمل تصدير، يُعلم متصفحك خادمنا بأن فيديو قد صُنع، مع سورته ومدته وشكله (مثل 9:16). نحتفظ بذلك مع الوقت لنعرف كم فيديو يصنع الاستوديو. لا شيء فيه يدل عليك أو على جهازك: لا عنوان IP ولا مُعرِّف ولا ملف تعريف ارتباط، ولا يُرسل الفيديو ولا اسم ملفه.',
         ],
       },
       {
@@ -167,6 +171,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
           '`qc-lang`: اللغة التي اخترتها. تبقى سنة.',
           '`qc_youtube`: فقط إن بقيت متصلًا بـ YouTube. تسجيل دخولك إلى Google مشفّرًا، ولا يُرسل إلا إلى مسارات YouTube في الاستوديو. يبقى سنة من آخر استعمال، أو حتى تقطع الاتصال.',
           '`studio_token`: فقط في استوديو خاص يحميه صاحبه بكلمة سر.',
+          '`stats_token`: لصاحب الاستوديو فقط، لفتح أعداد التصدير.',
         ],
       },
       {
