@@ -350,7 +350,142 @@ function alignerRestarts(aligned: MatchSegment[], verseKey: string): number[] {
         && after.startWordIndex <= before.endWordIndex);
     if (wentBack) at.push(after.startTime);
   }
+  // Inside one phrase too: the aligner can hear a going-back without starting a new phrase for it.
+  const heard = heardWords(aligned, verseKey);
+  for (let i = 1; i < heard.length; i++) if (heard[i].index <= heard[i - 1].index) at.push(heard[i].start / 1000);
   return at;
+}
+
+/** Every word the aligner heard of `verseKey`, in time order, as published words are: 1-based, milliseconds. */
+function heardWords(aligned: MatchSegment[], verseKey: string): RecitedWord[] {
+  const seen = new Set<number>();
+  return aligned
+    .filter(segment => segment.verseKey === verseKey)
+    .flatMap(segment => segment.wordTimings ?? [])
+    .map(word => ({ index: word.index + 1, start: Math.round(word.start * 1000), end: Math.round(word.end * 1000) }))
+    .filter(word => !seen.has(word.start) && seen.add(word.start))
+    .sort((a, b) => a.start - b.start);
+}
+
+/** The run of `words` from position `at` that reads forward a word at a time. */
+function forwardRun(words: RecitedWord[], at: number): RecitedWord[] {
+  let end = at + 1;
+  while (end < words.length && words[end].index === words[end - 1].index + 1) end++;
+  return words.slice(at, end);
+}
+
+/** How far the export's words may sit from the aligner's in the pass it lists: the aligner reads a word 0.1-0.2s late. */
+const MAX_PASS_DISAGREEMENT_MS = 1000;
+/** Least time a pass left out takes a word, on average, to be one the reciter said. */
+const MIN_PASS_WORD_MS = 150;
+/** How far past its ayah's published bounds a pass may run: the aligner's edges are a word's breadth out. */
+const PASS_BOUND_SLACK_MS = 300;
+/** Shortest a pass's first word can be and be said: the aligner's slivers are 20ms. */
+const MIN_OPENING_WORD_MS = 50;
+/** Most of a pass left out that may measure as quiet. */
+const MAX_PASS_QUIET = 0.75;
+
+/** Whether the reciter was silent for `MIN_GAP_SEC` just before `at`, in seconds. */
+function silentBefore(quiet: [number, number][], at: number): boolean {
+  return quiet.some(([from, to]) => to - from >= MIN_GAP_SEC && from < at && at - to <= 0.3);
+}
+
+/** How much of `from`-`to`, in seconds, measures as quiet. */
+function quietWithin(quiet: [number, number][], from: number, to: number): number {
+  return quiet.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
+}
+
+/**
+ * The published timing with any pass over repeated words it leaves out, from
+ * the aligner's own times.
+ *
+ * QUL lists some of Khalid al-Jalil's repeats once: in 12:46 he says
+ * يَأْكُلُهُنَّ سَبْعٌ عِجَافٌ, stops, and says it again, and the export times
+ * only the second; in 12:47 فَذَرُوهُ فِى سُنۢبُلِهِۦٓ likewise. With no going-back
+ * in the published words there was no restart to start a caption at, and the
+ * word before was lit through the whole first pass. The aligner hears both.
+ *
+ * Only where it is plain: each pass two words or more (a reciter does not go
+ * back over a single word), the reciter silent for `MIN_GAP_SEC` just before
+ * going back, the words' first word listed once, the pass it lists where the
+ * aligner heard it, each pass opening on a word said, the pass left out said
+ * in full (not squeezed, not in silence), inside the ayah's published bounds,
+ * and no published word starting inside it.
+ */
+function withHeardRepeats(
+  timing: ReciterVerseTiming, aligned: MatchSegment[], verseKey: string, quiet: [number, number][]
+): ReciterVerseTiming {
+  const heard = heardWords(aligned, verseKey);
+  const listed = (timing.segments ?? []).map(([index, start, end]) => ({ index, start, end }));
+  const found = heard.map((_, i) => passLeftOut(heard, i, { ...timing, listed }, quiet)).filter(pass => pass !== null);
+  if (!found.length) return timing;
+  // The word listed before a pass left out was stretched over it, and the
+  // silence before it; it ends where the aligner heard it end.
+  const until = (start: number, end: number) =>
+    Math.min(end, ...found.filter(({ from }) => from > start && end > from).map(({ stop }) => Math.max(stop, start + 1)));
+  const listedSegments = (timing.segments ?? []).map(([index, start, end, ...rest]) => [index, start, until(start, end), ...rest]);
+  const added = found.flatMap(({ words }) => words.map(word => [word.index, word.start, word.end]));
+  return { ...timing, segments: [...listedSegments, ...added].sort((a, b) => a[1] - b[1]) };
+}
+
+/**
+ * The pass over repeated words the export left out, where the aligner went
+ * back at heard word `i`: its words, where it begins, and where the word
+ * before it was heard to end. Null where there is none, or it is not plain.
+ */
+/**
+ * The two passes over the same words where the aligner went back at heard word
+ * `i`, the same length each, and where the earlier one starts; null where it
+ * did not go back there, or not plainly.
+ */
+function heardPasses(heard: RecitedWord[], i: number, quiet: [number, number][]): { passes: RecitedWord[][]; firstAt: number } | null {
+  if (i === 0 || heard[i].index > heard[i - 1].index) return null;
+  const again = forwardRun(heard, i);
+  const firstAt = heard.slice(0, i).map(word => word.index).lastIndexOf(again[0].index);
+  const before = firstAt < 0 ? [] : forwardRun(heard, firstAt);
+  const span = Math.min(again.length, before.length);
+  // The earlier pass runs straight up to the going-back: where the aligner has
+  // it go back inside it as well, it has the words muddled (Khalid al-Jalil's
+  // 2:243 lists ٱلنَّاسِ لَا يَشْكُرُونَ as words 26 and 25), and the pass is not plain.
+  if (span < 2 || before.length !== i - firstAt || !silentBefore(quiet, again[0].start / 1000)) return null;
+  const passes = [before.slice(0, span), again.slice(0, span)];
+  // Each pass opens on a word said, not on one the aligner gave 20ms: Al-Shatri's
+  // 2:99 and Ghamdi's 2:76 were a word heard once, with a sliver of it made a pass.
+  return passes.some(pass => pass[0].end - pass[0].start < MIN_OPENING_WORD_MS) ? null : { passes, firstAt };
+}
+
+function passLeftOut(
+  heard: RecitedWord[], i: number, published: { from: number; to: number; listed: RecitedWord[] }, quiet: [number, number][]
+): { words: RecitedWord[]; from: number; stop: number } | null {
+  const { listed } = published;
+  const found = heardPasses(heard, i, quiet);
+  if (!found) return null;
+  const { passes, firstAt } = found;
+  const opening = listed.filter(word => word.index === passes[1][0].index);
+  if (opening.length !== 1) return null;
+  const near = (pass: RecitedWord[]) => Math.abs(opening[0].start - pass[0].start);
+  const second = near(passes[0]) <= near(passes[1]);
+  const missing = passes[second ? 1 : 0];
+  // The pass it does list must be the one the aligner heard: where the
+  // export's words are off altogether, as Khalid al-Jalil's 12:57 is (its
+  // word 2 runs 1005-1013s over both his repeats), it cannot say which pass
+  // it left out, and a pass added made a caption of two words over the whole ayah.
+  const agrees = passes[second ? 0 : 1].every(word =>
+    listed.some(other => other.index === word.index && Math.abs(other.start - word.start) <= MAX_PASS_DISAGREEMENT_MS));
+  const from = missing[0].start;
+  const to = missing[missing.length - 1].end;
+  // Said, not squeezed in: the aligner put 2:36's فِى ٱلْأَرْضِ twice into 0.7s, 20ms a word.
+  // Nor in silence: Al-Tunaiji's 12:106 had one 89% inside the pause before the
+  // ayah; Khalid al-Jalil's real ones are at most 63% quiet.
+  const said = missing.reduce((sum, word) => sum + word.end - word.start, 0) / missing.length >= MIN_PASS_WORD_MS
+    && quietWithin(quiet, from / 1000, to / 1000) <= MAX_PASS_QUIET * (to - from) / 1000;
+  // Inside the ayah as published: a pass outside it is the aligner reading a
+  // neighbour's words as this one's (Khalid al-Jalil's 9:81, placed over 9:82),
+  // or a repeat past the listed end that a caption would put over the next ayah.
+  const inside = from >= published.from - PASS_BOUND_SLACK_MS && to <= published.to + PASS_BOUND_SLACK_MS;
+  if (!agrees || !said || !inside || listed.some(word => word.start >= from && word.start < to)) return null;
+  const wordBefore = heard[(second ? i : firstAt) - 1];
+  return { words: missing, from, stop: wordBefore ? Math.min(wordBefore.end, from) : from };
 }
 
 /** The position in `words` a cut lands on, or -1 when no boundary between those two words is near it. */
@@ -414,7 +549,8 @@ function planAyah(
 ): AyahPlan {
   const { verseKey, wordCount, words: text = [] } = ayah;
   const offset = drifts && aligned.length ? heardOffset(aligned, verseKey, published) : 0;
-  const timing = offset ? openingAsHeard(shifted(published, offset), published, aligned, verseKey) : published;
+  const moved = offset ? openingAsHeard(shifted(published, offset), published, aligned, verseKey) : published;
+  const timing = withHeardRepeats(moved, aligned, verseKey, quiet);
   const heard = aligned.length ? alignerRestarts(aligned, verseKey) : null;
   const words = recitedWords(timing, wordCount, heard ? atMs => heard.some(at => Math.abs(at * 1000 - atMs) <= CUT_TOLERANCE_SEC * 1000) : undefined);
   const restarts = new Set<number>();
