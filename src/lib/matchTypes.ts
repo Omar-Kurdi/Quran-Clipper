@@ -66,4 +66,6 @@ export type MatchResult = {
   regroupId?: string;
   /** What the reciter said before the passage -- isti'adha, basmala -- where it was heard; see `openings`. */
   openings?: HeardOpening[];
+  /** Where the reciter is not making sound, measured by the aligner: see `inTheGaps`. */
+  quiet?: [number, number][];
 };

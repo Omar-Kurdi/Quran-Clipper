@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MatchSegment } from './matchTypes';
-import { heardOffset, phrasesFromPublished, publishedAyahBounds, soundTimings, timedFromPublished } from './publishedPhrases';
+import { heardOffset, inTheGaps, phrasesFromPublished, publishedAyahBounds, soundTimings, timedFromPublished } from './publishedPhrases';
 
 /** Muaiqly's 12:3 and 12:6 as QUL publishes them -- 12:6 goes back over words 8-10. */
 const published = new Map([
@@ -54,9 +54,15 @@ describe('phrasesFromPublished', () => {
   it('starts again where the reciter went back, and cuts where the aligner heard a pause at a stop sign', () => {
     const ayah6 = phrasesFromPublished(passage, published, aligned)!.filter(caption => caption.verseKey === '12:6');
     expect(ayah6.map(words)).toEqual([['12:6', 0, 9], ['12:6', 7, 20], ['12:6', 21, 24]]);
-    expect(ayah6.map(caption => [caption.startTime, caption.endTime])).toEqual([[100.04, 115.09], [115.09, 137.19], [137.19, 143.81]]);
+    // A pause where the aligner heard it (136.4s), not at the published word
+    // after it (137.19s): published words inside an ayah can run a second or
+    // more early (Al-Muaiqly's 66:9), and a caption cut there changed while the
+    // words before it were still being said.
+    expect(ayah6.map(caption => [caption.startTime, caption.endTime])).toEqual([[100.04, 115.09], [115.09, 136.4], [136.4, 143.81]]);
     expect(ayah6[1].notes).toBe('restarted phrase');
-    // The repeat carries the times of its own reading, not the first one's.
+    // The repeat carries the times of its own reading, not the first one's. A
+    // going back stays at the published word: the aligner's times for those
+    // came out a second early on Khalid al-Jalil's 12:87.
     expect(ayah6[1].wordTimings?.[0]).toEqual({ index: 7, start: 115.09, end: 116.72 });
   });
 
@@ -68,17 +74,59 @@ describe('phrasesFromPublished', () => {
     expect(phrasesFromPublished(marked, published, near)!.map(words)).toEqual([['12:3', 0, 4], ['12:3', 5, 15]]);
   });
 
-  it('cuts nowhere the mushaf has no stop sign, however near the published boundary the aligner heard quiet', () => {
+});
+
+describe('phrasesFromPublished at a breath with no stop sign', () => {
+  it('cuts where the aligner heard a breath with no stop sign, at the pause (since 2026-10-11)', () => {
+    // From 2026-10-08 to 10-11 no caption ended without a stop sign; the user
+    // heard Khalid al-Jalil breathe inside 12:86-88 with the caption carrying on.
+    const near = [seg('12:3', 0, 4, 35.6, 39.3), seg('12:3', 5, 15, 39.3, 58)];
+    const breath: [number, number][] = [[39.1, 39.5]];
+    expect(phrasesFromPublished(passage.slice(0, 1), published, near, { quiet: breath })!.map(words)).toEqual([['12:3', 0, 4], ['12:3', 5, 15]]);
+    // No gap in the recording there, no break: the aligner also cuts mid-phrase (Al-Shuraim's 17:97).
+    expect(phrasesFromPublished(passage.slice(0, 1), published, near, { quiet: [] })!.map(words)).toEqual([['12:3', 0, 15]]);
+    // Nor where the quiet stretch holds a word the aligner placed in it (Al-Shuraim's تَجِدَ).
+    const inWord = [{ ...seg('12:3', 0, 4, 35.6, 39.3), wordTimings: [{ index: 4, start: 39.15, end: 39.45 }] }, seg('12:3', 5, 15, 39.3, 58)];
+    expect(phrasesFromPublished(passage.slice(0, 1), published, inWord, { quiet: breath })!.map(words)).toEqual([['12:3', 0, 15]]);
+  });
+
+  it('never cuts before hamzat al-waṣl opening on a doubled letter (28:50, مِمَّنِ ٱتَّبَعَ)', () => {
+    const text = ['وَمَنْ', 'أَضَلُّ', 'مِمَّنِ', 'ٱتَّبَعَ', 'هَوَىٰهُ'];
+    const timing = { from: 0, to: 5000, segments: [[1, 0, 1000], [2, 1000, 2000], [3, 2000, 3000], [4, 3000, 4000], [5, 4000, 5000]] };
+    const heard = [seg('28:50', 0, 2, 0, 3), seg('28:50', 3, 4, 3, 5)];
+    expect(phrasesFromPublished([{ verseKey: '28:50', wordCount: 5, words: text }], new Map([['28:50', timing]]), heard, { quiet: [[2.8, 3.3]] })!.map(words)).toEqual([['28:50', 0, 4]]);
+  });
+
+  it('never cuts where a nūn or mīm is held into the next word (23:59, 17:97)', () => {
+    const text = ['وَٱلَّذِينَ', 'هُم', 'بِرَبِّهِمْ', 'لَا', 'يُشْرِكُونَ'];
+    const timing = { from: 0, to: 5000, segments: [[1, 0, 1000], [2, 1000, 2000], [3, 2000, 3000], [4, 3000, 4000], [5, 4000, 5000]] };
+    const heard = [seg('23:59', 0, 1, 0, 2), seg('23:59', 2, 4, 2, 5)];
+    expect(phrasesFromPublished([{ verseKey: '23:59', wordCount: 5, words: text }], new Map([['23:59', timing]]), heard)!.map(words)).toEqual([['23:59', 0, 4]]);
+    const text97 = ['وَمَن', 'يُضْلِلْ', 'فَلَن', 'تَجِدَ', 'لَهُمْ'];
+    const heard97 = [seg('17:97', 0, 2, 0, 3), seg('17:97', 3, 4, 3, 5)];
+    expect(phrasesFromPublished([{ verseKey: '17:97', wordCount: 5, words: text97 }], new Map([['17:97', timing]]), heard97)!.map(words)).toEqual([['17:97', 0, 4]]);
+  });
+
+  it('never cuts before a word whose ٱل is absorbed into a doubled letter, however quiet the closure', () => {
     // Was a cut before 2026-10-08. Al-Muaiqly's 1:7 was split after وَلَا, on
     // the published boundary, at a held consonant the aligner took for a pause.
-    const near = [seg('12:3', 0, 4, 35.6, 39.3), seg('12:3', 5, 15, 39.3, 58)];
-    expect(phrasesFromPublished(passage.slice(0, 1), published, near)!.map(words)).toEqual([['12:3', 0, 15]]);
     const fatihah7 = new Map([['1:7', { from: 45100, to: 60300, segments: [[1, 45280, 46250], [2, 46250, 47260], [3, 47260, 48280], [4, 48280, 49360], [5, 49360, 50070], [6, 50070, 51250], [7, 51250, 52330], [8, 52330, 52760], [9, 52760, 60300]] }]]);
     const text = ['صِرَٰطَ', 'ٱلَّذِينَ', 'أَنْعَمْتَ', 'عَلَيْهِمْ', 'غَيْرِ', 'ٱلْمَغْضُوبِ', 'عَلَيْهِمْ', 'وَلَا', 'ٱلضَّآلِّينَ'];
     const heard = [seg('1:7', 0, 7, 44.92, 52.82), seg('1:7', 8, 8, 52.82, 62.59)];
     expect(phrasesFromPublished([{ verseKey: '1:7', wordCount: 9, words: text }], fatihah7, heard)!.map(words)).toEqual([['1:7', 0, 8]]);
   });
+});
 
+describe('phrasesFromPublished where the published words drift', () => {
+  it("cuts where the aligner heard a pause even when the published word sits 3s off it (Al-Muaiqly's 66:9)", () => {
+    // 11 words, a stop sign after word 7; the published words run early, word 8 listed at 308.8s.
+    const text = ['يَـٰٓأَيُّهَا', 'ٱلنَّبِىُّ', 'جَـٰهِدِ', 'ٱلْكُفَّارَ', 'وَٱلْمُنَـٰفِقِينَ', 'وَٱغْلُظْ', 'عَلَيْهِمْ ۚ', 'وَمَأْوَىٰهُمْ', 'جَهَنَّمُ ۖ', 'وَبِئْسَ', 'ٱلْمَصِيرُ'];
+    const starts = [299.9, 301.8, 303.2, 304.1, 305.0, 306.2, 308.0, 308.8, 311.8, 313.2, 315.5];
+    const timing = { from: 299900, to: 320000, segments: starts.map((at, k) => [k + 1, at * 1000, (starts[k + 1] ?? 320) * 1000]) };
+    const heard = [seg('66:9', 0, 6, 299.9, 311.9), seg('66:9', 7, 10, 311.9, 320)];
+    const captions = phrasesFromPublished([{ verseKey: '66:9', wordCount: 11, words: text }], new Map([['66:9', timing]]), heard)!;
+    expect(captions.map(c => [c.startWordIndex, c.endWordIndex, c.startTime])).toEqual([[0, 6, 299.9], [7, 10, 311.9]]);
+  });
 });
 
 describe('phrasesFromPublished with incomplete or doubled timings', () => {
@@ -205,6 +253,21 @@ describe('a restart the export lists scrambled', () => {
       [39, 40], [37, 41], [38, 42], [40, 43], [41, 44], [42, 45], [43, 46]];
     const captions = phrasesFromPublished([{ verseKey: '2:164', wordCount: 43 }], new Map([['2:164', timed(pairs)]]), [])!;
     expect(runs(captions)).toEqual([[1, 40, 0], [37, 43, 40]]);
+  });
+
+  it("drops a 'repeat' whose words start closer together than anyone recites (Khalid al-Jalil's 25:16)", () => {
+    // Words 2-4 listed again within 161ms at the end of يَشَآءُونَ, then his real restart from word 1.
+    const segments = [[1, 247725, 248322], [2, 248164, 249118], [3, 249277, 249437], [4, 249277, 251985],
+      [2, 252064, 252304], [3, 252225, 252383], [4, 252225, 253020], [1, 253245, 253418], [2, 253805, 254135],
+      [3, 254434, 254454], [4, 254925, 256604], [5, 257085, 257878]];
+    const captions = phrasesFromPublished([{ verseKey: '25:16', wordCount: 5 }], new Map([['25:16', { from: 247725, to: 258000, segments }]]), [])!;
+    expect(runs(captions)).toEqual([[1, 4, 247.725], [1, 5, 253.245]]);
+  });
+
+  it('keeps a quick real repeat, two words started 200ms apart (Al-Shatri\u2019s 9:38)', () => {
+    const pairs: [number, number][] = [[1, 0], [2, 1], [3, 1.5], [2, 2.5], [3, 2.7], [4, 3.5]];
+    const captions = phrasesFromPublished([{ verseKey: '9:38', wordCount: 4 }], new Map([['9:38', timed(pairs)]]), [])!;
+    expect(runs(captions)).toEqual([[1, 3, 0], [2, 4, 2.5]]);
   });
 
   it('drops a stray went-back word that is no restart, giving its time to the word before', () => {
@@ -391,5 +454,53 @@ describe('a measured stretch the reciter read on into and went back over', () =>
     const bounds = publishedAyahBounds(passage, qul, regions)!;
     expect(bounds.get('82:17')).toEqual({ start: 87.27, end: 100 });
     expect(bounds.get('82:19')).toEqual({ start: 107.49, end: 146 });
+  });
+});
+
+describe('inTheGaps', () => {
+  // Khalid al-Jalil's 12:87, as measured (2026-10-11): the voice stops at 1554.08s and 1559.24s.
+  const quiet: [number, number][] = [[1548.52, 1548.92], [1554.14, 1554.48], [1555.22, 1555.32], [1559.28, 1559.74]];
+  /** A caption whose first word is heard from `first`. */
+  const opens = (caption: MatchSegment, first: number): MatchSegment => ({ ...caption, wordTimings: [{ index: caption.startWordIndex!, start: first, end: first + 0.5 }] });
+  const captions = [opens(seg('12:87', 0, 5, 1542.1, 1548.7), 1542.3), opens(seg('12:87', 6, 10, 1548.7, 1554.6), 1549.1),
+    opens(seg('12:87', 6, 10, 1554.6, 1558.7), 1554.6), opens(seg('12:87', 11, 19, 1558.7, 1571.2), 1559.8)];
+
+  it('changes caption in the gap where the voice stops, not at a word edge half a second off', () => {
+    const times = inTheGaps(captions, quiet).map(c => [c.startTime, c.endTime]);
+    expect(times).toEqual([[1542.1, 1548.72], [1548.72, 1554.31], [1554.31, 1559.51], [1559.51, 1571.2]]);
+  });
+
+  it('takes the nearest gap, not a closure inside the next word that is as long (12:88)', () => {
+    const at88 = [seg('12:88', 9, 16, 1579.4, 1587.11), { ...seg('12:88', 17, 20, 1587.11, 1591.1), wordTimings: [{ index: 17, start: 1587.34, end: 1588.26 }] }];
+    const gaps: [number, number][] = [[1586.28, 1586.66], [1586.9, 1587.3], [1587.78, 1588.18]];
+    expect(inTheGaps(at88, gaps).map(c => c.startTime)).toEqual([1579.4, 1587.1]);
+  });
+
+  it('ignores a dip too short to be the voice stopping, and leaves a change with no gap near alone', () => {
+    const closures: [number, number][] = [[1555.22, 1555.32], [1561.0, 1561.4]];
+    expect(inTheGaps(captions, closures)).toEqual(captions);
+    expect(inTheGaps(captions, undefined)).toBe(captions);
+  });
+
+  it("never into a hum that runs on into the next caption's first word (17:96, إِنَّهُۥ)", () => {
+    const at96 = [seg('17:96', 0, 7, 1075.8, 1080.3), { ...seg('17:96', 8, 12, 1080.3, 1086.4), wordTimings: [{ index: 8, start: 1080.55, end: 1081.4 }] }];
+    expect(inTheGaps(at96, [[1080.6, 1081.2]])).toEqual(at96);
+  });
+
+  it("never into a closure inside the caption's own last word (17:97, ٱلْمُهْتَدِ)", () => {
+    const at97 = [{ ...seg('17:97', 0, 4, 1086, 1090.4), wordTimings: [{ index: 4, start: 1089.1, end: 1090.34 }] }, seg('17:97', 5, 9, 1090.4, 1093)];
+    expect(inTheGaps(at97, [[1089.4, 1089.8]])).toEqual(at97);
+  });
+
+  it("reads where the aligner heard the next word start too, when the caption's own time is late (36:56)", () => {
+    const at56 = [seg('36:56', 0, 6, 515, 520.9), { ...seg('36:56', 7, 7, 520.9, 523), wordTimings: [{ index: 7, start: 521.6, end: 522.6 }] }];
+    const heard = [{ ...seg('36:56', 7, 7, 520.9, 523), wordTimings: [{ index: 7, start: 520.95, end: 522.5 }] }];
+    expect(inTheGaps(at56, [[521.0, 521.4]], heard)).toEqual(at56);
+  });
+
+  it('never moves a change so far that a caption is left almost empty', () => {
+    // The gap's middle (11.35s) would leave the second caption 0.25s.
+    const short = [seg('1:1', 0, 1, 10, 11), seg('1:1', 2, 3, 11, 11.6)];
+    expect(inTheGaps(short, [[11.2, 11.5]])).toEqual(short);
   });
 });

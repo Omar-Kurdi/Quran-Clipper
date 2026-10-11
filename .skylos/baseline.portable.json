@@ -154,7 +154,7 @@
   "SKY-L007:{ROOT}/src/hooks/useAudioPlayback.ts:69",
   "SKY-L007:{ROOT}/src/lib/backgroundLibrary.ts:82",
   "SKY-L007:{ROOT}/src/lib/draftStore.ts:185",
-  "SKY-L007:{ROOT}/src/lib/forcedAligner.ts:176",
+  "SKY-L007:{ROOT}/src/lib/forcedAligner.ts:178",
   "SKY-L007:{ROOT}/src/lib/geminiMatcher.ts:247",
   "SKY-L007:{ROOT}/src/lib/idb.ts:91",
   "SKY-L007:{ROOT}/src/lib/offlineExport.ts:119",

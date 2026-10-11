@@ -25,6 +25,8 @@ import common
 FIT = 0.35
 MOVED = ("found", "twice")
 STATUS, MOVE, LOOSE = "status", "moved", "loose"
+#: A start decided by ear (decisions.json): final, not taken back to where the aligner heard the ayah begin.
+BY_EAR = "byEar"
 
 
 # -- Where each ayah starts -----------------------------------------------------------------------------------------
@@ -49,6 +51,7 @@ def starts(who: str, *, cascade: bool = True) -> dict[str, dict]:
     decided = common.decisions(who)
     for key, (start, _why) in decided.get("confirmed", {}).items():
         moved_to(held, key, start)
+        held[key][BY_EAR] = True
     for key in decided.get("rejected", {}):
         held.pop(key, None)
     return with_aligned_openings(who, held)
@@ -67,7 +70,9 @@ def with_aligned_openings(who: str, held: dict[str, dict]) -> dict[str, dict]:
     """A moved start taken back to the aligner's first word where it heard the ayah begin earlier: the phoneme onset
     lands a syllable late on a long opening (Abdul Basit's 6:160)."""
     for key, record in list(held.items()):
-        heard = aligned_opening(who, key) if record.get(STATUS) in MOVED else None
+        # Not one decided by ear: where an ayah repeats a neighbour's opening, the aligner's first word can be the
+        # neighbour's (Jalil's 68:31, after 68:29 said three times, both opening قَالُوا۟).
+        heard = aligned_opening(who, key) if record.get(STATUS) in MOVED and not record.get(BY_EAR) else None
         if heard is not None and heard < record["start"]:
             held[key] = {**record, "start": heard}
     return held
@@ -136,9 +141,16 @@ def relabelled(blocks: list | None, segments: list[list]) -> tuple[list[list], i
     return out, moved, unclear
 
 
+def heard_from(reading: dict | None, start: int) -> list[list]:
+    """The reading's words that end after the ayah starts, in time order. Those that end before it are a neighbour
+    misread as the ayah -- a repeat of the ayah before that opens the same way (Jalil's 56:90 and 68:31) -- and are
+    left out rather than piled onto its start."""
+    return sorted((w for w in reading["words"] if w[2] * 1000 > start), key=lambda word: word[1]) if reading else []
+
+
 def aligner_words(reading: dict | None, start: int, end: int) -> list[list] | None:
     """The aligner's words for an ayah, when its reading is whole: clamped to start no earlier than the ayah does."""
-    words = sorted(reading["words"], key=lambda word: word[1]) if reading else []
+    words = heard_from(reading, start)
     whole = bool(words) and (reading.get("coverage") or 0) >= 0.95 and {w[0] for w in words} == set(range(reading["wordCount"]))
     if not whole or words[-1][1] * 1000 > end + 1000:
         return None
@@ -231,7 +243,9 @@ def main(reciters: list[str]) -> None:
         store[who] = build(who)
         print(who, len(store[who]["ayahs"]), "ayahs corrected", flush=True)
     corrections.write_text(json.dumps(store, ensure_ascii=False, separators=(",", ":")))
-    measured = regions(reciters)
+    # Every reciter with measured stretches, not only those rebuilt here: a region is read by the aligner over its
+    # own recording and does not depend on the corrections (Yasser's 69:28-29, on quran.com's timings).
+    measured = regions(sorted(set(reciters) | {path.parent.name for path in common.WORK.glob("*/regions.json")}))
     if measured:
         (common.LIB / "measuredRegions.json").write_text(json.dumps(measured, ensure_ascii=False, separators=(",", ":")))
 

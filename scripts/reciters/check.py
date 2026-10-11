@@ -8,7 +8,8 @@ sends them; then the sidecar's own reading of the passage with an ayah either si
 A passage is flagged on:
   MISSING / ORDER  an ayah absent, or ayahs out of order
   SHORT            a caption under 0.3s
-  BREAK            a caption ending inside an ayah where no stop sign is and the reciter did not go back
+  BREAK            a caption ending inside an ayah where no stop sign is, the reciter did not go back, and the
+                   reading heard no gap (>= 0.2s quiet within 0.3s) -- a breath with no sign is a break (2026-10-11)
   LATE             an ayah's caption starting over 0.6s after its first word is heard
   OVERLAP          an ayah's caption starting before the previous ayah's last word is even heard starting
   NOALIGN          the studio left the aligner's reading out: no pauses, restarts or drift correction
@@ -56,27 +57,30 @@ def match(who: str, span: tuple[int, int, int], passage: dict) -> dict:
         return {"error": f"{error.code} {error.reason}"}
 
 
-def heard(who: str, surah: int, start: int, end: int) -> tuple[dict, dict]:
-    """Where the sidecar, reading the passage with an ayah either side, heard each ayah's first and last word."""
+def heard(who: str, surah: int, start: int, end: int) -> tuple[dict, dict, list]:
+    """Where the sidecar, reading the passage with an ayah either side, heard each ayah's first and last word, and
+    where it heard no sound."""
     first, last = max(1, start - 1), min(AYAHS[surah - 1], end + 1)
     around = common.load(who, surah, first, last)
     low = 0.0 if first == 1 else around["verses"][0]["startTime"] - 1.0
-    words = common.align(around, low, around["verses"][-1]["endTime"] + 1.0).get(WORDS, [])
+    reading = common.align(around, low, around["verses"][-1]["endTime"] + 1.0)
+    words = reading.get(WORDS, [])
     first_word = {}
     for word in words:
         first_word.setdefault(word["verse_key"], word["start"])
-    return first_word, {word["verse_key"]: word["start"] for word in words}
+    return first_word, {word["verse_key"]: word["start"] for word in words}, reading.get("quiet", [])
 
 
 def shown(caption: dict) -> list[int]:
     return [i for i, w in enumerate(caption.get(WORDS) or []) if not w.get(EXCLUDED)]
 
 
-def breaks(captions: list[dict], text: dict) -> list[str]:
+def breaks(captions: list[dict], text: dict, quiet: list) -> list[str]:
     found = []
     for before, after in ((b, a) for b, a in zip(captions, captions[1:]) if b[KEY] == a[KEY]):
         word = text[before[KEY]][shown(before)[-1]] if shown(before) else ""
-        if not STOP.search(word) and not shown(after)[:1] <= shown(before)[-1:]:
+        gap = any(b - a >= 0.2 and a - 0.3 <= after["startTime"] <= b + 0.3 for a, b in quiet)
+        if not STOP.search(word) and not gap and not shown(after)[:1] <= shown(before)[-1:]:
             found.append(f"BREAK {before[KEY]} after «{word}»")
     return found
 
@@ -107,10 +111,12 @@ def unshown(captions: list[dict], text: dict) -> list[str]:
     return [f"UNSHOWN {k} words {sorted(words)}" for k, words in left.items() if words]
 
 
-def flags(captions: list[dict], text: dict, keys: list[str], spoken: tuple[dict, dict]) -> list[str]:
+def flags(captions: list[dict], text: dict, keys: list[str], spoken: tuple[dict, dict, list]) -> list[str]:
     order = list(dict.fromkeys(c[KEY] for c in captions))
     short = [f"SHORT {c[KEY]} {c['startTime']}" for c in captions if c["endTime"] - c["startTime"] < 0.3]
-    return ordering(order, keys) + short + unshown(captions, text) + breaks(captions, text) + timing_flags(order, captions, *spoken)
+    first_word, last_word, quiet = spoken
+    return (ordering(order, keys) + short + unshown(captions, text) + breaks(captions, text, quiet)
+            + timing_flags(order, captions, first_word, last_word))
 
 
 def check(who: str, surah: int, start: int, end: int) -> dict:

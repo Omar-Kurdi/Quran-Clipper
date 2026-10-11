@@ -91,6 +91,8 @@ type AlignResponse = {
   regroupId?: string;
   /** What the reciter said before the passage, heard by the phoneme model; absent from older sidecars. */
   openings?: HeardOpening[];
+  /** Where the reciter is not making sound, in seconds of the recording; absent from older sidecars. */
+  quiet?: [number, number][];
 };
 
 /**
@@ -462,6 +464,7 @@ async function matchFromAlignment(
       .filter(Boolean).join(' ') || undefined,
     notes: alignmentNotes(result, rangeLabel, restarts),
     regroupId: result.regroupId,
-    openings: result.openings
+    openings: result.openings,
+    quiet: result.quiet
   };
 }

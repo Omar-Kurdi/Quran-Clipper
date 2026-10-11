@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseExport, withCorrections } from './qulRecitations';
+import corrections from './qulCorrections.json';
 
 /** The two files of a QUL surah-by-surah export, as its exporter writes them. */
 const surahs = {
@@ -59,5 +60,40 @@ describe('withCorrections', () => {
   it('leaves an export alone whose recording is not the one they were measured on', () => {
     const fixes = { audio: { '1': 'https://audio.example/another/001.mp3' }, ayahs: { '1:1': retimed } };
     expect(withCorrections(parseExport(surahs, segments), fixes)?.timings.get('1:1')?.from).toBe(361);
+  });
+});
+
+describe("the corrections to Khalid al-Jalil's Yusuf (reported 2026-10-10)", () => {
+  const ayahs: Record<string, { from: number; segments: number[][] }> = corrections.jalil.ayahs;
+
+  it('starts 12:86 where قَالَ is heard, not 8s in at إِلَى ٱللَّهِ', () => {
+    expect(ayahs['12:86'].from).toBeLessThan(1513000);
+  });
+
+  it('lists 12:86 in the order recited: a first pass to ٱللَّهِ, the whole ayah, then وَأَعْلَمُ ... again', () => {
+    const order = ayahs['12:86'].segments.map(([word]) => word);
+    expect(order).toEqual([1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 8, 9, 10, 11, 12, 13]);
+  });
+
+  it('puts إِنَّ ٱللَّهَ of 12:88 after the pause that ends عَلَيْنَآ', () => {
+    const inna = ayahs['12:88'].segments.find(([word]) => word === 18)!;
+    expect(inna[1]).toBeGreaterThan(1587000);
+  });
+});
+
+describe("the correction to Abdul Basit's 3:92 (found 2026-10-11)", () => {
+  it('starts it where لَن تَنَالُوا۟ is heard, not 2.8s in at ٱلْبِرَّ', () => {
+    const ayahs: Record<string, { from: number }> = corrections.basit.ayahs;
+    expect(ayahs['3:92'].from).toBeLessThan(2385000);
+  });
+});
+
+describe('the corrections file', () => {
+  it('names the recording of every surah it corrects, without which its corrections are silently not used', () => {
+    // A merge once left Jalil's 68 and 101 out of `audio`: their corrected starts never loaded.
+    for (const fixes of Object.values(corrections as Record<string, { audio: Record<string, string>; ayahs: Record<string, unknown> }>)) {
+      const surahs = new Set(Object.keys(fixes.ayahs).map(key => key.split(':')[0]));
+      for (const surah of surahs) expect(fixes.audio[surah], `surah ${surah}`).toBeTruthy();
+    }
   });
 });

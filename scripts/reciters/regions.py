@@ -73,6 +73,40 @@ def split(segments: list[dict], surah: int, at: dict) -> None:
                             "confidence": 1, "wordTimings": []})
 
 
+def merge(segments: list[dict], at: dict) -> None:
+    """Two captions joined where listening found one pass the aligner cut in two (decisions.json, "regions"): the
+    caption starting at `at` goes into the one before it, which then shows the words heard, `words` [first, last].
+    The aligner's word labels there were the thing that was wrong, so the joined caption carries none."""
+    i = next(k for k, c in enumerate(segments) if abs(c["startTime"] - at["at"]) < 0.05)
+    first, last = at["words"]
+    segments[i - 1] = {**segments[i - 1], "endTime": segments[i]["endTime"], "startWordIndex": first,
+                       "endWordIndex": last, "wordTimings": []}
+    del segments[i]
+
+
+def by_ear_captions(surah: int, heard: list[list]) -> list[dict]:
+    """A region's captions as listening found them, where the aligner cannot read the stretch at all (decisions.json,
+    "regions", `byEar`: [verse key, start s, end s, first word, last word] each). Jalil's 101:6-7, said twice: given
+    101:8's text the aligner reads the repeat as 101:8, which opens alike; without it, it loses 101:7."""
+    return [{"verseKey": key, "surahNumber": surah, "verseNumber": int(key.split(":")[1]), "startTime": start,
+             "endTime": end, "startWordIndex": first, "endWordIndex": last, "confidence": 1, "wordTimings": [],
+             **({"notes": "restarted phrase"} if i and any(k == key for k, *_ in heard[:i]) else {})}
+            for i, (key, start, end, first, last) in enumerate(heard)]
+
+
+def decided_captions(who: str, reading: dict, surah: int, found: tuple[int, int]) -> list[dict]:
+    """The region's captions: the aligner's, with the corrections decided by ear applied -- or captions by ear alone."""
+    decided = common.decisions(who).get("regions", {}).get(f"{surah}:{found[0]}-{found[1]}", [])
+    by_ear = [d["byEar"] for d in decided if "byEar" in d]
+    segments = by_ear_captions(surah, by_ear[0]) if by_ear else captions(reading, surah, *found)
+    for at in decided:
+        if "words" in at:
+            merge(segments, at)
+        elif "inside" in at:
+            split(segments, surah, at)
+    return segments
+
+
 def measure(who: str, item: str) -> None:
     key, *rest = item.split("@")
     given = dict(part.split("=") for part in rest)
@@ -82,9 +116,7 @@ def measure(who: str, item: str) -> None:
     if not found:
         print(key, "no going back across ayahs heard", flush=True)
         return
-    segments = captions(reading, surah, *found)
-    for at in common.decisions(who).get("regions", {}).get(f"{surah}:{found[0]}-{found[1]}", []):
-        split(segments, surah, at)
+    segments = decided_captions(who, reading, surah, found)
     held = common.read_json(who, "regions.json") or {}
     region = {"ayahs": list(found), "audioUrl": common.upstream(passage), "segments": segments}
     held[str(surah)] = [r for r in held.get(str(surah), []) if r["ayahs"] != region["ayahs"]] + [region]

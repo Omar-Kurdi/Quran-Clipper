@@ -469,6 +469,14 @@ async def align_endpoint(
         "referenceCoverage": coverage,
         "decodeAgreement": agreement,
         "warning": warning,
+        # Where the reciter is not making sound, at the shallowest drop the
+        # pause rules ever use: for the studio to put a caption's change of
+        # text in the gap where the voice stops, rather than at a word edge the
+        # alignment smears by up to half a second (Khalid al-Jalil's 12:87).
+        "quiet": [
+            [round(begin + window_offset, 3), round(end + window_offset, 3)]
+            for begin, end in align.quiet_spans(pcm, drop=align.MIN_QUIET_DROP_DB)
+        ],
     }
     # Held so Fewer / More can re-cut this match without reading the audio
     # again -- see `regroup`. Only an id goes back; the studio asks with it.
