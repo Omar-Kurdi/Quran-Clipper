@@ -71,7 +71,7 @@ import { groundTruthClip, saveGroundTruth } from '@/lib/groundTruthSave';
 import { useAudioPlayback } from '@/hooks/useAudioPlayback';
 import { useTransportKeys } from '@/hooks/useTransportKeys';
 import { useVideoExport } from '@/hooks/useVideoExport';
-import { buildProjectPayload, projectTitle } from '@/lib/projectPayload';
+import { buildProjectPayload, projectTitle, timelinePassage } from '@/lib/projectPayload';
 import {
   buildDraft, clearDraft, forgetRecoverableDraft, recoverableDraft, replaceRecoverableDraft, serverRecoverableDraft, subscribeToDraft
 } from '@/lib/draftStore';
@@ -1749,25 +1749,32 @@ export default function VideoCreatorPage() {
   };
 
   /** The project as it stands, in the shape a save sends. */
-  const currentProjectPayload = () => buildProjectPayload({
-    surahNumber: selectedSurah,
-    surahNameArabic,
-    surahNameEnglish,
-    ayahStart,
-    ayahEnd,
-    reciterId: selectedReciter,
-    reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || 'Abdul Rahman Al-Sudais',
-    audioUrl,
-    audioDurationSeconds: audioDuration,
-    audioFileName: customAudioFile ? uploadOriginalName : '',
-    audioKey,
-    trimWindow,
-    verses,
-    // An uploaded background is a `blob:` url that dies with this tab, so
-    // what goes to the row is the library's id for the file instead. A
-    // pasted link is already durable and passes through untouched.
-    config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
-  });
+  const currentProjectPayload = () => {
+    // The ayahs the timeline holds, not the ones first asked for: a project
+    // trimmed down kept the old range in its title and passage.
+    const held = timelinePassage(verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd });
+    return buildProjectPayload({
+      surahNumber: selectedSurah,
+      surahNameArabic,
+      surahNameEnglish,
+      ayahStart: held.start,
+      ayahEnd: held.end,
+      reciterId: selectedReciter,
+      reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || 'Abdul Rahman Al-Sudais',
+      audioUrl,
+      // How long the clip is, for the Projects list -- the whole chapter's
+      // recording for a built-in reciter, which is not what anyone means by it.
+      audioDurationSeconds: exportRange.span,
+      audioFileName: customAudioFile ? uploadOriginalName : '',
+      audioKey,
+      trimWindow,
+      verses,
+      // An uploaded background is a `blob:` url that dies with this tab, so
+      // what goes to the row is the library's id for the file instead. A
+      // pasted link is already durable and passes through untouched.
+      config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
+    });
+  };
 
   /**
    * The audio goes to the browser before the row goes to the server, so a
@@ -2050,17 +2057,10 @@ export default function VideoCreatorPage() {
    * timeline spanning more than one surah has no single range to state, so that
    * falls back to the request.
    */
-  const clipPassage = useMemo(() => {
-    const parsed = verses
-      .map(verse => (verse.verseKey || '').split(':').map(Number))
-      .filter(([surah, ayah]) => Number.isFinite(surah) && Number.isFinite(ayah));
-    const surahs = new Set(parsed.map(([surah]) => surah));
-    if (parsed.length === 0 || surahs.size !== 1) {
-      return { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd };
-    }
-    const ayahs = parsed.map(([, ayah]) => ayah);
-    return { surahNumber: parsed[0][0], start: Math.min(...ayahs), end: Math.max(...ayahs) };
-  }, [verses, selectedSurah, ayahStart, ayahEnd]);
+  const clipPassage = useMemo(
+    () => timelinePassage(verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd }),
+    [verses, selectedSurah, ayahStart, ayahEnd]
+  );
 
   /**
    * What the caption offered after a render says about the clip.

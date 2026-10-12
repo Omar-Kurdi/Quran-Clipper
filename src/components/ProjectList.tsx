@@ -3,8 +3,7 @@
 import React from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { useT, useLocale } from './LocaleProvider';
-import type { ProjectRow } from '@/lib/projectSearch';
-import { formatTime } from '@/lib/verseEdits';
+import { projectLength, type ProjectRow } from '@/lib/projectSearch';
 
 const RATIO_BOX: Record<string, string> = {
   '9:16': 'w-7 h-12',
@@ -13,7 +12,7 @@ const RATIO_BOX: Record<string, string> = {
   '16:9': 'w-14 h-8'
 };
 
-const GRID = 'grid grid-cols-[3.5rem_minmax(0,1fr)_auto] md:grid-cols-[3.5rem_minmax(0,2fr)_minmax(0,1.5fr)_4.5rem_3.5rem_minmax(0,1.2fr)_8rem_auto] gap-x-4 items-center';
+const GRID = 'grid grid-cols-[3.5rem_minmax(0,1fr)_auto] md:grid-cols-[3.5rem_minmax(0,2fr)_minmax(0,1.5fr)_4.5rem_3.5rem_minmax(0,1.2fr)_8rem_7.5rem] gap-x-4 items-center';
 
 /** The column headings, from `md` up; below that each row says what it is on its own. */
 export const ProjectListHeader: React.FC = () => {
@@ -46,7 +45,10 @@ export const ProjectListRow: React.FC<{
 }> = ({ row, rendered, deleting, onOpen, onDelete }) => {
   const t = useT();
   const { locale } = useLocale();
-  const seconds = Number(row.audioDuration);
+  const length = projectLength(row.audioDuration);
+  const passage = t.projects.passage(row.surahNameEnglish, row.surahNumber, row.ayahStart, row.ayahEnd);
+  const audio = row.audioFileName ? t.projects.yourRecording(row.audioFileName) : row.reciterName;
+  const shapes = rendered.join(', ');
   return (
     <div role="row" className={`${GRID} py-3 border-t border-slate-800 text-[13px]`}>
       <span role="cell" className="flex items-center justify-center">
@@ -58,16 +60,16 @@ export const ProjectListRow: React.FC<{
         </span>
       </span>
       <span role="cell" className="min-w-0">
-        <span className="block font-semibold text-slate-100 truncate">{t.projects.passage(row.surahNameEnglish, row.surahNumber, row.ayahStart, row.ayahEnd)}</span>
-        <span className="block text-xs text-slate-400 truncate">{row.title}</span>
+        <span className="block font-semibold text-slate-100 truncate" title={passage}>{passage}</span>
+        <span className="block text-xs text-slate-400 truncate" title={row.title}>{row.title}</span>
       </span>
-      <span role="cell" className="hidden md:block min-w-0 truncate text-slate-300">
-        {row.audioFileName ? t.projects.yourRecording(row.audioFileName) : row.reciterName}
+      <span role="cell" className="hidden md:block min-w-0 truncate text-slate-300" title={audio}>
+        {audio}
       </span>
-      <span role="cell" className="hidden md:block font-mono text-slate-300" dir="ltr">{seconds > 0 ? formatTime(seconds) : '—'}</span>
+      <span role="cell" className="hidden md:block font-mono text-slate-300" dir="ltr">{length ?? '—'}</span>
       <span role="cell" className="hidden md:block font-mono text-slate-300" dir="ltr">{row.aspectRatio}</span>
-      <span role="cell" className="hidden md:block min-w-0 truncate text-slate-300">
-        {rendered.length ? rendered.join(', ') : <span className="text-slate-500">{t.projects.notRendered}</span>}
+      <span role="cell" className="hidden md:block min-w-0 truncate text-slate-300" title={shapes || undefined}>
+        {rendered.length ? shapes : <span className="text-slate-500">{t.projects.notRendered}</span>}
       </span>
       <span role="cell" className="hidden md:block text-slate-300">{new Date(row.updatedAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}</span>
       <span role="cell" className="flex items-center gap-1.5 justify-end">

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchesProject, renderedShapes, type ProjectRow } from './projectSearch';
+import { matchesProject, projectLength, renderedShapes, type ProjectRow } from './projectSearch';
 
 const row: ProjectRow = {
   id: 'p1', title: 'Friday reminder', surahNumber: 18, surahNameArabic: 'الكهف', surahNameEnglish: 'Al-Kahf',
@@ -29,5 +29,21 @@ describe('renderedShapes', () => {
     ];
     expect(renderedShapes(exports, 'p1')).toEqual(['9:16', '1:1']);
     expect(renderedShapes(exports, 'p3')).toEqual([]);
+  });
+});
+
+describe('projectLength', () => {
+  it('reads the length as it is saved, `2:05` text, which as a number was nothing and showed none', () => {
+    expect(projectLength('2:05')).toBe('2:05');
+    expect(projectLength('12:40')).toBe('12:40');
+  });
+
+  it('reads rows saved as seconds, and shows none for an empty length', () => {
+    expect(projectLength(125)).toBe('2:05');
+    expect(projectLength('125')).toBe('2:05');
+    expect(projectLength('0:00')).toBeNull();
+    expect(projectLength(0)).toBeNull();
+    expect(projectLength(null)).toBeNull();
+    expect(projectLength('')).toBeNull();
   });
 });

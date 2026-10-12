@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildProjectPayload, formatStoredDuration, projectTitle } from './projectPayload';
+import { buildProjectPayload, formatStoredDuration, projectTitle, timelinePassage } from './projectPayload';
 import type { VerseData } from './quranData';
 
 const verses: VerseData[] = [
@@ -103,5 +103,20 @@ describe('buildProjectPayload', () => {
     expect(payload.title).toBe('Al-Fatihah (1:1-7) Clip');
     expect(payload.surahNumber).toBe(1);
     expect(payload.versesJson).toEqual(verses);
+  });
+});
+
+describe('timelinePassage', () => {
+  const asked = { surahNumber: 27, start: 59, end: 64 };
+
+  it('names the ayahs left on the timeline once it is trimmed down, not the ones first loaded', () => {
+    const left = [{ verseKey: '27:60' }, { verseKey: '27:61' }, { verseKey: '27:62' }];
+    expect(timelinePassage(left, asked)).toEqual({ surahNumber: 27, start: 60, end: 62 });
+    expect(projectTitle('An-Naml', 27, 60, 62)).toBe('An-Naml (27:60-62) Clip');
+  });
+
+  it('keeps the request where the timeline has no ayah, or ayahs of two surahs', () => {
+    expect(timelinePassage([{ verseKey: 'basmala' }], asked)).toBe(asked);
+    expect(timelinePassage([{ verseKey: '2:286' }, { verseKey: '3:1' }], asked)).toBe(asked);
   });
 });

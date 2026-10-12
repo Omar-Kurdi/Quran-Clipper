@@ -46,6 +46,23 @@ export function projectTitle(surahNameEnglish: string, surahNumber: number, ayah
   return `${surahNameEnglish} (${surahNumber}:${ayahStart}-${ayahEnd}) Clip`;
 }
 
+/**
+ * The passage a timeline holds: one surah's lowest to highest ayah on it.
+ * `requested` -- what was asked for -- where it holds none, or spans surahs and
+ * so has no single range to state. Trimming drops ayahs without rewriting the
+ * request, so naming a clip from the request described ayahs it no longer had.
+ */
+export function timelinePassage(
+  verses: { verseKey?: string }[], requested: { surahNumber: number; start: number; end: number }
+): { surahNumber: number; start: number; end: number } {
+  const parsed = verses
+    .map(verse => (verse.verseKey || '').split(':').map(Number))
+    .filter(([surah, ayah]) => Number.isFinite(surah) && Number.isFinite(ayah));
+  if (parsed.length === 0 || new Set(parsed.map(([surah]) => surah)).size !== 1) return requested;
+  const ayahs = parsed.map(([, ayah]) => ayah);
+  return { surahNumber: parsed[0][0], start: Math.min(...ayahs), end: Math.max(...ayahs) };
+}
+
 export function buildProjectPayload(input: ProjectPayloadInput): Record<string, unknown> {
   const { config } = input;
   // Config first, named fields after: a styling knob must never be able to

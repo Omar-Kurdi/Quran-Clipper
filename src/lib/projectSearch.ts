@@ -1,3 +1,5 @@
+import { formatStoredDuration } from './projectPayload';
+
 /** What the Projects list reads off a saved project row. */
 export interface ProjectRow {
   id: string;
@@ -12,6 +14,19 @@ export interface ProjectRow {
   audioDuration?: string | number | null;
   aspectRatio?: string;
   updatedAt: string;
+}
+
+/**
+ * A saved clip's length as the Projects list shows it. Saved as `2:05` text,
+ * which read as a number was never one, so every row showed none; rows from
+ * before that are numbers of seconds.
+ */
+export function projectLength(stored: ProjectRow['audioDuration']): string | null {
+  if (typeof stored === 'number') return stored > 0 ? formatStoredDuration(stored) : null;
+  const text = typeof stored === 'string' ? stored.trim() : '';
+  if (/^\d+:\d{2}$/.test(text)) return /^0+:00$/.test(text) ? null : text;
+  const seconds = Number(text);
+  return text && seconds > 0 ? formatStoredDuration(seconds) : null;
 }
 
 /**
