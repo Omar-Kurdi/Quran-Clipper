@@ -75,7 +75,7 @@ export const en = {
   },
 
   header: {
-    wordmark: 'Quran Clipper',
+    wordmark: 'Quran-Clipper',
     pageTitle: (surah: string, number: number, start: number, end: number) =>
       `Quran Clipper Studio — ${surah} ${number}:${start}–${end}`,
     undo: 'Undo',
@@ -239,6 +239,8 @@ export const en = {
     reciterTimedTitle: 'Ayah boundaries for this reciter come from the recording',
     reciterStyles: {
       Murattal: 'Murattal',
+      Mujawwad: 'Mujawwad',
+      Muallim: 'Muallim (teaching)',
       Emotional: 'Emotional'
     },
 
@@ -277,8 +279,6 @@ export const en = {
     trimRangeFailed: 'Could not trim this file. Try the Trim audio dialog, which reports what went wrong.',
     alignLostAyahs: (count: number, keys: string) =>
       `Ayahs loaded with their published timings. Reading the recording was tried too, but it lost ${count} ayah(s) (${keys}), so the loaded timings were kept instead \u2014 use \u201cAlign to audio\u201d if you want the phrase-level split anyway.`,
-    measuredTimed: (captions: number) =>
-      `Timed from this studio\u2019s own checked measurement of this recording \u2014 ${captions} caption(s), split where the reciter pauses or repeats.`,
     publishedTimed: (captions: number, source: string, split: 'pauses' | 'skipped' | 'unheard') =>
       split === 'pauses'
         ? `Timed from ${source}\u2019s published word timings \u2014 ${captions} caption(s), split only where the reciter pauses or repeats.`
@@ -292,29 +292,6 @@ export const en = {
     passageTooLong: (minutes: number, limit: number) =>
       `That passage is about ${minutes} minutes long and the aligner handles up to ${limit}. Choose fewer ayahs.`,
     alignReciter: 'Align to audio',
-    segments: 'Reciter timings',
-    segmentsTitle:
-      'Time this passage from the reciter’s own published word timings. Measured for this recording rather than worked out from the audio, and it gives every word a start.',
-    segmentsLoading: 'Reading the reciter’s published timings…',
-    qulSegments: 'QUL timings',
-    qulSegmentsTitle:
-      'Time this passage from QUL’s word timings for this reciter, and play QUL’s recording of it: the timings were measured on that recording, not on the one loaded now.',
-    qulSegmentsUnavailable: (reciter: string) =>
-      `No QUL timings for this reciter on this machine. Download its “with segments” surah-by-surah recitation from qul.tarteel.ai as JSON and unzip it into data/qul/recitations/${reciter}/.`,
-    qulSegmentsLoading: 'Reading QUL’s timings…',
-    qulSegmentsNone: 'QUL’s export has no timings for this passage. The other ways of timing it are unaffected.',
-    qulSegmentsDone: (ayahs: number, timed: number, bounds: number) =>
-      `Timed ${ayahs} ayah${ayahs === 1 ? '' : 's'} from QUL — ${timed} with word-by-word times${
-        bounds > 0 ? `, ${bounds} with the ayah’s bounds only` : ''
-      }. Now playing QUL’s recording, which those timings were measured on.`,
-    segmentsUnavailable:
-      'This reciter has no published timings — their recording is not one of the measured ones. Use Align to audio instead.',
-    segmentsNone:
-      'No published timings came back for this passage. The other two ways of timing it are unaffected.',
-    segmentsDone: (ayahs: number, timed: number, bounds: number) =>
-      bounds > 0
-        ? `Timed ${ayahs} ayah${ayahs === 1 ? '' : 's'} from the reciter’s own recording — ${timed} with word-by-word times, ${bounds} with the ayah’s bounds only.`
-        : `Timed ${ayahs} ayah${ayahs === 1 ? '' : 's'} from the reciter’s own recording, every word included.`,
     alignReciterTitle:
       'Read the reciter\u2019s own recording and place every word, instead of estimating where the ayahs fall.',
     needUpload: 'Choose a recording before matching it.',
@@ -949,7 +926,7 @@ export const en = {
     schedulePast: 'That time has already passed. Pick one in the future.',
     scheduleInvalid: 'Pick a date and time for it to go public.',
     help:
-      'Signs in to Google in a pop-up and uploads this file to your channel with the caption below. Quran Clipper keeps nothing, and the sign-in ends when you close this tab. Until this studio\'s Google app is verified, YouTube keeps uploads private whatever you choose.',
+      'Signs in to Google in a pop-up and uploads this file to your channel with the caption below. Quran-Clipper keeps nothing, and the sign-in ends when you close this tab. Until this studio\'s Google app is verified, YouTube keeps uploads private whatever you choose.',
     privateUntilVerified: 'Private until this studio\'s Google app is verified. Why?',
     signingIn: 'Waiting for Google sign-in in the pop-up…',
     cancel: 'Cancel',
@@ -977,7 +954,7 @@ export const en = {
     sendTo: 'Send it to',
     computer: 'This computer',
     computerHelp: 'Download the video, with or without its caption',
-    uploadsHelp: 'Uploads to your channel. You sign in to Google, never to Quran Clipper',
+    uploadsHelp: 'Uploads to your channel. You sign in to Google, never to Quran-Clipper',
     openHelp: 'Opens the upload page with the caption copied',
     youtubePage: 'Or open YouTube\'s upload page instead',
     share: 'Another app on this device',

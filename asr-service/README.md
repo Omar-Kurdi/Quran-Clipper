@@ -135,7 +135,7 @@ NeMo is a heavy install but it is not GPU-only; `ASR_DEVICE` handles the rest.
 | `REGROUP_KEPT_SECONDS` | `1800` | Audio kept for `/regroup`, in seconds across all held matches (about 115 MB). |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allow-list. |
 | `ALIGN_ALLOWED_AUDIO_HOSTS` | the two recitation CDNs | Hosts `/align` will fetch a recording from. An entry starting with a dot matches any subdomain. |
-| `ALIGN_AUDIO_PROXY_ORIGIN` | `http://localhost:3000` | The studio's own `/api/audio/proxy`, which the app points this service at instead of the CDN. Allowed over plain http, since it is this deployment's own address; ffmpeg cannot prefer IPv4 and both CDNs publish AAAA records, so a machine with no IPv6 route fails on a direct fetch and succeeds through the app's Node fetch. |
+| `ALIGN_AUDIO_PROXY_ORIGIN` | `http://localhost:3000` | The studio itself, which serves a built-in reciter's passage at `/api/audio/ayahs`. Allowed over plain http, since it is this deployment's own address; ffmpeg cannot prefer IPv4 and both CDNs publish AAAA records, so a machine with no IPv6 route fails on a direct fetch and succeeds through the app's Node fetch. |
 | `LOG_LEVEL` | `INFO` | Python log level. |
 
 ---

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# Adds the recitations the Quran Foundation publishes one file per ayah that
+# the studio does not offer yet (./start.sh says when there are any), and
+# downloads them. Excluded reciters (src/lib/qfReciters.json) are never added.
+#
+# Usage:
+#   ./add_new_reciters            list the new ones, ask, then add them all
+#   ./add_new_reciters 13 14      add only these Quran Foundation recitation ids
+#   ./add_new_reciters --yes      add them all without asking
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")"
+
+FOUND="$(node scripts/qf-reciters.mjs check)"
+echo "  $FOUND"
+case "$FOUND" in
+  [0-9]*" new on the Quran Foundation"*) ;;
+  *) exit 0 ;;
+esac
+
+IDS=(); YES=""
+for arg in "$@"; do
+  case "$arg" in
+    --yes|-y) YES=1 ;;
+    *) IDS+=("$arg") ;;
+  esac
+done
+if [[ -z "$YES" && ${#IDS[@]} -eq 0 && -t 0 ]]; then
+  read -r -p "  Add and download them all (a gigabyte or two each)? [y/N] " answer
+  [[ "${answer,,}" == y* ]] || exit 0
+fi
+
+node scripts/qf-reciters.mjs add "${IDS[@]}"

@@ -640,80 +640,37 @@ earned its share of the provider matrix. Their reasoning is preserved in the git
 
 ## Built-in reciters
 
-A built-in reciter is timed from published word timings -- quran.com's for Al-Sudais, Ad-Dossary
-and Ash-Shuraim, QUL's for the rest -- on the recording they were measured on
-(`chooseReciterTiming`; which source fits which file was audited by ear, `timingPairs.json`).
-The aligner still runs, but only to say where the reciter paused and went back
-(`publishedPhrases`): an ayah breaks inside only after a stop sign where a pause was heard, and a
-going-back in the published data is kept only where the aligner heard one.
+Since 2026-10-15 a built-in reciter is the Quran Foundation's recording of each ayah on its own:
+every recitation it publishes one file per ayah, bar Mishari al-Afasy, who is left out on purpose
+(`src/lib/qfReciters.json`). A passage is played as its ayah files laid end to end
+(`qfRecitations`, `/api/audio/ayahs`), so an ayah starts where its file starts -- the bounds are
+the files' own lengths, counted in MP3 frames so the stitched file lands every ayah to the sample.
+Nothing is measured or estimated to find an ayah, which is why this replaced the chapter
+recordings timed from quran.com's and QUL's published timings: those were right most of the time,
+but every reciter had ayahs where they were not (QUL's for Khalid al-Jalil, whose recordings are
+taraweeh prayers, went wrong wherever he repeated), and finding them took listening to all 6,236
+starts of each reciter. The Foundation's chapter-recording timings, checked on 2026-10-15, are the
+same data as QUL's, so they would have changed nothing.
 
-**What the aligner is given.** The studio pads the window ten seconds or more either side of
-the passage. Given only the passage's text, the aligner had nothing to put that audio on: on
-short ayahs it placed a few words of the passage and warned that the text did not match, and a
-quarter of all reciter passages lost their pauses. It is now given the text of every ayah whose
-recitation lies in the window (`publishedPassage`), and only the passage is kept.
+Inside an ayah, the Foundation's word timings give each word its time (some recitations send
+them as text, and some leave a word out -- every word is still shown), and the aligner runs only to
+say where the reciter paused or went back (`publishedPhrases`): an ayah breaks inside at a stop
+sign only where the reciter actually stopped -- at least 0.3s of measured quiet, or 0.6s between the
+two words for a recording too echoing to measure (Al-Tablawi ran on through 32:14's ۖ with 0.25s) --
+or at a breath with the same real quiet, and a repeat the timings list once gets the pass the aligner
+heard (`withHeardRepeats`). A repeat can be any length, one word included (Al-Shatri's 10:12
+فَلَمَّا ... فَلَمَّا): there is no minimum, and none is to be added. The aligner is given exactly the passage's
+ayahs, since the recording holds no others. Its reading counts when it heard most of the published
+words within 2.5s of their times (`agreesWithPublished`).
 
-**When its reading counts.** Its own warning measures the whole padded window; what decides is
-whether it heard most of the passage's published words, at one of their readings, within 2.5s of
-their published times (`agreesWithPublished`).
+The files are downloaded by `./install.sh` (`scripts/qf-reciters.mjs download`, about 2 GB a
+reciter) into `~/.local/share/quran-clipper/qf-audio/` -- outside the checkout, because `next build`
+reads everything inside it and ran out of memory on 25 GB of recordings there -- and a surah not on disk is fetched the first time it is loaded. `./start.sh` reports any
+recitation the Foundation publishes per ayah that the studio does not offer, and
+`./add_new_reciters` adds it.
 
-**Repairs to the published timings,** each listened to with the phoneme model before it was made:
-
-- An ayah listed more than a second inside the one before starts where that one ends, or at
-  its own first word if later (Ghamdi's 55:2 was listed from 0s inside 55:1; 21 ayahs across
-  every export).
-- An ayah whose words mostly lie outside its own bounds keeps its bounds and loses its words
-  (quran.com's Shuraim 12:75, whose passage loaded at 0s and was aligned against 12:1-6).
-- Only an export known to drift is moved to where the aligner heard it (Al-Rifai's QUL timings,
-  up to 1.6s). Elsewhere the aligner can be a word out through a whole ayah, and moving by it put
-  Ad-Dossary's 2:35, which quran.com times right, 0.94s late.
-- Where the timings are past believing, the load still places the passage at their bounds, so
-  the aligner reads the right audio.
-
-**Re-timed exports.** Al-Rifai's 16 and Khalid al-Jalil's 103-104 are this studio's own
-measurement (`measuredRecitations.json`). Other ayahs of seven QUL exports are corrected in
-`qulCorrections.json` -- Al-Jalil 397, Al-Muaiqly 137, Abdul Basit 19, Al-Shatri 20, Al-Ghamdi 5,
-Al-Tunaiji 6, Al-Sudais 2 (an ayah counts when its start or end moved, or when it ends earlier because
-the next one did).
-Al-Jalil's recordings are taraweeh prayers, and his export goes wrong where he repeats: an ayah's
-opening folded into the words of the ayah before (74:9 five seconds late, 2:123 nine, 44:39
-twenty-two), his repeat of an ayah's end counted as the next one's start (3:31 five seconds
-early), and after a going-back every word labelled one on (57:4, 2:164). Every one of his 6,236
-ayah starts was checked with the phoneme model; where it could not confirm one, or the export's
-stretched words hid the boundary, the aligner read the ayah and the one before together and a
-start moved only where the phoneme model heard the opening there too. In the other exports, every
-ayah starting more than 1.5s after the one before ends was checked for its opening in the gap, and
-every ayah start of Abdul Basit, Al-Shatri, Al-Ghamdi, Al-Tunaiji and Al-Muaiqly, and of the surahs
-Al-Sudais and Ad-Dossary are timed from QUL, with the phoneme model as Al-Jalil's were (a second opinion from the aligner, run on 340 of their unconfirmed starts,
-moved one that the gap check had already found, and was stopped there). Each of the 160-odd moves
-was listened to; six that the shared words of neighbouring ayahs had fooled were undone -- three of
-them 101:2 (مَا ٱلْقَارِعَةُ heard in 101:1's own ٱلْقَارِعَةُ) and Al-Shatri's 69:2 the same.
-The random check below then flagged Al-Shatri's 6:80, listed 23s late inside his repeat of its
-middle: its opening was heard in audio the export gives to no ayah, but too loosely for any tool
-to move it (a long first syllable blurs the match). The start checks of every export were searched
-for the same and nine more found, Abdul Basit's and Al-Shatri's, 5-23s late. All ten were listened
-to and are in `decisions.json`, and `listen.py gaps` now lists every such opening.
-Al-Muaiqly's export ends each ayah where its last word's syllables end and gives the pause to no
-ayah, and 136 times it ended one while he was still holding its final madd: 1:5's نَسْتَعِينُ
-went off the screen 1.5s before he finished it, Ha-Mim's حمٓ (42:1, 46:1) three seconds before.
-`ends.py` follows the recording's loudness on from every listed end, and an ayah ends where the
-voice stops, short of the next one (one more in Al-Tunaiji's, 69:2; none in the other exports). A
-sample, the longest among them, was listened to.
-Every ayah whose last word label repeats was compared word by word with the
-aligner, block by block: a block that fits one word on is relabelled, and an ayah that fits
-neither way, or whose start moved, takes the aligner's words inside its confirmed bounds.
-
-Per-ayah timings cannot show a reciter reading on into the next ayahs and going back over them, and
-Al-Jalil does: 82:17-19 and then all three again, 44:43-49 twice over, and four more stretches
-(23:99-100, 24:39-40, 43:67-68, 44:38-39). Each was read by the aligner as one stretch, every caption
-listened to, and kept in `measuredRegions.json`; a passage holding any of their ayahs takes those
-captions, in the order recited.
-
-**How it was checked.** Random passages of every reciter through the real load and match,
-flagged against an independent alignment, each flag referred to the phoneme model; the flags it
-left were the checker's own (an independent aligner mistaking one refrain of Ar-Rahman for
-another). The tools that did all this are in `scripts/reciters/`, with the order to run them in its
-README, and every decision made by ear in its `decisions.json`.
+The chapter-recording era -- per-ayah corrections, measured stretches, the timing-pair audit and
+the tools that made them -- is in the git history before this change.
 
 ---
 

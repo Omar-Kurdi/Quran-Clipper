@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
       surahNameEnglish: body.surahNameEnglish || 'Al-Fatihah',
       ayahStart: body.ayahStart || 1,
       ayahEnd: body.ayahEnd || 7,
-      reciterId: body.reciterId || 'sudais',
+      reciterId: body.reciterId || SAMPLE_PROJECTS[0].reciterId,
       reciterName: body.reciterName || 'Abdul Rahman Al-Sudais',
       // The defaults above are the studio's sample, so is its recording.
       audioUrl: body.audioUrl || SAMPLE_PROJECTS[0].audioUrl,

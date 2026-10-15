@@ -26,7 +26,7 @@ export interface LegalDocument {
   governs?: string;
 }
 
-export const UPDATED = { en: '11 October 2026', ar: '١١ أكتوبر ٢٠٢٦' };
+export const UPDATED = { en: '15 October 2026', ar: '١٥ أكتوبر ٢٠٢٦' };
 
 const GOOGLE_PRIVACY = 'https://policies.google.com/privacy';
 const YOUTUBE_TERMS = 'https://www.youtube.com/t/terms';
@@ -57,7 +57,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
         paragraphs: [
           'Your own recordings. When you match a recording of your own, the file is sent to our server, where it is decoded and aligned with the Quran text so that the captions follow it. It touches the server’s disk only as a temporary file while it is decoded, and that file is deleted at once. The decoded audio is then held in the server’s memory, so that you can re-split captions without uploading again; the server holds about thirty minutes of audio from all visitors together and drops the oldest first, and anything held is gone when the server restarts. Your recording is never written to permanent storage, shown to anyone else or used for anything but your match.',
           'Background links. If you paste a link to a video on Pexels as a background, our server reads that Pexels page to find the video file to play.',
-          'Built-in reciters. When you choose a built-in reciter, our server fetches the recitation from its public audio server and passes it to your browser. It may keep a copy of that public recording to serve it faster; nothing of yours is in it.',
+          'Built-in reciters. The built-in recitations are the Quran Foundation’s public recordings, one file per ayah, which our server keeps and joins into the passage you choose before passing it to your browser. Nothing of yours is in them.',
           'When an export finishes, your browser tells our server that one was made, with its surah, its length and its shape (such as 9:16). We keep that, with the time, to know how many videos the studio makes. Nothing in it identifies you or your device: no IP address, no identifier and no cookie, and the video and its file name are not sent.',
         ],
       },
@@ -96,7 +96,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
         heading: 'Services the studio relies on',
         list: [
           'Quran.com and the Quran Foundation API, for the Quran text, translations and recitation timings. Our server asks them; your browser does not.',
-          'Public recitation audio servers (quranicaudio.com, mp3quran.net, tarteel.ai), reached through our server.',
+          'The Quran Foundation’s public recitation audio servers (verses.quran.com and quranicaudio.com), from which our server downloads the built-in recordings.',
           'Google Fonts: your browser loads the studio’s typefaces from Google, which receives your IP address when it does.',
           'Pexels, if you pick a Pexels background: your browser loads that video from Pexels.',
           'Google’s Gemini API, only where a studio offers the Gemini matcher and you choose it: your recording is then sent to Google to be matched.',
@@ -150,7 +150,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
         paragraphs: [
           'تسجيلاتك الخاصة. حين تطابق تسجيلًا من عندك، يُرسل الملف إلى خادمنا، فيُفكّ ترميزه ويُطابَق مع نص القرآن لتتبعه المقاطع. لا يمسّ قرص الخادم إلا ملفًا مؤقتًا أثناء فكّ الترميز، ويُحذف فورًا. ثم يُبقى الصوت في ذاكرة الخادم لتتمكن من إعادة تقسيم المقاطع دون رفعه مجددًا؛ ويحتفظ الخادم بنحو ثلاثين دقيقة من صوت جميع الزوار معًا ويحذف الأقدم أولًا، ويزول كل ذلك عند إعادة تشغيل الخادم. لا يُكتب تسجيلك أبدًا في تخزين دائم، ولا يُعرض على أحد، ولا يُستعمل لغير مطابقتك.',
           'روابط الخلفيات. إن ألصقت رابط فيديو من Pexels خلفيةً، يقرأ خادمنا تلك الصفحة ليجد ملف الفيديو.',
-          'القرّاء المدمجون. حين تختار قارئًا مدمجًا، يجلب خادمنا التلاوة من خادم الصوت العام الخاص بها ويمرّرها إلى متصفحك، وقد يحتفظ بنسخة من ذلك التسجيل العام ليقدّمه أسرع؛ ولا شيء منك فيه.',
+          'القرّاء المدمجون. التلاوات المدمجة هي تسجيلات Quran Foundation العامة، ملف لكل آية، يحتفظ بها خادمنا ويضمّها في المقطع الذي تختاره ثم يمرّرها إلى متصفحك. ولا شيء منك فيها.',
           'حين يكتمل تصدير، يُعلم متصفحك خادمنا بأن فيديو قد صُنع، مع سورته ومدته وشكله (مثل 9:16). نحتفظ بذلك مع الوقت لنعرف كم فيديو يصنع الاستوديو. لا شيء فيه يدل عليك أو على جهازك: لا عنوان IP ولا مُعرِّف ولا ملف تعريف ارتباط، ولا يُرسل الفيديو ولا اسم ملفه.',
         ],
       },
@@ -189,7 +189,7 @@ export const PRIVACY: Record<Locale, LegalDocument> = {
         heading: 'خدمات يعتمد عليها الاستوديو',
         list: [
           'Quran.com وواجهة Quran Foundation، لنص القرآن والترجمات وتوقيتات التلاوة. يسألها خادمنا، لا متصفحك.',
-          'خوادم صوت التلاوة العامة (quranicaudio.com وmp3quran.net وtarteel.ai)، عبر خادمنا.',
+          'خوادم صوت التلاوة العامة لـ Quran Foundation (verses.quran.com وquranicaudio.com)، التي ينزّل منها خادمنا التسجيلات المدمجة.',
           'Google Fonts: يحمّل متصفحك خطوط الاستوديو من Google، فتتلقّى Google عنوان IP الخاص بك حينها.',
           'Pexels، إن اخترت خلفية من Pexels: يحمّل متصفحك ذلك الفيديو من Pexels.',
           'واجهة Gemini من Google، فقط حيث يقدّم استوديو مطابِق Gemini وتختاره: يُرسل تسجيلك حينها إلى Google لمطابقته.',
@@ -244,7 +244,7 @@ export const TERMS: Record<Locale, LegalDocument> = {
       {
         heading: 'Recitations, texts and translations',
         paragraphs: [
-          'The built-in recitations belong to their reciters and publishers and are played from public audio servers. The Quran text, the translations and the recitation timings come from Quran.com and the Quran Foundation, and each translation belongs to its translator. They are made available here for making recitation videos; when you publish a video, it is up to you to respect the terms of the recordings and translations it uses.',
+          'The built-in recitations belong to their reciters and publishers and are the Quran Foundation’s public recordings, played from this server. The Quran text, the translations and the recitation timings come from Quran.com and the Quran Foundation, and each translation belongs to its translator. They are made available here for making recitation videos; when you publish a video, it is up to you to respect the terms of the recordings and translations it uses.',
         ],
       },
       {
@@ -317,7 +317,7 @@ export const TERMS: Record<Locale, LegalDocument> = {
       {
         heading: 'التلاوات والنصوص والترجمات',
         paragraphs: [
-          'التلاوات المدمجة ملك لقرّائها وناشريها، وتُشغّل من خوادم صوت عامة. ونص القرآن والترجمات وتوقيتات التلاوة من Quran.com وQuran Foundation، وكل ترجمة ملك لمترجمها. وهي متاحة هنا لصنع فيديوهات التلاوة؛ وحين تنشر فيديو، فعليك احترام شروط التسجيلات والترجمات التي يستعملها.',
+          'التلاوات المدمجة ملك لقرّائها وناشريها، وهي تسجيلات Quran Foundation العامة وتُشغّل من هذا الخادم. ونص القرآن والترجمات وتوقيتات التلاوة من Quran.com وQuran Foundation، وكل ترجمة ملك لمترجمها. وهي متاحة هنا لصنع فيديوهات التلاوة؛ وحين تنشر فيديو، فعليك احترام شروط التسجيلات والترجمات التي يستعملها.',
         ],
       },
       {

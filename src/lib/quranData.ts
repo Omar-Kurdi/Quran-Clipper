@@ -1,40 +1,17 @@
 import { QPC_V2, FALLBACK_ARABIC_FAMILY } from './mushafFonts';
+import qfCatalog from './qfReciters.json';
 
 export interface Reciter {
   id: string;
   name: string;
   arabicName: string;
   style: string;
-  audioServerUrl: string;
-  /**
-   * Reciter id on quran.com's audio API, which publishes measured per-ayah
-   * timings for that reciter's chapter recordings. `0` means quran.com does
-   * not carry this reciter: loading their audio falls back to the mp3quran
-   * file above with *estimated* ayah boundaries, which have to be corrected on
-   * the timeline by hand.
-   *
-   * The timings and the audio file are a matched pair -- the timestamps index
-   * quran.com's own recording, not mp3quran's -- so whichever source a load
-   * uses, it must use both halves of it. Verified against
-   * `api.quran.com/api/v4/resources/recitations` (Aug 2026).
-   */
-  quranApiId: number;
-  /**
-   * Kept for projects that already name this reciter, but not offered for a
-   * new one: no published timings exist for the recording, so every clip
-   * would rest on the aligner alone.
-   */
-  hidden?: boolean;
-  /**
-   * Timed only by a QUL export, with no other recording to fall back to:
-   * offered only on a machine that has imported it (`qulTimed`).
-   */
-  needsQul?: boolean;
+  /** The Quran Foundation's recitation id: one audio file per ayah, see `qfRecitations`. */
+  qfId: number;
 }
 
-/** The reciters offered when starting a clip, given which QUL exports this machine holds. */
-export const listedReciters = (qulTimed: readonly string[]): Reciter[] =>
-  RECITERS.filter(reciter => !reciter.hidden && (!reciter.needsQul || qulTimed.includes(reciter.id)));
+/** The reciters offered when starting a clip. */
+export const listedReciters = (): Reciter[] => RECITERS;
 
 export interface Surah {
   number: number;
@@ -117,82 +94,12 @@ export interface VerseData {
   displayTranslations?: Record<string, string>;
 }
 
-// Audio URLs verified against mp3quran.net download pages (Aug 2026).
-// Format: https://serverXX.mp3quran.net/download/{slug}/{padded-surah}.mp3
-export const RECITERS: Reciter[] = [
-  {
-    id: 'sudais',
-    name: 'Abdul Rahman Al-Sudais',
-    arabicName: 'عبد الرحمن السديس',
-    style: 'Murattal',
-    audioServerUrl: 'https://server11.mp3quran.net/download/sds/',
-    quranApiId: 3
-  },
-  {
-    id: 'muaiqly',
-    name: 'Maher Al-Muaiqly',
-    arabicName: 'ماهر المعيقلي',
-    style: 'Murattal',
-    audioServerUrl: 'https://server12.mp3quran.net/download/maher/',
-    // Not on quran.com -- id 4 there is Abu Bakr al-Shatri, a different voice.
-    quranApiId: 0
-  },
-  {
-    id: 'yasser',
-    name: 'Yasser Al-Dosari',
-    arabicName: 'ياسر الدوسري',
-    style: 'Emotional',
-    audioServerUrl: 'https://server11.mp3quran.net/download/yasser/',
-    quranApiId: 97
-  },
-  {
-    id: 'shuraim',
-    name: 'Saud Al-Shuraim',
-    arabicName: 'سعود الشريم',
-    style: 'Murattal',
-    audioServerUrl: 'https://server7.mp3quran.net/download/shur/',
-    quranApiId: 10
-  },
-  {
-    id: 'ghamdi',
-    name: 'Saad Al-Ghamdi',
-    arabicName: 'سعد الغامدي',
-    style: 'Murattal',
-    audioServerUrl: 'https://server7.mp3quran.net/download/s_gmd/',
-    // Not on quran.com -- id 8 there is al-Minshawi.
-    quranApiId: 0
-  },
-  {
-    id: 'raad',
-    name: 'Raad Al-Kurdi',
-    arabicName: 'رعد محمد الكردي',
-    style: 'Emotional',
-    audioServerUrl: 'https://server6.mp3quran.net/download/kurdi/',
-    quranApiId: 0,
-    // Neither quran.com nor QUL publishes timings for this recording.
-    hidden: true
-  },
-  // Timed word by word by QUL, and played from QUL's own recording. Checked
-  // on 2026-09-26: every ayah of all 114 surahs timed (Hani ar-Rifai's 89:1,
-  // one word, has its bounds only). QUL tags 18 more recitations "with
-  // segments" whose exports time only whole ayahs; those are not listed.
-  ...([
-    ['basit', 'Abdul Basit Abdul Samad', 'عبد الباسط عبد الصمد'],
-    ['shatri', 'Abu Bakr Al-Shatri', 'أبو بكر الشاطري'],
-    ['rifai', 'Hani Ar-Rifai', 'هاني الرفاعي'],
-    ['tunaiji', 'Khalifa Al-Tunaiji', 'خليفة الطنيجي'],
-    ['jalil', 'Khalid Al-Jalil', 'خالد الجليل'],
-  ] as const).map(([id, name, arabicName]): Reciter => ({
-    id, name, arabicName, style: 'Murattal', audioServerUrl: '', quranApiId: 0, needsQul: true
-  })),
-  {
-    // QUL's export for this recording is not usable: 143 words timed over 10s
-    // across 93 ayahs, one of 13:10's at 32s with the three after it as long,
-    // where the recording has the ayah over in a few seconds.
-    id: 'toure', name: 'Hady Toure', arabicName: 'هادي توري', style: 'Murattal',
-    audioServerUrl: '', quranApiId: 0, needsQul: true, hidden: true
-  }
-];
+/**
+ * The built-in reciters: every recitation the Quran Foundation publishes one
+ * file per ayah, bar the ones excluded -- `qfReciters.json`, which
+ * `./add_new_reciters` extends.
+ */
+export const RECITERS: Reciter[] = qfCatalog.reciters;
 
 export const SURAHS_LIST: Surah[] = [
   { number: 1, nameEnglish: "Al-Fatihah", nameArabic: "الفاتحة", englishTranslation: "The Opening", numberOfAyahs: 7, revelationType: "Meccan" },
@@ -313,9 +220,8 @@ export const SURAHS_LIST: Surah[] = [
 
 // What the studio opens on: exactly what Load gives for this passage, so that
 // opening the studio and pressing Load play the same recording with the same
-// captions. Al-Sudais's Al-Fatihah on the recording quran.com timed (the one
-// `chooseReciterTiming` pairs with surah 1), from Load + Match on 2026-10-10
-// with the aligner hearing his pauses. This recording has no isti'adha.
+// captions. Al-Sudais's Al-Fatihah from the Quran Foundation's ayah files,
+// from Load + Match on 2026-10-15 with the aligner hearing his pauses.
 export const SAMPLE_PROJECTS = [
   {
     title: "Surah Al-Fatihah (Abdul Rahman Al-Sudais)",
@@ -324,108 +230,108 @@ export const SAMPLE_PROJECTS = [
     surahNameEnglish: "Al-Fatihah",
     ayahStart: 1,
     ayahEnd: 7,
-    reciterId: "sudais",
+    reciterId: "qf-3",
     reciterName: "Abdul Rahman Al-Sudais",
-    audioUrl: "https://download.quranicaudio.com/qdc/abdurrahmaan_as_sudais/murattal/1.mp3",
-    audioDuration: "00:34",
+    audioUrl: "/api/audio/ayahs?reciter=qf-3&surah=1&start=1&end=7",
+    audioDuration: "00:35",
     verses: [
       {
         verseNumber: 1,
         verseKey: "1:1",
         textUthmani: "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
-        translation: "In the Name of Allah—the Most Compassionate, Most Merciful.",
+        translation: "In the name of Allāh, the Entirely Merciful, the Especially Merciful.",
         startTime: 0,
         endTime: 3.1,
         words: [
-          { arabic: "بِسْمِ", translation: "In (the) name", glyph: "ﱁ", glyphPage: 1, glyphLine: 2, timestamp: 0 },
-          { arabic: "ٱللَّهِ", translation: "(of) Allah", glyph: "ﱂ", glyphPage: 1, glyphLine: 2, timestamp: 0.65 },
-          { arabic: "ٱلرَّحْمَـٰنِ", translation: "the Most Gracious", glyph: "ﱃ", glyphPage: 1, glyphLine: 2, timestamp: 1.13 },
-          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱄ", glyphPage: 1, glyphLine: 2, timestamp: 1.86 }
+          { arabic: "بِسْمِ", translation: "In (the) name", glyph: "ﱁ", glyphPage: 1, glyphLine: 2, timestamp: 0.38 },
+          { arabic: "ٱللَّهِ", translation: "(of) Allah", glyph: "ﱂ", glyphPage: 1, glyphLine: 2 },
+          { arabic: "ٱلرَّحْمَـٰنِ", translation: "the Most Gracious", glyph: "ﱃ", glyphPage: 1, glyphLine: 2 },
+          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱄ", glyphPage: 1, glyphLine: 2, timestamp: 0.74 }
         ]
       },
       {
         verseNumber: 2,
         verseKey: "1:2",
         textUthmani: "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ",
-        translation: "All praise is for Allah—Lord of all worlds",
+        translation: "[All] praise is [due] to Allāh, Lord of the worlds -",
         startTime: 3.1,
         endTime: 7.6,
         words: [
-          { arabic: "ٱلْحَمْدُ", translation: "All praises and thanks", glyph: "ﱆ", glyphPage: 1, glyphLine: 3, timestamp: 3.08 },
-          { arabic: "لِلَّهِ", translation: "(be) to Allah", glyph: "ﱇ", glyphPage: 1, glyphLine: 3, timestamp: 4.05 },
-          { arabic: "رَبِّ", translation: "the Lord", glyph: "ﱈ", glyphPage: 1, glyphLine: 3, timestamp: 4.92 },
-          { arabic: "ٱلْعَـٰلَمِينَ", translation: "of the universe", glyph: "ﱉ", glyphPage: 1, glyphLine: 3, timestamp: 5.51 }
+          { arabic: "ٱلْحَمْدُ", translation: "All praises and thanks", glyph: "ﱆ", glyphPage: 1, glyphLine: 3, timestamp: 3.5 },
+          { arabic: "لِلَّهِ", translation: "(be) to Allah", glyph: "ﱇ", glyphPage: 1, glyphLine: 3, timestamp: 4.09 },
+          { arabic: "رَبِّ", translation: "the Lord", glyph: "ﱈ", glyphPage: 1, glyphLine: 3, timestamp: 4.95 },
+          { arabic: "ٱلْعَـٰلَمِينَ", translation: "of the universe", glyph: "ﱉ", glyphPage: 1, glyphLine: 3, timestamp: 5.52 }
         ]
       },
       {
         verseNumber: 3,
         verseKey: "1:3",
         textUthmani: "ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
-        translation: "the Most Compassionate, Most Merciful",
+        translation: "The Entirely Merciful, the Especially Merciful,",
         startTime: 7.6,
         endTime: 10.7,
         words: [
-          { arabic: "ٱلرَّحْمَـٰنِ", translation: "The Most Gracious", glyph: "ﱋ", glyphPage: 1, glyphLine: 4, timestamp: 7.57 },
-          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱌ", glyphPage: 1, glyphLine: 4, timestamp: 8.65 }
+          { arabic: "ٱلرَّحْمَـٰنِ", translation: "The Most Gracious", glyph: "ﱋ", glyphPage: 1, glyphLine: 4, timestamp: 7.76 },
+          { arabic: "ٱلرَّحِيمِ", translation: "the Most Merciful", glyph: "ﱌ", glyphPage: 1, glyphLine: 4, timestamp: 8.73 }
         ]
       },
       {
         verseNumber: 4,
         verseKey: "1:4",
         textUthmani: "مَـٰلِكِ يَوْمِ ٱلدِّينِ",
-        translation: "Master of the Day of Judgment.",
+        translation: "Sovereign of the Day of Recompense.",
         startTime: 10.7,
         endTime: 14.1,
         words: [
-          { arabic: "مَـٰلِكِ", translation: "(The) Master", glyph: "ﱎ", glyphPage: 1, glyphLine: 4, timestamp: 10.68 },
-          { arabic: "يَوْمِ", translation: "(of the) Day", glyph: "ﱏ", glyphPage: 1, glyphLine: 4, timestamp: 11.38 },
-          { arabic: "ٱلدِّينِ", translation: "(of the) Judgment", glyph: "ﱐ", glyphPage: 1, glyphLine: 4, timestamp: 12.1 }
+          { arabic: "مَـٰلِكِ", translation: "(The) Master", glyph: "ﱎ", glyphPage: 1, glyphLine: 4, timestamp: 10.77 },
+          { arabic: "يَوْمِ", translation: "(of the) Day", glyph: "ﱏ", glyphPage: 1, glyphLine: 4, timestamp: 11.53 },
+          { arabic: "ٱلدِّينِ", translation: "(of the) Judgment", glyph: "ﱐ", glyphPage: 1, glyphLine: 4, timestamp: 12.31 }
         ]
       },
       {
         verseNumber: 5,
         verseKey: "1:5",
         textUthmani: "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ",
-        translation: "You [alone] we worship and You [alone] we ask for help.",
+        translation: "It is You we worship and You we ask for help.",
         startTime: 14.1,
         endTime: 19.1,
         words: [
-          { arabic: "إِيَّاكَ", translation: "You Alone", glyph: "ﱒ", glyphPage: 1, glyphLine: 5, timestamp: 14.13 },
-          { arabic: "نَعْبُدُ", translation: "we worship", glyph: "ﱓ", glyphPage: 1, glyphLine: 5, timestamp: 15.09 },
-          { arabic: "وَإِيَّاكَ", translation: "and You Alone", glyph: "ﱔ", glyphPage: 1, glyphLine: 5, timestamp: 15.84 },
-          { arabic: "نَسْتَعِينُ", translation: "we ask for help", glyph: "ﱕ", glyphPage: 1, glyphLine: 5, timestamp: 16.96 }
+          { arabic: "إِيَّاكَ", translation: "You Alone", glyph: "ﱒ", glyphPage: 1, glyphLine: 5, timestamp: 14.16 },
+          { arabic: "نَعْبُدُ", translation: "we worship", glyph: "ﱓ", glyphPage: 1, glyphLine: 5, timestamp: 15.11 },
+          { arabic: "وَإِيَّاكَ", translation: "and You Alone", glyph: "ﱔ", glyphPage: 1, glyphLine: 5, timestamp: 15.86 },
+          { arabic: "نَسْتَعِينُ", translation: "we ask for help", glyph: "ﱕ", glyphPage: 1, glyphLine: 5, timestamp: 16.98 }
         ]
       },
       {
         verseNumber: 6,
         verseKey: "1:6",
         textUthmani: "ٱهْدِنَا ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ",
-        translation: "Guide us along the Straight Path",
+        translation: "Guide us to the straight path -",
         startTime: 19.1,
         endTime: 23.3,
         words: [
           { arabic: "ٱهْدِنَا", translation: "Guide us", glyph: "ﱗ", glyphPage: 1, glyphLine: 5, timestamp: 19.07 },
-          { arabic: "ٱلصِّرَٰطَ", translation: "(to) the path", glyph: "ﱘ", glyphPage: 1, glyphLine: 6, timestamp: 19.55 },
-          { arabic: "ٱلْمُسْتَقِيمَ", translation: "the straight", glyph: "ﱙ", glyphPage: 1, glyphLine: 6, timestamp: 20.72 }
+          { arabic: "ٱلصِّرَٰطَ", translation: "(to) the path", glyph: "ﱘ", glyphPage: 1, glyphLine: 6, timestamp: 19.86 },
+          { arabic: "ٱلْمُسْتَقِيمَ", translation: "the straight", glyph: "ﱙ", glyphPage: 1, glyphLine: 6, timestamp: 20.7 }
         ]
       },
       {
         verseNumber: 7,
         verseKey: "1:7",
         textUthmani: "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ",
-        translation: "the Path of those You have blessed—not those You are displeased with, or those who are astray.",
+        translation: "The path of those upon whom You have bestowed favor, not of those who have earned [Your] anger or of those who are astray.",
         startTime: 23.3,
         endTime: 34.9,
         words: [
-          { arabic: "صِرَٰطَ", translation: "(The) path", glyph: "ﱛ", glyphPage: 1, glyphLine: 6, timestamp: 23.28 },
-          { arabic: "ٱلَّذِينَ", translation: "(of) those", glyph: "ﱜ", glyphPage: 1, glyphLine: 6, timestamp: 24.2 },
-          { arabic: "أَنْعَمْتَ", translation: "You have bestowed (Your) Favors", glyph: "ﱝ", glyphPage: 1, glyphLine: 6, timestamp: 25.24 },
-          { arabic: "عَلَيْهِمْ", translation: "on them", glyph: "ﱞ", glyphPage: 1, glyphLine: 7, timestamp: 26.14 },
-          { arabic: "غَيْرِ", translation: "not (of)", glyph: "ﱟ", glyphPage: 1, glyphLine: 7, timestamp: 27.2 },
-          { arabic: "ٱلْمَغْضُوبِ", translation: "those who earned (Your) wrath", glyph: "ﱠ", glyphPage: 1, glyphLine: 7, timestamp: 27.85 },
-          { arabic: "عَلَيْهِمْ", translation: "on themselves", glyph: "ﱡ", glyphPage: 1, glyphLine: 7, timestamp: 28.89 },
-          { arabic: "وَلَا", translation: "and not", glyph: "ﱢ", glyphPage: 1, glyphLine: 8, timestamp: 30 },
-          { arabic: "ٱلضَّآلِّينَ", translation: "(of) those who go astray", glyph: "ﱣ", glyphPage: 1, glyphLine: 8, timestamp: 30.33 }
+          { arabic: "صِرَٰطَ", translation: "(The) path", glyph: "ﱛ", glyphPage: 1, glyphLine: 6, timestamp: 23.45 },
+          { arabic: "ٱلَّذِينَ", translation: "(of) those", glyph: "ﱜ", glyphPage: 1, glyphLine: 6, timestamp: 24.32 },
+          { arabic: "أَنْعَمْتَ", translation: "You have bestowed (Your) Favors", glyph: "ﱝ", glyphPage: 1, glyphLine: 6, timestamp: 25.34 },
+          { arabic: "عَلَيْهِمْ", translation: "on them", glyph: "ﱞ", glyphPage: 1, glyphLine: 7, timestamp: 26.2 },
+          { arabic: "غَيْرِ", translation: "not (of)", glyph: "ﱟ", glyphPage: 1, glyphLine: 7, timestamp: 27.21 },
+          { arabic: "ٱلْمَغْضُوبِ", translation: "those who earned (Your) wrath", glyph: "ﱠ", glyphPage: 1, glyphLine: 7, timestamp: 27.86 },
+          { arabic: "عَلَيْهِمْ", translation: "on themselves", glyph: "ﱡ", glyphPage: 1, glyphLine: 7, timestamp: 28.95 },
+          { arabic: "وَلَا", translation: "and not", glyph: "ﱢ", glyphPage: 1, glyphLine: 8 },
+          { arabic: "ٱلضَّآلِّينَ", translation: "(of) those who go astray", glyph: "ﱣ", glyphPage: 1, glyphLine: 8, timestamp: 29.93 }
         ]
       }
     ]

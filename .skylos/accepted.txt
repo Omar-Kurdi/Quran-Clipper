@@ -93,20 +93,6 @@ src/app/api/audio/proxy/route.ts  SKY-U001  1
 # the refresh token in the caller's own httpOnly cookie. Accepted by the project
 # owner on 2026-10-08.
 
-# The three findings in the recordings download script, accepted by the project
-# owner on 2026-10-10. The script fills the audio cache by asking this machine's
-# own studio which recording each surah plays, so every request it makes goes to
-# http://localhost:<port> -- deliberately: a configurable host would let it be
-# pointed anywhere, which is what SKY-D216 warns about. Both fetch calls take
-# their address from `onStudio()`, which throws for anything off that origin,
-# and the studio's proxy applies its own host allowlist (`hostAllowed`) to the
-# recordings. The rules fire on the pattern, not on the check -- the proxy's own
-# fetch carries the same SKY-D216 in the baseline -- and avoiding them would mean
-# dropping the origin check or disguising the address. Any further SKY-D216 or
-# SKY-D248 in this file, or either rule anywhere else, still blocks.
-scripts/prefetch-audio.mjs  SKY-D216  2
-scripts/prefetch-audio.mjs  SKY-D248  1
-
 # The export counter, accepted by the owner on 2026-10-11. Every studio,
 # public included, counts each finished export so the owner's /stats can say
 # how many videos are made -- and a visitor exporting has no credential to
@@ -116,3 +102,22 @@ scripts/prefetch-audio.mjs  SKY-D248  1
 # (`createCountLimiter`), not authentication. SKY-D280 on any other route
 # still blocks.
 src/app/api/export-count/route.ts  SKY-D280  1
+
+# The Quran Foundation download script, accepted by the owner on 2026-10-15.
+# Every request it makes goes through `fetchAllowed`, which refuses anything
+# but https on its fixed list of hosts (the Foundation's API and sign-in,
+# api.quran.com, and the hosts its recitations name) -- the file addresses come
+# from API answers, so they are checked rather than fetched as given. The one
+# fetch() left is that check's own, and the rule fires on the pattern, not on
+# the check. Any further SKY-D216 in this file, or anywhere else, still blocks.
+scripts/qf-reciters.mjs  SKY-D216  1
+
+# The audio proxy's tests, deleted with the proxy on 2026-10-15 (the built-in
+# reciters now play from this server's own ayah files, /api/audio/ayahs).
+# Accepted by the owner: their "refuse a bad address" cases have equivalents
+# for what replaced it -- alignerAudio.test.ts (only this app's passages reach
+# the sidecar: no CDN, other port, file:// or unknown reciter),
+# qfRecitations.test.ts and groundTruthCut.test.ts (an address that is not a
+# known reciter's passage is refused). Skylos cannot see a negative test that
+# moved to another file.
+src/app/api/audio/proxy/route.test.ts  SKY-A101  1

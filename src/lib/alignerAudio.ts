@@ -1,3 +1,5 @@
+import { qfPassageOf } from './qfRecitations';
+
 /**
  * Where the aligner fetches the studio's audio proxy from.
  *
@@ -14,7 +16,7 @@ export function alignerAudioUrl(audioUrl: string): string {
   if (!origin) return audioUrl;
   try {
     const url = new URL(audioUrl);
-    return url.pathname === '/api/audio/proxy' ? `${origin}${url.pathname}${url.search}` : audioUrl;
+    return url.pathname === '/api/audio/ayahs' ? `${origin}${url.pathname}${url.search}` : audioUrl;
   } catch {
     return audioUrl;
   }
@@ -25,15 +27,11 @@ export function alignerAudioUrl(audioUrl: string): string {
  *
  * The sidecar's ffmpeg fetches whatever it is given -- another port on this
  * machine, a service on its network, a local file -- so on a server anyone can
- * reach, only two shapes are let through: this app's own audio proxy, whose
- * `url` is itself on the reciter allowlist, and a reciter CDN directly. The
- * proxy must be this app's: the same path on another port is not the proxy.
+ * reach, only one shape is let through: this app's own reciter passage
+ * (`qfPassageUrl`), whose recording is already this server's. The path must be
+ * this app's: the same path on another port is not it.
  */
-export function publicAudioUrlAllowed(
-  raw: string,
-  appOrigin: string,
-  hostAllowed: (hostname: string) => boolean
-): boolean {
+export function publicAudioUrlAllowed(raw: string, appOrigin: string): boolean {
   let url: URL;
   try {
     url = new URL(raw);
@@ -41,8 +39,5 @@ export function publicAudioUrlAllowed(
     return false;
   }
   const origins = [appOrigin, process.env.ALIGN_AUDIO_PROXY_ORIGIN || ''].map(o => o.replace(/\/$/, '')).filter(Boolean);
-  if (url.pathname === '/api/audio/proxy' && origins.includes(url.origin)) {
-    return publicAudioUrlAllowed(url.searchParams.get('url') || '', '', hostAllowed);
-  }
-  return url.protocol === 'https:' && hostAllowed(url.hostname);
+  return origins.includes(url.origin) && qfPassageOf(url.href) !== null;
 }

@@ -152,7 +152,7 @@ function savedStatusText(
  * on it: this once named mp3quran's Al-Fatihah while Load played quran.com's,
  * so the same passage opened and loaded as two different recitations.
  */
-const DEFAULT_AUDIO_URL = `/api/audio/proxy?url=${encodeURIComponent(SAMPLE_PROJECTS[0].audioUrl)}`;
+const DEFAULT_AUDIO_URL = SAMPLE_PROJECTS[0].audioUrl;
 
 export default function VideoCreatorPage() {
   const { locale, t } = useLocale();
@@ -165,7 +165,7 @@ export default function VideoCreatorPage() {
   const [ayahEnd, setAyahEnd] = useState<number>(7);
   const [ayahStartInput, setAyahStartInput] = useState<string>('1');
   const [ayahEndInput, setAyahEndInput] = useState<string>('7');
-  const [selectedReciter, setSelectedReciter] = useState<string>('sudais');
+  const [selectedReciter, setSelectedReciter] = useState<string>(RECITERS[0].id);
   const [customAudioUrl, setCustomAudioUrl] = useState<string | null>(null);
   const [customAudioName, setCustomAudioName] = useState<string>('');
   const [customAudioFile, setCustomAudioFile] = useState<File | null>(null);
@@ -257,7 +257,6 @@ export default function VideoCreatorPage() {
   // person running the studio.
   const isPublic = studio.mode === 'public';
   /** Built-in reciters with a QUL timing export on this machine. */
-  const [qulTimedReciters, setQulTimedReciters] = useState<string[]>([]);
   const [providerStatus, setProviderStatus] = useState<{
     gemini: { configured: boolean };
     align: {
@@ -976,25 +975,12 @@ export default function VideoCreatorPage() {
   /**
    * The address the *sidecar* should fetch, given what the player is using.
    *
-   * A reciter timeline plays through `/api/audio/proxy`, which is a path on
-   * this app and means nothing to another process -- so it is made absolute
-   * rather than unwrapped.
-   *
-   * Sending the sidecar the CDN address directly is what this used to do, and
-   * it is why one reciter could fail while another worked: ffmpeg takes
-   * whichever address `getaddrinfo` returns first and has no `-4` to force the
-   * matter, so a host publishing a AAAA record is unreachable from a machine
-   * with no IPv6 route. Both CDNs publish one. Going back through this app
-   * puts a Node fetch in the middle, which tries both families and falls back
-   * -- the same reason the proxy exists for the browser, in its own words.
+   * A reciter timeline plays its passage from `/api/audio/ayahs`, a path on
+   * this app that means nothing to another process -- so it is made absolute.
    */
   const alignableAudioUrl = (url: string): string => {
     if (!url) return '';
-    if (url.startsWith('/')) return `${window.location.origin}${url}`;
-    if (/^https:\/\//.test(url)) {
-      return `${window.location.origin}/api/audio/proxy?url=${encodeURIComponent(url)}`;
-    }
-    return url;
+    return url.startsWith('/') ? `${window.location.origin}${url}` : url;
   };
 
   /**
@@ -1137,12 +1123,10 @@ export default function VideoCreatorPage() {
       const confirmRange = data.provider === 'align' || data.provider === 'qul' || isPhonemeProvider(data.provider);
       if (isPublic && data.timedFrom) setMatchStatus(null);
       else setMatchStatus({
-        text: data.timedFrom === 'measured'
-          ? t.match.measuredTimed((data.verses || []).length)
-          : data.timedFrom
+        text: data.timedFrom
           ? t.match.publishedTimed(
               (data.verses || []).length,
-              data.timedFrom === 'qul' ? 'QUL' : 'quran.com',
+              'the Quran Foundation',
               data.pausesFromAudio ? 'pauses' : data.alignerSkipped ? 'skipped' : 'unheard'
             )
           : (data.warning ? `⚠ ${data.warning} ` : '') +
@@ -1301,53 +1285,6 @@ export default function VideoCreatorPage() {
     void alignLoadedReciter(verses, audioUrl, audioDuration, loadResult?.timingSource === 'measured' && !loadResult.againstUpload);
   };
 
-  /**
-   * Times the passage from the reciter's own published segments.
-   *
-   * Deliberately separate from the two matchers rather than folded into them.
-   * It is not inference: quran.com measured these recordings and publishes a
-   * start for every word, and the studio has been asking for that data on
-   * every load and reading only the ayah bounds off it. Nothing here can run
-   * against an uploaded file -- the timings belong to one specific recording --
-   * so the aligner and the manual path are untouched by it.
-   */
-  const handleReciterSegments = async () => {
-    const apiId = selectedReciterMeta?.quranApiId;
-    if (!apiId) {
-      setMatchStatus({ text: t.match.segmentsUnavailable, tone: 'error' });
-      return;
-    }
-    setIsMatching(true);
-    setMatchStatus({ text: t.match.segmentsLoading, tone: 'info' });
-    try {
-      const res = await fetch(
-        `/api/quran/segments?surah=${selectedSurah}&start=${ayahStart}&end=${ayahEnd}&reciter=${apiId}`
-      );
-      const data = await res.json();
-      if (!res.ok || !data?.success || !Array.isArray(data.verses) || !data.verses.length || !data.audioUrl) {
-        setMatchStatus({ text: t.match.segmentsNone, tone: 'error' });
-        return;
-      }
-      setVerses(data.verses);
-      setSelectedIndex(0);
-      // quran.com's recording, as the QUL button plays QUL's: these times were
-      // measured on it, and against whatever was loaded before they are not.
-      setAudioUrl(data.audioUrl);
-      if (data.totalSeconds > 0) setAudioDuration(data.totalSeconds);
-      const firstStart = data.verses[0]?.startTime ?? 0;
-      if (firstStart > 0) queueSeek(data.audioUrl, firstStart);
-      const { timedWords = 0, boundsOnly = 0 } = data.coverage || {};
-      setMatchStatus({
-        text: t.match.segmentsDone(data.verses.length, timedWords, boundsOnly),
-        tone: 'info'
-      });
-    } catch {
-      setMatchStatus({ text: t.match.segmentsNone, tone: 'error' });
-    } finally {
-      setIsMatching(false);
-    }
-  };
-
   /** "Match several recordings": the batch dialog, and what it hands back. */
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   const measureFileDuration = async (file: File) => {
@@ -1410,45 +1347,6 @@ export default function VideoCreatorPage() {
     return Boolean(res?.ok);
   };
 
-  /**
-   * Times the passage from QUL's word timings, with QUL's recording.
-   *
-   * The QUL counterpart of `handleReciterSegments`, and a button of its own so
-   * the two can be tried on the same passage and compared. It changes the audio
-   * as well as the timeline, because QUL measured its own recording of the
-   * reciter -- its times are wrong against the mp3quran file played otherwise.
-   */
-  const handleQulSegments = async () => {
-    if (!qulTimedReciters.includes(selectedReciter)) {
-      setMatchStatus({ text: t.match.qulSegmentsUnavailable(selectedReciter), tone: 'error' });
-      return;
-    }
-    setIsMatching(true);
-    setMatchStatus({ text: t.match.qulSegmentsLoading, tone: 'info' });
-    try {
-      const res = await fetch(
-        `/api/quran/qul-segments?surah=${selectedSurah}&start=${ayahStart}&end=${ayahEnd}&reciter=${encodeURIComponent(selectedReciter)}`
-      );
-      const data = await res.json();
-      if (!res.ok || !data?.success || !Array.isArray(data.verses) || !data.verses.length || !data.audioUrl) {
-        setMatchStatus({ text: t.match.qulSegmentsNone, tone: 'error' });
-        return;
-      }
-      setVerses(data.verses);
-      setSelectedIndex(0);
-      setAudioUrl(data.audioUrl);
-      if (data.totalSeconds > 0) setAudioDuration(data.totalSeconds);
-      const firstStart = data.verses[0]?.startTime ?? 0;
-      if (firstStart > 0) queueSeek(data.audioUrl, firstStart);
-      const { timedWords = 0, boundsOnly = 0 } = data.coverage || {};
-      setMatchStatus({ text: t.match.qulSegmentsDone(data.verses.length, timedWords, boundsOnly), tone: 'info' });
-    } catch {
-      setMatchStatus({ text: t.match.qulSegmentsNone, tone: 'error' });
-    } finally {
-      setIsMatching(false);
-    }
-  };
-
   const handleManualMatchUploadedAudio = () => {
     beginClip();
     setSourceEditing(false);
@@ -1456,20 +1354,6 @@ export default function VideoCreatorPage() {
   };
 
   // Audio Play / Pause Sync with Web Audio API Analyser
-
-  // Which built-in reciters have a QUL timing export on this machine.
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/quran/qul-segments')
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => {
-        if (!cancelled && Array.isArray(data?.reciters)) setQulTimedReciters(data.reciters);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Check which audio-match providers are actually usable (API key set / ASR sidecar reachable).
   useEffect(() => {
@@ -2355,7 +2239,7 @@ export default function VideoCreatorPage() {
     setAyahEndInput(String(proj.ayahEnd || 7));
     setSurahNameArabic(proj.surahNameArabic || 'الفاتحة');
     setSurahNameEnglish(proj.surahNameEnglish || 'Al-Fatihah');
-    setSelectedReciter(proj.reciterId || 'sudais');
+    setSelectedReciter(proj.reciterId || RECITERS[0].id);
     setAudioUrl(proj.audioUrl || DEFAULT_AUDIO_URL);
     setVerses(proj.versesJson || []);
     setIsSampleProject(false);
@@ -2642,11 +2526,17 @@ export default function VideoCreatorPage() {
           Ten controls of equal weight used to compete with Export here. */}
       <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-2 sm:px-4 flex items-center justify-between gap-2 shrink-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
-          {/* Not a link. The studio is the only page, so the wordmark had
-              nowhere to go -- and because the whole project lives in component
-              state, clicking it navigated away and silently discarded unsaved
-              work. */}
-          <span className="font-display text-xl leading-none text-parchment truncate">{t.header.wordmark}</span>
+          {/* Reloads the studio. It used to be no link at all, because the
+              project lived only in component state and leaving discarded
+              unsaved work; the clip is now kept in this browser as a draft
+              and offered back after the reload. */}
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="font-display text-xl leading-none text-parchment truncate hover:text-amber-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded"
+          >
+            {t.header.wordmark}
+          </button>
 
           {/* The clip: the reference set the way a mushaf cites itself, who
               recites it, and where the work is kept right now. */}
@@ -2882,7 +2772,7 @@ export default function VideoCreatorPage() {
                         reciter's own recording gives the phrase-level
                         boundaries an uploaded file gets. */}
                     {loadResult.ok && !loadResult.againstUpload && (
-                      <div className={`mt-2 grid gap-2 ${isPublic ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      <div className="mt-2 grid gap-2 grid-cols-1">
                         <button
                           onClick={handleAutoMatchReciter}
                           disabled={isMatching}
@@ -2892,40 +2782,6 @@ export default function VideoCreatorPage() {
                           {isMatching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                           <span>{t.match.alignReciter}</span>
                         </button>
-                        {!isPublic && (<>
-                        {/* The third way to time a recitation, and the only one
-                            that is not inference. Offered only where it exists:
-                            three of the built-in reciters have no quran.com id
-                            at all, and their recordings were never measured. */}
-                        <button
-                          onClick={handleReciterSegments}
-                          disabled={isMatching || !selectedReciterMeta?.quranApiId}
-                          title={
-                            selectedReciterMeta?.quranApiId
-                              ? t.match.segmentsTitle
-                              : t.match.segmentsUnavailable
-                          }
-                          className="py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{t.match.segments}</span>
-                        </button>
-                        {/* QUL's timings, beside quran.com's rather than instead
-                            of them, so one passage can be timed both ways. */}
-                        <button
-                          onClick={handleQulSegments}
-                          disabled={isMatching || !qulTimedReciters.includes(selectedReciter)}
-                          title={
-                            qulTimedReciters.includes(selectedReciter)
-                              ? t.match.qulSegmentsTitle
-                              : t.match.qulSegmentsUnavailable(selectedReciter)
-                          }
-                          className="col-span-2 py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <Library className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{t.match.qulSegments}</span>
-                        </button>
-                        </>)}
                       </div>
                     )}
                   </div>
@@ -3099,8 +2955,8 @@ export default function VideoCreatorPage() {
                   >
                     {/* A project saved with a reciter since hidden still shows who it is. */}
                     {[
-                      ...listedReciters(qulTimedReciters),
-                      ...RECITERS.filter(r => r.id === selectedReciter && !listedReciters(qulTimedReciters).includes(r)),
+                      ...listedReciters(),
+                      ...RECITERS.filter(r => r.id === selectedReciter && !listedReciters().includes(r)),
                     ].map((r) => (
                       <option key={r.id} value={r.id}>
                         {locale === 'ar' ? `${r.arabicName} — ${r.name}` : `${r.name} — ${r.arabicName}`}
@@ -3113,8 +2969,8 @@ export default function VideoCreatorPage() {
                       choice rather than in a note underneath it. */}
                   {selectedReciterMeta && (
                     <div className="mt-1.5 flex items-center gap-1.5">
-                      {/* Timed by quran.com, or by a QUL export on this machine. */}
-                      {(selectedReciterMeta.quranApiId > 0 || qulTimedReciters.includes(selectedReciterMeta.id)) && (
+                      {/* Every built-in reciter is one file per ayah, so every one is timed. */}
+                      {(
                         <span
                           title={t.source.reciterTimedTitle}
                           className="text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded"

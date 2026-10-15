@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MatchSegment } from './matchTypes';
-import { heardOffset, inTheGaps, phrasesFromPublished, publishedAyahBounds, soundTimings, timedFromPublished } from './publishedPhrases';
+import { inTheGaps, phrasesFromPublished, timedFromPublished } from './publishedPhrases';
 
 /** Muaiqly's 12:3 and 12:6 as QUL publishes them -- 12:6 goes back over words 8-10. */
 const published = new Map([
@@ -145,6 +145,17 @@ describe('phrasesFromPublished with incomplete or doubled timings', () => {
     const captions = phrasesFromPublished([{ verseKey: '2:128', wordCount: 17 }], held, [])!;
     expect(captions.map(words)).toEqual([['2:128', 0, 16]]);
     expect(captions[0].wordTimings?.at(-1)).toEqual({ index: 16, start: 3, end: 8.11 });
+  });
+
+  it('reads a word listed twice as said twice where the aligner heard the reciter go back to it -- a repeat may be one word', () => {
+    const twice = new Map([['2:128', { from: 0, to: 9000, segments: [[1, 0, 2000], [16, 2000, 3000], [17, 3000, 4670], [17, 5800, 8110]] }]]);
+    // The aligner heard word 17 (index 16) begun again at 5.8s, after a pause.
+    const heard: MatchSegment[] = [
+      { ...seg('2:128', 0, 16, 0, 5.8), wordTimings: [{ index: 0, start: 0, end: 1.9 }, { index: 15, start: 2, end: 2.9 }, { index: 16, start: 3, end: 4.6 }] },
+      { ...seg('2:128', 16, 16, 5.8, 9), notes: 'restarted phrase', wordTimings: [{ index: 16, start: 5.8, end: 8.1 }] },
+    ];
+    const captions = phrasesFromPublished([{ verseKey: '2:128', wordCount: 17 }], twice, heard, { quiet: [[4.7, 5.7]] })!;
+    expect(captions.map(words)).toEqual([['2:128', 0, 16], ['2:128', 16, 16]]);
   });
 
   it('refuses a passage it cannot time completely', () => {
@@ -302,22 +313,6 @@ describe('published bounds that disagree with their neighbours', () => {
   });
 });
 
-describe('soundTimings', () => {
-  const ayah = (from: number, to: number, words: number[][] = []) => ({ timing: { from, to, segments: words }, wordCount: Math.max(1, words.length) });
-
-  it('believes timings that run forward, a little overlap allowed', () => {
-    expect(soundTimings([ayah(0, 5000, [[1, 0, 5000]]), ayah(4900, 9000, [[1, 4900, 9000]])])).toBe(true);
-  });
-
-  it("refuses the ones past saving: an ayah 0.02s long, one listed a minute early, words outside their ayah", () => {
-    // Al-Rifai's 8:61, Abdul Basit's 55:70-71.
-    expect(soundTimings([ayah(1146867, 1201824), ayah(1201832, 1201853)])).toBe(false);
-    expect(soundTimings([ayah(606317, 613239), ayah(548421, 555695)])).toBe(false);
-    expect(soundTimings([ayah(0, 5000, [[1, 60000, 61000], [2, 61000, 62000]])])).toBe(false);
-    expect(soundTimings([{ timing: null, wordCount: 3 }])).toBe(false);
-  });
-});
-
 describe('an export listing the first word last', () => {
   it("keeps the ayah's words when word 1 comes after the last (Abdul Basit's 39:32)", () => {
     const listed = new Map([['39:32', { from: 788992, to: 799978, segments: [[3, 780880, 781670], [2, 781720, 782790], [3, 782840, 784710], [4, 784760, 797830], [1, 797880, 799978]] }]]);
@@ -355,48 +350,6 @@ describe('the aligner seeming to go back into an earlier ayah', () => {
   });
 });
 
-describe('published timings off against the recording', () => {
-  // Hani al-Rifai's 54:31 as QUL times it, and where the aligner heard its words: 1.6s later throughout.
-  const qul54v31 = { from: 212188, to: 226128, segments: [[1, 212190, 213520], [2, 213520, 214660], [3, 214660, 215560], [4, 215560, 217010]] };
-  const heardAt = (offsets: number[]) => [{
-    verseKey: '54:31', startWordIndex: 0, endWordIndex: 3, startTime: 213.8, endTime: 226,
-    wordTimings: offsets.map((off, index) => ({ index, start: qul54v31.segments[index][1] / 1000 + off, end: 0 })),
-  }];
-
-  it("moves an ayah whose every word is heard late by the same amount (Al-Rifai's 54:31, 1.6s)", () => {
-    expect(heardOffset(heardAt([1.6, 1.62, 1.55, 1.6]), '54:31', qul54v31)).toBeCloseTo(1600, -1);
-    const [caption] = phrasesFromPublished(
-      [{ verseKey: '54:31', wordCount: 4 }], new Map([['54:31', qul54v31]]), heardAt([1.6, 1.62, 1.55, 1.6]), { drifts: true }
-    )!;
-    expect(caption.startTime).toBeCloseTo(213.79, 1);
-  });
-
-  it('starts a moved ayah no later than its first word was heard, where the drift begins inside it (24:58)', () => {
-    // Al-Rifai's 24:58 as QUL times its first eight words: the first heard 0.37s after published, the rest 2s.
-    const starts = [1370922, 1375102, 1376132, 1376712, 1378612, 1379782, 1380162, 1380972];
-    const qul24v58 = { from: 1370922, to: 1384092, segments: starts.map((start, i) => [i + 1, start, starts[i + 1] ?? 1384092]) };
-    const late = [0.37, 2.04, 2.1, 2.06, 2.0, 2.03, 2.09, 2.08];
-    const heard = [{
-      verseKey: '24:58', startWordIndex: 0, endWordIndex: 7, startTime: 1371.2, endTime: 1386,
-      wordTimings: late.map((off, index) => ({ index, start: starts[index] / 1000 + off, end: 0 })),
-    }];
-    const [caption] = phrasesFromPublished([{ verseKey: '24:58', wordCount: 8 }], new Map([['24:58', qul24v58]]), heard, { drifts: true })!;
-    expect(caption.startTime).toBeCloseTo(1371.292, 2);
-  });
-
-  it('moves no ayah of an export not known to drift, however consistently the aligner hears it late', () => {
-    // Yasser ad-Dossary's 2:35: quran.com times it right, and the aligner heard every word 0.94s late.
-    const [caption] = phrasesFromPublished([{ verseKey: '54:31', wordCount: 4 }], new Map([['54:31', qul54v31]]), heardAt([0.94, 0.95, 0.93, 0.94]))!;
-    expect(caption.startTime).toBe(212.188);
-  });
-
-  it("leaves it where the words agree by little, disagree among themselves, or are a whole ayah apart", () => {
-    expect(heardOffset(heardAt([0.15, 0.2, 0.1, 0.18]), '54:31', qul54v31)).toBe(0);
-    expect(heardOffset(heardAt([1.6, -0.4, 2.2, 0.1]), '54:31', qul54v31)).toBe(0);
-    expect(heardOffset(heardAt([7.6, 7.6, 7.5, 7.7]), '54:31', qul54v31)).toBe(0);
-  });
-});
-
 describe('an aligner result its own warning doubted', () => {
   // Khalid al-Jalil's 74:8-9 as QUL times them.
   const qul = new Map([
@@ -421,39 +374,6 @@ describe('an aligner result its own warning doubted', () => {
   it('is not when they do not', () => {
     const elsewhere = heard.map(s => ({ ...s, wordTimings: s.wordTimings.map(w => ({ ...w, start: w.start + 20, end: w.end + 20 })) }));
     expect(timedFromPublished({ provider: 'qul', passage, timings: qul }, { ...doubted, segments: elsewhere }).pausesFromAudio).toBe(false);
-  });
-});
-
-describe('a measured stretch the reciter read on into and went back over', () => {
-  // Khalid al-Jalil's 82:16-20, shortened: QUL gives 82:17-19 one span each; he reads 17 18 19, then 17 18 19 again.
-  const qul = new Map([
-    ['82:16', { from: 80465, to: 87000, segments: [[1, 80565, 87000]] }],
-    ['82:17', { from: 97943, to: 112198, segments: [[1, 98043, 112198]] }],
-    ['82:18', { from: 112338, to: 128835, segments: [[1, 112338, 128835]] }],
-    ['82:19', { from: 129016, to: 145813, segments: [[1, 129016, 145813]] }],
-    ['82:20', { from: 146000, to: 150000, segments: [[1, 146000, 150000]] }],
-  ]);
-  const stretch = (verseKey: string, startTime: number, endTime: number) =>
-    ({ verseKey, verseNumber: Number(verseKey.split(':')[1]), startTime, endTime, startWordIndex: 0, endWordIndex: 0, confidence: 1 });
-  const regions = [{ ayahs: [17, 19], audioUrl: 'x', segments: [
-    stretch('82:17', 87.27, 100), stretch('82:18', 100, 107.49), stretch('82:19', 107.49, 114.53),
-    stretch('82:17', 114.53, 122.51), stretch('82:18', 122.51, 129), stretch('82:19', 129, 146),
-  ] }];
-  const passage = [16, 17, 18, 19, 20].map(n => ({ verseKey: `82:${n}`, wordCount: 1 }));
-
-  it('captions it as recited, and the ayahs around it as published', () => {
-    const captions = phrasesFromPublished(passage, qul, [], { regions })!;
-    expect(captions.map(c => [c.verseKey, c.startTime])).toEqual([
-      ['82:16', 80.465], ['82:17', 87.27], ['82:18', 100], ['82:19', 107.49],
-      ['82:17', 114.53], ['82:18', 122.51], ['82:19', 129], ['82:20', 146],
-    ]);
-    expect(captions[0].endTime).toBe(87);
-  });
-
-  it('loads each of its ayahs up to where the next first begins', () => {
-    const bounds = publishedAyahBounds(passage, qul, regions)!;
-    expect(bounds.get('82:17')).toEqual({ start: 87.27, end: 100 });
-    expect(bounds.get('82:19')).toEqual({ start: 107.49, end: 146 });
   });
 });
 
@@ -643,5 +563,94 @@ describe('a pass that is a sliver of the aligner or a silence', () => {
       [2, 2295.68, 2296.778], [3, 2297.851, 2298.533], [4, 2298.84, 2299.251], [5, 2299.64, 2300.048], [6, 2300.961, 2304.196]]);
     const quiet: [number, number][] = [[2293.251, 2294.171], [2295.731, 2295.971], [2301.011, 2301.631]];
     expect(phrasesFromPublished([{ verseKey: '12:106', wordCount: 7 }], listed, heard, { quiet })!.map(words)).toEqual([['12:106', 0, 6]]);
+  });
+});
+
+/** One aligner phrase: its words [first, last], its span [start, end] in seconds, and the words it heard there. */
+const timed = (verseKey: string, [from, to]: number[], [startTime, endTime]: number[], words: number[][], notes?: string): MatchSegment =>
+  ({ ...seg(verseKey, from, to, startTime, endTime), notes, wordTimings: words.map(([index, start, end]) => ({ index, start, end })) });
+
+describe("the user's ground truth for the Quran Foundation's ayah files (2026-10-15): repeats", () => {
+
+  it("starts a caption at a one-word repeat after a long stop (Al-Shatri's 10:12, فَلَمَّا ... فَلَمَّا)", () => {
+    const published = new Map([['10:12', { from: 85995, to: 116349, segments: [[1, 86325, 87035], [2, 87045, 87585], [3, 87595, 89175],
+      [4, 89185, 89925], [5, 89935, 90885], [6, 90895, 93025], [7, 93035, 93405], [8, 93415, 94375], [9, 94385, 94755],
+      [10, 94765, 96805], [11, 96815, 100435], [12, 100445, 101345], [13, 101355, 102005], [14, 102015, 103135],
+      [15, 103145, 103655], [16, 103665, 104095], [17, 104105, 104635], [18, 104645, 105985], [19, 105995, 106835],
+      [20, 106845, 108305], [21, 108315, 109735], [22, 109745, 110675], [23, 110685, 111535], [24, 111545, 113035],
+      [25, 113045, 113385], [26, 113395, 114195], [27, 114205, 115985]] }]]);
+    const aligned = [
+      timed('10:12', [0, 10], [86.05, 98.78], [[0, 86.45, 86.84], [1, 87.21, 87.56], [2, 87.81, 88.92], [3, 89.57, 89.95], [4, 90.13, 90.67],
+        [5, 91.01, 92.19], [6, 93.21, 93.38], [7, 93.61, 94.26], [8, 94.57, 94.82], [9, 94.93, 96.33], [10, 97.17, 97.85]]),
+      // The aligner's own restart: فَلَمَّا again, after a second's silence.
+      timed('10:12', [10, 20], [98.78, 109.43], [[10, 99.32, 100.08], [11, 100.61, 101.2], [12, 101.61, 101.83], [13, 102.21, 102.79],
+        [14, 103.21, 103.59], [15, 103.85, 104.15], [16, 104.34, 104.55], [17, 104.85, 105.5], [18, 106.45, 106.7],
+        [19, 107.09, 107.58], [20, 108.33, 108.93]], 'restarted phrase'),
+      timed('10:12', [21, 26], [109.43, 116.35], [[21, 109.89, 110.53]]),
+    ];
+    const quiet: [number, number][] = [[98.38, 99.4], [100.68, 100.98], [107.14, 107.4], [108.46, 108.76], [108.98, 109.8]];
+    const captions = phrasesFromPublished([{ verseKey: '10:12', wordCount: 27 }], published, aligned, { quiet })!;
+    expect(captions.map(words)).toEqual([['10:12', 0, 10], ['10:12', 10, 20], ['10:12', 21, 26]]);
+  });
+
+});
+
+describe("the user's ground truth for the Quran Foundation's ayah files (2026-10-15): stops", () => {
+  it("does not cut at a stop sign the reciter ran on through (Al-Tablawi's 32:14, نَسِينَـٰكُمْ ۖ)", () => {
+    const published = new Map([['32:14', { from: 18521, to: 37042, segments: [[1, 18591, 19531], [2, 19541, 20101],
+      [3, 20111, 20921], [4, 20931, 23301], [5, 23311, 24241], [6, 24251, 24751], [7, 24761, 27851], [8, 27861, 29131],
+      [9, 29141, 30131], [10, 30141, 30871], [11, 30881, 31701], [12, 31711, 32221], [13, 32231, 33781], [14, 33791, 36401]] }]]);
+    const text = ['فَذُوقُوا۟', 'بِمَا', 'نَسِيتُمْ', 'لِقَآءَ', 'يَوْمِكُمْ', 'هَـٰذَآ', 'إِنَّا', 'نَسِينَـٰكُمْ ۖ', 'وَذُوقُوا۟', 'عَذَابَ', 'ٱلْخُلْدِ', 'بِمَا', 'كُنتُمْ', 'تَعْمَلُونَ'];
+    const aligned = [
+      timed('32:14', [0, 7], [18.41, 29.03], [[0, 18.77, 19.46], [1, 19.73, 19.86], [2, 20.25, 20.97], [3, 21.21, 23.2], [4, 23.45, 24.0],
+        [5, 24.49, 24.88], [6, 26.85, 27.51], [7, 28.01, 28.87]]),
+      timed('32:14', [8, 13], [29.03, 36.82], [[8, 29.37, 30.06], [9, 30.29, 30.86], [10, 31.05, 31.82], [11, 31.81, 32.14],
+        [12, 32.45, 33.73], [13, 34.01, 35.01]]),
+    ];
+    const quiet: [number, number][] = [[18.88, 19.28], [20.32, 20.94], [23.74, 24.14], [28.04, 28.5], [28.78, 29.12], [29.42, 29.86],
+      [31.04, 31.38], [31.5, 31.74], [32.26, 32.68], [33.48, 33.94], [36.38, 37.28]];
+    const ayah = [{ verseKey: '32:14', wordCount: 14, words: text }];
+    expect(phrasesFromPublished(ayah, published, aligned, { quiet })!.map(words)).toEqual([['32:14', 0, 13]]);
+    // A real stop there -- a second of quiet between the words -- still splits it.
+    const stopped: [number, number][] = [...quiet, [28.9, 29.35]];
+    expect(phrasesFromPublished(ayah, published, aligned, { quiet: stopped })!.map(words)).toEqual([['32:14', 0, 7], ['32:14', 8, 13]]);
+    // And so does one the level meter missed -- an echoing recording, as Al-Minshawi's Mujawwad is --
+    // when the aligner heard the words 1.1s apart.
+    const apart = [aligned[0], { ...aligned[1], wordTimings: [{ index: 8, start: 29.97, end: 30.66 }, ...aligned[1].wordTimings!.slice(1)] }];
+    const noQuietThere: [number, number][] = quiet.filter(([from]) => from < 28 || from > 30);
+    expect(phrasesFromPublished(ayah, published, apart, { quiet: noQuietThere })!.map(words)).toEqual([['32:14', 0, 7], ['32:14', 8, 13]]);
+  });
+});
+
+describe("the user's ground truth for the Quran Foundation's ayah files (2026-10-15): repeat edges", () => {
+  it("adds no repeat the aligner made by splitting one long word in two (Abdul Basit's Mujawwad 67:2, أَحْسَنُ)", () => {
+    const published = new Map([['67:2', { from: 20637, to: 51827, segments: [[1, 22687, 23857], [2, 23867, 24907], [3, 24917, 26537],
+      [4, 26547, 28927], [5, 28937, 31237], [6, 31247, 33897], [7, 33907, 35487], [8, 35497, 38787], [9, 44047, 44497],
+      [10, 44507, 46367], [11, 46377, 47427]] }]]);
+    const aligned = [
+      timed('67:2', [0, 7], [20.75, 40.42], [[0, 22.73, 23.7], [1, 24.13, 24.65], [2, 25.25, 26.17], [3, 26.73, 28.72], [4, 29.09, 31.11],
+        [5, 32.05, 33.27], [6, 34.17, 34.7], [6, 34.49, 35.42], [7, 35.89, 36.7]]),
+      timed('67:2', [8, 10], [40.42, 55.13], [[8, 43.84, 44.44], [9, 44.81, 46.11], [10, 46.77, 54.89]]),
+    ];
+    const quiet: [number, number][] = [[30.9, 31.1], [34.28, 34.84], [37.26, 43.42], [44.36, 44.72], [47.18, 47.5], [49.88, 54.92]];
+    expect(phrasesFromPublished([{ verseKey: '67:2', wordCount: 11 }], published, aligned, { quiet })!.map(words))
+      .toEqual([['67:2', 0, 7], ['67:2', 8, 10]]);
+  });
+
+  it("adds a repeat whose end touches the next listed word (Al-Sudais's 39:55, مِّن قَبْلِ ... بَغْتَةً twice)", () => {
+    const published = new Map([['39:55', { from: 36754, to: 52950, segments: [[1, 37500, 38410], [2, 38420, 38890], [3, 38900, 39200],
+      [4, 39210, 39750], [5, 39760, 40280], [6, 40290, 40630], [7, 40640, 41660], [8, 41670, 41900], [9, 41910, 42320],
+      [10, 42330, 42530], [11, 42540, 43370], [12, 43380, 44360], [13, 44370, 49890], [14, 49900, 50930], [15, 50940, 51180],
+      [16, 51190, 52530]] }]]);
+    const aligned = [
+      timed('39:55', [0, 12], [37.02, 45.72], [[0, 37.65, 38.34], [1, 38.49, 38.89], [2, 39.03, 39.05], [3, 39.33, 39.85],
+        [4, 39.89, 40.49], [5, 40.69, 40.89], [6, 41.09, 41.61], [7, 41.96, 42.09], [8, 42.28, 42.49], [9, 42.53, 42.73],
+        [10, 42.92, 43.69], [11, 43.73, 44.41], [12, 44.53, 45.12]]),
+      timed('39:55', [7, 15], [45.72, 52.95], [[7, 46.52, 46.64], [8, 46.84, 47.12], [9, 47.29, 47.44], [10, 47.71, 48.48],
+        [11, 48.57, 49.12], [12, 49.29, 49.91], [13, 50.35, 50.87], [14, 51.09, 51.19], [15, 51.37, 52.87]], 'restarted phrase'),
+    ];
+    const quiet: [number, number][] = [[40.94, 41.28], [41.94, 42.14], [45.06, 46.4], [49.46, 49.72], [52.56, 52.94]];
+    expect(phrasesFromPublished([{ verseKey: '39:55', wordCount: 16 }], published, aligned, { quiet })!.map(words))
+      .toEqual([['39:55', 0, 12], ['39:55', 7, 15]]);
   });
 });

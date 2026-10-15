@@ -166,11 +166,19 @@ fi
 
 LOCAL_LINE=""
 [[ "$TEXT_STATE" != "skipped" ]] && LOCAL_LINE=$'\n'"  local text   $TEXT_STATE"
+
+# The built-in reciters: how many are on this disk, and whether the Quran
+# Foundation publishes any the studio does not offer yet. Nothing is added
+# here -- ./add_new_reciters does that, on purpose, because a new reciter is a
+# download of a gigabyte or two and a rebuild.
+read -r HERE COUNT _ <<<"$(node scripts/qf-reciters.mjs counts 2>/dev/null || echo '? ?')"
+NEW_RECITERS="$(timeout 20 node scripts/qf-reciters.mjs check 2>/dev/null || echo 'could not ask the Quran Foundation')"
+RECITERS_LINE=$'\n'"  reciters     $COUNT offered, $HERE fully downloaded; $NEW_RECITERS"
 cat <<SUMMARY
 
   database     $DB_STATE
   sidecar      $ASR_STATE
-  web app      $WEB_STATE${LOCAL_LINE}
+  web app      $WEB_STATE${LOCAL_LINE}${RECITERS_LINE}
 
   logs in $RUN_DIR/    stop with ./stop.sh
 SUMMARY

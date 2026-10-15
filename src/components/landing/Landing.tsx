@@ -98,7 +98,7 @@ function Reciters({ copy }: { copy: LandingCopy }) {
       <h2 id="lp-reciters-title">{copy.reciters.title}</h2>
       <p className="lp-lede">{copy.reciters.body}</p>
       <ul>
-        {RECITERS.filter(r => !r.hidden).map(r => (
+        {RECITERS.map(r => (
           <li key={r.id}>
             <span className="ar" lang="ar" dir="rtl">{r.arabicName}</span>
             <span className="en" lang="en" dir="ltr">{r.name}</span>

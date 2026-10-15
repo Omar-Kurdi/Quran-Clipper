@@ -1,0 +1,19 @@
+{
+  "_about": "The studio's built-in reciters: every Quran Foundation recitation published as one audio file per ayah, with word timings (GET /resources/recitations). Written by scripts/qf-reciters.mjs -- `./add_new_reciters` adds the ones QF publishes later. `excluded` are never offered, whatever QF lists.",
+  "excluded": [
+    { "qfId": 7, "name": "Mishari Rashid al-Afasy", "reason": "Left out at the owner's request (2026-10-15)." }
+  ],
+  "reciters": [
+    { "id": "qf-3", "qfId": 3, "name": "Abdul Rahman Al-Sudais", "arabicName": "عبد الرحمن السديس", "style": "Murattal" },
+    { "id": "qf-10", "qfId": 10, "name": "Saud Al-Shuraim", "arabicName": "سعود الشريم", "style": "Murattal" },
+    { "id": "qf-4", "qfId": 4, "name": "Abu Bakr Al-Shatri", "arabicName": "أبو بكر الشاطري", "style": "Murattal" },
+    { "id": "qf-5", "qfId": 5, "name": "Hani Ar-Rifai", "arabicName": "هاني الرفاعي", "style": "Murattal" },
+    { "id": "qf-2", "qfId": 2, "name": "Abdul Basit Abdul Samad", "arabicName": "عبد الباسط عبد الصمد", "style": "Murattal" },
+    { "id": "qf-1", "qfId": 1, "name": "Abdul Basit Abdul Samad (Mujawwad)", "arabicName": "عبد الباسط عبد الصمد (مجوّد)", "style": "Mujawwad" },
+    { "id": "qf-6", "qfId": 6, "name": "Mahmoud Khalil Al-Husary", "arabicName": "محمود خليل الحصري", "style": "Murattal" },
+    { "id": "qf-12", "qfId": 12, "name": "Mahmoud Khalil Al-Husary (Muallim)", "arabicName": "محمود خليل الحصري (المعلّم)", "style": "Muallim" },
+    { "id": "qf-9", "qfId": 9, "name": "Mohamed Siddiq Al-Minshawi", "arabicName": "محمد صديق المنشاوي", "style": "Murattal" },
+    { "id": "qf-8", "qfId": 8, "name": "Mohamed Siddiq Al-Minshawi (Mujawwad)", "arabicName": "محمد صديق المنشاوي (مجوّد)", "style": "Mujawwad" },
+    { "id": "qf-11", "qfId": 11, "name": "Mohamed Al-Tablawi", "arabicName": "محمد الطبلاوي", "style": "Murattal" }
+  ]
+}

@@ -74,7 +74,7 @@ export const ar: Dictionary = {
   },
 
   header: {
-    wordmark: 'Quran Clipper',
+    wordmark: 'Quran-Clipper',
     pageTitle: (surah, number, start, end) =>
       `Quran Clipper — ${surah} ${number}:${start}–${end}`,
     undo: 'تراجع',
@@ -237,6 +237,8 @@ export const ar: Dictionary = {
     reciterTimedTitle: 'حدود الآيات لهذا القارئ مأخوذة من التسجيل نفسه',
     reciterStyles: {
       Murattal: 'مرتّل',
+      Mujawwad: 'مجوّد',
+      Muallim: 'معلّم',
       Emotional: 'مؤثّر'
     },
 
@@ -273,7 +275,6 @@ export const ar: Dictionary = {
     trimRangeFailed: 'تعذّر قص هذا الملف. جرّب نافذة قص الصوت، فهي تبيّن سبب الخطأ.',
     alignLostAyahs: (count, keys) =>
       `حُمّلت الآيات بتوقيتاتها المنشورة. وجُرّبت قراءة التسجيل أيضًا لكنها أسقطت ${count} آية (${keys})، فأُبقيت التوقيتات المحمّلة — استعمل «محاذاة على الصوت» إن أردت التقطيع بالعبارات رغم ذلك.`,
-    measuredTimed: captions => `وُقّت من قياس الاستوديو المُتحقَّق منه لهذا التسجيل — ${captions} مقطعًا، مقسّمة حيث يقف القارئ أو يعيد.`,
     publishedTimed: (captions, source, split) =>
       split === 'pauses'
         ? `وُقّتت من توقيتات الكلمات المنشورة في ${source} — ${captions} مقطعًا، لا تُقسَم إلا حيث يقف القارئ أو يعيد.`
@@ -287,29 +288,6 @@ export const ar: Dictionary = {
     passageTooLong: (minutes, limit) =>
       `طول هذا المقطع نحو ${minutes} دقيقة، والمحاذي يستوعب حتى ${limit}. اختر آيات أقل.`,
     alignReciter: 'محاذاة على الصوت',
-    segments: 'توقيتات القارئ',
-    segmentsTitle:
-      'وقّت هذا المقطع من توقيتات الكلمات المنشورة للقارئ نفسه. مقيسة لهذا التسجيل لا مستنبطة من الصوت، وتعطي كل كلمة بدايتها.',
-    segmentsLoading: 'قراءة التوقيتات المنشورة للقارئ…',
-    qulSegments: 'توقيتات QUL',
-    qulSegmentsTitle:
-      'وقّت هذا المقطع من توقيتات الكلمات في QUL لهذا القارئ، وشغّل تسجيل QUL له: فالتوقيتات مقيسة على ذلك التسجيل لا على المحمَّل الآن.',
-    qulSegmentsUnavailable: reciter =>
-      `لا توقيتات QUL لهذا القارئ على هذا الجهاز. نزّل تلاوته سورةً سورةً «مع المقاطع» من qul.tarteel.ai بصيغة JSON وفكّ ضغطها في data/qul/recitations/${reciter}/.`,
-    qulSegmentsLoading: 'قراءة توقيتات QUL…',
-    qulSegmentsNone: 'لا توقيتات لهذا المقطع في ملف QUL. والطرق الأخرى لتوقيته لم تتأثر.',
-    qulSegmentsDone: (ayahs, timed, bounds) =>
-      `وُقّتت ${ayahs} آية من QUL — ${timed} كلمةً كلمة${
-        bounds > 0 ? `، و${bounds} بحدود الآية فقط` : ''
-      }. ويُشغَّل الآن تسجيل QUL الذي قيست عليه هذه التوقيتات.`,
-    segmentsUnavailable:
-      'لا توقيتات منشورة لهذا القارئ — فتسجيله ليس من التسجيلات المقيسة. استعمل «محاذاة على الصوت» بدلًا من ذلك.',
-    segmentsNone:
-      'لم ترد توقيتات منشورة لهذا المقطع. والطريقتان الأخريان لتوقيته لم تتأثرا.',
-    segmentsDone: (ayahs, timed, bounds) =>
-      bounds > 0
-        ? `وُقّتت ${ayahs} آية من تسجيل القارئ نفسه — ${timed} بتوقيت كلمة كلمة، و${bounds} بحدود الآية فقط.`
-        : `وُقّتت ${ayahs} آية من تسجيل القارئ نفسه، بكل كلماتها.`,
     alignReciterTitle:
       'يقرأ تسجيل القارئ نفسه ويحدّد موضع كل كلمة، بدل تقدير مواضع الآيات.',
     needUpload: 'اختر تسجيلًا قبل مطابقته.',
@@ -928,7 +906,7 @@ export const ar: Dictionary = {
     schedulePast: 'هذا الوقت قد مضى. اختر وقتًا في المستقبل.',
     scheduleInvalid: 'اختر تاريخًا ووقتًا ليصبح فيه عامًّا.',
     help:
-      'يسجّل الدخول إلى Google في نافذة منبثقة ويرفع هذا الملف إلى قناتك مع الوصف أدناه. لا يحتفظ Quran Clipper بشيء، وينتهي تسجيل الدخول حين تغلق هذا اللسان. وإلى أن يُوثَّق تطبيق Google الخاص بهذا الاستوديو، يُبقي YouTube المرفوعات خاصة أيًّا كان اختيارك.',
+      'يسجّل الدخول إلى Google في نافذة منبثقة ويرفع هذا الملف إلى قناتك مع الوصف أدناه. لا يحتفظ Quran-Clipper بشيء، وينتهي تسجيل الدخول حين تغلق هذا اللسان. وإلى أن يُوثَّق تطبيق Google الخاص بهذا الاستوديو، يُبقي YouTube المرفوعات خاصة أيًّا كان اختيارك.',
     privateUntilVerified: 'خاص إلى أن يُوثَّق تطبيق Google الخاص بهذا الاستوديو. لماذا؟',
     signingIn: 'بانتظار تسجيل الدخول إلى Google في النافذة المنبثقة…',
     cancel: 'إلغاء',
@@ -956,7 +934,7 @@ export const ar: Dictionary = {
     sendTo: 'أرسله إلى',
     computer: 'هذا الجهاز',
     computerHelp: 'نزّل الفيديو، مع وصفه أو دونه',
-    uploadsHelp: 'يرفعه إلى قناتك. تسجّل الدخول إلى Google، لا إلى Quran Clipper أبدًا',
+    uploadsHelp: 'يرفعه إلى قناتك. تسجّل الدخول إلى Google، لا إلى Quran-Clipper أبدًا',
     openHelp: 'يفتح صفحة الرفع مع نسخ الوصف',
     youtubePage: 'أو افتح صفحة الرفع في YouTube بدلًا من ذلك',
     share: 'تطبيق آخر على هذا الجهاز',

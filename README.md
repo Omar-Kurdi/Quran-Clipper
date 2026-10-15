@@ -7,7 +7,7 @@
 **English · [العربية](README.ar.md)**
 
 **Turn any Quran recitation into a captioned short video for TikTok, Instagram Reels and YouTube
-Shorts.** Pick the ayahs and a reciter, or upload your own recitation. Quran Clipper times every
+Shorts.** Pick the ayahs and a reciter, or upload your own recitation. Quran-Clipper times every
 word to the audio, sets the Arabic in the Madani mushaf's own script with a translation beneath
 it, and exports the finished clip, all in the browser. Free for personal and non-commercial use
 (see [LICENSE](LICENSE)).
@@ -15,7 +15,7 @@ it, and exports the finished clip, all in the browser. Free for personal and non
 **Try it:** a temporary demo, for testing, runs at **[quran.okurdi.com](https://quran.okurdi.com)**.
 
 - **Your own recording, timed word by word:** the ayahs it contains are found and every word placed on the audio.
-- **Ten reciters,** every one with published timings.
+- **Built-in reciters recorded ayah by ayah,** so a passage starts and ends exactly where you chose.
 - **Mushaf typography:** the Madani mushaf's page glyphs, IndoPak, Digital Khatt.
 - **Translations** from 126 editions in any language quran.com publishes, up to three under each caption.
 - **Captions that follow the recitation:** gentle fades or slides between captions, and words revealed or highlighted as they are recited.
@@ -74,25 +74,26 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   uses. Warsh, Qalun, Duri, Susi and Shuʿbah differ in the letters themselves, not merely in
   pronunciation, so they are not a setting: they would need their own text, their own fonts
   and their own aligner vocabulary. See [FutureIdeas.md](FutureIdeas.md).
-- Ten reciters, every one **timed**. Five are always offered: per-word timings measured on the recording, published by
-  Quran.com for Sudais, Yasser and Shuraim and by QUL for Maher and Ghamdi (with their QUL
-  exports imported -- see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data); without them
-  those two fall back to estimated boundaries). Loading one gives a real timeline, streamed
-  through `/api/audio/proxy`. The recording is the whole surah, so the timeline shows only the
-  passage chosen, with two seconds either side dimmed to drag an edge into, and playback runs
-  from its first ayah to its last -- what the export contains. Raad Al-Kurdi is no longer
-  offered: neither source publishes timings for his recording. Projects already made with him
-  still open. Five more -- Abdul Basit, Abu Bakr Al-Shatri, Hani Ar-Rifai, Khalifa Al-Tunaiji
-  and Khalid Al-Jalil -- are timed word by word by QUL alone and appear once their exports are
-  imported.
+- **The built-in reciters are the Quran Foundation's recordings of each ayah on its own** -- every
+  recitation it publishes one file per ayah, bar Mishari al-Afasy, who is left out on purpose
+  (`src/lib/qfReciters.json`). A passage plays as its ayah files laid end to end
+  (`/api/audio/ayahs`), so each ayah starts exactly where its file starts: nothing is measured or
+  estimated to find it. Inside an ayah, the Foundation's word timings give each word its time,
+  and the local aligner splits a long ayah where the reciter pauses or repeats. The files are
+  downloaded by `./install.sh` and kept in `~/.local/share/quran-clipper/qf-audio/` -- outside the checkout, which `next build` reads whole (`QC_QF_AUDIO_DIR` moves it); a surah not yet there is fetched the
+  first time it is loaded. `./start.sh` says when the Foundation publishes a reciter the studio
+  does not offer yet, and `./add_new_reciters` adds it.
 
-  | Reciter | Arabic | Style | Timings |
-  |---|---|---|---|
-  | Abdul Rahman Al-Sudais | عبد الرحمن السديس | Murattal | timed |
-  | Maher Al-Muaiqly | ماهر المعيقلي | Murattal | timed (QUL) |
-  | Yasser Al-Dosari | ياسر الدوسري | Emotional | timed |
-  | Saud Al-Shuraim | سعود الشريم | Murattal | timed |
-  | Saad Al-Ghamdi | سعد الغامدي | Murattal | timed (QUL) |
+  | Reciter | Arabic | Style |
+  |---|---|---|
+  | Abdul Rahman Al-Sudais | عبد الرحمن السديس | Murattal |
+  | Saud Al-Shuraim | سعود الشريم | Murattal |
+  | Abu Bakr Al-Shatri | أبو بكر الشاطري | Murattal |
+  | Hani Ar-Rifai | هاني الرفاعي | Murattal |
+  | Abdul Basit Abdul Samad | عبد الباسط عبد الصمد | Murattal, Mujawwad |
+  | Mahmoud Khalil Al-Husary | محمود خليل الحصري | Murattal, Muallim |
+  | Mohamed Siddiq Al-Minshawi | محمد صديق المنشاوي | Murattal, Mujawwad |
+  | Mohamed Al-Tablawi | محمد الطبلاوي | Murattal |
 
 **Timing your own audio**
 - Two interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).
@@ -295,10 +296,14 @@ missing: Node.js 22, ffmpeg, Python 3.12 or 3.11 with venv, and podman (personal
 shows the end of its log right there. The mushaf fonts and QUL data are never downloaded for you -- see
 [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data).
 
-Last, it downloads every built-in reciter's recordings -- about 14 GB, half an hour or so the
-first time -- into `data/audio-cache/`, the exact files the studio plays, so it never waits on a CDN or
-fails when one refuses. Run again, it fetches only what is missing; `--no-recordings` leaves them
-to the CDNs. It ends with the status of every step, then the list of what is left for you.
+It asks which built-in reciters to download -- all (about 24 GB, an hour or two the first time),
+some, picked from a numbered list, or none -- and downloads them last, the Quran Foundation's one
+file per ayah, into `~/.local/share/quran-clipper/qf-audio/`, so the studio never waits on a CDN or
+fails when one refuses. A reciter not downloaded is fetched surah by surah the first time each is
+loaded, and kept. Unattended, `--reciters all`, `--reciters qf-3,qf-10` (ids from
+`src/lib/qfReciters.json`) or `--no-recordings` answers it. Run again, it fetches only what is
+missing. It ends with the status of every step, then the list of what is left for you -- including
+any reciter the Quran Foundation has added since, which `./add_new_reciters` adds.
 
 Once they are installed, this starts all three and says what came up:
 
@@ -437,11 +442,11 @@ Nothing in it is required to run the app.
   anyone. An uptime check can alert on `waiting` nearing `limit`, or on `failed` climbing.
 - **One timing engine, called "Match".** Visitors are not asked to choose: no Gemini (the key
   would be yours), and not the experimental Local + QUL either. The route refuses both. Built-in
-  reciters still use QUL's published timings wherever its exports are imported.
+  reciters play their ayah files as everywhere else.
 - **The default translation (Saheeh International, 20),** and no locally installed edition is
   served, whatever is on the disk.
 - **Only reciter audio reaches the sidecar.** A match may not point it at an arbitrary address --
-  another port on the server, a local file -- only at the reciter CDNs or this app's own proxy.
+  another port on the server, a local file -- only at this app's own reciter passages (`/api/audio/ayahs`).
 - **HTTPS through Caddy.** With `--domain`, Caddy serves the studio on that name and renews its
   certificate; the app itself then listens on `127.0.0.1` only. An existing Caddyfile is added
   to, not replaced. If `ufw` is already on, ports 80 and 443 are opened in it; nothing else about
@@ -492,9 +497,8 @@ an optional capability, and the app degrades cleanly without it.
 > `http://host:3000/?token=<the token>` — the token is exchanged for an HttpOnly cookie and
 > stripped from the URL — or send `Authorization: Bearer <the token>`. `/api/health` stays open
 > so an uptime check needs no secret. Generate one with `openssl rand -hex 32`. Audio keeps
-> working: `/api/audio/proxy` is gated too, and the browser sends the cookie with the `<audio>`
-> element's own request because it is same-origin (verified — the proxy answers 401 without the
-> token and 206 with it, and the player loads through it either way once the cookie is set).
+> working: `/api/audio/ayahs` is gated too, and the browser sends the cookie with the `<audio>`
+> element's own request because it is same-origin.
 
 > **The Quran Foundation credentials are optional.** With them set, every Quran fetch goes
 > through that API; without them the app uses the open `api.quran.com` exactly as before. Either
@@ -666,64 +670,9 @@ server that is already running needs no rebuild: it checks the files on every pa
 | For | Download from QUL | Put it in |
 |---|---|---|
 | **Local + QUL** | morphology (word roots, lemmas and stems) and mutashabihat | `data/qul/`, then run `node scripts/qul-import.mjs` |
-| **QUL timings** | a reciter's surah-by-surah recitation **with segments**, as JSON or SQLite | `data/qul/` as downloaded, then run `node scripts/qul-import.mjs` |
 
-The two are independent. **Local + QUL** works on any recording, uploads included, and needs
-nothing beyond its two files. **QUL timings** is only for the built-in reciters and never for an
-upload: it times a passage from QUL's measurements of QUL's own recording of that reciter.
-
-For **QUL timings**, take the **Surah by Surah** entry marked **With segments** — JSON or
-SQLite, the importer reads either — not *Ayah by Ayah*, which is a separate audio file per ayah, where the studio times
-one recording of the whole surah. Each download covers all 114 surahs for one reciter:
-
-| Studio reciter | QUL entry (Surah by Surah, With segments) | Folder |
-|---|---|---|
-| Maher Al-Muaiqly | [Maher al-Muaiqly, 405](https://qul.tarteel.ai/resources/recitation/405) — not 562, which has no segments | `muaiqly` |
-| Saad Al-Ghamdi | [Saad al-Ghamdi, 335](https://qul.tarteel.ai/resources/recitation/335) | `ghamdi` |
-| Abdul Rahman Al-Sudais | [Abdur-Rahman as-Sudais, 407](https://qul.tarteel.ai/resources/recitation/407) | `sudais` |
-| Yasser Al-Dosari | [Yasser ad-Dussary, 422](https://qul.tarteel.ai/resources/recitation/422) | `yasser` |
-| Saud Al-Shuraim | [Sa`ud ash-Shuraym, 317](https://qul.tarteel.ai/resources/recitation/317) — not 402, the older recitation | `shuraim` |
-| Abdul Basit Abdul Samad | [Abdul Basit Abdul Samad, 408](https://qul.tarteel.ai/resources/recitation/408) | `basit` |
-| Abu Bakr Al-Shatri | [Abu Bakr al-Shatri, 315](https://qul.tarteel.ai/resources/recitation/315) | `shatri` |
-| Hani Ar-Rifai | [Hani ar-Rifai, 333](https://qul.tarteel.ai/resources/recitation/333) | `rifai` |
-| Khalifa Al-Tunaiji | [Khalifah Taniji, 389](https://qul.tarteel.ai/resources/recitation/389) | `tunaiji` |
-| Khalid Al-Jalil | [Khalid Al-Jalil, 420](https://qul.tarteel.ai/resources/recitation/420) | `jalil` |
-
-The last five are listed in the studio only once their export is imported: QUL is their only
-source. Hady Toure (421) is imported but not listed: his export times 143 words at over ten
-seconds, some over thirty, where the recording has the ayah over in a few. Any passage whose
-timings contain a word longer than 30 seconds -- a handful of ayahs in other exports too, such as
-Ghamdi's 3:188 -- is not loaded from them: a reciter with another source falls back to it, and a
-QUL-only one says so. Many more QUL recitations are tagged *With segments* but time whole ayahs only, not
-words -- 18 of 24 checked on 2026-09-26, among them a second Yasser ad-Dussary (351) -- and the
-importer turns those away rather than install them.
-
-**Which timings go with which recording** is not taken on trust. quran.com's file for Sudais's
-Al-Ma'idah was replaced after it was timed, so from 5:41 on every caption played 12-36 seconds
-ahead of its ayah; QUL's timings for that surah fit the quranicaudio file, not the tarteel one its
-export names. `scripts/audit_timing_pairs.py` listens: for every reciter and surah it reads the
-opening of sampled ayahs from the recording, at the time each source gives, and checks with the
-aligner that it is that ayah. The first pairing that passes is written to
-`src/lib/timingPairs.json`, and the studio follows it -- with the aligner switched off too. As
-audited on 2026-09-27, all 1,140 reciter-surahs: QUL instead of quran.com for Sudais 3, 4, 28, 29,
-82 and 94 and Yasser 6, 37, 50, 58, 73 and 92; QUL's timings on quran.com's recording for Sudais 5;
-and no timings at all for Jalil 103-104 and Rifai 16, which the studio refuses with a message
-rather than play out of step. Re-run it when a CDN changes a file:
-
-```bash
-asr-service/.venv/bin/python scripts/audit_timing_pairs.py run sudais yasser
-asr-service/.venv/bin/python scripts/audit_timing_pairs.py table
-```
-
-Muaiqly and Ghamdi are the two that matter most: quran.com publishes no timings for them, so QUL
-is their only source. With their exports imported, **Load ayahs & audio** times them from QUL and
-plays QUL's recording, and the reciter list marks them *timed*. The other three already have
-quran.com's timings, which a load keeps using; QUL's are a second opinion behind the **QUL
-timings** button. QUL has no segmented recitation of Raad Al-Kurdi, which is why he is no longer offered.
-
-The importer keeps one row per ayah (QUL's SQLite lists each twice) and, where a surah is listed
-under two addresses, the one QUL's CDN actually serves. Restart the studio after importing: each
-reciter's export is read once per process.
+**Local + QUL** works on any recording, uploads included, and needs nothing beyond those files.
+The built-in reciters need nothing from QUL: they come from the Quran Foundation (see above).
 
 ## Translations
 
@@ -872,13 +821,8 @@ Source shows one way in at a time, chosen at the top: **Built-in reciter** or **
 
 Then save the project and export.
 
-> Built-in reciter timings are estimates. Set boundaries yourself on the timeline, or use AI
-> matching, for accuracy. AI matching applies to uploaded audio only.
->
-> After a load, **Reciter timings** times the passage from quran.com's published word timings,
-> where it has them. **QUL timings** does the same from QUL's timings, and plays QUL's own
-> recording of the reciter, because the times were measured on that recording. Both buttons
-> can be used on the same passage to compare the two.
+> A built-in reciter's ayahs start and end where their own files do, so a load is timed
+> exactly; **Align to audio** splits a long ayah where the reciter pauses.
 
 ---
 
@@ -1027,9 +971,8 @@ App routes:
 | `GET` | `/api/quran/translations` | Every translation the configured upstream publishes, grouped for the picker |
 | `GET` | `/api/quran/translation?surah=&start=&end=&ids=` | The text of up to five translations for one passage, keyed by verse |
 | `POST` | `/api/audio/match` | Match audio to a timeline (`provider=align\|qul\|gemini`) |
-| `GET` | `/api/quran/qul-segments` | A built-in reciter's passage timed from QUL's export, with QUL's audio. With no `surah`, the reciters that have one |
 | `GET` | `/api/audio/match` | Which providers are configured and reachable |
-| `GET` | `/api/audio/proxy?url=` | Streams reciter audio, range requests included |
+| `GET` | `/api/audio/ayahs?reciter=&surah=&start=&end=` | A built-in reciter's passage: its ayah files laid end to end, range requests included |
 | `GET` | `/api/background/resolve?url=` | Turns a Pexels page link into the media file link |
 | `GET` `POST` | `/api/projects` | List / save projects |
 | `DELETE` | `/api/projects?id=` | Delete one saved project (`404` if it is already gone) |
@@ -1312,13 +1255,10 @@ npx next dev --webpack
   that it was handed the wrong text; decode agreement is a strong guard, not a guarantee.
 - If NeMo fails to load, the sidecar says so with the reason, and the studio shows it before
   you upload anything — most often it means the service was started outside its virtualenv.
-- A built-in reciter's timeline can now be aligned rather than estimated: **Align to audio**
-  after loading reads the reciter's own recording and places every word. Before this, three of
-  the six reciters had no published timings at all and got boundaries guessed from average pace,
-  and the other three got quran.com's per-*ayah* timings — one caption for a whole ayah, however
-  long. Alignment gives both groups the phrase-level boundaries an uploaded file gets, and the
-  export then covers exactly the ayahs selected. Only the local aligner can do this; Gemini needs
-  the audio uploaded.
+- A built-in reciter's ayahs are exact without any alignment -- each is its own file -- but a
+  long ayah is one caption until **Align to audio** (which runs after every load) reads the
+  recording and splits it where the reciter pauses or repeats. Only the local aligner can do
+  this; Gemini needs the audio uploaded.
 - Alignment assumes the recitation follows the reference text in order. Repeats are detected
   and inserted; out-of-order recitation is not handled.
 - Range detection reports the ayah cluster carrying the most matched words, so a recitation
@@ -1370,10 +1310,10 @@ npx next dev --webpack
 Quran text, translation, word data and published word timings from the
 [Quran.com API](https://api-docs.quran.com/) and, where credentials are configured, the
 [Quran Foundation content API](https://api-docs.quran.foundation) (optional; without them the open
-Quran.com API serves everything). Mushaf fonts, QUL word
-timings, morphology and mutashabihat from Tarteel's
-[Quranic Universal Library](https://qul.tarteel.ai), which you download yourself. Reciter audio
-from [QuranicAudio](https://quranicaudio.com/), QUL and [mp3quran.net](https://mp3quran.net/).
+Quran.com API serves everything). Mushaf fonts, morphology and mutashabihat from Tarteel's
+[Quranic Universal Library](https://qul.tarteel.ai), which you download yourself. Reciter audio,
+one file per ayah with word timings, from the Quran Foundation (verses.quran.com and
+[QuranicAudio](https://quranicaudio.com/)).
 Background footage from [Pexels](https://www.pexels.com/).
 
 **Models.** None ships with this repository: the sidecar downloads each one from the Hugging

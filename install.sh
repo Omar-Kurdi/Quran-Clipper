@@ -23,11 +23,18 @@
 #   ./install.sh --personal
 #   ./install.sh --public --domain studio.example.com
 #   ./install.sh ... --no-apt        do not install system packages; only report them
-#   ./install.sh ... --no-recordings do not download the reciters' recordings
+#   ./install.sh ... --reciters all  download every reciter's recordings (the default
+#                                    when it cannot ask)
+#   ./install.sh ... --reciters qf-3,qf-10   only these (ids in src/lib/qfReciters.json)
+#   ./install.sh ... --no-recordings download none (the same as --reciters none)
 #
-# Last, it downloads every built-in reciter's recordings (about 14 GB, half an
-# hour or so the first time) into data/audio-cache/, so the studio never waits on a
-# CDN or fails when one refuses. Already-kept recordings are skipped.
+# It asks which built-in reciters to download -- all, some, or none -- and last
+# downloads them: the Quran Foundation's one file per ayah, about 2 GB a
+# reciter (24 GB for all, an hour or two the first time), into
+# ~/.local/share/quran-clipper/qf-audio/ (outside the checkout, which the build
+# reads whole), so the studio never waits on a CDN or fails when one refuses.
+# A reciter not downloaded is fetched surah by surah the first time each is
+# loaded, and kept. What is already here is skipped.
 #
 # On Debian or Ubuntu, as root or with sudo, it installs what the machine is
 # missing: Node.js 22 (from NodeSource where the distribution's is too old),
@@ -44,7 +51,7 @@
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")" || exit 1
 
-APT=1; USE=""; DOMAIN=""; RECORDINGS=1
+APT=1; USE=""; DOMAIN=""; RECITERS=""
 while (( $# )); do
   case "$1" in
     --apt) APT=1 ;;  # the default now; still accepted
@@ -52,8 +59,9 @@ while (( $# )); do
     --personal) USE="personal" ;;
     --public) USE="public" ;;
     --domain) DOMAIN="${2:-}"; shift ;;
-    --no-recordings) RECORDINGS="" ;;
-    -h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-recordings) RECITERS="none" ;;
+    --reciters) RECITERS="${2:-}"; shift ;;
+    -h|--help) sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (see ./install.sh --help)" >&2; exit 2 ;;
   esac
   shift
@@ -69,6 +77,31 @@ if [[ -z "$USE" ]]; then
 fi
 if [[ "$USE" == "public" && -z "$DOMAIN" && -t 0 ]]; then
   read -r -p "Domain for HTTPS (blank to set up Caddy yourself later): " DOMAIN
+fi
+
+# Which reciters' recordings to download now. Asked up front, with the other
+# questions, so the install can then run to the end on its own.
+if [[ -z "$RECITERS" ]]; then
+  if [[ -t 0 ]] && command -v node >/dev/null 2>&1; then
+    echo
+    echo "Built-in reciters -- the Quran Foundation's recordings, one file per ayah, about 2 GB each:"
+    node -e "require('./src/lib/qfReciters.json').reciters.forEach((r, i) => console.log('  ' + String(i + 1).padStart(2) + ') ' + r.name))"
+    read -r -p "Download [a]ll of them (about 24 GB), [s]ome, or [n]one (each surah is fetched the first time it is used)? [a/s/n] " answer
+    case "${answer,,}" in
+      s*)
+        read -r -p "Which? Their numbers, separated by spaces (e.g. 1 3 5): " picks
+        RECITERS="$(node -e "
+          const all = require('./src/lib/qfReciters.json').reciters;
+          const ids = process.argv.slice(1).map(Number).filter(n => n >= 1 && n <= all.length).map(n => all[n - 1].id);
+          console.log([...new Set(ids)].join(',') || 'none');
+        " $picks)"
+        ;;
+      n*) RECITERS="none" ;;
+      *) RECITERS="all" ;;
+    esac
+  else
+    RECITERS="all"
+  fi
 fi
 
 RUN_DIR=".run"; mkdir -p "$RUN_DIR"
@@ -408,61 +441,48 @@ if [[ "$USE" == "public" && -d data/local-translations ]]; then
 fi
 
 # --- recordings ---------------------------------------------------------------------
-# Every built-in reciter's recordings, kept on this disk so a load never waits
-# on -- or fails on -- a CDN. The studio decides which file each surah plays,
-# so the download asks it (scripts/prefetch-audio.mjs): the one on :3000 if it
-# is running, otherwise one started here for the purpose and stopped after.
+# The built-in reciters chosen above, one file per ayah from the Quran
+# Foundation, kept on this disk so a load never waits on -- or fails on -- a
+# CDN (scripts/qf-reciters.mjs; resumable, so a second run fetches only what
+# is missing). A surah not here is fetched the first time it is loaded.
 printf '[9/9] recordings  ... '
-KEPT_BEFORE="$(find data/audio-cache -name '*.audio' 2>/dev/null | wc -l)"
-DISK_NOW_10="$(df -Pk . | awk 'NR==2 {printf "%d", $4/104857.6}')"
-if [[ -z "$RECORDINGS" ]]; then
-  echo "skipped (--no-recordings): $KEPT_BEFORE kept"
+RECITER_COUNT="$(node -e "console.log(require('./src/lib/qfReciters.json').reciters.length)" 2>/dev/null || echo 0)"
+# `<complete reciters> <offered> <surahs here> <folder>`, from the script that keeps them.
+counts() { node scripts/qf-reciters.mjs counts 2>/dev/null; }
+AUDIO_DIR="$(counts | cut -d' ' -f4-)"
+if [[ "$RECITERS" == "all" ]]; then CHOSEN="$RECITER_COUNT"; PICK=()
+elif [[ "$RECITERS" == "none" ]]; then CHOSEN=0; PICK=()
+else CHOSEN="$(tr ',' '\n' <<<"$RECITERS" | grep -c .)"; PICK=(--reciter "$RECITERS"); fi
+DISK_NOW_10="$(df -Pk "$HOME" | awk 'NR==2 {printf "%d", $4/104857.6}')"
+NEED_10=$(( CHOSEN * 25 + 50 ))
+if (( CHOSEN == 0 )); then
+  echo "none downloaded now ($(counts | awk '{print $1}') of $RECITER_COUNT reciters already here); each surah is fetched the first time it is loaded"
 elif (( NODE_MAJOR < 20 )); then
   echo "skipped (no Node.js 20+)"
-elif (( KEPT_BEFORE < 1140 && DISK_NOW_10 < 200 )); then
-  echo "skipped (only $(gb "$DISK_NOW_10") GB free, needs about 20)"
-  todo "The reciters' recordings need about 14 GB. Free some space and run: ./install.sh again (or ./install.sh --no-recordings to leave them to the CDNs)."
+elif ! have ffprobe; then
+  echo "skipped (no ffprobe -- it comes with ffmpeg)"
+  todo "Install ffmpeg, then run ./install.sh again to download the reciters."
+elif (( DISK_NOW_10 < NEED_10 )); then
+  echo "skipped (only $(gb "$DISK_NOW_10") GB free in $HOME, needs about $(gb "$NEED_10"))"
+  todo "The chosen reciters need about $(gb "$NEED_10") GB. Free some space and run ./install.sh again, or choose fewer; meanwhile each surah is fetched the first time it is loaded."
 else
-  if (( KEPT_BEFORE >= 1140 )); then echo "checking the $KEPT_BEFORE kept"
-  else echo "downloading -- about 14 GB, half an hour or so the first time (progress: $RUN_DIR/prefetch.log)"; fi
-  STUDIO_TOKEN="$(sed -n 's/^STUDIO_TOKEN=//p' .env.local 2>/dev/null | tail -n 1 | tr -d "\"'")"
-  AUTH=(); [[ -n "$STUDIO_TOKEN" ]] && AUTH=(-H "Authorization: Bearer $STUDIO_TOKEN")
-  # Whether a studio on :3000 says when it answers from its kept recordings,
-  # which the download waits for -- one built before that never does.
-  # Al-Fatihah is under 1 MB, so a studio that keeps it says so at once.
-  reports_kept() {
-    curl -sf --max-time 2 http://127.0.0.1:3000/api/health >/dev/null 2>&1 || return 1
-    for _ in $(seq 1 15); do
-      curl -s --max-time 30 -r 0-0 "${AUTH[@]}" -D - -o /dev/null \
-        'http://127.0.0.1:3000/api/audio/proxy?url=https%3A%2F%2Fdownload.quranicaudio.com%2Fqdc%2Fabdurrahmaan_as_sudais%2Fmurattal%2F1.mp3' \
-        2>/dev/null | grep -qi '^x-audio-cache: hit' && return 0
-      sleep 2
-    done
-    return 1
-  }
-  PORT=3000; TEMP_PID=""
-  if ! reports_kept; then
-    PORT=3999
-    setsid npx next dev -p "$PORT" >"$RUN_DIR/prefetch-studio.log" 2>&1 &
-    TEMP_PID=$!
-    for _ in $(seq 1 120); do
-      curl -sf --max-time 2 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && break
-      sleep 2
-    done
-  fi
-  STUDIO_TOKEN="$STUDIO_TOKEN" node scripts/prefetch-audio.mjs --port "$PORT" >"$RUN_DIR/prefetch.log" 2>&1
-  PREFETCH_OK=$?
-  [[ -n "$TEMP_PID" ]] && kill -- "-$TEMP_PID" 2>/dev/null
-  KEPT="$(find data/audio-cache -name '*.audio' 2>/dev/null | wc -l)"
-  SIZE="$(du -sh data/audio-cache 2>/dev/null | cut -f1)"
+  echo "downloading $CHOSEN of $RECITER_COUNT reciters -- about $(( CHOSEN * 2 + 1 )) GB, a few minutes each the first time (progress: $RUN_DIR/qf-download.log)"
+  node scripts/qf-reciters.mjs download "${PICK[@]}" >"$RUN_DIR/qf-download.log" 2>&1
+  DOWNLOAD_OK=$?
+  read -r COMPLETE _ _ _ <<<"$(counts)"
+  SIZE="$(du -sh "$AUDIO_DIR" 2>/dev/null | cut -f1)"
   printf '[9/9] recordings  ... '
-  if (( PREFETCH_OK == 0 )); then
-    echo "all kept: $KEPT recordings, $SIZE"
+  if (( DOWNLOAD_OK == 0 )); then
+    echo "$COMPLETE of $RECITER_COUNT reciters here ($SIZE in $AUDIO_DIR); the rest are fetched surah by surah when first used"
   else
-    echo "$KEPT kept ($SIZE); some failed -- see $RUN_DIR/prefetch.log"
-    todo "Some recordings did not download (a CDN refused, or the studio did not start). Run ./install.sh again to fetch just those; the studio plays the rest from the CDN meanwhile."
+    echo "$COMPLETE of $RECITER_COUNT reciters here ($SIZE); some surahs failed -- see $RUN_DIR/qf-download.log"
+    todo "Some recitations did not download. Run ./install.sh again to fetch just those; meanwhile the studio fetches a missing surah when it is first loaded."
   fi
 fi
+NEW_RECITERS="$(node scripts/qf-reciters.mjs check 2>/dev/null)"
+case "$NEW_RECITERS" in
+  [0-9]*" new on the Quran Foundation"*) todo "$NEW_RECITERS" ;;
+esac
 
 # --- summary ----------------------------------------------------------------------
 # Back to the terminal, and the copy finished, before reading it back.

@@ -14,9 +14,7 @@ import type { MatchResult } from '@/lib/matchTypes';
 import type { VerseData } from '@/lib/quranData';
 import { publishedPassage } from '@/lib/publishedTiming';
 import { timedFromPublished } from '@/lib/publishedPhrases';
-import { measuredPassage } from '@/lib/measuredRecitations';
 import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
-import { hostAllowed } from '@/app/api/audio/proxy/route';
 import { studioMode } from '@/lib/studioMode';
 import { openingVerses, passageAfterOpenings } from '@/lib/openings';
 import { getVerseByKey } from '@/lib/quranCorpus';
@@ -276,7 +274,7 @@ export async function POST(req: NextRequest) {
       if (provider === 'qul') {
         return NextResponse.json({ success: false, provider, error: 'This public studio matches with its one engine only.' }, { status: 403 });
       }
-      if (audioUrl && !publicAudioUrlAllowed(audioUrl, req.nextUrl.origin, hostAllowed)) {
+      if (audioUrl && !publicAudioUrlAllowed(audioUrl, req.nextUrl.origin)) {
         return NextResponse.json({ success: false, provider, error: 'That audio address is not one this studio reads.' }, { status: 400 });
       }
       // One visitor's window of a reciter's chapter should not hold the queue
@@ -321,11 +319,7 @@ export async function POST(req: NextRequest) {
      * the reciter paused -- see `publishedPhrases`.
      */
     const timedReciter = isLocal(provider) && hasWindow && String(formData.get('timing') || '') === 'published';
-    /** A recording this studio measured itself, its published timings being wrong for it: see `measuredRecitations`. */
-    const measured = timedReciter ? measuredPassage(reciter, selectedSurah, selectedStart, selectedEnd, audioUrl) : null;
-    const published = timedReciter && !measured
-      ? await publishedPassage(reciter, selectedSurah, { start: selectedStart, end: selectedEnd }, audioUrl, { start: windowStart, end: windowEnd })
-      : null;
+    const published = timedReciter ? await publishedPassage(audioUrl, selectedSurah, { start: selectedStart, end: selectedEnd }) : null;
     /** Whether the captions were cut at pauses the aligner heard, rather than only per ayah. */
     let pausesFromAudio = false;
 
@@ -343,9 +337,7 @@ export async function POST(req: NextRequest) {
         const autoDetect = !published && String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
         // The sidecar reads one recording at a time; everyone else waits their
         // turn here, and can see where they stand -- see `matchQueue`.
-        // This studio's own measurement needs no aligner: it is the aligner's
-        // result, checked and kept.
-        result = measured ?? (skipAligner ? { segments: [] } : await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
+        result = skipAligner ? { segments: [] } : await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
           serviceUrl,
           source: audio instanceof File
             ? { kind: 'file', audio }
@@ -363,7 +355,7 @@ export async function POST(req: NextRequest) {
           // queue, and a visitor who closes the tab gives up their place.
           visitor: studioMode() === 'public' ? visitorFrom(req.headers) ?? undefined : undefined,
           signal: req.signal,
-        }));
+        });
       } catch (err) {
         if (err instanceof QueueFullError) {
           return NextResponse.json({ success: false, provider, error: err.message }, { status: 503 });
@@ -443,7 +435,7 @@ export async function POST(req: NextRequest) {
       needsReview: needsReview(provider, built.confidence, Boolean(result.warning)),
       ...built.body,
       /** Whose published timings the captions use, or null when the aligner timed them. */
-      timedFrom: published?.provider ?? (measured ? 'measured' : null),
+      timedFrom: published?.provider ?? null,
       pausesFromAudio,
       /** The published timings were asked for alone, so no pauses were looked for. */
       alignerSkipped: skipAligner

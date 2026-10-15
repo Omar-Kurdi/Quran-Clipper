@@ -85,11 +85,12 @@ def duration_seconds(pcm: np.ndarray) -> float:
 
 #: Hosts this service will fetch recitation audio from.
 #:
-#: Deliberately the same three the web app's `/api/audio/proxy` allows, and for
-#: the same reason: fetching a caller-supplied URL server-side is a request
-#: made from inside the network, so without a list this endpoint would fetch
-#: anything anyone could name -- including addresses only this machine can
-#: reach. Keep the two lists in step.
+#: The studio now serves every built-in reciter itself (`/api/audio/ayahs`,
+#: under `AUDIO_PROXY_ORIGIN` below), so these are only for a caller handing
+#: this service a CDN address directly. A list, because fetching a
+#: caller-supplied URL server-side is a request made from inside the network:
+#: without one this endpoint would fetch anything anyone could name --
+#: including addresses only this machine can reach.
 ALLOWED_AUDIO_HOSTS = frozenset(
     host.strip()
     for host in os.getenv(

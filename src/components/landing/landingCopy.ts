@@ -27,7 +27,7 @@ export const LANDING_COPY = {
           tab: '1 · Source',
           title: 'Pick the recitation',
           body:
-            'A surah, its ayahs and one of ten reciters — or upload your own recording, audio or video. A built-in reciter arrives already timed; your own is matched to the text for you.',
+            'A surah, its ayahs and a built-in reciter — or upload your own recording, audio or video. A built-in reciter arrives already timed; your own is matched to the text for you.',
           video: 'passage',
         },
         {
@@ -54,9 +54,9 @@ export const LANDING_COPY = {
       ],
     },
     reciters: {
-      title: 'Ten reciters, timed ayah by ayah',
+      title: 'Reciters recorded ayah by ayah',
       body:
-        'Every built-in recording is timed from published word timings and checked against the audio itself — or bring any recitation you have permission to use.',
+        'Every built-in reciter is the Quran Foundation’s recording of each ayah on its own, so the passage you choose starts and ends exactly where it should — or bring any recitation you have permission to use.',
       own: 'Your own recording',
     },
     facts: {
@@ -93,7 +93,7 @@ export const LANDING_COPY = {
           tab: '١ · المصدر',
           title: 'اختر التلاوة',
           body:
-            'سورة وآياتها وواحد من عشرة قرّاء — أو ارفع تسجيلك، صوتًا أو فيديو. تلاوة القارئ المدمج تأتي مضبوطة التوقيت، وتسجيلك يُطابَق مع النص تلقائيًا.',
+            'سورة وآياتها وقارئ من القرّاء المدمجين — أو ارفع تسجيلك، صوتًا أو فيديو. تلاوة القارئ المدمج تأتي مضبوطة التوقيت، وتسجيلك يُطابَق مع النص تلقائيًا.',
           video: 'passage',
         },
         {
@@ -118,8 +118,8 @@ export const LANDING_COPY = {
       ],
     },
     reciters: {
-      title: 'عشرة قرّاء، مضبوطة تلاواتهم آيةً آية',
-      body: 'كل تسجيل مدمج مضبوط من توقيتات الكلمات المنشورة ومُراجَع على الصوت نفسه — أو استعمل أي تلاوة لديك إذن باستعمالها.',
+      title: 'قرّاء مسجَّلة تلاواتهم آيةً آية',
+      body: 'كل قارئ مدمج هو تسجيل Quran Foundation لكل آية على حدة، فيبدأ المقطع الذي تختاره وينتهي حيث يجب تمامًا — أو استعمل أي تلاوة لديك إذن باستعمالها.',
       own: 'تسجيلك أنت',
     },
     facts: {
