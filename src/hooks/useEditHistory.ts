@@ -23,11 +23,18 @@ export interface StudioSnapshot<C> {
   config: C;
 }
 
-export interface EditHistory {
+export interface EditHistory<C> {
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /**
+   * Makes `snapshot` the oldest state undo can reach, dropping every step
+   * before and after it. For a project replacing the one on screen wholesale --
+   * a restored draft -- whose undo must not walk back into what it replaced.
+   * Pass the very references being set, so the watcher sees no edit.
+   */
+  reset: (snapshot: StudioSnapshot<C>) => void;
 }
 
 /**
@@ -48,7 +55,7 @@ export function useEditHistory<C>({
   selectedIndex,
   config,
   restore
-}: StudioSnapshot<C> & { restore: (snapshot: StudioSnapshot<C>) => void }): EditHistory {
+}: StudioSnapshot<C> & { restore: (snapshot: StudioSnapshot<C>) => void }): EditHistory<C> {
   const [history, setHistory] = useState<History<StudioSnapshot<C>>>(() =>
     initHistory({ verses, selectedIndex, config })
   );
@@ -93,9 +100,16 @@ export function useEditHistory<C>({
     restoreRef.current(next.present);
   }, []);
 
+  const reset = useCallback((snapshot: StudioSnapshot<C>) => {
+    const next = initHistory(snapshot);
+    historyRef.current = next;
+    setHistory(next);
+  }, []);
+
   return {
     undo: useCallback(() => step(undoHistory), [step]),
     redo: useCallback(() => step(redoHistory), [step]),
+    reset,
     canUndo: canUndo(history),
     canRedo: canRedo(history)
   };

@@ -626,11 +626,15 @@ export default function VideoCreatorPage() {
   const handleRestoreDraft = () => {
     const found = pendingDraft;
     if (!found) return;
-    setVerses(found.verses);
-    setSelectedIndex(0);
     // Merged rather than replaced: a styling knob added since the draft was
     // written keeps its default instead of arriving as `undefined`.
-    setCanvasConfig(prev => ({ ...prev, ...(found.config as Partial<VideoCanvasConfig>) }));
+    const config = { ...canvasConfig, ...(found.config as Partial<VideoCanvasConfig>) };
+    setVerses(found.verses);
+    setSelectedIndex(0);
+    setCanvasConfig(config);
+    // The draft is where undo stops: walking back past it would put the
+    // sample's captions over the draft's recording.
+    history.reset({ verses: found.verses, selectedIndex: 0, config });
     setSelectedSurah(found.surahNumber);
     if (found.surahNameArabic) setSurahNameArabic(found.surahNameArabic);
     if (found.surahNameEnglish) setSurahNameEnglish(found.surahNameEnglish);

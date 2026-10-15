@@ -117,4 +117,18 @@ describe('editHistory', () => {
     expect(canRedo(history)).toBe(true);
     expect(redo(history).present).toBe(b);
   });
+
+  it('stops undo at a project restored over another, as a fresh history does', () => {
+    // The sample, edited; then a draft restored in its place and edited once.
+    const [sample, sampleEdit, draft, cut] = [state('sample'), state('sample-edit'), state('draft'), state('cut')];
+    let history = record(initHistory(sample), sampleEdit, { at: 1000 });
+    history = initHistory(draft);
+    history = record(history, cut, { at: 5000 });
+
+    history = undo(history);
+    expect(history.present).toBe(draft);
+    expect(canUndo(history)).toBe(false);
+    // A second undo stays on the draft rather than reaching the sample.
+    expect(undo(history).present).toBe(draft);
+  });
 });
