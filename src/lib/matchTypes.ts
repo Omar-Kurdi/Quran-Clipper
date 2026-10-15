@@ -68,4 +68,6 @@ export type MatchResult = {
   openings?: HeardOpening[];
   /** Where the reciter is not making sound, measured by the aligner: see `inTheGaps`. */
   quiet?: [number, number][];
+  /** Where the phoneme model hears nothing said, in seconds of the recording: see `phrasesFromPublished`. */
+  silences?: [number, number][];
 };

@@ -490,16 +490,72 @@ function heardAt(cutAt: Map<number, number>, words: RecitedWord[], j: number, at
   if (at > words[j - 1].start) cutAt.set(j, at);
 }
 
-function planAyah(
-  ayah: PublishedAyah, published: ReciterVerseTiming, aligned: MatchSegment[], quiet: [number, number][] = []
-): AyahPlan {
-  const { verseKey, wordCount, words: text = [] } = ayah;
-  const timing = withHeardRepeats(published, aligned, verseKey, quiet);
-  const heard = aligned.length ? alignerRestarts(aligned, verseKey) : null;
-  const words = recitedWords(timing, wordCount, heard ? atMs => heard.some(at => Math.abs(at * 1000 - atMs) <= CUT_TOLERANCE_SEC * 1000) : undefined);
-  const restarts = new Set<number>();
-  for (let j = 1; j < words.length; j++) if (words[j].index <= words[j - 1].index) restarts.add(j);
-  const pauses: number[] = [];
+/** What the recording says about pauses besides the aligner's cuts: see `phrasesFromPublished`. */
+interface Heard {
+  quiet?: [number, number][];
+  silences?: [number, number][];
+  sung?: boolean;
+}
+
+/** The longest stretch of `silences` inside `from`-`to`, in seconds. */
+function longestWithin(silences: [number, number][], from: number, to: number): number {
+  return silences.reduce((most, [a, b]) => Math.max(most, Math.min(b, to) - Math.max(a, from)), 0);
+}
+
+/**
+ * Where the aligner did not cut at a stop sign, a cut at it anyway, for the
+ * phoneme model's silence to decide: it reads one run of words where the
+ * reciter stopped as readily as anywhere. Al-Sudais's 2:255 «بِإِذْنِهِۦ ۚ» is
+ * one; at the place in the recording it heard the word after start.
+ */
+function uncutStops(aligned: MatchSegment[], verseKey: string, text: string[], cut: Set<number>): { word: number; at: number }[] {
+  const heard = heardWords(aligned, verseKey);
+  const stops: { word: number; at: number }[] = [];
+  for (let j = 1; j < heard.length; j++) {
+    const word = heard[j].index;
+    if (heard[j - 1].index !== word - 1 || cut.has(word) || !stopAllowedAfter(text[word - 2])) continue;
+    stops.push({ word, at: heard[j].start / 1000 });
+  }
+  return stops;
+}
+
+/** How much later than published a word must be heard to start where it was heard: see `withHeardStarts`. */
+const MIN_LATE_START_MS = 500;
+
+/**
+ * The published timing with each word that was plainly heard later than
+ * listed starting where it was heard, so the word lit up is the one being
+ * said. Some of the Quran Foundation's word times run early: Al-Minshawi's
+ * Mujawwad 32:17 lists مَّآ for 10ms at 35.57s, أُخْفِىَ straight after it and
+ * لَهُم over the next 7.2s, where he says them at 38.3s, 41.3s and 43.1s, and
+ * 32:18's كَانَ 1.7s early. Measured on 882 words of every reciter
+ * (2026-10-15), the published start was 0.5s or more early 63 times, Mujawwad
+ * mostly, and never 0.5s late; the aligner reads a word 0.2s late at the
+ * median, so less than `MIN_LATE_START_MS` is left as published.
+ *
+ * Only for an ayah read plainly: every word listed once and heard once, in
+ * order. A repeat or a word the aligner lost leaves nothing to pair words by.
+ */
+function withHeardStarts(timing: ReciterVerseTiming, aligned: MatchSegment[], verseKey: string): ReciterVerseTiming {
+  const segments = [...(timing.segments ?? [])].sort((a, b) => a[1] - b[1]);
+  const heard = heardWords(aligned, verseKey);
+  const plain = (indices: number[]) => indices.length > 0 && indices.every((index, i) => index === i + 1);
+  if (!plain(segments.map(([index]) => index)) || heard.length !== segments.length || !plain(heard.map(word => word.index))) return timing;
+  const moved = segments.map(([index, start, end, ...rest], i) =>
+    heard[i].start - start >= MIN_LATE_START_MS ? [index, heard[i].start, Math.max(end, heard[i].end), ...rest] : [index, start, end, ...rest]);
+  // Nor starts before the word before it: one heard only a little late
+  // follows a word before it that moved past its listed start.
+  for (let i = 1; i < moved.length; i++) if (moved[i][1] <= moved[i - 1][1]) moved[i] = [moved[i][0], heard[i].start, Math.max(moved[i][2], heard[i].end), ...moved[i].slice(3)];
+  // No word runs past the start of the next.
+  for (let i = 0; i + 1 < moved.length; i++) moved[i][2] = Math.min(moved[i][2], moved[i + 1][1]);
+  return { ...timing, segments: moved };
+}
+
+/** A place a caption may start: the word there, 1-based, and when, in seconds. */
+type Cut = { word: number; at: number };
+
+/** What the recording says about the join at a cut: see `stopsHeard`. */
+function joinEvidence(aligned: MatchSegment[], verseKey: string, quiet: [number, number][], silences: [number, number][]) {
   // A breath with no stop sign needs the recording to show one: the aligner
   // also cuts mid-phrase with nothing heard there. What counts is the quiet
   // left once the words the aligner placed in it are taken out. Khalid
@@ -511,6 +567,36 @@ function planAyah(
     to - from - spoken.reduce((sum, word) => sum + Math.max(0, Math.min(to, word.end) - Math.max(from, word.start)), 0);
   const breathed = (at: number) =>
     quiet.some(gap => gap[0] - 0.3 <= at && at <= gap[1] + 0.3 && unspoken(gap) >= MIN_GAP_SEC);
+  // This ayah's words only: another ayah's same-numbered word is no edge of
+  // this join (39:55's word 12, 20s on, was taken for 39:53's).
+  const ownSpoken = aligned.filter(segment => segment.verseKey === verseKey)
+    .flatMap(segment => segment.wordTimings || []).filter(word => word.end - word.start > 0.05);
+  const around = (cut: Cut) => ({
+    before: ownSpoken.filter(word => word.index === cut.word - 2 && word.end <= cut.at + 0.5).at(-1),
+    after: ownSpoken.find(word => word.index === cut.word - 1 && word.start >= cut.at - 0.5)
+  });
+  const wordGap = (cut: Cut) => {
+    const { before, after } = around(cut);
+    return before && after ? after.start - before.end : 0;
+  };
+  // The phoneme model hearing nothing said, between the two words' edges as
+  // the aligner heard them, which may be a little off either way.
+  const join = (cut: Cut): [number, number] => {
+    const { before, after } = around(cut);
+    return [(before?.end ?? cut.at - 0.3) - SILENCE_REACH_SEC, (after?.start ?? cut.at + 0.3) + SILENCE_REACH_SEC];
+  };
+  const unsaid = (cut: Cut) => longestWithin(silences, ...join(cut));
+  // Murattal, the phoneme model's silence is a stop only where the level
+  // dropped too: it also hears nothing in a vowel held steady, as Al-Tablawi
+  // held 21:90's «وَرَهَبًا ۖ» into وَكَانُوا۟ -- 0.76s of it, no quiet at all --
+  // where every stop the owner kept has 0.26s of quiet or more.
+  const silentStop = (cut: Cut) => unsaid(cut) >= MIN_STOP_SILENCE_SEC && quietWithin(quiet, ...join(cut)) >= MIN_STOP_QUIET_SEC;
+  return { breathed, wordGap, unsaid, silentStop };
+}
+
+/** Where in `verseKey` the reciter stopped: the aligner's cuts the recording bears out, and stop signs it did not cut at. */
+function stopsHeard(aligned: MatchSegment[], verseKey: string, text: string[], { quiet = [], silences = [], sung = false }: Heard): Cut[] {
+  const { breathed, wordGap, unsaid, silentStop } = joinEvidence(aligned, verseKey, quiet, silences);
   // A stop sign allows a stop; it is taken only where the reciter made one:
   // the real quiet a breath needs, or -- where the level never drops enough
   // to measure, as in Al-Minshawi's echoing Mujawwad (32:23, 1.1s between the
@@ -518,19 +604,43 @@ function planAyah(
   // words. Al-Tablawi's 32:14 «نَسِينَـٰكُمْ ۖ» runs on with 0.25s of quiet
   // and 0.5s between the words, where his other stops in 32:13-25 leave 0.96s
   // or more, and was split for nothing. With no quiet measured at all (an
-  // older sidecar), a stop sign is taken on the aligner's word as before.
-  const wordGap = (cut: { word: number; at: number }) => {
-    const before = spoken.filter(word => word.index === cut.word - 2 && word.end <= cut.at + 0.5).at(-1);
-    const after = spoken.find(word => word.index === cut.word - 1 && word.start >= cut.at - 0.5);
-    return before && after ? after.start - before.end : 0;
-  };
-  const stopped = (cut: { word: number; at: number }) =>
-    breathed(cut.at) || wordGap(cut) >= MIN_STOP_WORD_GAP_SEC || !quiet.length;
-  const allowed = (cut: { word: number; at: number }) =>
-    stopAllowedAfter(text[cut.word - 2]) ? stopped(cut)
-      : breathAllowedBetween(text[cut.word - 2], text[cut.word - 1]) && breathed(cut.at);
+  // older sidecar), a stop sign is taken on the aligner's word as before;
+  // or the phoneme model hearing nothing said for `MIN_STOP_SILENCE_SEC`.
+  const stopped = (cut: Cut) =>
+    breathed(cut.at) || wordGap(cut) >= MIN_STOP_WORD_GAP_SEC || !quiet.length
+    || (silences.length > 0 && silentStop(cut));
+  // Sung, a held note leaves room as long as a murattal stop on any join; only
+  // a stop far longer than any held note is one.
+  const allowed = sung && silences.length
+    ? (cut: Cut) =>
+      (stopAllowedAfter(text[cut.word - 2]) || breathAllowedBetween(text[cut.word - 2], text[cut.word - 1]))
+        && unsaid(cut) >= MIN_SUNG_STOP_SILENCE_SEC
+    : (cut: Cut) =>
+      stopAllowedAfter(text[cut.word - 2]) ? stopped(cut)
+        : breathAllowedBetween(text[cut.word - 2], text[cut.word - 1]) && breathed(cut.at);
+  const cuts = alignerCuts(aligned, verseKey).filter(allowed);
+  // Where the aligner did not cut, only the phoneme model's silence says the
+  // reciter stopped: the aligner's word edges there are no stop's -- Al-Sudais
+  // went back over 39:53's «لَا تَقْنَطُوا۟ مِن رَّحْمَةِ ٱللَّهِ ۚ» and ran on into
+  // إِنَّ with its words 0.85s apart, and ran 2:257's «ٱلنَّارِ ۖ» into هُمْ
+  // through 0.47s of quiet.
+  if (silences.length) {
+    const heardStop = sung ? (cut: Cut) => unsaid(cut) >= MIN_SUNG_STOP_SILENCE_SEC : silentStop;
+    cuts.push(...uncutStops(aligned, verseKey, text, new Set(cuts.map(cut => cut.word))).filter(heardStop));
+  }
+  return cuts;
+}
+
+function planAyah(ayah: PublishedAyah, published: ReciterVerseTiming, aligned: MatchSegment[], recording: Heard = {}): AyahPlan {
+  const { verseKey, wordCount, words: text = [] } = ayah;
+  const timing = withHeardStarts(withHeardRepeats(published, aligned, verseKey, recording.quiet ?? []), aligned, verseKey);
+  const heard = aligned.length ? alignerRestarts(aligned, verseKey) : null;
+  const words = recitedWords(timing, wordCount, heard ? atMs => heard.some(at => Math.abs(at * 1000 - atMs) <= CUT_TOLERANCE_SEC * 1000) : undefined);
+  const restarts = new Set<number>();
+  for (let j = 1; j < words.length; j++) if (words[j].index <= words[j - 1].index) restarts.add(j);
+  const pauses: number[] = [];
   const cutAt = new Map<number, number>();
-  for (const cut of alignerCuts(aligned, verseKey).filter(allowed)) {
+  for (const cut of stopsHeard(aligned, verseKey, text, recording)) {
     const j = cutPosition(words, cut);
     if (j > 0) {
       pauses.push(j);
@@ -589,14 +699,14 @@ export function phrasesFromPublished(
   passage: PublishedAyah[],
   published: Map<string, ReciterVerseTiming>,
   aligned: MatchSegment[],
-  { quiet = [] }: { quiet?: [number, number][] } = {}
+  heard: Heard = {}
 ): MatchSegment[] | null {
   const captions: MatchSegment[] = [];
   for (const ayah of passage) {
     const { verseKey, wordCount } = ayah;
     const timing = published.get(verseKey);
     if (!timing || !(timing.to > timing.from) || wordCount < 1) return null;
-    const plan = planAyah(ayah, timing, aligned, quiet);
+    const plan = planAyah(ayah, timing, aligned, heard);
     if (!plan.words.length) {
       // Bounds without words: the ayah whole, as the load already had it.
       const [surahNumber, verseNumber] = verseKey.split(':').map(Number);
@@ -694,6 +804,26 @@ const MIN_GAP_SEC = 0.3;
  * 32:14; his stops, Al-Sudais's 2:257 and Al-Minshawi's are 0.8s or more.
  */
 const MIN_STOP_WORD_GAP_SEC = 0.6;
+/**
+ * The phoneme model hearing nothing said for this long, at a stop sign, is a
+ * stop however the level meter read it -- a soft held madd it writes as its
+ * vowel, so loudness and echo do not fool it. On the owner's ground truth for
+ * the Quran Foundation's murattal recordings (2026-10-15), his stops measure
+ * 0.68s and more (Al-Tablawi's 32:23 «لِّقَآئِهِۦ ۖ»), his run-ons at most
+ * 0.20s (Al-Tablawi's 32:14 «نَسِينَـٰكُمْ ۖ»).
+ */
+const MIN_STOP_SILENCE_SEC = 0.4;
+/** Measured quiet a murattal stop on the phoneme model's silence needs as well: see `joinEvidence`. */
+const MIN_STOP_QUIET_SEC = 0.2;
+/**
+ * The same, sung (Mujawwad): the reciter holds a note and lets it ring for
+ * a second or two inside a phrase -- Al-Minshawi's 32:20 measures 2.4s after
+ * كُلَّمَآ, Abdul Basit's 67:3 1.1s after «طِبَاقًا ۖ», neither a stop -- and his
+ * stops run longer still (67:3 «تَفَـٰوُتٍ ۖ» 3.8s, 32:20 «ٱلنَّارُ ۖ» 4.0s).
+ */
+const MIN_SUNG_STOP_SILENCE_SEC = 2.5;
+/** How far past the words' edges, as the aligner heard them, a silence is looked for. */
+const SILENCE_REACH_SEC = 0.2;
 /** How far a change of caption may move to reach the gap it belongs in. */
 const GAP_REACH_SEC = 1;
 
@@ -753,9 +883,43 @@ export function inTheGaps(captions: MatchSegment[], quiet: [number, number][] | 
   return out;
 }
 
+/** Recording kept before the passage's first word and after the reciter stops: see `toTheVoice`. */
+const EDGE_LEAD_SEC = 0.4;
+const EDGE_TAIL_SEC = 1;
+
+/**
+ * The passage's first caption started where the voice does, and its last
+ * ended where it stops, a breath either side. Each ayah's file carries the
+ * reciter's silence at both ends -- Al-Minshawi's Mujawwad 32:16 starts 1.7s
+ * in, 32:18 rings out 85.3-90.8s and then is silent to 92.6s -- and a clip cut
+ * at the files' edges opened and closed on it. The first word's published
+ * start is never late (see `withHeardStarts`), so it bounds the start; the
+ * last word's published end can be, a held madd sung on past it, so the end
+ * is where the quiet that runs to the end of the file begins. Left as it is
+ * where no such quiet was measured.
+ */
+export function toTheVoice(captions: MatchSegment[], quiet: [number, number][] | undefined): MatchSegment[] {
+  if (!captions.length) return captions;
+  const out = captions.map(caption => ({ ...caption }));
+  const first = out[0];
+  const said = first.wordTimings?.[0]?.start;
+  if (typeof said === 'number' && typeof first.startTime === 'number' && said - EDGE_LEAD_SEC > first.startTime) {
+    first.startTime = Math.round((said - EDGE_LEAD_SEC) * 1000) / 1000;
+  }
+  const last = out[out.length - 1];
+  const lastWord = last.wordTimings?.at(-1);
+  const end = last.endTime;
+  if (!lastWord || typeof end !== 'number') return out;
+  const after = (quiet ?? []).find(([from, to]) => to >= end - 0.1 && from <= end && from >= lastWord.start);
+  if (after && after[0] + EDGE_TAIL_SEC < end) last.endTime = Math.round((after[0] + EDGE_TAIL_SEC) * 1000) / 1000;
+  return out;
+}
+
 export function timedFromPublished(
   published: {
     provider: string; passage: PublishedAyah[]; timings: Map<string, ReciterVerseTiming>;
+    /** Sung (Mujawwad), whose held notes leave long silences inside a phrase. */
+    sung?: boolean;
   },
   everything: MatchResult
 ): { result: MatchResult; pausesFromAudio: boolean } {
@@ -764,7 +928,7 @@ export function timedFromPublished(
     (!aligned.warning || agreesWithPublished(published.passage, published.timings, aligned.segments));
   const captions = phrasesFromPublished(
     published.passage, published.timings, heard ? aligned.segments : [],
-    { quiet: everything.quiet }
+    { quiet: everything.quiet, silences: everything.silences, sung: published.sung }
   );
   if (!captions) return { result: aligned, pausesFromAudio: false };
   return {
@@ -772,7 +936,7 @@ export function timedFromPublished(
     result: {
       audioDuration: aligned.audioDuration,
       confidence: 1,
-      segments: inTheGaps(captions, everything.quiet, aligned.segments),
+      segments: toTheVoice(inTheGaps(captions, everything.quiet, aligned.segments), everything.quiet),
       // What was said before the passage is the aligner's to hear: the
       // published timings start at the first ayah, and dropping these lost
       // every timed reciter's isti'adha and basmala.

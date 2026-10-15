@@ -365,6 +365,7 @@ async def align_endpoint(
 
     aligned, segments = result.words, result.segments
     retimed = phoneme.retime(retime, aligner_pcm, aligned, segments)
+    silences = phoneme.silences(retime, aligner_pcm)
     mean_score = result.mean_score
     coverage = result.reference_coverage
     agreement = result.decode_agreement
@@ -477,6 +478,9 @@ async def align_endpoint(
             [round(begin + window_offset, 3), round(end + window_offset, 3)]
             for begin, end in align.quiet_spans(pcm, drop=align.MIN_QUIET_DROP_DB)
         ],
+        # Where the phoneme model hears nothing said, which tells a pause from
+        # a soft held madd where loudness cannot (`phoneme.silences`).
+        "silences": [[round(begin + window_offset, 3), round(end + window_offset, 3)] for begin, end in silences],
     }
     # Held so Fewer / More can re-cut this match without reading the audio
     # again -- see `regroup`. Only an id goes back; the studio asks with it.

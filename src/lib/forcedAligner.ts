@@ -93,6 +93,8 @@ type AlignResponse = {
   openings?: HeardOpening[];
   /** Where the reciter is not making sound, in seconds of the recording; absent from older sidecars. */
   quiet?: [number, number][];
+  /** Where the phoneme model hears nothing said, in seconds of the recording; absent from older sidecars. */
+  silences?: [number, number][];
 };
 
 /**
@@ -465,6 +467,7 @@ async function matchFromAlignment(
     notes: alignmentNotes(result, rangeLabel, restarts),
     regroupId: result.regroupId,
     openings: result.openings,
-    quiet: result.quiet
+    quiet: result.quiet,
+    silences: result.silences
   };
 }

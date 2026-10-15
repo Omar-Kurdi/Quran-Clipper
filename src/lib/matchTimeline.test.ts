@@ -102,6 +102,10 @@ describe('trimTimeline', () => {
     const trimmed = trimTimeline([verse('66:6', 9.95, 10.02)], 10, 30);
     expect(trimmed[0].endTime).toBeGreaterThan(trimmed[0].startTime);
   });
+  it("keeps the recording's clock for a built-in reciter, whose recording is not re-cut", () => {
+    const trimmed = trimTimeline([verse('66:5', 0, 5), verse('66:6', 5, 20), verse('66:7', 20, 30)], 8, 25, false);
+    expect(trimmed.map(v => [v.verseKey, v.startTime, v.endTime])).toEqual([['66:6', 8, 20], ['66:7', 20, 25]]);
+  });
 });
 
 describe('enforceTimelineOrder', () => {

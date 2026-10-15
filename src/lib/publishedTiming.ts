@@ -1,5 +1,5 @@
 import { getRange } from './quranCorpus';
-import { qfPassage, qfPassageOf } from './qfRecitations';
+import { qfPassage, qfPassageOf, qfReciter } from './qfRecitations';
 
 /**
  * A passage's published timings, when `audioUrl` is a built-in reciter's
@@ -23,6 +23,7 @@ export async function publishedPassage(audioUrl: string, surah: number, { start,
   if (!passage.every(verse => timings.has(verse.verseKey))) return null;
   return {
     provider: 'qf',
+    sung: qfReciter(file.reciterId)?.style === 'Mujawwad',
     passage: passage.map(verse => ({ verseKey: verse.verseKey, wordCount: verse.words.length, words: verse.words.map(word => word.arabic) })),
     timings,
     // The recording holds the file's ayahs and no others, so those are the ones to align it against.
