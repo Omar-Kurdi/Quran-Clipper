@@ -12,7 +12,7 @@ word to the audio, sets the Arabic in the Madani mushaf's own script with a tran
 it, and exports the finished clip, all in the browser. Free for personal and non-commercial use
 (see [LICENSE](LICENSE)).
 
-**Try it:** a temporary demo, for testing, runs at **[quran.okurdi.com](https://quran.okurdi.com)**.
+**Try it:** a temporary demo, for testing, runs at **[quran.okurdi.com](https://quran.okurdi.com)** feedback is appreciated on **qc@okurdi.com**.
 
 - **Your own recording, timed word by word:** the ayahs it contains are found and every word placed on the audio.
 - **Built-in reciters recorded ayah by ayah,** so a passage starts and ends exactly where you chose.
