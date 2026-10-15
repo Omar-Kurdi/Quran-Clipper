@@ -656,12 +656,39 @@ Inside an ayah, the Foundation's word timings give each word its time (some reci
 them as text, and some leave a word out -- every word is still shown), and the aligner runs only to
 say where the reciter paused or went back (`publishedPhrases`): an ayah breaks inside at a stop
 sign only where the reciter actually stopped -- at least 0.3s of measured quiet, or 0.6s between the
-two words for a recording too echoing to measure (Al-Tablawi ran on through 32:14's ۖ with 0.25s) --
-or at a breath with the same real quiet, and a repeat the timings list once gets the pass the aligner
+two words for a recording too echoing to measure (Al-Tablawi ran on through 32:14's ۖ with 0.25s),
+or 0.4s in which the phoneme model hears nothing said with at least 0.2s of measured quiet there
+too -- or at a breath with the same real quiet,
+and a repeat the timings list once gets the pass the aligner
 heard (`withHeardRepeats`). A repeat can be any length, one word included (Al-Shatri's 10:12
 فَلَمَّا ... فَلَمَّا): there is no minimum, and none is to be added. The aligner is given exactly the passage's
 ayahs, since the recording holds no others. Its reading counts when it heard most of the published
 words within 2.5s of their times (`agreesWithPublished`).
+
+The phoneme model's silence (the sidecar's `silences`: where its most likely output is CTC blank)
+is the one pause signal that does not confuse a held madd with a stop: loudness reads a madd sung
+softly as quiet and an echoing room's pause as sound, while the phoneme model writes a madd as its
+vowel held and a pause as nothing. Voicing (pYIN) was tried first and failed both ways -- reverb
+reads as voiced, an ornamented madd as unvoiced. On the owner's six ground-truth passages
+(2026-10-15) the longest such silence at a stop sign is 0.68s or more where he split and at most
+0.20s where he ran on, bar one (Al-Sudais's 2:255 «وَٱلْأَرْضَ ۖ», split, 0.16s), so it also adds a
+cut at a stop sign the aligner did not cut at -- on that evidence alone, since the aligner's own
+word edges there are no evidence of a stop. It is not enough by itself: the model also hears
+nothing in a vowel held steady, and Al-Tablawi held 21:90's «وَرَهَبًا ۖ» into the next word with
+0.76s of it and no quiet at all, so a murattal stop needs 0.2s of measured quiet as well (every
+stop the owner kept has 0.26s or more). A sung (Mujawwad) recitation holds notes for a second or
+two inside a phrase, and its echo hides quiet, so it needs 2.5s of the model's silence at any join
+instead. Ground truth: 75/81 captions on seven passages (62/75 on the first six before this); the
+misses left are «وَٱلْأَرْضَ ۖ», Al-Minshawi's Mujawwad 32:18 «فَاسِقًا ۚ» (a short stop by Mujawwad
+measure, 0.48s) and his 32:14 repeat of «إِنَّا نَسِينَـٰكُمْ», which the aligner reads muddled.
+
+Some of the Foundation's word times run early -- Al-Minshawi's Mujawwad 32:17 lists مَّآ for 10ms
+and لَهُم over 7.2s, 2.8-6.3s before he says them. Across 882 words of every reciter the published
+start was 0.5s or more early 63 times and never late, so in an ayah the aligner heard plainly
+(every word once, in order) a word heard 0.5s or more after its listed start starts where it was
+heard (`withHeardStarts`). And a passage's first caption starts 0.4s before its first word and its
+last ends 1s into the quiet that runs to the end of the last file (`toTheVoice`), not at the files'
+edges, which carry the reciter's silence -- 6.6s of it after Al-Husary's Muallim 24:35.
 
 The files are downloaded by `./install.sh` (`scripts/qf-reciters.mjs download`, about 2 GB a
 reciter) into `~/.local/share/quran-clipper/qf-audio/` -- outside the checkout, because `next build`

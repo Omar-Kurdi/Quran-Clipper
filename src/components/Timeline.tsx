@@ -42,7 +42,8 @@ interface TimelineProps {
   /** Opens the trim modal. Omitted when there is no uploaded file to trim. */
   onTrim?: () => void;
   /**
-   * Cuts the uploaded audio down to `[start, end]` of the current clip.
+   * Cuts the uploaded audio down to `[start, end]` of the current clip -- or,
+   * for a built-in reciter, the captions, the recording itself left whole.
    *
    * The same edit the trim dialog makes, reachable without covering the thing
    * being trimmed: the handles live on this timeline, and dragging one moves the
@@ -380,7 +381,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         // clip's had been, which reads as the start moving on its own.
         const current = prev && prev.url === audioUrl
           ? prev
-          : { url: audioUrl, start: 0, end: duration };
+          : { url: audioUrl, start: passage?.start ?? 0, end: passage?.end ?? duration };
         const next = clipDrag === 'start'
           ? { ...current, url: audioUrl, start: Math.min(t, current.end - MIN_SEGMENT) }
           : { ...current, url: audioUrl, end: Math.max(t, current.start + MIN_SEGMENT) };
@@ -395,7 +396,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [clipDrag, xToTime, duration, audioUrl, onSeek]);
+  }, [clipDrag, xToTime, duration, audioUrl, onSeek, passage]);
 
   // Keep the playhead in view when zoomed in.
   useEffect(() => {
@@ -421,8 +422,11 @@ export const Timeline: React.FC<TimelineProps> = ({
   const zoomIndex = ZOOMS.indexOf(zoom);
 
   // A selection made against another file is no selection at all.
-  const clipRange = clip && clip.url === audioUrl ? clip : { start: 0, end: duration };
-  const clipIsWhole = clipRange.start <= 0.05 && clipRange.end >= duration - 0.05;
+  // A built-in reciter's handles start at its clip, not the recording's ends,
+  // which a cut has taken out of view.
+  const uncut = passage ?? { start: 0, end: duration };
+  const clipRange = clip && clip.url === audioUrl ? clip : uncut;
+  const clipIsWhole = clipRange.start <= uncut.start + 0.05 && clipRange.end >= uncut.end - 0.05;
 
   return (
     <section aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
@@ -517,7 +521,12 @@ export const Timeline: React.FC<TimelineProps> = ({
         {onTrimRange && !clipIsWhole && (
           <>
             <button
-              onClick={() => onTrimRange(clipRange.start, clipRange.end)}
+              onClick={() => {
+                onTrimRange(clipRange.start, clipRange.end);
+                // A built-in reciter keeps its recording, so the handles would
+                // otherwise stay where they were, offering the same cut again.
+                setClip(null);
+              }}
               title={t.timeline.cutDownTo(formatTime(clipRange.start), formatTime(clipRange.end))}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-xs font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
             >

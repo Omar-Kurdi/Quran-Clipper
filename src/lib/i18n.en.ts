@@ -275,6 +275,8 @@ export const en = {
       `A translation this project used (${ids}) is no longer published, so it was taken out. The card now shows the translations that remain, or the default if none do.`,
     trimmed: (length: string) =>
       `Trimmed to ${length}. Match the recording again for the trimmed clip, or review the adjusted timeline below.`,
+    trimmedCaptions: (length: string) =>
+      `Cut to ${length}. Undo brings back what was cut.`,
     trimmingRange: 'Trimming the audio to the clip you marked…',
     trimRangeFailed: 'Could not trim this file. Try the Trim audio dialog, which reports what went wrong.',
     alignLostAyahs: (count: number, keys: string) =>

@@ -961,7 +961,14 @@ export default function VideoCreatorPage() {
    * in memory the rest of the time.
    */
   const handleTrimRange = async (start: number, end: number) => {
-    if (!customAudioFile || !(end > start)) return;
+    if (!(end > start)) return;
+    if (!customAudioFile) {
+      // A built-in reciter's passage: the recording stays as it is and the
+      // captions are cut to the range, which is what plays and exports.
+      setVerses(prev => trimTimeline(prev, start, end, false));
+      setMatchStatus({ text: t.match.trimmedCaptions(formatDuration(end - start)), tone: 'info' });
+      return;
+    }
     setMatchStatus({ text: t.match.trimmingRange, tone: 'info' });
     try {
       const buffer = await decodeAudioFile(customAudioFile);
@@ -1430,7 +1437,11 @@ export default function VideoCreatorPage() {
     }
     if (!jobs.length) return;
 
-    let cancelled = false;
+    // Not cancelled when this effect runs again: a run that starts while these
+    // are in flight skips them (`fetchingTranslations`), so dropping what they
+    // bring back left the captions without the translation until the choice
+    // changed again -- switching Saheeh International for The Clear Quran
+    // showed none. Merging by ayah is right whatever the timeline holds now.
     void (async () => {
       const arrived: Record<string, Record<string, string>> = {};
       for (const job of jobs) {
@@ -1459,7 +1470,7 @@ export default function VideoCreatorPage() {
           });
         }
       }
-      if (cancelled || !Object.keys(arrived).length) return;
+      if (!Object.keys(arrived).length) return;
       setVerses(prev =>
         prev.map(verse => {
           const extra = arrived[verse.verseKey];
@@ -1467,8 +1478,6 @@ export default function VideoCreatorPage() {
         })
       );
     })();
-
-    return () => { cancelled = true; };
   }, [canvasConfig.translationIds, verses, setVerses]);
 
   /** The stretch of audio an export should cover -- see `exportRangeFor`. */
@@ -3269,7 +3278,7 @@ export default function VideoCreatorPage() {
           onMarkHere={handleMarkHere}
           onNextToCheck={goToNextCheck}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
-          onTrimRange={customAudioFile ? handleTrimRange : undefined}
+          onTrimRange={customAudioFile || verses.length ? handleTrimRange : undefined}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}

@@ -387,10 +387,68 @@ def _hear(name: str, pcm: np.ndarray, words: list[AlignedWord]) -> tuple[list[Un
         log.warning("phoneme re-timing (%s) skipped: the aligned words do not line up with its phoneme table", name)
         return None
     try:
-        return units, _unit_spans(model.emission(pcm), units, model)
+        return units, _unit_spans(_emission(name, model, pcm), units, model)
     except (RuntimeError, ValueError) as exc:  # too little audio for the text, or a unit it has no symbol for
         log.warning("phoneme re-timing (%s) skipped: %s", name, exc)
         return None
+
+
+_last_emission: tuple[tuple[int, int, str], "torch.Tensor"] | None = None
+_emission_lock = threading.Lock()
+
+
+def _emission(name: str, model: Loaded, pcm: np.ndarray) -> "torch.Tensor":
+    """``model.emission(pcm)``, kept for the one passage last read: re-timing and `silences` both read it per match."""
+    global _last_emission
+    key = (id(pcm), len(pcm), name)
+    with _emission_lock:
+        if _last_emission is not None and _last_emission[0] == key:
+            return _last_emission[1]
+    probs = model.emission(pcm)
+    with _emission_lock:
+        _last_emission = (key, probs)
+    return probs
+
+
+#: Shortest stretch of the phoneme model hearing nothing that is reported: two frames.
+MIN_SILENCE_SEC = 0.08
+
+
+def blank_runs(blank: np.ndarray, frame_sec: float = FRAME_SEC, min_sec: float = MIN_SILENCE_SEC) -> list[tuple[float, float]]:
+    """The stretches, in seconds, over which ``blank`` (one bool per frame) holds, those at least ``min_sec`` long."""
+    runs: list[tuple[float, float]] = []
+    start: int | None = None
+    for i, empty in enumerate([*blank.tolist(), False]):
+        if empty and start is None:
+            start = i
+        elif not empty and start is not None:
+            if (i - start) * frame_sec >= min_sec:
+                runs.append((round(start * frame_sec, 3), round(i * frame_sec, 3)))
+            start = None
+    return runs
+
+
+def silences(requested: str, pcm: np.ndarray) -> list[tuple[float, float]]:
+    """Where the phoneme model hears nothing said: its blank, frame by frame.
+
+    Not the same as quiet. A held madd sung softly falls below any loudness
+    bar, and an echoing room fills a real pause; the phoneme model writes a
+    madd as its vowel held and a pause as nothing. Measured on the owner's
+    ground truth for the Quran Foundation's recordings (2026-10-15), the
+    longest such stretch at a stop sign separated his splits from his
+    run-ons where loudness could not -- Al-Tablawi's 32:14, run on through,
+    0.20s against 0.68s and more at his stops. It also hears nothing in a
+    vowel held steady, so the studio asks for some measured quiet as well
+    (`publishedPhrases`); see docs/ALIGNMENT.md. Empty when no model loads.
+    """
+    name = chosen(requested) or DEFAULT_RETIME
+    try:
+        model = load(name)
+        probs = _emission(name, model, pcm)[0].numpy()
+    except Exception as exc:  # noqa: BLE001 -- a gated repo not accepted, no network: never fail the match for it
+        log.warning("phoneme silences (%s) skipped: %s", name, exc)
+        return []
+    return blank_runs(probs.argmax(-1) == model.blank)
 
 
 def retime_words(name: str, pcm: np.ndarray, words: list[AlignedWord]) -> bool:

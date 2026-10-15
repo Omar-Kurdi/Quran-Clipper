@@ -188,6 +188,14 @@ check("an opening ends in the pause after it when the passage was started later"
 check("a sound before an opening heard right is not taken in",
       ok=phoneme_reading._onset([1, 2, 3], ([4, 9, 1, 2, 3], [0, 5, 10, 15, 20]), 2, 5, 0)[0] == 2)
 
+print("\nsilences -- where the phoneme model hears nothing said")
+
+import numpy as np  # noqa: E402
+
+runs = phoneme.blank_runs(np.array([1, 0, 1, 1, 1, 0, 1, 1], dtype=bool))
+check("each run of blank frames, in seconds, a lone frame left out", ok=runs == [(0.08, 0.2), (0.24, 0.32)], detail=f"got {runs}")
+check("nothing heard as blank, nothing reported", ok=phoneme.blank_runs(np.zeros(5, dtype=bool)) == [])
+
 print("\nlab -- the stages the dev-only lab hands to a phoneme model")
 
 check("reading and timing by name", ok=phoneme.lab_stages("reading=v31;timing=old") == {"phoneme_reading": "v31", "phoneme_timing": "old"})

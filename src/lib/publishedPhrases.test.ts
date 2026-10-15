@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MatchSegment } from './matchTypes';
-import { inTheGaps, phrasesFromPublished, timedFromPublished } from './publishedPhrases';
+import { inTheGaps, toTheVoice, phrasesFromPublished, timedFromPublished } from './publishedPhrases';
 
 /** Muaiqly's 12:3 and 12:6 as QUL publishes them -- 12:6 goes back over words 8-10. */
 const published = new Map([
@@ -619,6 +619,119 @@ describe("the user's ground truth for the Quran Foundation's ayah files (2026-10
     const apart = [aligned[0], { ...aligned[1], wordTimings: [{ index: 8, start: 29.97, end: 30.66 }, ...aligned[1].wordTimings!.slice(1)] }];
     const noQuietThere: [number, number][] = quiet.filter(([from]) => from < 28 || from > 30);
     expect(phrasesFromPublished(ayah, published, apart, { quiet: noQuietThere })!.map(words)).toEqual([['32:14', 0, 7], ['32:14', 8, 13]]);
+  });
+});
+
+describe("the passage's edges at the voice (2026-10-15)", () => {
+  // Al-Minshawi's Mujawwad 32:16-18: the first word at 1.7s, the last sung out to 88.26s, the file 90.78s.
+  const captions = (): MatchSegment[] => [
+    { verseKey: '32:16', startTime: 0, endTime: 31.4, wordTimings: [{ index: 0, start: 1.7, end: 4.08 }] },
+    { verseKey: '32:18', startTime: 63.43, endTime: 90.78, wordTimings: [{ index: 6, start: 83.27, end: 84.01 }, { index: 7, start: 84.02, end: 85.27 }] },
+  ];
+
+  it('starts a breath before the first word and ends a second into the quiet that runs to the end', () => {
+    const edged = toTheVoice(captions(), [[0, 2.08], [77.3, 83.38], [88.26, 90.76]]);
+    expect(edged.map(caption => [caption.startTime, caption.endTime])).toEqual([[1.3, 31.4], [63.43, 89.26]]);
+  });
+
+  it('keeps the end where no quiet was measured after the last word, a held madd sung on past its listed end', () => {
+    expect(toTheVoice(captions(), [[0, 2.08], [77.3, 83.38]]).at(-1)!.endTime).toBe(90.78);
+    expect(toTheVoice(captions(), undefined).at(-1)!.endTime).toBe(90.78);
+  });
+});
+
+describe('words heard later than the Quran Foundation lists them (2026-10-15)', () => {
+  // Al-Minshawi's Mujawwad 32:17, in its passage 32:16-18: مَّآ listed for 10ms, لَهُم over 7.2s.
+  const published = new Map([['32:17', { from: 31400, to: 63430, segments: [[1, 32600, 33600], [2, 33610, 35010], [3, 35020, 35560],
+    [4, 35570, 35580], [5, 35590, 36700], [6, 36710, 43910], [7, 43920, 46040], [8, 46050, 47900], [9, 47910, 50650],
+    [10, 50660, 54930], [11, 54940, 56150], [12, 56160, 58010], [13, 58020, 61100]] }]]);
+  const heard: [number, number, number][] = [[0, 32.65, 33.34], [1, 33.89, 34.94], [2, 35.69, 36.85], [3, 38.32, 38.45], [4, 41.25, 42.91],
+    [5, 43.05, 43.71], [6, 44.95, 45.31], [7, 46.46, 47.54], [8, 48.13, 49.46], [9, 50.77, 54.08], [10, 55.16, 55.6], [11, 56.45, 57.43],
+    [12, 58.25, 60.7]];
+  const ayah = [{ verseKey: '32:17', wordCount: 13 }];
+  const starts = (aligned: MatchSegment[]) =>
+    phrasesFromPublished(ayah, published, aligned)!.flatMap(caption => caption.wordTimings!.map(word => word.start));
+
+  it('starts a word where it was heard, when that is plainly later than listed', () => {
+    expect(starts([timed('32:17', [0, 12], [32.56, 63.35], heard)])).toEqual(
+      [32.6, 33.61, 35.69, 38.32, 41.25, 43.05, 44.95, 46.05, 47.91, 50.66, 54.94, 56.16, 58.02]);
+  });
+
+  it('leaves the listed times where the ayah was not heard plainly: a word missing, or none heard', () => {
+    const listed = [32.6, 33.61, 35.02, 35.57, 35.59, 36.71, 43.92, 46.05, 47.91, 50.66, 54.94, 56.16, 58.02];
+    expect(starts([timed('32:17', [0, 12], [32.56, 63.35], heard.filter(([index]) => index !== 7))])).toEqual(listed);
+    expect(starts([])).toEqual(listed);
+  });
+});
+
+/** Al-Tablawi's 32:14 and what the recording says about it, for the tests of the phoneme model's silences. */
+const tablawi32_14 = () => {
+  // Al-Tablawi's 32:14, as in the test above: the aligner's words, with the level meter hearing nothing between 28 and 30s.
+  const published = new Map([['32:14', { from: 18521, to: 37042, segments: [[1, 18591, 19531], [2, 19541, 20101],
+    [3, 20111, 20921], [4, 20931, 23301], [5, 23311, 24241], [6, 24251, 24751], [7, 24761, 27851], [8, 27861, 29131],
+    [9, 29141, 30131], [10, 30141, 30871], [11, 30881, 31701], [12, 31711, 32221], [13, 32231, 33781], [14, 33791, 36401]] }]]);
+  const text = ['فَذُوقُوا۟', 'بِمَا', 'نَسِيتُمْ', 'لِقَآءَ', 'يَوْمِكُمْ', 'هَـٰذَآ', 'إِنَّا', 'نَسِينَـٰكُمْ ۖ', 'وَذُوقُوا۟', 'عَذَابَ', 'ٱلْخُلْدِ', 'بِمَا', 'كُنتُمْ', 'تَعْمَلُونَ'];
+  const ayah = [{ verseKey: '32:14', wordCount: 14, words: text }];
+  const first: [number, number, number][] = [[0, 18.77, 19.46], [1, 19.73, 19.86], [2, 20.25, 20.97], [3, 21.21, 23.2], [4, 23.45, 24.0],
+    [5, 24.49, 24.88], [6, 26.85, 27.51], [7, 28.01, 28.87]];
+  const rest: [number, number, number][] = [[8, 29.37, 30.06], [9, 30.29, 30.86], [10, 31.05, 31.82], [11, 31.81, 32.14],
+    [12, 32.45, 33.73], [13, 34.01, 35.01]];
+  const cut = [timed('32:14', [0, 7], [18.41, 29.03], first), timed('32:14', [8, 13], [29.03, 36.82], rest)];
+  const quiet: [number, number][] = [[18.88, 19.28], [20.32, 20.94], [23.74, 24.14], [31.04, 31.38], [31.5, 31.74], [32.26, 32.68],
+    [33.48, 33.94], [36.38, 37.28]];
+
+  // A little quiet there, too little for a breath (0.25s, 0.23s of it outside the words).
+  const dipped: [number, number][] = [...quiet, [28.85, 29.1]];
+  return { published, text, ayah, first, rest, cut, quiet, dipped };
+};
+
+describe("the phoneme model's silences at a stop sign (2026-10-15)", () => {
+  const { published, ayah, first, rest, cut, quiet, dipped } = tablawi32_14();
+
+  it('splits where the model heard nothing said for 0.4s and the level dipped, though neither was a stop alone', () => {
+    expect(phrasesFromPublished(ayah, published, cut, { quiet: dipped })!.map(words)).toEqual([['32:14', 0, 13]]);
+    expect(phrasesFromPublished(ayah, published, cut, { quiet: dipped, silences: [[28.9, 29.4]] })!.map(words))
+      .toEqual([['32:14', 0, 7], ['32:14', 8, 13]]);
+    expect(phrasesFromPublished(ayah, published, cut, { quiet: dipped, silences: [[28.95, 29.15]] })!.map(words)).toEqual([['32:14', 0, 13]]);
+  });
+
+  it("does not split on the model's silence where the level never dropped: a vowel held (Al-Tablawi's 21:90, «وَرَهَبًا ۖ»)", () => {
+    expect(phrasesFromPublished(ayah, published, cut, { quiet, silences: [[28.6, 29.36]] })!.map(words)).toEqual([['32:14', 0, 13]]);
+  });
+
+  it('splits at a stop sign the aligner did not cut at, only on that silence', () => {
+    const uncut = [timed('32:14', [0, 13], [18.41, 36.82], [...first, ...rest])];
+    expect(phrasesFromPublished(ayah, published, uncut, { quiet: dipped, silences: [[28.9, 29.4]] })!.map(words))
+      .toEqual([['32:14', 0, 7], ['32:14', 8, 13]]);
+    expect(phrasesFromPublished(ayah, published, uncut, { quiet: dipped, silences: [[28.95, 29.15]] })!.map(words)).toEqual([['32:14', 0, 13]]);
+    expect(phrasesFromPublished(ayah, published, uncut, { quiet, silences: [[28.9, 29.4]] })!.map(words)).toEqual([['32:14', 0, 13]]);
+    // Nor anywhere without a stop sign, however long the silence: لِقَآءَ | يَوْمِكُمْ.
+    expect(phrasesFromPublished(ayah, published, uncut, { quiet, silences: [[23.2, 24.3]] })!.map(words)).toEqual([['32:14', 0, 13]]);
+    // Nor with the level meter's quiet alone (Al-Sudais's 2:257 «ٱلنَّارِ ۖ», run on through 0.47s of it).
+    expect(phrasesFromPublished(ayah, published, uncut, { quiet: [...quiet, [28.8, 29.4]], silences: [[28.95, 29.15]] })!.map(words))
+      .toEqual([['32:14', 0, 13]]);
+  });
+
+});
+
+describe("the phoneme model's silences: sung, and the join's own words (2026-10-15)", () => {
+  const { published, ayah, first, rest, cut, quiet } = tablawi32_14();
+
+  it('asks a sung recitation for a far longer silence: a held note leaves a second or two', () => {
+    const later = rest.map(([index, start, end]): [number, number, number] => [index, start + 2.5, end + 2.5]);
+    const sungCut = [timed('32:14', [0, 7], [18.41, 31.53], first), timed('32:14', [8, 13], [31.53, 39.32], later)];
+    expect(phrasesFromPublished(ayah, published, sungCut, { quiet, silences: [[28.9, 30.0]], sung: true })!.map(words))
+      .toEqual([['32:14', 0, 13]]);
+    expect(phrasesFromPublished(ayah, published, sungCut, { quiet, silences: [[28.9, 31.6]], sung: true })!.map(words))
+      .toEqual([['32:14', 0, 7], ['32:14', 8, 13]]);
+  });
+
+  it("reads the join's edges from the ayah's own words, not another ayah's word of the same number (Al-Sudais's 39:53)", () => {
+    // The aligner gave وَذُوقُوا۟ 20ms, too little to be an edge; 32:15's ninth word is no stand-in for it.
+    const sliver = [cut[0], timed('32:14', [8, 13], [29.03, 36.82], [[8, 29.37, 29.39], ...rest.slice(1)]),
+      timed('32:15', [8, 8], [40.0, 41.0], [[8, 40.0, 40.6]])];
+    expect(phrasesFromPublished(ayah, published, sliver, { quiet, silences: [[28.95, 29.15], [37.0, 39.5]] })!.map(words))
+      .toEqual([['32:14', 0, 13]]);
   });
 });
 

@@ -612,12 +612,19 @@ export function fitVersesToAudio(verses: VerseData[], duration: number): VerseDa
   }));
 }
 
-export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: number): VerseData[] {
+/**
+ * The captions cut to `trimStart`-`trimEnd`, rebased so the trimmed audio's
+ * 0:00 is `trimStart` -- or, with `rebase` false, left on the recording's own
+ * clock: a built-in reciter's recording is not re-cut, the clip is the
+ * captions' span (`exportRangeFor`).
+ */
+export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: number, rebase = true): VerseData[] {
+  const origin = rebase ? trimStart : 0;
   return verses
     .filter(verse => verse.endTime > trimStart && verse.startTime < trimEnd)
     .map(verse => {
-      const startTime = Math.round((Math.max(verse.startTime, trimStart) - trimStart) * 10) / 10;
-      const endTime = Math.round((Math.min(verse.endTime, trimEnd) - trimStart) * 10) / 10;
+      const startTime = Math.round((Math.max(verse.startTime, trimStart) - origin) * 10) / 10;
+      const endTime = Math.round((Math.min(verse.endTime, trimEnd) - origin) * 10) / 10;
       // Word times are on the same clock as the segment, so they have to move
       // with it. Left absolute they would sit outside the rebased segment and
       // every consumer that checks (splitting, for one) would discard them.
@@ -629,7 +636,7 @@ export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: nu
       // from leaving float dust (1.2390000000000008) in saved projects.
       const words = verse.words?.map(word =>
         typeof word.timestamp === 'number'
-          ? { ...word, timestamp: Math.round((word.timestamp - trimStart) * 1000) / 1000 }
+          ? { ...word, timestamp: Math.round((word.timestamp - origin) * 1000) / 1000 }
           : word
       );
       return { ...verse, startTime, endTime: Math.max(endTime, startTime + 0.1), words };
