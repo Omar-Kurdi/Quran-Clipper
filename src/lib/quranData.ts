@@ -50,6 +50,17 @@ export interface VerseWord {
    * runs out of width. Absent on the same terms as the glyph.
    */
   glyphLine?: number;
+  /**
+   * The word as the IndoPak mushaf writes it, for the two IndoPak faces.
+   *
+   * Those faces are drawn for that script, not for Uthmani: given `arabic`,
+   * Indopak Nastaleeq lost 32:18's waqf sign after «فَاسِقًا» and set a stray
+   * mark over «يَسْتَوُۥنَ», and Digital Khatt IndoPak ran marks into letters. The
+   * IndoPak text has its own sukun, its own madd and its own waqf signs, which
+   * they place properly. Pixels only, like `glyph`; absent where the upstream
+   * did not send it, and the face then draws `arabic` as before.
+   */
+  indopak?: string;
 }
 
 export interface VerseData {

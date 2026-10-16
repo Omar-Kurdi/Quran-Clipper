@@ -4,7 +4,7 @@ import { isOpening, type OpeningKind } from '@/lib/openings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines } from 'lucide-react';
 import { captionChecks, toCheckCount } from '@/lib/captionChecks';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform, type Waveform as WaveformData } from '@/lib/waveform';
@@ -41,6 +41,8 @@ interface TimelineProps {
   onToggleRippleEdits: () => void;
   /** Opens the trim modal. Omitted when there is no uploaded file to trim. */
   onTrim?: () => void;
+  /** Opens Edit audio. Omitted when there is no recording the studio can edit. */
+  onEditAudio?: () => void;
   /**
    * Cuts the uploaded audio down to `[start, end]` of the current clip -- or,
    * for a built-in reciter, the captions, the recording itself left whole.
@@ -134,7 +136,7 @@ function CheckMark({ label }: { label: string }) {
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
-  onTrim, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
+  onTrim, onEditAudio, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
   onNextToCheck
@@ -409,15 +411,26 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
   }, [currentTime, viewStart, viewSpan, zoom, isPlaying]);
 
+  /**
+   * Where the clock reads 0:00, and how long the clip is. A built-in reciter's
+   * passage starts and ends in the ayah files' own silence, which the captions
+   * and the export leave out, so the transport and the ruler count from its
+   * first caption to its last: 32:19 alone read 31s of a 28s clip.
+   */
+  const origin = passage?.start ?? 0;
+  const length = passage ? passage.end - passage.start : duration;
+  const clock = useCallback((time: number) => formatTime(time - origin), [origin]);
+
   const ticks = useMemo(() => {
     const visible = viewSpan / zoom;
     const step = [1, 2, 5, 10, 15, 30, 60, 120, 300].find(s => s >= visible / 8) ?? 300;
     const out: number[] = [];
     // Not so close to the end that its label runs into the end's own -- see below.
-    const end = viewStart + viewSpan;
-    for (let t = Math.ceil(viewStart / step) * step; t <= end - step * 0.4; t += step) out.push(t);
+    const end = Math.min(viewStart + viewSpan, origin + length);
+    const first = Math.max(0, Math.ceil((viewStart - origin) / step) * step);
+    for (let t = origin + first; t <= end - step * 0.4; t += step) out.push(t);
     return out;
-  }, [viewStart, viewSpan, zoom]);
+  }, [viewStart, viewSpan, zoom, origin, length]);
 
   const zoomIndex = ZOOMS.indexOf(zoom);
 
@@ -451,7 +464,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         </button>
 
         <span className="font-mono text-xs text-slate-300 tabular-nums px-1 whitespace-nowrap">
-          {formatTime(currentTime)} <span className="text-slate-400">/ {formatTime(duration)}</span>
+          {clock(currentTime)} <span className="text-slate-400">/ {formatTime(length)}</span>
         </span>
 
         {/* Tap-to-sync lives on the timeline, next to the thing being marked --
@@ -516,6 +529,17 @@ export const Timeline: React.FC<TimelineProps> = ({
           </button>
         )}
 
+        {onEditAudio && (
+          <button
+            onClick={onEditAudio}
+            title={t.editAudio.openTitle}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          >
+            <AudioLines className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">{t.editAudio.open}</span>
+          </button>
+        )}
+
         {/* Only offered once the handles have actually been moved: a button that
             cuts the clip to exactly itself is a button that does nothing. */}
         {onTrimRange && !clipIsWhole && (
@@ -527,7 +551,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                 // otherwise stay where they were, offering the same cut again.
                 setClip(null);
               }}
-              title={t.timeline.cutDownTo(formatTime(clipRange.start), formatTime(clipRange.end))}
+              title={t.timeline.cutDownTo(clock(clipRange.start), clock(clipRange.end))}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-xs font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
             >
               <Scissors className="w-3.5 h-3.5" />
@@ -641,7 +665,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             aria-valuemin={Math.round(viewStart)}
             aria-valuemax={Math.round(viewStart + viewSpan)}
             aria-valuenow={Math.round(currentTime)}
-            aria-valuetext={formatTime(currentTime)}
+            aria-valuetext={clock(currentTime)}
             tabIndex={0}
             onPointerDown={e => {
               // Seek first. Capture is what keeps a drag alive once the pointer
@@ -669,14 +693,17 @@ export const Timeline: React.FC<TimelineProps> = ({
                 className="absolute top-0 bottom-0 border-l border-slate-800 pl-1 text-[9px] font-mono text-slate-400 leading-5 whitespace-nowrap pointer-events-none"
                 style={{ left: `${pct(t)}%` }}
               >
-                {formatTime(t)}
+                {clock(t)}
               </span>
             ))}
             {/* The end, labelled at the edge: the ticks fall on round numbers,
                 so the last one stopped short and the timeline's full length
                 could not be read anywhere. */}
-            <span className="absolute top-0 bottom-0 right-0 border-r border-slate-700 pr-1 text-[9px] font-mono text-slate-300 leading-5 whitespace-nowrap pointer-events-none">
-              {formatTime(viewStart + viewSpan)}
+            <span
+              className="absolute top-0 bottom-0 -translate-x-full border-r border-slate-700 pr-1 text-[9px] font-mono text-slate-300 leading-5 whitespace-nowrap pointer-events-none"
+              style={{ left: `${Math.min(100, pct(origin + length))}%` }}
+            >
+              {formatTime(length)}
             </span>
             <span
               className="absolute inset-y-0 -ml-px w-0.5 bg-lapis-bright pointer-events-none"
@@ -719,7 +746,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                 return (
                   <div
                     key={`${seg.url}-${i}`}
-                    title={`${nameOf(seg.url)} · ${formatTime(seg.start)} – ${formatTime(seg.end)}${
+                    title={`${nameOf(seg.url)} · ${clock(seg.start)} – ${clock(seg.end)}${
                       clipLength ? ` · ${t.timeline.clipLength(formatClipLength(clipLength))}` : ''
                     }${times > 1 ? ` · ${t.timeline.clipRepeats(String(times))}` : ''}${
                       editable ? t.timeline.dragToEdit : ''

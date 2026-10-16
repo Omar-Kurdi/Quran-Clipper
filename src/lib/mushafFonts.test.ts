@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   surahNameText, pagesUsedBy, canDrawAsMushaf, qpcPageFamily, qpcPageUrl, mushafCaption,
-  QPC_V2, SURAH_NAME_FAMILY, withGlyphs, wrapCaption, mushafRows
+  QPC_V2, SURAH_NAME_FAMILY, withGlyphs, wrapCaption, mushafRows, inFaceScript, indopakFor, withIndopak
 } from './mushafFonts';
 
 describe('surahNameText', () => {
@@ -274,5 +274,43 @@ describe('withGlyphs, for the printed line', () => {
   it('comes back by identity once every word has its line', () => {
     const complete = [{ verseKey: '2:2', words: [{ glyph: 'a', glyphPage: 2, glyphLine: 3 }] }];
     expect(withGlyphs(complete, complete)).toBe(complete);
+  });
+});
+
+describe('the IndoPak faces', () => {
+  // As-Sajdah 32:18's last words, as the upstream sends both spellings.
+  const words = [
+    { arabic: 'فَاسِقًۭا ۚ', indopak: 'فَاسِقًا​ ؕ' },
+    { arabic: 'لَّا', indopak: 'لَا' },
+    { arabic: 'يَسْتَوُۥنَ', indopak: 'يَسۡتَوٗنَ‏' },
+  ];
+
+  it('draw the IndoPak spelling, the waqf sign joined to its word', () => {
+    const drawn = inFaceScript({ words, displayTextUthmani: 'x' }, 'IndopakNastaleeq');
+    expect(drawn.words!.map(word => word.arabic)).toEqual(['فَاسِقًاؕ', 'لَا', 'يَسْتَوٗنَ']);
+    expect(drawn.displayTextUthmani).toBeUndefined();
+  });
+
+  it('write the sukun the faces draw as the head of ح, not as a ring', () => {
+    expect(indopakFor('يَعۡمَلُوۡنَ', 'IndopakNastaleeq')).toBe('يَعْمَلُوْنَ');
+  });
+
+  it('leave out the private-use codes only for the face that cannot draw them', () => {
+    expect(indopakFor('ٱلْمَاوٰى', 'DigitalKhattIndoPak')).toBe('ٱلْمَاوٰى');
+    expect(indopakFor('ٱلْمَاوٰى', 'IndopakNastaleeq')).toBe('ٱلْمَاوٰى');
+  });
+
+  it('leave any other face, and a caption missing a spelling, as they are', () => {
+    const verse = { words };
+    expect(inFaceScript(verse, 'DigitalKhatt')).toBe(verse);
+    const opening = { words: [{ arabic: 'أَعُوذُ' }] };
+    expect(inFaceScript(opening, 'IndopakNastaleeq')).toBe(opening);
+  });
+
+  it('are given to saved words by their Uthmani text, a caption being a run of its ayah', () => {
+    const saved: { verseKey: string; words: { arabic: string; indopak?: string }[] }[] = [{ verseKey: '32:18', words: [{ arabic: 'لَّا' }, { arabic: 'يَسْتَوُۥنَ' }] }];
+    const filled = withIndopak(saved, [{ verseKey: '32:18', words }]);
+    expect(filled[0].words.map(word => word.indopak)).toEqual(['لَا', 'يَسۡتَوٗنَ‏']);
+    expect(withIndopak(filled, [{ verseKey: '32:18', words }])).toBe(filled);
   });
 });

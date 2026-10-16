@@ -29,6 +29,7 @@
  */
 
 import { VerseData } from './quranData';
+import { isEdited, normalizeEdit, type AudioEdit } from './audioEdit';
 
 export const DRAFT_KEY = 'qc-draft';
 
@@ -59,6 +60,8 @@ export interface ProjectDraft {
    * written from what the studio held, which came from the upstream.
    */
   syncedAt?: number;
+  /** The edit of the recording the captions are timed against; absent when there is none. */
+  audioEdit?: AudioEdit;
 }
 
 export interface DraftInput {
@@ -73,6 +76,7 @@ export interface DraftInput {
   verses: VerseData[];
   config: Record<string, unknown>;
   savedAt?: number;
+  audioEdit?: AudioEdit;
 }
 
 /** True for a url that only means something to the page that made it. */
@@ -130,7 +134,8 @@ export function buildDraft(input: DraftInput): ProjectDraft {
     audioUploadName: uploaded ? input.audioUploadName : '',
     verses,
     config,
-    droppedBackgrounds: dropped
+    droppedBackgrounds: dropped,
+    ...(isEdited(input.audioEdit) ? { audioEdit: input.audioEdit } : {})
   };
 }
 
@@ -172,7 +177,8 @@ export function readDraft(): ProjectDraft | null {
       config: parsed.config as Record<string, unknown>,
       droppedBackgrounds:
         typeof parsed.droppedBackgrounds === 'number' ? parsed.droppedBackgrounds : 0,
-      ...(typeof parsed.syncedAt === 'number' ? { syncedAt: parsed.syncedAt } : {})
+      ...(typeof parsed.syncedAt === 'number' ? { syncedAt: parsed.syncedAt } : {}),
+      ...(parsed.audioEdit ? { audioEdit: normalizeEdit(parsed.audioEdit) } : {})
     };
   } catch {
     return null;

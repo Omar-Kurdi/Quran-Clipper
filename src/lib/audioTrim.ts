@@ -63,7 +63,7 @@ function sliceBuffer(buffer: AudioBuffer, startSec: number, endSec: number): Aud
 }
 
 /** Standard 16-bit PCM WAV encoder. Lossless, and every consumer here (the `<audio>` element, the sidecar, Gemini) already accepts WAV. */
-function audioBufferToWav(buffer: AudioBuffer): Blob {
+export function audioBufferToWav(buffer: AudioBuffer): Blob {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const numFrames = buffer.length;

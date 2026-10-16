@@ -18,7 +18,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
+import { decodeEdit, encodeEdit, isEdited, keptSpans } from './audioEdit';
+import { renderEdit } from './audioRender';
 import catalog from './qfReciters.json';
 import type { ReciterVerseTiming } from './reciterSegments';
 
@@ -159,6 +162,44 @@ export async function qfPassageFile(reciterId: string, surah: number, start: num
   return stitching.get(target)!;
 }
 
+/**
+ * The passage with an `AudioEdit` applied (`encodeEdit`'s text), made once and
+ * kept beside the passage it was made from.
+ *
+ * Named after that passage, so the Content Sync's clean-up -- which deletes a
+ * changed surah's stitched passages by name -- takes these with them: an
+ * edited copy is the Quran Foundation's audio as much as the passage is, and
+ * is kept no longer than the files it came from. Null when the passage or the
+ * edit is not one.
+ */
+export async function qfEditedFile(
+  { reciterId, surah, start, end }: { reciterId: string; surah: number; start: number; end: number }, editText: string, ffmpeg: string
+): Promise<string | null> {
+  const edit = decodeEdit(editText);
+  const passage = await qfPassage(reciterId, surah, start, end);
+  if (!edit || !isEdited(edit) || !passage || !keptSpans(edit.cuts, passage.totalSeconds).length) return null;
+  const source = await qfPassageFile(reciterId, surah, start, end, ffmpeg);
+  if (!source) return null;
+  const hash = createHash('sha1').update(encodeEdit(edit)).digest('hex').slice(0, 16);
+  const target = path.join(passagesDir(), `${reciterId}-${pad(surah)}-${start}-${end}.e${hash}.flac`);
+  if (existsSync(target)) {
+    void utimes(target, new Date(), new Date()).catch(() => undefined);
+    return target;
+  }
+  if (!stitching.has(target)) {
+    const partial = `${target}.${process.pid}.part.flac`;
+    stitching.set(target, renderEdit(ffmpeg, source, edit, passage.totalSeconds, partial)
+      .then(() => rename(partial, target))
+      .then(() => prune())
+      .then(() => target)
+      .finally(() => {
+        stitching.delete(target);
+        void rm(partial, { force: true });
+      }));
+  }
+  return stitching.get(target)!;
+}
+
 async function stitch(files: string[], target: string, ffmpeg: string): Promise<string> {
   await mkdir(passagesDir(), { recursive: true });
   const list = `${target}.${process.pid}.txt`;
@@ -182,7 +223,7 @@ async function stitch(files: string[], target: string, ffmpeg: string): Promise<
 }
 
 async function prune(): Promise<void> {
-  const names = (await readdir(passagesDir())).filter(name => name.endsWith('.mp3') && !name.includes('.part'));
+  const names = (await readdir(passagesDir())).filter(name => /\.(mp3|flac)$/.test(name) && !name.includes('.part'));
   const files = await Promise.all(names.map(async name => {
     const file = path.join(passagesDir(), name);
     const { size, mtimeMs } = await stat(file);

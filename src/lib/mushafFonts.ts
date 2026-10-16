@@ -298,3 +298,73 @@ export function wrapCaption(
   if (line) lines.push(line);
   return lines;
 }
+
+/** The faces drawn for the IndoPak script: they draw `word.indopak`, not `word.arabic`. */
+const INDOPAK_FACES = new Set(['DigitalKhattIndoPak', 'IndopakNastaleeq']);
+/** Invisible marks the IndoPak text carries for its own web reader, which only move the drawing about. */
+const DIRECTION_MARKS = /[​‎‏]/g;
+/** A waqf sign standing on its own after a word: IndoPak writes them with these, as well as the Uthmani ones. */
+const WAQF_AFTER_SPACE = /\s+(?=[ؐ-ؚۖ-ۜ]+(\s|$))/g;
+/**
+ * The IndoPak text's sukun (U+06E1). Both IndoPak faces draw it as a round
+ * ring, and the Uthmani sukun (U+0652) as the small head of ح the studio has
+ * always shown -- the owner caught the ring at once on 32:19's «يَعۡمَلُوۡنَ», having
+ * had it fixed before. Digital Khatt IndoPak also misplaced the shadda of
+ * 32:20's «يَّخۡرُجُوۡا» beside it, and sets it properly with U+0652.
+ */
+const INDOPAK_SUKUN = /\u06E1/g;
+/** Private-use codes in the IndoPak text, which only the QuranWBW face has glyphs for. */
+const PRIVATE_USE = /[-]/g;
+
+/**
+ * One IndoPak word ready for `fontId`: the sign joined to its word -- each face
+ * then raises it just past the word, where the IndoPak mushaf prints it, and a
+ * wrap can no longer carry it to the next line -- and, for Digital Khatt
+ * IndoPak, the private-use codes it would draw as boxes taken out.
+ */
+export function indopakFor(text: string, fontId: string): string {
+  const joined = text.replace(DIRECTION_MARKS, '').replace(WAQF_AFTER_SPACE, '').replace(INDOPAK_SUKUN, '\u0652').trim();
+  return fontId === 'IndopakNastaleeq' ? joined : joined.replace(PRIVATE_USE, '');
+}
+
+/**
+ * The caption in the script `fontId` is drawn for. An IndoPak face gets every
+ * shown word's IndoPak spelling, so its marks and waqf signs land where it
+ * places them; any other face, or a caption with a word the upstream sent no
+ * IndoPak for -- the isti'adha has none -- is left exactly as it is.
+ */
+export function inFaceScript<V extends { words?: { arabic: string; indopak?: string; excluded?: boolean }[]; displayTextUthmani?: string }>(
+  verse: V, fontId: string
+): V {
+  const words = verse.words;
+  if (!INDOPAK_FACES.has(fontId) || !words?.length || !words.every(word => word.indopak)) return verse;
+  // The words are the text now; `displayTextUthmani` is their Uthmani join.
+  return { ...verse, displayTextUthmani: undefined, words: words.map(word => ({ ...word, arabic: indopakFor(word.indopak!, fontId) })) };
+}
+
+/**
+ * The IndoPak spelling onto words saved before it was fetched, matched by
+ * their Uthmani text in order: a caption holds a run of its ayah's words, not
+ * always from the first. Left as it is unless every word is found.
+ */
+export function withIndopak<V extends { verseKey: string; words?: { arabic: string; indopak?: string }[] }>(
+  verses: V[],
+  fetched: { verseKey: string; words?: { arabic: string; indopak?: string }[] }[]
+): V[] {
+  const source = new Map(fetched.map(verse => [verse.verseKey, verse.words || []]));
+  let changed = false;
+  const filled = verses.map(verse => {
+    const from = source.get(verse.verseKey);
+    if (!from?.length || !verse.words?.length || verse.words.every(word => word.indopak)) return verse;
+    let at = 0;
+    const words = verse.words.map(word => {
+      while (at < from.length && from[at].arabic !== word.arabic) at++;
+      const match = from[at++];
+      return match?.indopak ? { ...word, indopak: match.indopak } : null;
+    });
+    if (words.some(word => !word)) return verse;
+    changed = true;
+    return { ...verse, words: words as NonNullable<(typeof words)[number]>[] };
+  });
+  return changed ? filled : verses;
+}

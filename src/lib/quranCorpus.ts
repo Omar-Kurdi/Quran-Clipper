@@ -19,6 +19,8 @@ type QuranApiWord = {
   v2_page?: number;
   /** The line of that page the word is printed on. */
   line_v2?: number;
+  /** The word as the IndoPak mushaf writes it: see `VerseWord.indopak`. */
+  text_indopak?: string;
   translation?: { text?: string };
 };
 
@@ -56,7 +58,7 @@ export function cleanHtml(input = '') {
 const CHAPTER_PATH = (surah: number) =>
   `/verses/by_chapter/${surah}` +
   `?language=en&words=true&translations=${translationIdsToRequest().join(',')}&fields=text_uthmani` +
-  `&word_fields=text_uthmani,translation,code_v2,v2_page,line_v2&per_page=300`;
+  `&word_fields=text_uthmani,text_indopak,translation,code_v2,v2_page,line_v2&per_page=300`;
 
 /**
  * The words of one verse, spelled as the verse spells them.
@@ -83,7 +85,8 @@ export function verseWords(verse: {
       translation: cleanHtml(word.translation?.text || ''),
       excluded: false,
       ...(word.code_v2 && word.v2_page ? { glyph: word.code_v2, glyphPage: word.v2_page } : {}),
-      ...(word.code_v2 && word.v2_page && word.line_v2 ? { glyphLine: word.line_v2 } : {})
+      ...(word.code_v2 && word.v2_page && word.line_v2 ? { glyphLine: word.line_v2 } : {}),
+      ...(word.text_indopak ? { indopak: word.text_indopak } : {})
     }))
     .filter(word => word.arabic);
 }

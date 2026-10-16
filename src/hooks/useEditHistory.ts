@@ -21,6 +21,11 @@ export interface StudioSnapshot<C> {
   /** A passenger: restored with a step, but never the reason one is recorded. */
   selectedIndex: number;
   config: C;
+  /**
+   * The edit of the recording (`audioEdit`), which moves the captions with it:
+   * undoing one without the other would play them against the wrong audio.
+   */
+  audio?: unknown;
 }
 
 export interface EditHistory<C> {
@@ -54,10 +59,11 @@ export function useEditHistory<C>({
   verses,
   selectedIndex,
   config,
+  audio,
   restore
 }: StudioSnapshot<C> & { restore: (snapshot: StudioSnapshot<C>) => void }): EditHistory<C> {
   const [history, setHistory] = useState<History<StudioSnapshot<C>>>(() =>
-    initHistory({ verses, selectedIndex, config })
+    initHistory({ verses, selectedIndex, config, audio })
   );
   // The undo/redo callbacks read the history without being rebuilt by it, so
   // they stay stable for the key handler that holds them.
@@ -69,10 +75,10 @@ export function useEditHistory<C>({
 
   useEffect(() => {
     const { present } = historyRef.current;
-    const edited = verses !== present.verses || config !== present.config;
+    const edited = verses !== present.verses || config !== present.config || audio !== present.audio;
     if (!edited && selectedIndex === present.selectedIndex) return;
 
-    const snapshot = { verses, selectedIndex, config };
+    const snapshot = { verses, selectedIndex, config, audio };
     const next = edited
       ? record(historyRef.current, snapshot, { at: Date.now() })
       : replacePresent(historyRef.current, snapshot);
@@ -90,7 +96,7 @@ export function useEditHistory<C>({
     setHistory(prev =>
       canUndo(prev) === canUndo(next) && canRedo(prev) === canRedo(next) ? prev : next
     );
-  }, [verses, selectedIndex, config]);
+  }, [verses, selectedIndex, config, audio]);
 
   const step = useCallback((move: (h: History<StudioSnapshot<C>>) => History<StudioSnapshot<C>>) => {
     const next = move(historyRef.current);

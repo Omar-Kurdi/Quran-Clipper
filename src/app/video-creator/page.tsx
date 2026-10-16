@@ -7,6 +7,11 @@ import {
 } from '@/components/VideoCanvas';
 import { StyleConfigPanel } from '@/components/StyleConfigPanel';
 import { AudioTrimModal, formatDuration } from '@/components/AudioTrimModal';
+import { AudioEditModal } from '@/components/AudioEditModal';
+import {
+  NO_EDIT, editedAddress, editedLength, encodeEdit, isEdited, normalizeEdit, retime, splitAddress, toEdited, toSource,
+  toTheEnd, trimmedTo, uploadEditAddress, withCuts, type AudioEdit,
+} from '@/lib/audioEdit';
 import { describeGpu } from '@/lib/gpuInfo';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import type { ExportHealth } from '@/lib/exportHealth';
@@ -91,7 +96,7 @@ import {
   FONT_ARABIC_DEFAULT,
   resolveArabicFont
 } from '@/lib/quranData';
-import { canDrawAsMushaf, withGlyphs } from '@/lib/mushafFonts';
+import { canDrawAsMushaf, withGlyphs, withIndopak } from '@/lib/mushafFonts';
 import { needsContentSync } from '@/lib/contentSyncAge';
 import { applyContentSync } from '@/lib/contentSyncCore';
 import type { CorpusVerse } from '@/lib/quranCorpus';
@@ -125,6 +130,7 @@ import {
   Video,
   Server,
   Scissors,
+  AudioLines,
   AlertTriangle,
   Loader2,
   Film,
@@ -204,6 +210,23 @@ export default function VideoCreatorPage() {
    * next upload has to be cut to before it matches the timeline on screen.
    */
   const [awaitingAudio, setAwaitingAudio] = useState<{ fileName: string; trim: { start: number; end: number } | null } | null>(null);
+  /**
+   * The edit of the recording (`audioEdit`): what is cut, how fast it plays,
+   * the clean-ups. `audioUrl` stays the recording itself -- what the aligner
+   * reads and a built-in reciter's passage is named by -- and the player plays
+   * `playUrl`, the edit applied. The captions are on the edited clock.
+   */
+  const [audioEdit, setAudioEdit] = useState<AudioEdit>(NO_EDIT);
+  /** The same, for handlers that run after an await, when the state they closed over may be old. */
+  const audioEditRef = useRef<AudioEdit>(NO_EDIT);
+  /** An upload's edits as rendered by the server, by `encodeEdit`, for the upload they were made from. */
+  const [uploadRenders, setUploadRenders] = useState<{ file: File | null; urls: Record<string, string> }>({ file: null, urls: {} });
+  const uploadRendersRef = useRef(uploadRenders);
+  /** The server's name for the upload it keeps for editing, so the next edit sends only that. */
+  const uploadSourceId = useRef<{ file: File | null; id: string }>({ file: null, id: '' });
+  /** A passage's own length, unedited, once read: what its cuts are bounded by. */
+  const sourceDurationRef = useRef<{ url: string; seconds: number }>({ url: '', seconds: 0 });
+  const [showEditAudio, setShowEditAudio] = useState(false);
   /**
    * Whether moving a segment's end carries everything after it along.
    *
@@ -319,14 +342,16 @@ export default function VideoCreatorPage() {
         !canDrawAsMushaf(verse.words) ||
         // Saved before the printed lines were carried: fetched once so the
         // caption can follow the mushaf's breaks.
-        !(verse.words || []).every(word => word.glyphLine)
+        !(verse.words || []).every(word => word.glyphLine) ||
+        // Or before the IndoPak spelling the IndoPak faces draw.
+        !(verse.words || []).every(word => word.indopak)
       );
     if (!verses.some(needs)) return;
 
     // What is already known applies at once. Both functions hand the array
     // back by identity when they change nothing, so this cannot loop.
     const known = [...corpusCache.current.values()];
-    if (known.length) setVerses(current => withGlyphs(fillFromCorpus(current, known), known));
+    if (known.length) setVerses(current => withIndopak(withGlyphs(fillFromCorpus(current, known), known), known));
 
     const asking = verses.filter(
       verse => needs(verse) && !corpusCache.current.has(verse.verseKey) && !corpusRequested.current.has(verse.verseKey)
@@ -352,7 +377,7 @@ export default function VideoCreatorPage() {
       .then(data => {
         const fetched: VerseData[] = data?.verses || [];
         fetched.forEach(verse => corpusCache.current.set(verse.verseKey, verse));
-        if (fetched.length) setVerses(current => withGlyphs(fillFromCorpus(current, fetched), fetched));
+        if (fetched.length) setVerses(current => withIndopak(withGlyphs(fillFromCorpus(current, fetched), fetched), fetched));
       })
       .catch(() => {});
   }, [verses, setVerses]);
@@ -516,6 +541,10 @@ export default function VideoCreatorPage() {
     setVerses(snapshot.verses);
     setSelectedIndex(snapshot.selectedIndex);
     setCanvasConfig(snapshot.config);
+    // The captions were timed against this edit of the recording.
+    const audio = (snapshot.audio as AudioEdit | undefined) ?? NO_EDIT;
+    audioEditRef.current = audio;
+    setAudioEdit(audio);
     // A block index is meaningless against a lane that may have just changed
     // under it, and the panel would act on whatever now sits at that position.
     setSelectedBackground(null);
@@ -525,6 +554,7 @@ export default function VideoCreatorPage() {
     verses,
     selectedIndex,
     config: canvasConfig,
+    audio: audioEdit,
     restore: restoreSnapshot
   });
 
@@ -553,11 +583,12 @@ export default function VideoCreatorPage() {
             audioUrl,
             audioUploadName: customAudioName,
             verses,
-            config: canvasConfig as unknown as Record<string, unknown>
+            config: canvasConfig as unknown as Record<string, unknown>,
+            audioEdit
           }),
     [
       isSampleProject, verses, canvasConfig, selectedSurah, surahNameArabic, surahNameEnglish,
-      ayahStart, ayahEnd, selectedReciter, audioUrl, customAudioName
+      ayahStart, ayahEnd, selectedReciter, audioUrl, customAudioName, audioEdit
     ]
   );
   const draftSavedAt = useAutoSaveDraft(draft);
@@ -629,12 +660,16 @@ export default function VideoCreatorPage() {
     // Merged rather than replaced: a styling knob added since the draft was
     // written keeps its default instead of arriving as `undefined`.
     const config = { ...canvasConfig, ...(found.config as Partial<VideoCanvasConfig>) };
+    // An upload's draft comes back without its recording, so without its edit.
+    const audio = found.audioUrl && found.audioEdit ? found.audioEdit : NO_EDIT;
     setVerses(found.verses);
     setSelectedIndex(0);
     setCanvasConfig(config);
+    audioEditRef.current = audio;
+    setAudioEdit(audio);
     // The draft is where undo stops: walking back past it would put the
     // sample's captions over the draft's recording.
-    history.reset({ verses: found.verses, selectedIndex: 0, config });
+    history.reset({ verses: found.verses, selectedIndex: 0, config, audio });
     setSelectedSurah(found.surahNumber);
     if (found.surahNameArabic) setSurahNameArabic(found.surahNameArabic);
     if (found.surahNameEnglish) setSurahNameEnglish(found.surahNameEnglish);
@@ -673,6 +708,12 @@ export default function VideoCreatorPage() {
     }
   };
 
+  /** A new recording: nothing of the last one's edit applies. */
+  const resetAudioEdit = () => {
+    audioEditRef.current = NO_EDIT;
+    setAudioEdit(NO_EDIT);
+  };
+
   // Fetch Verses on Surah / Reciter / Ayah change
   const handleLoadSurahVerses = async () => {
     beginClip();
@@ -697,13 +738,16 @@ export default function VideoCreatorPage() {
       setSurahNameEnglish(data.surahNameEnglish || 'Al-Fatihah');
       if (!customAudioUrl) {
         setAudioUrl(data.audioUrl);
+        // Another recording: nothing of the last one's edit applies to it.
+        resetAudioEdit();
       }
       // Against an upload the reciter's absolute timings put the passage
       // outside the recording entirely -- see `fitVersesToAudio`. They are
       // wrong for this audio whatever happens; this is what makes them
-      // reachable enough to correct.
+      // reachable enough to correct. Fitted to the upload as recorded, then
+      // onto the clock its edit plays at.
       const loaded = customAudioUrl
-        ? fitVersesToAudio(data.verses || [], customAudioDuration || audioDuration)
+        ? retime(fitVersesToAudio(data.verses || [], customAudioDuration || audioDuration), NO_EDIT, audioEditRef.current)
         : data.verses || [];
       setVerses(loaded);
       setIsSampleProject(false);
@@ -846,6 +890,7 @@ export default function VideoCreatorPage() {
       }
       const url = URL.createObjectURL(file);
       const video = isVideoFile(file);
+      resetAudioEdit();
       setCustomAudioUrl(url);
       setCustomAudioName(file.name);
       setCustomAudioFile(file);
@@ -867,10 +912,7 @@ export default function VideoCreatorPage() {
       if (video && useVideoAsBackground) {
         setCanvasConfig(prev => ({ ...prev, bgType: 'video', bgUrl: url }));
       }
-      setMatchStatus({
-        text: video ? t.match.videoUploaded : t.match.audioUploaded,
-        tone: 'info'
-      });
+      setMatchStatus({ text: video ? t.match.videoUploaded : t.match.audioUploaded, tone: 'info' });
       setAudioUrl(url);
       if (audioElementRef.current) {
         audioElementRef.current.src = url;
@@ -966,9 +1008,17 @@ export default function VideoCreatorPage() {
    */
   const handleTrimRange = async (start: number, end: number) => {
     if (!(end > start)) return;
+    // A built-in reciter's passage, or an upload already edited: the trim is
+    // a cut of the edit, so the recording itself is kept to edit again.
+    const current = audioEditRef.current;
+    if (customAudioFile ? isEdited(current) : editedAddress(audioUrl, current)) {
+      const keep = { start: toSource(start, current, 'start'), end: toSource(end, current, 'end') };
+      await applyAudioEdit(trimmedTo(current, keep, await sourceDuration()));
+      return;
+    }
     if (!customAudioFile) {
-      // A built-in reciter's passage: the recording stays as it is and the
-      // captions are cut to the range, which is what plays and exports.
+      // A recording the server cannot edit -- the sample's: the captions are
+      // cut to the range, which is what plays and exports.
       setVerses(prev => trimTimeline(prev, start, end, false));
       setMatchStatus({ text: t.match.trimmedCaptions(formatDuration(end - start)), tone: 'info' });
       return;
@@ -981,6 +1031,133 @@ export default function VideoCreatorPage() {
     } catch {
       setMatchStatus({ text: t.match.trimRangeFailed, tone: 'error' });
     }
+  };
+
+  /** The recording's own length, unedited: an upload's measured length, or a passage's, read once. */
+  const sourceDuration = async (): Promise<number> => {
+    if (customAudioFile) return customAudioDuration;
+    // Unedited, the player is playing the recording itself.
+    if (!isEdited(audioEditRef.current) && audioDuration > 0) return audioDuration;
+    if (sourceDurationRef.current.url !== audioUrl || !(sourceDurationRef.current.seconds > 0)) {
+      sourceDurationRef.current = { url: audioUrl, seconds: await measureAudioDuration(audioUrl) };
+    }
+    return sourceDurationRef.current.seconds;
+  };
+
+  /**
+   * An upload's edit, as the server renders it (`/api/audio/edited`). The
+   * upload goes once; after that only the server's name for it does, and the
+   * file again only if the server has since let it go.
+   */
+  const renderUploadEdit = useCallback(async (file: File, edit: AudioEdit, duration: number): Promise<string> => {
+    const key = encodeEdit(edit);
+    const held = uploadRendersRef.current;
+    if (held.file === file && held.urls[key]) return held.urls[key];
+    const send = (withFile: boolean) => {
+      const form = new FormData();
+      form.append('edit', key);
+      form.append('duration', String(duration));
+      if (withFile) form.append('source', file);
+      else form.append('sourceId', uploadSourceId.current.id);
+      return fetch('/api/audio/edited', { method: 'POST', body: form });
+    };
+    const known = uploadSourceId.current.file === file && !!uploadSourceId.current.id;
+    let res = await send(!known);
+    if (known && res.status === 404) res = await send(true);
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`);
+    const id = res.headers.get('x-source-id');
+    if (id) uploadSourceId.current = { file, id };
+    const url = URL.createObjectURL(await res.blob());
+    const previous = uploadRendersRef.current;
+    if (previous.file !== file) Object.values(previous.urls).forEach(old => URL.revokeObjectURL(old));
+    const next = { file, urls: { ...(previous.file === file ? previous.urls : {}), [key]: url } };
+    uploadRendersRef.current = next;
+    setUploadRenders(next);
+    return url;
+  }, []);
+
+  /**
+   * Makes `requested` the edit of the recording: rendered first, so nothing
+   * plays the old audio under the new captions, then the captions moved onto
+   * its clock and the playhead kept on the same moment of the recitation.
+   * The one way an edit changes; undo puts back both together.
+   */
+  const applyAudioEdit = async (requested: AudioEdit) => {
+    const duration = await sourceDuration();
+    const normalized = normalizeEdit(requested, duration || undefined);
+    const next = isEdited(normalized) ? normalized : NO_EDIT;
+    const current = audioEditRef.current;
+    if (encodeEdit(next) === encodeEdit(current)) return;
+    let url = audioUrl;
+    if (isEdited(next)) {
+      setMatchStatus({ text: t.editAudio.rendering, tone: 'info' });
+      try {
+        if (customAudioFile) {
+          url = await renderUploadEdit(customAudioFile, next, duration);
+        } else {
+          const address = editedAddress(audioUrl, next);
+          if (!address) throw new Error(t.editAudio.unavailable);
+          // Rendered before it is played: one byte asked for, so the player
+          // does not sit on a silent element while the server works.
+          const res = await fetch(new URL(address, window.location.origin), { headers: { range: 'bytes=0-0' } });
+          if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`);
+          url = address;
+        }
+      } catch (err) {
+        setMatchStatus({ text: t.editAudio.failed((err as Error).message), tone: 'error' });
+        return;
+      }
+    }
+    // Another edit landed while this one rendered.
+    if (audioEditRef.current !== current) return;
+    audioEditRef.current = next;
+    setAudioEdit(next);
+    setVerses(prev => toTheEnd(retime(prev, current, next), next, editedLength(next, duration)));
+    queueSeek(url, toEdited(toSource(currentTime, current, 'start'), next));
+    setMatchStatus({
+      text: isEdited(next) ? t.editAudio.applied(formatDuration(editedLength(next, duration))) : t.editAudio.reset,
+      tone: 'info'
+    });
+  };
+
+  /**
+   * Whether this recording can be edited: an upload on a studio that takes
+   * them, or a built-in reciter's passage, which the server rebuilds.
+   */
+  // An upload can be edited before it is matched -- trimmed to the voice first;
+  // a passage once it is loaded.
+  const canEditAudio = customAudioFile ? studio.mode !== 'public' : verses.length > 0 && !!editedAddress(audioUrl, NO_EDIT);
+  /** What Edit audio opens on: the recording, the edit, and the captions, all on the recording's clock. */
+  const [editAudioStart, setEditAudioStart] = useState<{ edit: AudioEdit; captions: VerseData[] } | null>(null);
+  const editAudioSource = useMemo(
+    () => (customAudioFile ? { kind: 'file' as const, file: customAudioFile } : { kind: 'url' as const, url: audioUrl }),
+    [customAudioFile, audioUrl]
+  );
+  const openEditAudio = async () => {
+    if (!canEditAudio) {
+      setMatchStatus({ text: t.editAudio.unavailable, tone: 'info' });
+      return;
+    }
+    const current = audioEditRef.current;
+    const captions = retime(verses, current, NO_EDIT);
+    let start = current;
+    // A passage starts and ends in its ayah files' silence, outside every
+    // caption: cut from the edit at the outset, so its length is the clip's.
+    if (!customAudioFile && !isEdited(current) && captions.length) {
+      const duration = await sourceDuration();
+      const first = Math.min(...captions.map(v => v.startTime));
+      const last = Math.max(...captions.map(v => v.endTime));
+      start = withCuts(current, [{ start: 0, end: first }, { start: last, end: duration }], duration);
+    }
+    setEditAudioStart({ edit: start, captions });
+    setShowEditAudio(true);
+  };
+  /** "Delete with its audio": the selected caption goes, and its stretch of the recording with it. */
+  const cutSelectedAudio = () => {
+    const verse = verses[selectedIndex];
+    const current = audioEditRef.current;
+    if (!verse) return;
+    void applyAudioEdit(withCuts(current, [{ start: toSource(verse.startTime, current, 'start'), end: toSource(verse.endTime, current, 'end') }]));
   };
 
   /**
@@ -1016,8 +1193,10 @@ export default function VideoCreatorPage() {
       setAyahEnd(data.ayahEnd);
       setAyahEndInput(String(data.ayahEnd));
     }
-    if (typeof data.audioDuration === 'number') setAudioDuration(data.audioDuration);
-    setVerses(data.verses || verses);
+    // The match is of the recording as recorded; what plays is its edit.
+    const edit = audioEditRef.current;
+    if (typeof data.audioDuration === 'number' && !isEdited(edit)) setAudioDuration(data.audioDuration);
+    setVerses(data.verses ? retime(data.verses, NO_EDIT, edit) : verses);
     setIsSampleProject(false);
   };
 
@@ -1293,7 +1472,10 @@ export default function VideoCreatorPage() {
       setMatchStatus({ text: t.match.needLoad, tone: 'error' });
       return;
     }
-    void alignLoadedReciter(verses, audioUrl, audioDuration, loadResult?.timingSource === 'measured' && !loadResult.againstUpload);
+    // The aligner reads the recording as recorded, so the window is found on
+    // its clock: an edit's captions and length would stop it short of the end.
+    const timed = loadResult?.timingSource === 'measured' && !loadResult.againstUpload;
+    void sourceDuration().then(duration => alignLoadedReciter(retime(verses, audioEditRef.current, NO_EDIT), audioUrl, duration, timed));
   };
 
   /** "Match several recordings": the batch dialog, and what it hands back. */
@@ -1501,6 +1683,25 @@ export default function VideoCreatorPage() {
   const timelineWindow = useMemo(() => timelineView(passage, audioDuration), [passage, audioDuration]);
 
   /**
+   * What the player plays: the recording with its edit applied. A built-in
+   * reciter's from the address the server rebuilds it at; an upload's from
+   * the server's render of it, or the recording as it is until that arrives.
+   */
+  const editKey = isEdited(audioEdit) ? encodeEdit(audioEdit) : '';
+  const renderedUpload = customAudioFile && uploadRenders.file === customAudioFile ? uploadRenders.urls[editKey] : undefined;
+  const playUrl = !editKey ? audioUrl : customAudioFile ? renderedUpload ?? audioUrl : editedAddress(audioUrl, audioEdit) ?? audioUrl;
+
+  // An upload's edit restored by undo or redo past what this session rendered.
+  useEffect(() => {
+    // Not before the upload's length is read: the server needs it to bound the cuts.
+    if (!customAudioFile || !editKey || renderedUpload || !(customAudioDuration > 0)) return;
+    let stale = false;
+    renderUploadEdit(customAudioFile, audioEditRef.current, customAudioDuration)
+      .catch(err => { if (!stale) setMatchStatus({ text: t.editAudio.failed((err as Error).message), tone: 'error' }); });
+    return () => { stale = true; };
+  }, [customAudioFile, editKey, renderedUpload, renderUploadEdit, customAudioDuration, t]);
+
+  /**
    * Play the clip, not the chapter: from the passage's first ayah when the
    * playhead is outside it, which is what the export will contain.
    */
@@ -1556,7 +1757,7 @@ export default function VideoCreatorPage() {
   // and reciter fires no `loadedmetadata`, so the seek would never be applied.
   useEffect(() => {
     applyPendingSeek();
-  }, [applyPendingSeek, verses, audioUrl]);
+  }, [applyPendingSeek, verses, playUrl]);
 
   // Save Project to Database
   /**
@@ -1570,7 +1771,10 @@ export default function VideoCreatorPage() {
    * `eval_segments.py` at it.
    */
   const handleDownloadGroundTruth = async () => {
-    const duration = customAudioDuration || audioDuration;
+    // Ground truth is of the recording as recorded -- the audio it is cut from
+    // and scored on -- so an edit's captions go back onto that clock first.
+    const recorded = retime(verses, audioEditRef.current, NO_EDIT);
+    const duration = await sourceDuration();
 
     /**
      * The audio goes with it, or the file describes a recording nobody has.
@@ -1588,10 +1792,10 @@ export default function VideoCreatorPage() {
     const clip = groundTruthClip(
       customAudioFile ? { file: customAudioFile, name: customAudioName } : null,
       { url: audioUrl, id: selectedReciter, surah: selectedSurah, start: ayahStart, end: ayahEnd },
-      verses
+      recorded
     );
     const saved = groundTruthAudioName(clip?.name ?? customAudioName);
-    const withAudio = groundTruthFile(verses, {
+    const withAudio = groundTruthFile(recorded, {
       clipName: saved,
       duration,
       trim: null,
@@ -1620,7 +1824,7 @@ export default function VideoCreatorPage() {
     // naming the recording the person still has on disk and the window to cut
     // from it. Less convenient than the path above and better than nothing --
     // silently writing nothing would be worse than what this replaced.
-    const contents = groundTruthFile(verses, {
+    const contents = groundTruthFile(recorded, {
       clipName: uploadOriginalName || customAudioName,
       duration,
       trim: trimWindow,
@@ -1658,7 +1862,9 @@ export default function VideoCreatorPage() {
       ayahEnd: held.end,
       reciterId: selectedReciter,
       reciterName: RECITERS.find(r => r.id === selectedReciter)?.name || RECITERS[0]?.name || 'Abdul Rahman Al-Sudais',
-      audioUrl,
+      // The edit rides in the address (`splitAddress` reads it back): a
+      // reciter's plays from it as it is, an upload's names only the edit.
+      audioUrl: !isEdited(audioEdit) ? audioUrl : customAudioFile ? uploadEditAddress(audioEdit) : editedAddress(audioUrl, audioEdit) ?? audioUrl,
       // How long the clip is, for the Projects list -- the whole chapter's
       // recording for a built-in reciter, which is not what anyone means by it.
       audioDurationSeconds: exportRange.span,
@@ -1695,7 +1901,7 @@ export default function VideoCreatorPage() {
    */
   const clipProject = useRef<{ id: string; clip: string } | null>(null);
   const clipIdentity = (payload: Record<string, unknown>) =>
-    `${payload.surahNumber}:${payload.ayahStart}-${payload.ayahEnd}|${payload.audioKey || payload.audioUrl || ''}`;
+    `${payload.surahNumber}:${payload.ayahStart}-${payload.ayahEnd}|${payload.audioKey || splitAddress(String(payload.audioUrl || '')).source}`;
   const clipProjectId = (payload: Record<string, unknown>) =>
     clipProject.current?.clip === clipIdentity(payload)
       ? clipProject.current.id
@@ -2119,11 +2325,11 @@ export default function VideoCreatorPage() {
   const renderCheckInput = useMemo(() => ({
     range: { start: exportRange.start, end: exportRange.end },
     fps: canvasConfig.fps,
-    sourceUrl: customAudioUrl || audioUrl,
+    sourceUrl: playUrl,
     lane: bgSegments,
     layout: canvasConfig.layout,
     overlayOpacity: canvasConfig.bgOverlayOpacity,
-  }), [exportRange.start, exportRange.end, canvasConfig.fps, customAudioUrl, audioUrl,
+  }), [exportRange.start, exportRange.end, canvasConfig.fps, playUrl,
       bgSegments, canvasConfig.layout, canvasConfig.bgOverlayOpacity]);
 
   /** The frame the finished file has, whichever path produced it. */
@@ -2253,7 +2459,12 @@ export default function VideoCreatorPage() {
     setSurahNameArabic(proj.surahNameArabic || 'الفاتحة');
     setSurahNameEnglish(proj.surahNameEnglish || 'Al-Fatihah');
     setSelectedReciter(proj.reciterId || RECITERS[0].id);
-    setAudioUrl(proj.audioUrl || DEFAULT_AUDIO_URL);
+    // A project keeps its edit in its address: the recording, and the edit
+    // its captions are timed against.
+    const saved = splitAddress(proj.audioUrl || '');
+    audioEditRef.current = saved.edit ?? NO_EDIT;
+    setAudioEdit(audioEditRef.current);
+    setAudioUrl(saved.source || proj.audioUrl || DEFAULT_AUDIO_URL);
     setVerses(proj.versesJson || []);
     setIsSampleProject(false);
     // Overrides the url just set whenever this project came from an upload --
@@ -2504,7 +2715,7 @@ export default function VideoCreatorPage() {
           the key do the wrong thing. */}
       <audio
         ref={audioElementRef}
-        src={audioUrl}
+        src={playUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
@@ -2733,7 +2944,7 @@ export default function VideoCreatorPage() {
                       </div>
                       <dl className="grid grid-cols-[6rem_1fr] gap-y-1 text-[13px]">
                         <dt className="text-slate-400">{t.source.lengthLabel}</dt>
-                        <dd className="font-mono text-slate-200" dir="ltr">{formatDuration(audioDuration)}</dd>
+                        <dd className="font-mono text-slate-200" dir="ltr">{formatDuration(exportRange.span)}</dd>
                         <dt className="text-slate-400">{t.source.captionsLabel}</dt>
                         <dd className="text-slate-200">{verses.length}</dd>
                       </dl>
@@ -2840,6 +3051,11 @@ export default function VideoCreatorPage() {
                             {customAudioDuration > 0
                               ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
                               : t.header.trimAudio}
+                          </Button>
+                        )}
+                        {canEditAudio && (
+                          <Button icon={<AudioLines className="w-3.5 h-3.5 text-amber-400" />} onClick={() => { void openEditAudio(); }} title={t.editAudio.openTitle}>
+                            {t.editAudio.open}
                           </Button>
                         )}
                       </div>
@@ -3142,8 +3358,10 @@ export default function VideoCreatorPage() {
                     onReorder={edit.reorder}
                     onDuplicate={() => edit.duplicate(audioDuration)}
                     onDelete={edit.remove}
+                    onCutAudio={canEditAudio ? cutSelectedAudio : undefined}
                     onAdd={edit.add}
                     currentTime={currentTime}
+                    timeOrigin={passage?.start ?? 0}
                     onSelect={i => {
                       setSelectedIndex(i);
                       handleSeek(verses[i].startTime);
@@ -3257,7 +3475,7 @@ export default function VideoCreatorPage() {
         <div className={panelTab === 'source' ? 'max-lg:hidden' : ''} data-tour="timeline">
         <Timeline
           verses={verses}
-          audioUrl={customAudioUrl || audioUrl}
+          audioUrl={playUrl}
           audioDuration={audioDuration}
           currentTime={currentTime}
           isPlaying={isPlaying}
@@ -3282,6 +3500,7 @@ export default function VideoCreatorPage() {
           onMarkHere={handleMarkHere}
           onNextToCheck={goToNextCheck}
           onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
+          onEditAudio={canEditAudio ? () => { void openEditAudio(); } : undefined}
           onTrimRange={customAudioFile || verses.length ? handleTrimRange : undefined}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
@@ -3392,7 +3611,30 @@ export default function VideoCreatorPage() {
           isOpen={showTrimModal}
           file={customAudioFile}
           onCancel={() => setShowTrimModal(false)}
-          onApply={handleApplyTrim}
+          onApply={result => {
+            if (!isEdited(audioEditRef.current)) {
+              handleApplyTrim(result);
+              return;
+            }
+            // The upload is edited: the trim is a cut of the edit, the file kept whole.
+            setShowTrimModal(false);
+            void applyAudioEdit(trimmedTo(audioEditRef.current, { start: result.trimStart, end: result.trimEnd }, customAudioDuration));
+          }}
+        />
+      )}
+      {showEditAudio && editAudioStart && (
+        <AudioEditModal
+          isOpen={showEditAudio}
+          source={editAudioSource}
+          edit={editAudioStart.edit}
+          captions={editAudioStart.captions}
+          isUpload={!!customAudioFile}
+          videoBackground={uploadIsVideo && useVideoAsBackground && canvasConfig.bgUrl === videoBgUrl}
+          onCancel={() => setShowEditAudio(false)}
+          onApply={next => {
+            setShowEditAudio(false);
+            void applyAudioEdit(next);
+          }}
         />
       )}
     </div>

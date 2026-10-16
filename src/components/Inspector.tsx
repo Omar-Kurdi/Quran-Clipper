@@ -5,7 +5,7 @@ import { useInkOverhang } from '@/hooks/useInkOverhang';
 import { TranslationChooser } from './TranslationChooser';
 import { wordFace, pagesUsedBy, ensureQpcPages, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Trash2, Copy, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, SplitSquareHorizontal, Combine, AlertTriangle } from 'lucide-react';
+import { Trash2, Copy, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, SplitSquareHorizontal, Combine, AlertTriangle, Scissors } from 'lucide-react';
 import { VerseData } from '@/lib/quranData';
 import { isOpening } from '@/lib/openings';
 import { ensureWords, formatTime, MIN_SEGMENT } from '@/lib/verseEdits';
@@ -31,6 +31,8 @@ interface InspectorProps {
   onReorder: (to: number) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  /** Deletes the caption and cuts its stretch of the recording with it. Absent where the audio cannot be edited. */
+  onCutAudio?: () => void;
   onAdd: () => void;
   /**
    * Cut this caption in two at the playhead, and join it to the one after it.
@@ -46,6 +48,8 @@ interface InspectorProps {
   onChecked: () => void;
   /** Where the playhead is, so the split control can say whether it would work. */
   currentTime: number;
+  /** Where the timeline's clock reads 0:00 -- a built-in reciter's first caption -- so the times here read the same. */
+  timeOrigin?: number;
   /** Moves to another caption: the panel's previous / next. */
   onSelect: (index: number) => void;
   /**
@@ -84,8 +88,8 @@ interface InspectorProps {
  */
 export const Inspector: React.FC<InspectorProps> = ({
   verses, index, isActive,
-  onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onAdd,
-  onSplit, onMerge, onChecked, currentTime, onSelect,
+  onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onCutAudio, onAdd,
+  onSplit, onMerge, onChecked, currentTime, timeOrigin = 0, onSelect,
   translationIds, onTranslationIds, onTranslationText,
   translationFollowsWords, onTranslationFollowsWords
 }) => {
@@ -209,7 +213,7 @@ export const Inspector: React.FC<InspectorProps> = ({
       <CaptionHeader
         index={index}
         total={verses.length}
-        span={t.inspector.ayahSpan(verse.verseKey, formatTime(verse.startTime), formatTime(verse.endTime), formatTime(duration))}
+        span={t.inspector.ayahSpan(verse.verseKey, formatTime(verse.startTime - timeOrigin), formatTime(verse.endTime - timeOrigin), formatTime(duration))}
         onSelect={onSelect}
       >
         {isActive && <Status tone="live">{t.common.playing}</Status>}
@@ -311,7 +315,7 @@ export const Inspector: React.FC<InspectorProps> = ({
 
       {/* Timing. Fine adjustment lives here; coarse adjustment is dragging the
           block on the timeline. Both write through the same functions. */}
-      <TimingNudge start={verse.startTime} end={verse.endTime} onNudge={onNudge} />
+      <TimingNudge start={verse.startTime - timeOrigin} end={verse.endTime - timeOrigin} onNudge={onNudge} />
 
       <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800">
         <Button
@@ -335,6 +339,11 @@ export const Inspector: React.FC<InspectorProps> = ({
         <Button variant="danger" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={onDelete} disabled={verses.length <= 1}>
           {t.inspector.delete}
         </Button>
+        {onCutAudio && (
+          <Button variant="danger" icon={<Scissors className="w-3.5 h-3.5" />} onClick={onCutAudio} disabled={verses.length <= 1} title={t.editAudio.cutWithAudioTitle}>
+            {t.editAudio.cutWithAudio}
+          </Button>
+        )}
       </div>
 
       {/* Rarer edits, kept rather than dropped: reordering, adding a caption,

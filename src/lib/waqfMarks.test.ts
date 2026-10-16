@@ -21,3 +21,12 @@ describe('detachWaqfSigns', () => {
     expect(detachWaqfSigns(line)).toEqual({ bare: line, signs: [] });
   });
 });
+
+describe('the IndoPak waqf signs', () => {
+  it('are taken out to be drawn over their word, like the Uthmani ones', () => {
+    // 32:18 as the IndoPak faces draw it: ؕ (U+0615) where Uthmani writes ۚ.
+    const { bare, signs } = detachWaqfSigns('كَانَ فَاسِقًاؕ لَا');
+    expect(bare).toBe('كَانَ فَاسِقًا لَا');
+    expect(signs).toEqual([{ sign: 'ؕ', before: 'كَانَ فَاسِقًا' }]);
+  });
+});

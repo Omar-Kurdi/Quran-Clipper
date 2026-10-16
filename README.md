@@ -165,6 +165,21 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   ruler; drag either handle and the playhead follows it, so the preview shows the frame and
   the sound at the cut while you place it. **Keep 0:09.0** applies it — the same edit the
   dialog makes, without covering the thing being trimmed.
+- **Edit audio**, for a built-in reciter or your own recording: select any stretch of the
+  waveform and delete it or shorten it, or click a caption to cut that ayah with its audio.
+  *Shorten long pauses* shortens the pauses, and *Shorten silence* only those inside a
+  selection. Only silence is cut — 30 dB under the reciter's level, or just over a noisy
+  recording's hiss — so the voice, every madd and ghunnah, is never touched; and no pause is
+  closed: at least 0.7s at an ayah's end, 0.5s at a stop sign, 0.35s at a breath. *Speed* goes up to 1.25× without the
+  pitch moving (Rubber Band), so the reciter keeps his voice. *Fit to a length* (60s, 90s or
+  your own) shortens the pauses first, then adds the least speed-up needed, and says which ayahs
+  to leave out when even 1.25× is too long. *Even out loudness* brings it to -16 LUFS, and
+  *Clean up my recording* takes out hum and room noise. *Loop-friendly ending* is for Shorts
+  and Reels, which play again from the start: a gentle fade at each end and half a second of
+  silence after the last word, with the last caption held over it. The server renders the edit (lossless,
+  so the captions stay on the sound) and Undo puts it back. A built-in reciter's edit is rebuilt
+  from the synced recordings rather than kept as a copy. On a built-in reciter the timeline now
+  counts from the first caption, so its length is the clip's, not the ayah files' silence.
 
 <p align="center">
   <img src="docs/screenshots/QuranClipper_Trimmer.png" alt="The trim editor: a waveform with drag handles, a time ruler, and start, end and selected length as timecodes.">

@@ -6,7 +6,7 @@ import { useOffsetBox } from '@/hooks/useOffsetBox';
 import { VerseData, arabicFontFamily, usableArabicFont } from '@/lib/quranData';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import {
-  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, FALLBACK_ARABIC_FAMILY, QPC_V2, SURAH_NAME_FAMILY,
+  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, inFaceScript, FALLBACK_ARABIC_FAMILY, QPC_V2, SURAH_NAME_FAMILY,
   type MushafRow
 } from '@/lib/mushafFonts';
 import { blurPath } from '@/lib/glBlur';
@@ -1003,7 +1003,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         : config.textAlignment === 'left' ? cardX + 40 : width / 2;
 
       for (const layer of captions) {
-        const activeVerse = layer.verse;
+        // In the script the chosen face is drawn for: an IndoPak face draws IndoPak text.
+        const activeVerse = inFaceScript(layer.verse, arabicFontId);
         const displayArabic = getDisplayArabic(activeVerse);
         if (!displayArabic || (layer.opacity <= 0 && layer.translationOpacity <= 0)) continue;
         // The mushaf draws each word as one glyph from its page's own font, so

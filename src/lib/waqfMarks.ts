@@ -15,8 +15,12 @@
  * it does joined -- so only the horizontal place changes.
  */
 
-/** The small high signs the mushaf writes over a word to say how to stop there. */
-const WAQF_SIGNS = /[ۖ-ۜ]+(?=\s|$)/g;
+/**
+ * The small high signs the mushaf writes over a word to say how to stop there:
+ * the Uthmani ones, and the IndoPak text's own -- its 32:18 writes ؕ where
+ * Uthmani writes ۚ, and Indopak Nastaleeq set it over the next word, «لَا».
+ */
+const WAQF_SIGNS = /[\u0610-\u061A\u06D6-\u06DC]+(?=\s|$)/g;
 
 /** How far over the end of its word a moved sign sits, as a share of the type size. */
 const OVER_THE_WORD = 0.3;
