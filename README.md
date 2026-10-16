@@ -176,7 +176,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   to leave out when even 1.25× is too long. *Even out loudness* brings it to -16 LUFS, and
   *Clean up my recording* takes out hum and room noise. *Loop-friendly ending* is for Shorts
   and Reels, which play again from the start: a gentle fade at each end and half a second of
-  silence after the last word, with the last caption held over it. The server renders the edit (lossless,
+  silence after the last word, with the last caption held over it. It is on when a recording
+  is first edited. The server renders the edit (lossless,
   so the captions stay on the sound) and Undo puts it back. A built-in reciter's edit is rebuilt
   from the synced recordings rather than kept as a copy. On a built-in reciter the timeline now
   counts from the first caption, so its length is the clip's, not the ayah files' silence.

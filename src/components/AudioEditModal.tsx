@@ -21,8 +21,12 @@ interface AudioEditModalProps {
   isOpen: boolean;
   /** The recording itself, unedited: an upload, or a built-in reciter's passage. */
   source: Source;
-  /** The edit in force now, on the source's clock. */
+  /** The edit in force now, on the source's clock: Apply is offered when the draft differs from it. */
   edit: AudioEdit;
+  /** What the draft starts as: the edit in force, or a first edit's defaults. */
+  initial: AudioEdit;
+  /** How long what plays now is, as the timeline reads it. */
+  nowLength: number;
   /** The captions, on the source's clock. */
   captions: VerseData[];
   /** A recording of one's own: offers the clean-up and the trim to the voice. */
@@ -47,13 +51,13 @@ const TARGETS = [60, 90];
  * speed; this preview is the browser's own time-stretch of the same edit.
  */
 export const AudioEditModal: React.FC<AudioEditModalProps> = ({
-  isOpen, source, edit, captions, isUpload, videoBackground, onCancel, onApply,
+  isOpen, source, edit, initial, nowLength, captions, isUpload, videoBackground, onCancel, onApply,
 }) => {
   const t = useT();
   const recording = useRecording(source);
   // Larger is the whole point of expanding: everything in it is drawn bigger, not just given room.
   const [expanded, setExpanded] = useState(false);
-  const [draft, setDraft] = useState<AudioEdit>(edit);
+  const [draft, setDraft] = useState<AudioEdit>(initial);
   const [selection, setSelection] = useState<Selection>(null);
   const { audioRef, playing, playhead, toggle, seek, events } = usePreview(recording.previewUrl, draft);
   const duration = recording.duration;
@@ -70,7 +74,7 @@ export const AudioEditModal: React.FC<AudioEditModalProps> = ({
         {ready && (
           <>
             <audio ref={audioRef} src={recording.previewUrl} preload="auto" {...events} />
-            <Transport playing={playing} playhead={playhead} onToggle={toggle} was={editedLength(edit, duration)} now={editedLength(draft, duration)} />
+            <Transport playing={playing} playhead={playhead} onToggle={toggle} was={nowLength} now={editedLength(draft, duration)} />
             <AudioEditWaveform
               peaks={recording.peaks!} duration={duration} draft={draft} selection={selection} playhead={playhead} tall={expanded}
               onDraft={setDraft} onSelection={setSelection} onSeek={seek}

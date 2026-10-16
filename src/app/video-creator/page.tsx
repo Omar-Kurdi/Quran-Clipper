@@ -1140,14 +1140,16 @@ export default function VideoCreatorPage() {
     }
     const current = audioEditRef.current;
     const captions = retime(verses, current, NO_EDIT);
-    let start = current;
+    // A first edit starts with the loop-friendly ending on: what is made here
+    // is a Short or a Reel, which plays again from the start.
+    let start: AudioEdit = isEdited(current) ? current : { ...NO_EDIT, loop: true };
     // A passage starts and ends in its ayah files' silence, outside every
     // caption: cut from the edit at the outset, so its length is the clip's.
     if (!customAudioFile && !isEdited(current) && captions.length) {
       const duration = await sourceDuration();
       const first = Math.min(...captions.map(v => v.startTime));
       const last = Math.max(...captions.map(v => v.endTime));
-      start = withCuts(current, [{ start: 0, end: first }, { start: last, end: duration }], duration);
+      start = withCuts(start, [{ start: 0, end: first }, { start: last, end: duration }], duration);
     }
     setEditAudioStart({ edit: start, captions });
     setShowEditAudio(true);
@@ -3626,7 +3628,9 @@ export default function VideoCreatorPage() {
         <AudioEditModal
           isOpen={showEditAudio}
           source={editAudioSource}
-          edit={editAudioStart.edit}
+          edit={audioEdit}
+          initial={editAudioStart.edit}
+          nowLength={exportRange.span}
           captions={editAudioStart.captions}
           isUpload={!!customAudioFile}
           videoBackground={uploadIsVideo && useVideoAsBackground && canvasConfig.bgUrl === videoBgUrl}
