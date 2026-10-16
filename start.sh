@@ -174,6 +174,13 @@ LOCAL_LINE=""
 read -r HERE COUNT _ <<<"$(node scripts/qf-reciters.mjs counts 2>/dev/null || echo '? ?')"
 NEW_RECITERS="$(timeout 20 node scripts/qf-reciters.mjs check 2>/dev/null || echo 'could not ask the Quran Foundation')"
 RECITERS_LINE=$'\n'"  reciters     $COUNT offered, $HERE fully downloaded; $NEW_RECITERS"
+# The recordings on disk are kept only while they are synced with the Quran
+# Foundation at least every seven days (its Developer Terms; Content Sync).
+# A due sync runs in the background -- the studio's server also checks every
+# six hours (src/instrumentation.ts) -- and this line says when it last did.
+SYNCED="$(node scripts/qf-reciters.mjs synced 2>/dev/null || echo 'sync state could not be read')"
+node scripts/qf-reciters.mjs sync --if-due --quiet >>"$RUN_DIR/qf-sync.log" 2>&1 &
+RECITERS_LINE+=$'\n'"  recordings   $SYNCED"
 cat <<SUMMARY
 
   database     $DB_STATE

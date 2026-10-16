@@ -8,6 +8,8 @@
  *   node scripts/qf-reciters.mjs counts                                       the same as one line, for scripts
  *   node scripts/qf-reciters.mjs check                                        recitations QF has that the studio does not
  *   node scripts/qf-reciters.mjs add [qfId ...]                               add them (all new ones by default) and fetch them
+ *   node scripts/qf-reciters.mjs sync [--if-due] [--quiet]                    bring what is on disk up to date (Content Sync)
+ *   node scripts/qf-reciters.mjs synced                                       when that last happened, as one line
  *
  * One file per ayah is why these are exact: an ayah starts where its file
  * starts, so no timing has to be measured or trusted to know where it begins
@@ -20,17 +22,24 @@
  *
  * Reads QF through the client id and secret in `.env.local` when they are set,
  * otherwise through the open api.quran.com, which serves the same recitations.
+ *
+ * `sync` keeps what is on disk within the Foundation's Developer Terms: stored
+ * content may be kept past a week only when it is maintained through their
+ * Content Sync APIs, synced at least every seven days. It needs the client id
+ * and secret (Content Sync has no open equivalent). start.sh runs it when due,
+ * and so does the studio's server every few hours (src/instrumentation.ts).
  */
 
 import { execFile } from 'node:child_process';
-import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { closeSync, createWriteStream, existsSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { apiPath, chapterStale, mutationPlan, normalSegments, recordsBySurah, syncDue, withSources } from './qf-sync-plan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CATALOG = path.join(ROOT, 'src', 'lib', 'qfReciters.json');
@@ -227,12 +236,17 @@ async function inParallel(items, work, width = PARALLEL) {
   await Promise.all(Array.from({ length: Math.min(width, items.length) }, worker));
 }
 
-/** One chapter of one reciter, fetched where missing; true once it is complete on disk. */
-async function fetchChapter(qfId, surah) {
+/**
+ * One chapter of one reciter, fetched where missing; true once it is complete
+ * on disk. `records` are its ayah files from a Content Sync snapshot, when a
+ * sync is replacing it; otherwise they are listed afresh.
+ */
+async function fetchChapter(qfId, surah, records = null) {
   if (existsSync(chapterFile(qfId, surah))) return true;
+  if (removedRecitation(qfId)) throw new Error(`the Quran Foundation no longer publishes recitation ${qfId}`);
   const dir = path.join(AUDIO, String(qfId));
   await mkdir(dir, { recursive: true });
-  const listing = await chapterListing(qfId, surah);
+  const listing = records ?? await chapterListing(qfId, surah);
   if (listing.length !== AYAHS[surah - 1]) throw new Error(`QF lists ${listing.length} ayahs of ${surah} for ${qfId}, not ${AYAHS[surah - 1]}`);
   const ayahs = [];
   await inParallel(listing, async entry => {
@@ -246,14 +260,257 @@ async function fetchChapter(qfId, surah) {
       ms: await lengthMs(target),
       // QF's word timings within the file: [word index, word number, start, end], ms.
       // Some recitations send these as strings ("380"); kept as numbers.
-      segments: (entry.segments || []).filter(s => Array.isArray(s) && s.length >= 4)
-        .map(([, number, start, end]) => [Number(number), Number(start), Number(end)])
-        .filter(segment => segment.every(Number.isFinite)),
+      segments: normalSegments(entry.segments),
+      // Where it came from and when QF last changed it, for `sync` to compare.
+      url: entry.url,
+      updatedAt: entry.updated_at ?? null,
     });
   });
   ayahs.sort((a, b) => a.ayah - b.ayah);
   await writeFile(chapterFile(qfId, surah), JSON.stringify({ qfId, surah, ayahs }));
   return true;
+}
+
+// -- Content Sync ---------------------------------------------------------------------------------------------------
+
+const SYNC_STATE = path.join(AUDIO, 'sync.json');
+const SYNC_LOCK = path.join(AUDIO, 'sync.lock');
+
+/** `{ reciters: { [qfId]: { token, syncedAt, removed?, lastError? } } }`, kept beside the recordings. */
+function readSyncState() {
+  try {
+    const state = JSON.parse(readFileSync(SYNC_STATE, 'utf8'));
+    return state && typeof state.reciters === 'object' ? state : { reciters: {} };
+  } catch {
+    return { reciters: {} };
+  }
+}
+
+async function writeSyncState(state) {
+  await mkdir(AUDIO, { recursive: true });
+  const partial = `${SYNC_STATE}.${process.pid}.part`;
+  await writeFile(partial, `${JSON.stringify(state, null, 2)}\n`);
+  await rename(partial, SYNC_STATE);
+}
+
+const removedRecitation = qfId => Boolean(readSyncState().reciters[qfId]?.removed);
+
+/** A Content Sync path from QF itself: there is no open equivalent, so the client id and secret are needed. */
+async function foundationApi(pathAndQuery, timeoutMs = 60_000) {
+  const qf = foundation();
+  if (!qf) throw new Error('Content Sync needs QURAN_FOUNDATION_CLIENT_ID and QURAN_FOUNDATION_CLIENT_SECRET in .env.local');
+  const auth = await foundationToken(qf);
+  if (!auth) throw new Error('the Quran Foundation refused the keys');
+  const res = await fetchAllowed(`${qf.content}${pathAndQuery}`, {
+    headers: { 'x-auth-token': auth, 'x-client-id': qf.id, Accept: 'application/json', 'User-Agent': USER_AGENT },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`${pathAndQuery.split('?')[0]} answered ${res.status}`);
+  return res.json();
+}
+
+/** Every change to recitation `qfId` since `token` (all of it when there is none), and the token to ask from next. */
+async function recitationChanges(qfId, token) {
+  return changesFrom(`/resources/sync?resources=recitations:${qfId}&per_page=100` +
+    (token ? `&sync_token=${encodeURIComponent(token)}` : '&bootstrap=true'));
+}
+
+/** One page of changes and every page after it; the token comes on the last. */
+async function changesFrom(page) {
+  const { sync } = await foundationApi(page);
+  const mutations = sync?.mutations ?? [];
+  if (!sync?.has_more) return { mutations, token: sync?.next_sync_token ?? null };
+  const next = apiPath(sync.next_page_url);
+  if (!next) throw new Error(`unexpected next page ${sync.next_page_url}`);
+  const rest = await changesFrom(next);
+  return { mutations: [...mutations, ...rest.mutations], token: rest.token };
+}
+
+/** The stitched passages made from one reciter's surah, which a changed or removed chapter makes stale. */
+async function removePassages(reciterId, surah = null) {
+  const dir = path.join(AUDIO, 'passages');
+  const prefix = surah === null ? `${reciterId}-` : `${reciterId}-${pad(surah)}-`;
+  const names = await readdir(dir).catch(() => []);
+  await Promise.all(names.filter(name => name.startsWith(prefix)).map(name => rm(path.join(dir, name), { force: true })));
+}
+
+/** How long files without a chapter file are taken for a download in progress. */
+const UNFINISHED_GRACE_MS = 24 * 60 * 60 * 1000;
+
+/** When the newest of one surah's ayah files was written. */
+async function newestFileMs(dir, names, surah) {
+  const files = names.filter(name => name.startsWith(pad(surah)) && name.endsWith('.mp3'));
+  const times = await Promise.all(files.map(name => stat(path.join(dir, name)).then(info => info.mtimeMs, () => 0)));
+  return Math.max(0, ...times);
+}
+
+/** One surah's files and chapter file, gone. */
+async function removeChapter(qfId, surah, names) {
+  const dir = path.join(AUDIO, String(qfId));
+  await rm(chapterFile(qfId, surah), { force: true });
+  await Promise.all(names.filter(name => name.startsWith(pad(surah)) && name.endsWith('.mp3'))
+    .map(name => rm(path.join(dir, name), { force: true })));
+}
+
+/**
+ * What is on disk for one reciter, brought in line with its snapshot: a
+ * chapter that changed is fetched again from the snapshot's files, one QF no
+ * longer lists is removed, and files left by a download that never finished
+ * (no chapter file) are removed rather than kept unsynced. The rest gain the
+ * snapshot's addresses and change times. Returns the surahs fetched again.
+ */
+async function reconcile(reciter, records) {
+  const names = await readdir(path.join(AUDIO, String(reciter.qfId))).catch(() => []);
+  const bySurah = recordsBySurah(records);
+  const onDisk = new Set(names.filter(name => /^\d{6}\.mp3$/.test(name) || /^\d{3}\.json$/.test(name)).map(name => Number(name.slice(0, 3))));
+  const refreshed = [];
+  await inParallel([...onDisk].sort((a, b) => a - b), async surah => {
+    if (await reconcileChapter(reciter, surah, bySurah.get(surah), names)) refreshed.push(surah);
+  }, CHAPTERS_AT_ONCE);
+  return refreshed.sort((a, b) => a - b);
+}
+
+/** One surah of `reconcile`; true when it was fetched again. */
+async function reconcileChapter(reciter, surah, fresh, names) {
+  const { qfId } = reciter;
+  const file = chapterFile(qfId, surah);
+  // Files with no chapter file yet may be a download still running (the
+  // studio fetches a surah on first use): left for the next sync unless a day old.
+  if (!existsSync(file) && await newestFileMs(path.join(AUDIO, String(qfId)), names, surah) > Date.now() - UNFINISHED_GRACE_MS) return false;
+  if (!existsSync(file) || !fresh) {
+    await removeChapter(qfId, surah, names);
+    await removePassages(reciter.id, surah);
+    return false;
+  }
+  const chapter = JSON.parse(await readFile(file, 'utf8'));
+  if (chapterStale(chapter, fresh, (await stat(file)).mtimeMs)) {
+    await removeChapter(qfId, surah, names);
+    await removePassages(reciter.id, surah);
+    await fetchChapter(qfId, surah, fresh);
+    return true;
+  }
+  if (chapter.ayahs.some(ayah => !ayah.url)) {
+    // Written whole and swapped in: the studio may be reading it.
+    const partial = `${file}.${process.pid}.part`;
+    await writeFile(partial, JSON.stringify(withSources(chapter, fresh)));
+    await rename(partial, file);
+  }
+  return false;
+}
+
+/** One reciter synced; the state entry to keep for it. */
+async function syncReciter(reciter, entry) {
+  const { mutations, token } = await recitationChanges(reciter.qfId, entry?.token);
+  const plan = mutationPlan(mutations);
+  const syncedAt = new Date().toISOString();
+  if (plan.deleted) {
+    await rm(path.join(AUDIO, String(reciter.qfId)), { recursive: true, force: true });
+    await removePassages(reciter.id);
+    return { entry: { token, syncedAt, removed: true }, note: 'no longer published by the Quran Foundation: its recordings were removed' };
+  }
+  if (!plan.snapshot) return { entry: { token, syncedAt }, note: 'up to date' };
+  const snapshot = await foundationApi(`/resources/snapshots/recitations/${reciter.qfId}`, 300_000);
+  const refreshed = await reconcile(reciter, snapshot.records);
+  return {
+    entry: { token, syncedAt },
+    note: refreshed.length ? `${refreshed.length} surah(s) fetched again: ${refreshed.join(', ')}` : 'up to date',
+  };
+}
+
+/** The process holding the sync lock, or 0 when the lock is gone or unreadable. */
+function lockHolder() {
+  try {
+    return Number(readFileSync(SYNC_LOCK, 'utf8')) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Whether process `pid` is running (one this user may not signal still is). */
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+/** Held while a sync runs, so start.sh and the studio's server never run two at once. Null when one already is. */
+function takeSyncLock(attempt = 1) {
+  try {
+    const fd = openSync(SYNC_LOCK, 'wx');
+    writeFileSync(fd, String(process.pid));
+    closeSync(fd);
+    return () => rmSync(SYNC_LOCK, { force: true });
+  } catch (err) {
+    if (attempt > 2) throw err;
+    const holder = lockHolder();
+    if (holder && running(holder)) return null;
+    // Left behind by a sync that did not finish, or released between the two calls.
+    rmSync(SYNC_LOCK, { force: true });
+    return takeSyncLock(attempt + 1);
+  }
+}
+
+async function syncCommand(args) {
+  const quiet = args.includes('--quiet');
+  const say = line => { if (!quiet) console.log(line); };
+  await mkdir(AUDIO, { recursive: true });
+  const state = readSyncState();
+  const onDisk = await Promise.all(readCatalog().reciters.map(async reciter =>
+    ((await readdir(path.join(AUDIO, String(reciter.qfId))).catch(() => [])).length ? reciter : null)));
+  const due = onDisk.filter(Boolean).filter(reciter =>
+    !state.reciters[reciter.qfId]?.removed && (!args.includes('--if-due') || syncDue(state.reciters[reciter.qfId])));
+  if (!due.length) {
+    say('  nothing due: every recitation on this machine was synced in the last six days');
+    return;
+  }
+  const release = takeSyncLock();
+  if (!release) {
+    say('  a sync is already running');
+    return;
+  }
+  let failed = 0;
+  try {
+    // One reciter at a time: each may fetch whole surahs again.
+    await inParallel(due, async reciter => {
+      try {
+        const { entry, note } = await syncReciter(reciter, state.reciters[reciter.qfId]);
+        state.reciters[reciter.qfId] = entry;
+        say(`  ${reciter.name}: ${note}`);
+      } catch (err) {
+        failed++;
+        // Kept as it was: unreachable is not changed, and the next run tries again.
+        state.reciters[reciter.qfId] = { ...state.reciters[reciter.qfId], lastError: err.message };
+        console.error(`  ${reciter.name}: could not sync (${err.message})`);
+      }
+      await writeSyncState(state);
+    }, 1);
+  } finally {
+    release();
+  }
+  process.exitCode = failed ? 1 : 0;
+}
+
+/** One line for start.sh, read just before it starts a due sync: when the recordings on disk were last synced. */
+async function syncedCommand() {
+  const state = readSyncState();
+  const onDisk = (await Promise.all(readCatalog().reciters.map(async reciter =>
+    ((await readdir(path.join(AUDIO, String(reciter.qfId))).catch(() => [])).length ? reciter : null)))).filter(Boolean);
+  if (!onDisk.length) {
+    console.log('nothing on disk to sync');
+    return;
+  }
+  const times = onDisk.map(reciter => Date.parse(state.reciters[reciter.qfId]?.syncedAt ?? ''));
+  const due = onDisk.some(reciter => !state.reciters[reciter.qfId]?.removed && syncDue(state.reciters[reciter.qfId]));
+  const then = due ? '; due, syncing in the background (log in .run/qf-sync.log)' : '';
+  if (times.some(at => !Number.isFinite(at))) {
+    console.log(`not yet synced with the Quran Foundation${then}`);
+    return;
+  }
+  const days = Math.floor((Date.now() - Math.min(...times)) / (24 * 60 * 60 * 1000));
+  console.log(`synced with the Quran Foundation ${days === 0 ? 'today' : days === 1 ? 'a day ago' : `${days} days ago`}${then}`);
 }
 
 // -- Commands -------------------------------------------------------------------------------------------------------
@@ -346,9 +603,12 @@ async function addCommand(args) {
 
 loadEnv();
 const [command, ...args] = process.argv.slice(2);
-const commands = { download: downloadCommand, status: statusCommand, counts: countsCommand, check: checkCommand, add: addCommand };
+const commands = {
+  download: downloadCommand, status: statusCommand, counts: countsCommand, check: checkCommand, add: addCommand,
+  sync: syncCommand, synced: syncedCommand,
+};
 if (!commands[command]) {
-  console.log('Usage: node scripts/qf-reciters.mjs download|status|check|add [...]');
+  console.log('Usage: node scripts/qf-reciters.mjs download|status|check|add|sync|synced [...]');
   process.exitCode = 2;
 } else {
   await commands[command](args);

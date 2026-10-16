@@ -696,6 +696,16 @@ reads everything inside it and ran out of memory on 25 GB of recordings there --
 recitation the Foundation publishes per ayah that the studio does not offer, and
 `./add_new_reciters` adds it.
 
+The Foundation's Developer Terms let stored content, audio included, be kept past a week only when
+it is maintained through their Content Sync APIs, synced at least every seven days. `scripts/qf-reciters.mjs
+sync` does that for every recitation on disk (`recitations:<id>`): it asks for the changes since its
+last token, and on any change fetches the recitation's snapshot and compares each chapter with it --
+a chapter whose files, word timings or change times differ is fetched again from the snapshot, one
+no longer listed is removed, and so are the stitched passages made from either; a deleted recitation
+loses its recordings. It runs from `./start.sh` and every six hours from the studio's server
+(`src/instrumentation.ts`) once six days have passed, under a lock, and needs the client id and
+secret (Content Sync has no open equivalent). State is in `qf-audio/sync.json`.
+
 The chapter-recording era -- per-ayah corrections, measured stretches, the timing-pair audit and
 the tools that made them -- is in the git history before this change.
 

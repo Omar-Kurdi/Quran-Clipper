@@ -82,7 +82,10 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   and the local aligner splits a long ayah where the reciter pauses or repeats. The files are
   downloaded by `./install.sh` and kept in `~/.local/share/quran-clipper/qf-audio/` -- outside the checkout, which `next build` reads whole (`QC_QF_AUDIO_DIR` moves it); a surah not yet there is fetched the
   first time it is loaded. `./start.sh` says when the Foundation publishes a reciter the studio
-  does not offer yet, and `./add_new_reciters` adds it.
+  does not offer yet, and `./add_new_reciters` adds it. The recordings kept are synced with the
+  Foundation at least weekly through its Content Sync API, as its Developer Terms require of stored
+  content: `./start.sh` and the running studio sync them when due, fetching again any file the
+  Foundation changed. This needs the Quran Foundation client id and secret in `.env.local`.
 
   | Reciter | Arabic | Style |
   |---|---|---|
@@ -744,6 +747,12 @@ copy. Timings, which words are hidden, and your own corrections to a translation
 are left alone. A translation the upstream no longer serves is removed from the project, and
 if that leaves none, the default takes its place. The auto-saved draft is checked the same way
 when it is older than seven days.
+
+The built-in reciters' recordings on disk are kept current through the Foundation's Content Sync
+API, also at least every seven days: `./start.sh` and the running studio (every six hours) sync
+each recitation once six days have passed, fetch again any surah whose files or word timings the
+Foundation changed, and remove anything it no longer publishes (`node scripts/qf-reciters.mjs sync`
+does the same by hand). This needs the client id and secret.
 
 ---
 
