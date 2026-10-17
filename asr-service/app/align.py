@@ -1485,7 +1485,18 @@ def _finish_before_restart(
 #: `_absorb_orphan_words` cannot reach these, by construction: it offers
 #: stranded words to the two neighbouring segments, and both refuse a run that
 #: is a whole ayah of its own, since neither may carry another ayah's text.
-def _restore_skipped_ayahs(script: list[int], ref_words: list[tuple[str, int, str]]) -> list[int]:
+#: What `/align`'s ``whole`` may say: that the recording holds every ayah of its text from the start, to the end, or both.
+WHOLE_TEXT = ("", "start", "end", "both")
+
+
+def _passed_over(first: int, last: int, lowest: int, highest: int, whole: str) -> bool:
+    """Whether the reading stepped over the ayah of words `first`-`last`: claimed text either side, or an end ``whole`` vouches for."""
+    before = lowest < first or whole in ("start", "both")
+    after = last < highest or whole in ("end", "both")
+    return before and after
+
+
+def _restore_skipped_ayahs(script: list[int], ref_words: list[tuple[str, int, str]], whole: str = "") -> list[int]:
     """Put back an ayah the segmentation stepped over entirely.
 
     Restoring the words to the script is the whole repair. Timing is decided
@@ -1503,6 +1514,12 @@ def _restore_skipped_ayahs(script: list[int], ref_words: list[tuple[str, int, st
     opens a little early on passages the Quran repeats verbatim, and a clip
     routinely stops mid-passage -- and those ayahs really were not recited.
     Forcing them in would steal time from words that were.
+
+    Unless the caller knows better: ``whole`` (`WHOLE_TEXT`) says the recording
+    holds every ayah of the text from its start, to its end, or both, as a
+    surah recording cut into ayahs does. Then an ayah at that end no phrase
+    claimed was recited too -- Saad al-Ghamdi runs 107:6 into 107:7 and the
+    phrase that holds both was claimed for 107:6 alone.
     """
     claimed = set(script)
     if not claimed:
@@ -1512,7 +1529,7 @@ def _restore_skipped_ayahs(script: list[int], ref_words: list[tuple[str, int, st
     restored = list(script)
 
     for verse_key, (first, last) in _ayah_bounds(ref_words).items():
-        if not (lowest < first and last < highest):
+        if not _passed_over(first, last, lowest, highest, whole):
             continue
         if any(word in claimed for word in range(first, last + 1)):
             continue
@@ -2678,6 +2695,10 @@ def _held_through(start: float, end: float, hush: list[tuple[float, float]] | No
     return hush is not None and not any(a < end and b > start for a, b in hush)
 
 
+#: How long before the voice resumes a caption change comes, inside the silence it is seated in: see `_close_gaps`.
+JOIN_LEAD_SEC = 0.1
+
+
 def _close_gaps(
     segments: list[Segment], duration: float, pauses: list[tuple[float, float]] | None = None
 ) -> list[Segment]:
@@ -2697,7 +2718,13 @@ def _close_gaps(
     are consecutive, the next one then appears while the previous phrase is
     still audible. Measured across a five-minute recitation, only 51% of joins
     landed inside a real silence, and every miss was early, by a median of
-    0.2s. Seating the join in the middle of the silence takes that to 90%.
+    0.2s. Seating the join in the silence takes that to 90%.
+
+    Where in the silence: at its end, `JOIN_LEAD_SEC` before the voice resumes,
+    so the old caption stays through the pause and the new one comes up with
+    its first word (the owner's choice, 2026-10-17: in the middle of a long
+    pause the next caption showed a second before it was said). A silence too
+    short for that keeps the join in its middle.
     """
     quiet = pauses or []
     for earlier, later in zip(segments, segments[1:]):
@@ -2712,7 +2739,7 @@ def _close_gaps(
         ]
         if overlaps:
             start, end = max(overlaps, key=lambda span: span[1] - span[0])
-            middle = round((start + end) / 2, 3)
+            middle = round(max((start + end) / 2, end - JOIN_LEAD_SEC), 3)
         else:
             # Words that run together with no measured quiet between them --
             # splitting the difference is as good as anything.
@@ -3188,6 +3215,7 @@ def _script_by_decode(
     sec_per_frame: float,
     decoded_phrases: list[str] | None = None,
     phrase_ends: list[tuple[float, int]] | None = None,
+    whole: str = "",
 ) -> tuple[list[int], list[bool]]:
     """What was recited, by decoding each phrase and finding it in the reference: the script, and its repeats.
 
@@ -3212,7 +3240,7 @@ def _script_by_decode(
     # An ayah no phrase window could claim is still an ayah that was recited.
     # See `_restore_skipped_ayahs` -- without this it leaves the pipeline here
     # and never reappears.
-    script = _restore_skipped_ayahs(script, ref_words)
+    script = _restore_skipped_ayahs(script, ref_words, whole)
 
     # Give the reciter's own repeats text of their own, so the words around a
     # hole are not stretched across audio that said something else. See
@@ -3243,6 +3271,7 @@ def align_recitation(
     breaks: str = "normal",
     phoneme_timing: str = "",
     phoneme_reading: str = "",
+    whole: str = "",
 ) -> RecitationResult:
     """Full pipeline: decide *what* was recited, then align it, then group it.
 
@@ -3303,7 +3332,7 @@ def align_recitation(
     phrase_ends: list[tuple[float, int]] = []
 
     def by_decode() -> tuple[list[int], list[bool]]:
-        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases, phrase_ends)
+        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases, phrase_ends, whole)
 
     read = None
     if phoneme_reading:

@@ -1,5 +1,5 @@
 {
-  "_about": "The studio's built-in reciters: every Quran Foundation recitation published as one audio file per ayah, with word timings (GET /resources/recitations). Written by scripts/qf-reciters.mjs -- `./add_new_reciters` adds the ones QF publishes later. `excluded` are never offered, whatever QF lists.",
+  "_about": "The studio's built-in reciters: every Quran Foundation recitation published as one audio file per ayah, with word timings (GET /resources/recitations). Written by scripts/qf-reciters.mjs -- `./add_new_reciters` adds the ones QF publishes later. `excluded` are never offered, whatever QF lists. `chapterReciters` are the Foundation's chapter-only reciters (GET /resources/chapter_reciters): whole-surah recordings the script cuts into ayah files with the aligner, ids qfc-<id>; `chapterExcluded` are never offered.",
   "excluded": [
     { "qfId": 7, "name": "Mishari Rashid al-Afasy", "reason": "Left out at the owner's request (2026-10-15)." }
   ],
@@ -15,5 +15,30 @@
     { "id": "qf-9", "qfId": 9, "name": "Mohamed Siddiq Al-Minshawi", "arabicName": "محمد صديق المنشاوي", "style": "Murattal" },
     { "id": "qf-8", "qfId": 8, "name": "Mohamed Siddiq Al-Minshawi (Mujawwad)", "arabicName": "محمد صديق المنشاوي (مجوّد)", "style": "Mujawwad" },
     { "id": "qf-11", "qfId": 11, "name": "Mohamed Al-Tablawi", "arabicName": "محمد الطبلاوي", "style": "Murattal" }
+  ],
+  "chapterExcluded": [
+    { "chapterId": 1, "name": "Abdul Basit Abdul Samad (Mujawwad)", "reason": "Offered ayah by ayah (qf-1)." },
+    { "chapterId": 2, "name": "Abdul Basit Abdul Samad", "reason": "Offered ayah by ayah (qf-2)." },
+    { "chapterId": 3, "name": "Abdur-Rahman as-Sudais", "reason": "Offered ayah by ayah (qf-3)." },
+    { "chapterId": 4, "name": "Abu Bakr al-Shatri", "reason": "Offered ayah by ayah (qf-4)." },
+    { "chapterId": 5, "name": "Hani ar-Rifai", "reason": "Offered ayah by ayah (qf-5)." },
+    { "chapterId": 6, "name": "Mahmoud Khaleel Al-Husary", "reason": "Offered ayah by ayah (qf-6)." },
+    { "chapterId": 7, "name": "Mishari Rashid al-Afasy", "reason": "Left out at the owner's request (2026-10-15)." },
+    { "chapterId": 9, "name": "Muhammad Siddiq al-Minshawi", "reason": "Offered ayah by ayah (qf-9)." },
+    { "chapterId": 10, "name": "Sa'ud ash-Shuraym", "reason": "Offered ayah by ayah (qf-10)." },
+    { "chapterId": 12, "name": "Mahmoud Khalil Al-Husary (Muallim)", "reason": "Offered ayah by ayah (qf-12)." },
+    { "chapterId": 168, "name": "Muhammad Siddiq al-Minshawi (with kids)", "reason": "Left out at the owner's request (2026-10-17): children repeat each phrase after him." },
+    { "chapterId": 173, "name": "Mishari Rashid al-Afasy Streaming", "reason": "Left out at the owner's request (2026-10-15)." }
+  ],
+  "chapterReciters": [
+    { "id": "qfc-159", "chapterId": 159, "name": "Maher Al-Muaiqly", "arabicName": "ماهر المعيقلي", "style": "Murattal" },
+    { "id": "qfc-13", "chapterId": 13, "name": "Saad Al-Ghamdi", "arabicName": "سعد الغامدي", "style": "Murattal" },
+    { "id": "qfc-174", "chapterId": 174, "name": "Yasser Ad-Dossary", "arabicName": "ياسر الدوسري", "style": "Murattal" },
+    { "id": "qfc-161", "chapterId": 161, "name": "Khalifa Al-Tunaiji", "arabicName": "خليفة الطنيجي", "style": "Murattal" },
+    { "id": "qfc-19", "chapterId": 19, "name": "Ahmed Al-Ajmy", "arabicName": "أحمد بن علي العجمي", "style": "Murattal" },
+    { "id": "qfc-158", "chapterId": 158, "name": "Abdullah Ali Jabir", "arabicName": "عبد الله علي جابر", "style": "Murattal" },
+    { "id": "qfc-160", "chapterId": 160, "name": "Bandar Baleela", "arabicName": "بندر بليلة", "style": "Murattal" },
+    { "id": "qfc-175", "chapterId": 175, "name": "Abdullah Abu Sharida", "arabicName": "عبد الله أبو شريدة", "style": "Murattal" },
+    { "id": "qfc-176", "chapterId": 176, "name": "Ahmed Tahoun (beta)", "arabicName": "أحمد عبد الحميد طاحون (تجريبي)", "style": "Murattal" }
   ]
 }

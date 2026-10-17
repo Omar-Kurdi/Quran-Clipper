@@ -385,15 +385,16 @@ describe('inTheGaps', () => {
   const captions = [opens(seg('12:87', 0, 5, 1542.1, 1548.7), 1542.3), opens(seg('12:87', 6, 10, 1548.7, 1554.6), 1549.1),
     opens(seg('12:87', 6, 10, 1554.6, 1558.7), 1554.6), opens(seg('12:87', 11, 19, 1558.7, 1571.2), 1559.8)];
 
-  it('changes caption in the gap where the voice stops, not at a word edge half a second off', () => {
+  it('changes caption in the gap where the voice stops, just before it starts again, not at a word edge half a second off', () => {
     const times = inTheGaps(captions, quiet).map(c => [c.startTime, c.endTime]);
-    expect(times).toEqual([[1542.1, 1548.72], [1548.72, 1554.31], [1554.31, 1559.51], [1559.51, 1571.2]]);
+    expect(times).toEqual([[1542.1, 1548.82], [1548.82, 1554.38], [1554.38, 1559.64], [1559.64, 1571.2]]);
   });
+
 
   it('takes the nearest gap, not a closure inside the next word that is as long (12:88)', () => {
     const at88 = [seg('12:88', 9, 16, 1579.4, 1587.11), { ...seg('12:88', 17, 20, 1587.11, 1591.1), wordTimings: [{ index: 17, start: 1587.34, end: 1588.26 }] }];
     const gaps: [number, number][] = [[1586.28, 1586.66], [1586.9, 1587.3], [1587.78, 1588.18]];
-    expect(inTheGaps(at88, gaps).map(c => c.startTime)).toEqual([1579.4, 1587.1]);
+    expect(inTheGaps(at88, gaps).map(c => c.startTime)).toEqual([1579.4, 1587.2]);
   });
 
   it('ignores a dip too short to be the voice stopping, and leaves a change with no gap near alone', () => {
@@ -422,6 +423,15 @@ describe('inTheGaps', () => {
     // The gap's middle (11.35s) would leave the second caption 0.25s.
     const short = [seg('1:1', 0, 1, 10, 11), seg('1:1', 2, 3, 11, 11.6)];
     expect(inTheGaps(short, [[11.2, 11.5]])).toEqual(short);
+  });
+});
+
+describe('inTheGaps, a long pause', () => {
+  it('takes a pause of a second or more for one, whatever word the aligner put at its start (Al-Muaiqly 32:18, 2026-10-17)', () => {
+    // «فَاسِقًا ۚ» ends at 28.2 s, the pause runs to 30.16 s, «لَّا يَسْتَوُۥنَ» starts at 30.5 s; the aligner put «لَّا» at 28.21 s.
+    const at18 = [{ ...seg('32:18', 0, 5, 20.1, 28.21), wordTimings: [{ index: 5, start: 27.01, end: 28.07 }] },
+      { ...seg('32:18', 6, 7, 28.21, 34.9), wordTimings: [{ index: 6, start: 28.21, end: 28.23 }] }];
+    expect(inTheGaps(at18, [[28.26, 30.16]]).map(c => c.startTime)).toEqual([20.1, 30.06]);
   });
 });
 
@@ -487,7 +497,8 @@ describe('a second pass the export leaves out', () => {
     const quiet47: [number, number][] = [[837.08, 837.34], [838.7, 839.22], [842.08, 842.34], [843.68, 843.98]];
     const captions = phrasesFromPublished([{ verseKey: '12:47', wordCount: 14 }], v47, heard47, { quiet: quiet47 })!;
     expect(captions.map(words)).toEqual([['12:47', 0, 9], ['12:47', 7, 13]]);
-    expect(inTheGaps(captions, quiet47, heard47)[1].startTime).toBe(838.96);
+    // The pause is 838.7-839.22 s: the change comes 0.1 s before he resumes.
+    expect(inTheGaps(captions, quiet47, heard47)[1].startTime).toBe(839.12);
   });
 });
 
@@ -661,6 +672,13 @@ describe('words heard later than the Quran Foundation lists them (2026-10-15)', 
     const listed = [32.6, 33.61, 35.02, 35.57, 35.59, 36.71, 43.92, 46.05, 47.91, 50.66, 54.94, 56.16, 58.02];
     expect(starts([timed('32:17', [0, 12], [32.56, 63.35], heard.filter(([index]) => index !== 7))])).toEqual(listed);
     expect(starts([])).toEqual(listed);
+  });
+
+  it('keeps the listed start of letters said by name, which the aligner hears only at their last (2026-10-17)', () => {
+    // Al-Muaiqly's 2:1 «الٓمٓ», listed from 0.68s; the aligner hears it at «مٓ», 6.1s on, and the passage opened there.
+    const letters = new Map([['2:1', { from: 0, to: 10057, segments: [[1, 677, 9327]] }]]);
+    const said = phrasesFromPublished([{ verseKey: '2:1', wordCount: 1 }], letters, [timed('2:1', [0, 0], [6.7, 9.4], [[0, 6.8, 9.3]])]);
+    expect(said![0].wordTimings![0].start).toBe(0.677);
   });
 });
 

@@ -3,7 +3,7 @@ import { cleanHtml, verseWords } from '@/lib/quranCorpus';
 import { quranApiJson, translationIdsToRequest, preferredTranslation } from '@/lib/quranApi';
 import { primaryTranslation } from '@/lib/localTranslations';
 import { RECITERS, SURAHS_LIST } from '@/lib/quranData';
-import { qfPassage, qfPassageUrl } from '@/lib/qfRecitations';
+import { qfPassage, qfPassageUrl, QfSurahUnavailable } from '@/lib/qfRecitations';
 
 /** What the Quran API returns per ayah, as far as this route reads it. */
 interface ApiVerse {
@@ -65,7 +65,11 @@ export async function GET(req: NextRequest) {
         const last = filtered[filtered.length - 1]?.verse_number ?? end;
         // The ayahs' own files laid end to end: each ayah starts where its
         // file does, so these bounds are the recording's, not a measurement.
-        const passage = await qfPassage(reciterMeta.id, surahNumber, first, last).catch(() => null);
+        const passage = await qfPassage(reciterMeta.id, surahNumber, first, last)
+          .catch(err => (err instanceof QfSurahUnavailable ? err : null));
+        if (passage instanceof QfSurahUnavailable) {
+          return NextResponse.json({ success: false, error: passage.message }, { status: 404 });
+        }
         if (!passage) {
           return NextResponse.json(
             { success: false, error: `Could not get ${reciterMeta.name}'s recitation of this passage. Try again in a moment.` },

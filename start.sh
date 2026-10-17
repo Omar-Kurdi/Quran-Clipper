@@ -45,6 +45,11 @@ if [[ -n "$PUBLIC" ]]; then
   WEB_HOST=(-- -H 127.0.0.1)
 fi
 
+# Where the alignment service this script starts on :8000 answers, for
+# scripts/qf-reciters.mjs, which the studio runs to cut a chapter reciter's
+# surah. Its own name, so an ASR_SERVICE_URL in .env.local still wins.
+export QC_STARTED_ALIGNER=http://127.0.0.1:8000
+
 DB_STATE="skipped"; ASR_STATE="skipped"; WEB_STATE="skipped"; TEXT_STATE="skipped"
 
 alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }

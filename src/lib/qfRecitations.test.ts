@@ -77,3 +77,37 @@ describe('qfPassage with word timings sent as text', () => {
     expect(passage.ayahs[1].timing.segments).toEqual([[1, 3502, 4082]]);
   });
 });
+
+describe('a chapter reciter on a public studio', () => {
+  const saved = { dir: process.env.QC_QF_AUDIO_DIR, mode: process.env.STUDIO_MODE };
+  let dir = '';
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'qc-qf-'));
+    mkdirSync(path.join(dir, 'c159'));
+    process.env.QC_QF_AUDIO_DIR = dir;
+    process.env.STUDIO_MODE = 'public';
+  });
+  afterEach(() => {
+    for (const [name, value] of [['QC_QF_AUDIO_DIR', saved.dir], ['STUDIO_MODE', saved.mode]] as const) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+
+  it('serves a surah cut ahead of time', async () => {
+    writeFileSync(path.join(dir, 'c159', '112.json'), JSON.stringify({ surah: 112, timing: 'qf', ayahs: [
+      { ayah: 1, file: '112001.mp3', ms: 3000, segments: [[1, 100, 900]] },
+      { ayah: 2, file: '112002.mp3', ms: 2000, segments: [[1, 100, 900]] },
+    ] }));
+    expect((await qfPassage('qfc-159', 112, 1, 2))?.totalSeconds).toBe(5);
+  });
+
+  it('never cuts one on a visitor\'s request: a surah not ready is not offered yet', async () => {
+    await expect(qfPassage('qfc-159', 2, 1, 5)).rejects.toThrow(/not ready on this studio yet/);
+  });
+
+  it('says a refused surah is not offered', async () => {
+    writeFileSync(path.join(dir, 'c159', '005.rejected.json'), '{}');
+    await expect(qfPassage('qfc-159', 5, 1, 3)).rejects.toThrow(/could not be cut ayah by ayah exactly/);
+  });
+});

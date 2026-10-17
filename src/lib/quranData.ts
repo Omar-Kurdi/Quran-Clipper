@@ -7,7 +7,9 @@ export interface Reciter {
   arabicName: string;
   style: string;
   /** The Quran Foundation's recitation id: one audio file per ayah, see `qfRecitations`. */
-  qfId: number;
+  qfId?: number;
+  /** Or its chapter-only reciter's id: whole-surah recordings cut into ayah files here. */
+  chapterId?: number;
 }
 
 /** The reciters offered when starting a clip. */
@@ -107,10 +109,10 @@ export interface VerseData {
 
 /**
  * The built-in reciters: every recitation the Quran Foundation publishes one
- * file per ayah, bar the ones excluded -- `qfReciters.json`, which
- * `./add_new_reciters` extends.
+ * file per ayah, then its chapter-only reciters cut into ayah files, bar the
+ * ones excluded -- `qfReciters.json`, which `./add_new_reciters` extends.
  */
-export const RECITERS: Reciter[] = qfCatalog.reciters;
+export const RECITERS: Reciter[] = [...qfCatalog.reciters, ...qfCatalog.chapterReciters];
 
 export const SURAHS_LIST: Surah[] = [
   { number: 1, nameEnglish: "Al-Fatihah", nameArabic: "الفاتحة", englishTranslation: "The Opening", numberOfAyahs: 7, revelationType: "Meccan" },

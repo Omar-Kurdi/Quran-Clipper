@@ -75,8 +75,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   pronunciation, so they are not a setting: they would need their own text, their own fonts
   and their own aligner vocabulary. See [FutureIdeas.md](FutureIdeas.md).
 - **The built-in reciters are the Quran Foundation's recordings of each ayah on its own** -- every
-  recitation it publishes one file per ayah, bar Mishari al-Afasy, who is left out on purpose
-  (`src/lib/qfReciters.json`). A passage plays as its ayah files laid end to end
+  recitation it publishes one file per ayah (`src/lib/qfReciters.json`). A passage plays as its ayah files laid end to end
   (`/api/audio/ayahs`), so each ayah starts exactly where its file starts: nothing is measured or
   estimated to find it. Inside an ayah, the Foundation's word timings give each word its time,
   and the local aligner splits a long ayah where the reciter pauses or repeats. The files are
@@ -97,6 +96,35 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   | Mahmoud Khalil Al-Husary | محمود خليل الحصري | Murattal, Muallim |
   | Mohamed Siddiq Al-Minshawi | محمد صديق المنشاوي | Murattal, Mujawwad |
   | Mohamed Al-Tablawi | محمد الطبلاوي | Murattal |
+
+  And the Foundation's reciters published only as whole-surah recordings, cut here into the same
+  one file per ayah (ids `qfc-…`; Al-Minshawi with children is left out):
+
+  | Reciter | Arabic | Style |
+  |---|---|---|
+  | Maher Al-Muaiqly | ماهر المعيقلي | Murattal |
+  | Saad Al-Ghamdi | سعد الغامدي | Murattal |
+  | Yasser Ad-Dossary | ياسر الدوسري | Murattal |
+  | Khalifa Al-Tunaiji | خليفة الطنيجي | Murattal |
+  | Ahmed Al-Ajmy | أحمد بن علي العجمي | Murattal |
+  | Abdullah Ali Jabir | عبد الله علي جابر | Murattal |
+  | Bandar Baleela | بندر بليلة | Murattal |
+  | Abdullah Abu Sharida | عبد الله أبو شريدة | Murattal |
+  | Ahmed Tahoun (the Foundation's beta) | أحمد عبد الحميد طاحون | Murattal |
+
+  Their ayah timings are not trusted to cut by -- some are another recording's -- so the local
+  aligner places every ayah, and each join is cut only where the recording pauses and the phoneme
+  model hears nothing said, or where the Foundation's timings or a second reading put it too. A
+  surah that cannot be cut that way is not offered for that reciter, and says so when chosen.
+  Cutting needs the alignment service, so `./install.sh` leaves them to the running studio: a surah
+  is cut the first time it is loaded (seconds for a short one, 26 minutes for Al-Muaiqly's
+  Al-Baqarah on an RTX 5080), or ahead of time with `./cut_reciters`. A public studio never cuts on a
+  visitor's request: a surah not cut ahead of time says it is not ready yet, so run `./cut_reciters` there. It runs in the background on aligners of its own (two by default, so the
+  studio's stays free) on the GPU, each working at most half the time on two CPU cores at low
+  priority; it waits while
+  another program uses the GPU hard, and `./cut_reciters pause`, `resume`, `stop` and `status` do
+  what they say -- run again, it carries on where it stopped. They are kept and synced with the
+  Foundation like the others (`chapter_recitations:<id>`).
 
 **Timing your own audio**
 - Two interchangeable matching providers behind one endpoint — see [Audio matching](#audio-matching).

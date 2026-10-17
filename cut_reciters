@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+#
+# Cuts the chapter reciters' recordings into ayah files ahead of time, so no
+# first load of a surah waits on the aligner (a long surah takes the aligner
+# half an hour). Runs in the background on aligners of its own (two unless
+# --workers says otherwise; the studio's on :8000 stays free), each cutting one
+# surah at a time and working at most --share percent of the time (50 unless
+# set). It waits whenever another program is using the GPU hard, and carries
+# on when it stops. Each aligner takes about 3 GB of memory and 1.5 GB of the
+# GPU's while it runs, and at most --threads CPU cores (2 unless set). Both its
+# models run on the GPU -- the phoneme model too, given onnxruntime-gpu
+# (asr-service/README.md); on the CPU it took 14 of 16 cores.
+#
+# Usage:
+#   ./cut_reciters                          show progress, ask which reciters, start
+#   ./cut_reciters start qfc-159 [qfc-13]   start these (ids from ./cut_reciters status)
+#   ./cut_reciters start qfc-159 --share 30 each aligner busy at most 30% of the time
+#   ./cut_reciters start qfc-159 --workers 3  three surahs at a time (1-4)
+#   ./cut_reciters start qfc-159 --threads 4  each aligner may use 4 CPU cores
+#   ./cut_reciters pause                    free the GPU and CPU within seconds; nothing is lost
+#   ./cut_reciters resume                   carry on from where it paused
+#   ./cut_reciters stop                     end it; the surah in hand is cut again next time
+#   ./cut_reciters status                   progress, and whether it is running or paused
+#   ./cut_reciters log                      follow what it is doing
+#
+# Stopped or not, `start` carries on where it left off: a surah already cut is skipped.
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")"
+
+AUDIO="$(node scripts/qf-reciters.mjs counts | cut -d' ' -f4-)"
+LOG=".run/qf-cut.log"
+mkdir -p .run
+PID_FILE="$AUDIO/cut.pid"
+running() { [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; }
+
+# The aligners this run starts, one per worker, on ports from 8101; stopped when it ends.
+supervise() {
+  # PIDS is global: the EXIT trap runs after this function's locals are gone.
+  local list="$1" share="$2" workers="$3" threads="$4" urls=()
+  PIDS=()
+  # The CPU threads left to the phoneme model (on the GPU where there is one) and to torch and numpy.
+  export ASR_CPU_THREADS="$threads" OMP_NUM_THREADS="$threads" MKL_NUM_THREADS="$threads" OPENBLAS_NUM_THREADS="$threads"
+  for (( i = 1; i <= workers; i++ )); do
+    ( cd asr-service && exec ./run.sh --port $((8100 + i)) ) >".run/qf-cut-aligner-$i.log" 2>&1 &
+    PIDS+=($!); urls+=("http://127.0.0.1:$((8100 + i))")
+  done
+  trap 'kill "${PIDS[@]}" 2>/dev/null' EXIT
+  for url in "${urls[@]}"; do
+    for _ in $(seq 1 120); do curl -sf --max-time 2 "$url/health" | grep -q '"alignReady":true' && break; sleep 2; done
+  done
+  echo "$(date +%T)  $workers aligner(s) up: ${urls[*]}"
+  node scripts/qf-reciters.mjs cut --reciter "$list" --share "$share" --aligners "$(IFS=,; echo "${urls[*]}")"
+}
+
+start() {
+  local ids=() share=50 workers=2 threads=2
+  while (( $# )); do
+    case "$1" in
+      --share) share="${2:-50}"; shift ;;
+      --workers) workers="${2:-2}"; shift ;;
+      --threads) threads="${2:-2}"; shift ;;
+      *) ids+=("$1") ;;
+    esac
+    shift
+  done
+  if running; then
+    echo "  already running (./cut_reciters status); stop it first to change what it cuts"
+    exit 1
+  fi
+  if (( ${#ids[@]} == 0 )); then
+    echo "  name the reciters: ./cut_reciters start qfc-159 (ids from ./cut_reciters status)"
+    exit 2
+  fi
+  (( workers >= 1 && workers <= 4 )) || { echo "  --workers is 1 to 4"; exit 2; }
+  (( threads >= 1 && threads <= 16 )) || { echo "  --threads is 1 to 16"; exit 2; }
+  if curl -sf --max-time 2 http://127.0.0.1:8101/health >/dev/null 2>&1; then
+    echo "  an aligner is already on :8101 (left by a run that did not end cleanly?) -- stop it first"
+    exit 1
+  fi
+  rm -f "$AUDIO/cut.pause" "$AUDIO/cut.stop"
+  local list; list="$(IFS=,; echo "${ids[*]}")"
+  # nice: the aligners and the cutting make way on the CPU for anything else.
+  export -f supervise
+  nohup nice -n 15 bash -c 'supervise "$@"' _ "$list" "$share" "$workers" "$threads" >>"$LOG" 2>&1 &
+  echo "  starting $workers aligner(s) of its own (a minute or two)..."
+  for _ in $(seq 1 150); do running && break; sleep 2; done
+  if running; then
+    echo "  started: $list, $workers surah(s) at a time, each aligner busy at most $share% of the time on $threads CPU core(s)"
+    echo "  ./cut_reciters pause | resume | stop | status | log"
+  else
+    echo "  did not start -- the end of $LOG:"
+    tail -n 5 "$LOG" | sed 's/^/    /'
+    exit 1
+  fi
+}
+
+case "${1:-}" in
+  start) shift; start "$@" ;;
+  pause)
+    running || { echo "  not running"; exit 0; }
+    touch "$AUDIO/cut.pause"
+    echo "  paused: the aligner finishes the window in hand (seconds), then waits. ./cut_reciters resume" ;;
+  resume)
+    rm -f "$AUDIO/cut.pause"
+    running && echo "  resumed" || echo "  not running -- ./cut_reciters start <ids> carries on where it stopped" ;;
+  stop)
+    running || { echo "  not running"; exit 0; }
+    touch "$AUDIO/cut.stop"; rm -f "$AUDIO/cut.pause"
+    echo "  stopping after the window in hand; the surah in hand is cut again next time" ;;
+  status) node scripts/qf-reciters.mjs cut-status ;;
+  log) tail -n 20 -f "$LOG" ;;
+  "")
+    node scripts/qf-reciters.mjs cut-status
+    running && exit 0
+    [[ -t 0 ]] || exit 0
+    read -r -p "  Which to cut? Their numbers, separated by spaces (blank for none): " picks
+    [[ -n "$picks" ]] || exit 0
+    read -r -p "  How much of the time may the aligner work, in percent? [50] " share
+    # shellcheck disable=SC2086
+    ids="$(node -e "
+      const all = require('./src/lib/qfReciters.json').chapterReciters;
+      console.log(process.argv.slice(1).map(Number).filter(n => n >= 1 && n <= all.length).map(n => all[n - 1].id).join(' '));
+    " $picks)"
+    # shellcheck disable=SC2086
+    start $ids --share "${share:-50}" ;;
+  *) sed -n '14,26p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

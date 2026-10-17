@@ -108,6 +108,18 @@ request, which includes loading the model).
 
 NeMo is a heavy install but it is not GPU-only; `ASR_DEVICE` handles the rest.
 
+The phoneme models run in onnxruntime: on the GPU when onnxruntime has a GPU build and there is
+a GPU, else on the CPU. `./install.sh` installs the GPU build where `nvidia-smi` finds one; by
+hand (the CUDA 13 build, from 1.27 on, matches the CUDA 13 torch; the CPU path keeps working with it):
+
+```bash
+.venv/bin/pip uninstall -y onnxruntime && .venv/bin/pip install onnxruntime-gpu==1.28.0
+```
+
+`requirements.txt` names `onnxruntime`, so a `pip install -r requirements.txt` by hand puts the
+CPU build back beside it: uninstall both and install `onnxruntime-gpu` again after one
+(`./install.sh` does that itself).
+
 ---
 
 ## Configuration
@@ -118,6 +130,8 @@ NeMo is a heavy install but it is not GPU-only; `ASR_DEVICE` handles the rest.
 | `ASR_ALIGN_MODEL_REVISION` | the pinned upload | Load another upload of `Muno459/fastconformer-quran`, by commit sha, to measure it. See [Updating the model](#updating-the-model). |
 | `ASR_PHONEME_RETIME` | `old` | The phoneme model that re-times each word's start after the captions are cut (`app/phoneme.py`): `old` (`Muno459/zipformer_p-quran`), `v31` (`Quran-Lab/zipformer_p-arabic-v3`), or `none` for the align model's own times. Only the one used is downloaded, about 80 MB. |
 | `ASR_DEVICE` | `auto` | Force `cuda` or `cpu`. |
+| `ASR_PHONEME_GPU` | `auto` | The phoneme model runs on the GPU when there is one, in full precision (its int8 weights fall back to the CPU op by op there), else on the CPU in int8. `0` keeps it on the CPU. Needs `onnxruntime-gpu` in place of `onnxruntime` -- see below. Same captions on the test passage (7 of 398 silence edges moved one 40 ms frame), 19x less CPU. |
+| `ASR_CPU_THREADS` | all cores | The most CPU threads the phoneme model uses. On the CPU it otherwise takes every core. |
 | `ALIGN_MIN_REPEAT_MATCH` | `0.75` | How much of a repeated phrase's spelling must be heard in the gap it explains. |
 | `ALIGN_MAX_REPEAT_WORDS` | `4` | How far back a reciter is assumed to go when resuming. |
 | `ALIGN_QUIET_DROP_DB` | `10` | How far below the clip's speech level counts as silence. Measured against the speech level, not as a rank, so trimming a recording does not change where it splits. |

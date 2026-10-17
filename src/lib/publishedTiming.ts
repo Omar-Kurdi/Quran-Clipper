@@ -22,7 +22,8 @@ export async function publishedPassage(audioUrl: string, surah: number, { start,
   const timings = new Map(recording.ayahs.map(ayah => [ayah.verseKey, ayah.timing]));
   if (!passage.every(verse => timings.has(verse.verseKey))) return null;
   return {
-    provider: 'qf',
+    // A chapter reciter's surah whose Foundation timings were not this recording's has the aligner's words instead.
+    provider: recording.words === 'cut' ? 'cut' : 'qf',
     sung: qfReciter(file.reciterId)?.style === 'Mujawwad',
     passage: passage.map(verse => ({ verseKey: verse.verseKey, wordCount: verse.words.length, words: verse.words.map(word => word.arabic) })),
     timings,

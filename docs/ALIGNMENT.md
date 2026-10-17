@@ -709,6 +709,75 @@ secret (Content Sync has no open equivalent). State is in `qf-audio/sync.json`.
 The chapter-recording era -- per-ayah corrections, measured stretches, the timing-pair audit and
 the tools that made them -- is in the git history before this change.
 
+### Chapter reciters, cut into ayahs
+
+Since 2026-10-17 the Foundation's chapter-only reciters are offered too (`chapterReciters` in
+`src/lib/qfReciters.json`, ids `qfc-<id>`): Al-Muaiqly, Al-Ghamdi, Ad-Dossary, Al-Tunaiji, Al-Ajmy,
+Abdullah Ali Jabir, Bandar Baleela, Abu Sharida and Tahoun (the Foundation's beta). Al-Minshawi
+with children and the Mishari al-Afasy stream are left out; the rest of its chapter list are
+reciters already offered ayah by ayah. Each surah's recording is cut once into the same one file
+per ayah and kept in `qf-audio/c<id>/`, so from there on they play exactly like the others.
+
+Their published timings are not what they are cut by. Measured 2026-10-17 on surahs 1, 32, 36, 67
+and 112: Abdullah Ali Jabir's timings are Saad al-Ghamdi's (they end where Ghamdi's files end),
+Yasser ad-Dossary's run 4-6 s late on the files now served, and only Al-Muaiqly's and Al-Tunaiji's
+put every join in a pause. So `scripts/qf-reciters.mjs` (decisions in `scripts/qf-chapter-plan.mjs`,
+tested in `src/lib/qfChapterPlan.test.ts`):
+
+- places every ayah with the aligner, a window of about a minute at a time read 20 s past what it
+  keeps, so each join is placed with the next ayah's start in view and that ayah is placed again by
+  the next window;
+- cuts each join in the quietest lull of the two seconds before the next ayah's first word, the one
+  nearest it -- a madd fading out stays with its ayah -- giving the next ayah at most 0.3 s of the
+  pause; after an isti'adha or basmala the first ayah starts in the first pause after it, because
+  the aligner, not given the opening, starts an ayah of separate letters seconds late (Al-Muaiqly's
+  الٓمٓ at 14.1 s, not 9.6 s);
+- keeps a join only on more than the aligner's word. Where the Foundation's timings fit the recording (90% of
+  its joins), the join must be where they put it: the aligner started Al-Muaiqly's 32:19 at the
+  pause after 32:18's «فَاسِقًا ۚ», reading «لَّا يَسْتَوُۥنَ» as a repeat after it, and that pause
+  passed every other check. A join the aligner tangled like that is cut again where the timings put
+  it, and kept if that is a pause. Elsewhere the aligner's join must be a pause the phoneme model
+  hears nothing in (15 dB under the voice, or at the recording's own floor and 8 dB under it --
+  Al-Ajmy's recording is compressed to within 10 dB) with nothing of the ayah before placed after
+  it, or, where the reciter runs one ayah into the next, a second reading of the two ayahs alone
+  must place it within 0.15 s. That second reading is the same aligner again, so such a join (and
+  every join of a reciter whose timings are another recording's -- Jabir, Ad-Dossary) rests on the
+  aligner, the loudness and the phoneme model, not on a second source;
+- refuses the whole surah when any join, window reading (decode agreement under 0.45) or double
+  placement (0.3 s apart) fails, writing why to `SSS.rejected.json`; the studio then says the surah
+  is not offered for that reciter;
+- cuts between MP3 frames, copied, never re-encoded, so the ayah files laid end to end are the
+  recording bit for bit (checked on Al-Muaiqly's 32); a variable-bitrate recording (Abu Sharida's)
+  is made constant first, since a passage of it would otherwise play without a seek table;
+- keeps the Foundation's word timings where they fit the recording and the aligner's elsewhere;
+- reads each surah's first window with the basmala in the text as well as without, keeping the
+  reading that agrees better (not given it, the aligner lost Saad al-Ghamdi's 95:1-2, which he runs
+  on from it), and tells the aligner which ends of a window are the recording's own (`/align`'s
+  `whole`), so an ayah there that no phrase claimed is put back (his 107:7, run on from 107:6);
+- cuts a join with no pause at the quietest point at the word boundary, not up to 2 s back, where
+  the reciter runs one ayah into the next.
+
+On surahs 1, 32, 67 and 112 of all nine (2026-10-17), 35 of 36 were kept; Bandar Baleela's 32 was
+refused, at a join into 32:7 with no pause that the Foundation's timings put elsewhere. Al-Muaiqly's
+and Al-Tunaiji's 32:19 (above), and a cut at the hush of a stop consonant inside Ad-Dossary's «وَلَقَدْ» (32:23),
+were found on the way and are what the checks and the 100 ms smoothing now prevent.
+
+Cutting needs the alignment service -- Al-Muaiqly's Al-Baqarah, 2 h 15 min of recording, took 26
+minutes on an RTX 5080 through the studio's first load, all 286 joins in pauses and 285 where the
+Foundation puts them (five moved there from the aligner's) -- so
+`./install.sh` leaves these to the running studio: a surah is cut the first time it is loaded (never
+on a public studio, where a surah not cut ahead of time is "not ready yet", so no visitor waits), or
+ahead of time with `./cut_reciters` (`qf-reciters.mjs cut`): one surah per aligner of its own, each
+aligner resting after every call so it is busy at most `--share` percent of the time, waiting
+while other programs use the GPU 25% or more (`nvidia-smi pmon`), pausable between calls without
+losing anything. Its speech model runs on the GPU, but the phoneme model ran on the CPU and took
+14 of 16 cores (one request: 14 s, 184 s of CPU). Since 2026-10-17 every aligner runs it on the
+GPU where there is one, in full precision (`ASR_PHONEME_GPU`, onnxruntime-gpu: 9 s, 10 s of CPU;
+./gauge.sh 358/404 either way, every clip the same), and the cutter's keep to two CPU threads
+(`ASR_CPU_THREADS`), at low priority. Content Sync
+follows them as `chapter_recitations:<id>`; a surah whose recording or timings changed after it was
+cut (or rejected) is cut again.
+
 ---
 
 ## Growing the ground truth

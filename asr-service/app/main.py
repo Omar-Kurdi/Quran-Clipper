@@ -240,6 +240,7 @@ async def align_endpoint(
     breaks: str = Form(""),
     retime: str = Form(""),  # the phoneme model to re-time the words with (`phoneme.chosen`); `none` for fastconformer's
     lab: str = Form(""),  # the dev-only phoneme lab's other stages, `reading=v31;timing=old`; see `phoneme.lab_stages`
+    whole: str = Form(""),  # the recording holds every ayah of the text from its `start`, to its `end`, or `both`; see `align.WHOLE_TEXT`
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -266,6 +267,8 @@ async def align_endpoint(
     """
     started = time.perf_counter()
     breaks = breaks or "normal"
+    if whole not in align.WHOLE_TEXT:
+        raise HTTPException(status_code=400, detail=f"whole must be one of start, end, both; got {whole!r}.")
     if breaks not in align.BREAK_SCALES:
         raise HTTPException(status_code=400, detail=f"breaks must be one of {', '.join(align.BREAK_SCALES)}; got {breaks!r}.")
     # Resolved before any decoding, so a missing export fails in milliseconds.
@@ -359,7 +362,7 @@ async def align_endpoint(
     # heard from the recording itself.
     aligner_pcm = _without_istiadha(pcm, _istiadha_before_basmala(pcm, ref_words[0][0]))
     try:
-        result = align.align_recitation(aligner_pcm, ref_words, boundaries, decoded_phrases, breaks, **phoneme.lab_stages(lab))
+        result = align.align_recitation(aligner_pcm, ref_words, boundaries, decoded_phrases, breaks, whole=whole, **phoneme.lab_stages(lab))
     except align.AlignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -501,6 +504,8 @@ async def regroup_endpoint(regroup_id: str = Query(..., alias="id"), breaks: str
     at its own end is read from the audio again).
     """
     breaks = breaks or "normal"
+    if whole not in align.WHOLE_TEXT:
+        raise HTTPException(status_code=400, detail=f"whole must be one of start, end, both; got {whole!r}.")
     if breaks not in align.BREAK_SCALES:
         raise HTTPException(status_code=400, detail=f"breaks must be one of {', '.join(align.BREAK_SCALES)}; got {breaks!r}.")
     kept = regroup.find(regroup_id)

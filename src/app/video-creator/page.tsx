@@ -1318,7 +1318,7 @@ export default function VideoCreatorPage() {
         text: data.timedFrom
           ? t.match.publishedTimed(
               (data.verses || []).length,
-              'the Quran Foundation',
+              data.timedFrom === 'cut' ? 'cut' : 'qf',
               data.pausesFromAudio ? 'pauses' : data.alignerSkipped ? 'skipped' : 'unheard'
             )
           : (data.warning ? `⚠ ${data.warning} ` : '') +

@@ -523,6 +523,17 @@ function uncutStops(aligned: MatchSegment[], verseKey: string, text: string[], c
 const MIN_LATE_START_MS = 500;
 
 /**
+ * The ayahs that open on letters said by name (الٓمٓ, يسٓ, حمٓ, عٓسٓقٓ, صٓ, قٓ, نٓ...).
+ * The aligner reads them as the last letter it can match -- Al-Muaiqly's 2:1
+ * heard at «مٓ», six seconds into «الٓمٓ» -- so their first word keeps its
+ * published start. The same list is in scripts/qf-chapter-plan.mjs.
+ */
+const SEPARATE_LETTERS = new Set([
+  '2:1', '3:1', '7:1', '10:1', '11:1', '12:1', '13:1', '14:1', '15:1', '19:1', '20:1', '26:1', '27:1', '28:1', '29:1',
+  '30:1', '31:1', '32:1', '36:1', '38:1', '40:1', '41:1', '42:1', '42:2', '43:1', '44:1', '45:1', '46:1', '50:1', '68:1',
+]);
+
+/**
  * The published timing with each word that was plainly heard later than
  * listed starting where it was heard, so the word lit up is the one being
  * said. Some of the Quran Foundation's word times run early: Al-Minshawi's
@@ -541,8 +552,10 @@ function withHeardStarts(timing: ReciterVerseTiming, aligned: MatchSegment[], ve
   const heard = heardWords(aligned, verseKey);
   const plain = (indices: number[]) => indices.length > 0 && indices.every((index, i) => index === i + 1);
   if (!plain(segments.map(([index]) => index)) || heard.length !== segments.length || !plain(heard.map(word => word.index))) return timing;
+  const lettersFirst = SEPARATE_LETTERS.has(verseKey);
   const moved = segments.map(([index, start, end, ...rest], i) =>
-    heard[i].start - start >= MIN_LATE_START_MS ? [index, heard[i].start, Math.max(end, heard[i].end), ...rest] : [index, start, end, ...rest]);
+    heard[i].start - start >= MIN_LATE_START_MS && !(lettersFirst && i === 0)
+      ? [index, heard[i].start, Math.max(end, heard[i].end), ...rest] : [index, start, end, ...rest]);
   // Nor starts before the word before it: one heard only a little late
   // follows a word before it that moved past its listed start.
   for (let i = 1; i < moved.length; i++) if (moved[i][1] <= moved[i - 1][1]) moved[i] = [moved[i][0], heard[i].start, Math.max(moved[i][2], heard[i].end), ...moved[i].slice(3)];
@@ -826,15 +839,26 @@ const MIN_SUNG_STOP_SILENCE_SEC = 2.5;
 const SILENCE_REACH_SEC = 0.2;
 /** How far a change of caption may move to reach the gap it belongs in. */
 const GAP_REACH_SEC = 1;
+/** How long before the voice resumes the next caption comes up. */
+const CHANGE_LEAD_SEC = 0.1;
+/**
+ * A gap this long is the reciter stopping, whatever the words placed in it say:
+ * no hum or closure inside a word lasts a second. The aligner put Al-Muaiqly's
+ * 32:18 «لَّا» at the start of his 1.9 s pause after «فَاسِقًا ۚ», 2.3 s before
+ * he says it.
+ */
+const SURE_GAP_SEC = 1;
 
 /**
  * Each change of caption moved into the gap where the voice stops, when one is
  * near. Word edges, published or aligned, sit up to half a second off: Khalid
  * al-Jalil's 12:87 changed captions at 1558.7s while ٱللَّهِ was still being said
  * to 1559.24s, the next caption showing before its words; the gap is
- * 1559.28-1559.74s. In the middle of the nearest gap, the old text stays until
- * he stops and the new one is up before he starts. Left where it is when no
- * gap is near.
+ * 1559.28-1559.74s. At the end of the nearest gap, just before he starts
+ * again: the old text stays through the pause and the new one comes up with
+ * its first word (the owner's choice, 2026-10-17: a change in the middle of a
+ * long pause showed the next ayah a second before it was said). Left where it
+ * is when no gap is near.
  */
 export function inTheGaps(captions: MatchSegment[], quiet: [number, number][] | undefined, aligned: MatchSegment[] = []): MatchSegment[] {
   if (!quiet?.length) return captions;
@@ -868,17 +892,18 @@ export function inTheGaps(captions: MatchSegment[], quiet: [number, number][] | 
     const lastWord = before.wordTimings?.filter(word => typeof word.end === 'number').pop();
     const stopped = (lastWord ? lastWord.end : -Infinity) - 0.15;
     const near = quiet.filter(([from, to]) =>
-      to - from >= MIN_GAP_SEC && from <= at + GAP_REACH_SEC && to >= at - GAP_REACH_SEC && to <= resumes && from >= stopped);
+      to - from >= MIN_GAP_SEC && from <= at + GAP_REACH_SEC && to >= at - GAP_REACH_SEC &&
+      (to <= resumes || to - from >= SURE_GAP_SEC) && from >= stopped);
     if (!near.length) continue;
     // The nearest: the change is already roughly placed, and a closure inside
     // a word nearby can be as long as the gap (12:88: 1586.90-1587.30s before
     // إِنَّ, 1587.78-1588.18s inside ٱللَّهَ). The longer of two as near.
     const away = ([from, to]: [number, number]) => Math.max(0, from - at, at - to);
     const [from, to] = near.reduce((a, b) => (away(b) < away(a) - 1e-6 || (Math.abs(away(b) - away(a)) <= 1e-6 && b[1] - b[0] > a[1] - a[0]) ? b : a));
-    const middle = Math.round(((from + to) / 2) * 100) / 100;
-    if (middle <= (before.startTime ?? 0) + 0.3 || middle >= (after.endTime ?? Infinity) - 0.3) continue;
-    before.endTime = middle;
-    after.startTime = middle;
+    const change = Math.round(Math.max((from + to) / 2, to - CHANGE_LEAD_SEC) * 100) / 100;
+    if (change <= (before.startTime ?? 0) + 0.3 || change >= (after.endTime ?? Infinity) - 0.3) continue;
+    before.endTime = change;
+    after.startTime = change;
   }
   return out;
 }
@@ -941,7 +966,7 @@ export function timedFromPublished(
       // published timings start at the first ayah, and dropping these lost
       // every timed reciter's isti'adha and basmala.
       openings: aligned.openings,
-      notes: `Timed from ${published.provider}'s published word timings, ` +
+      notes: `Timed from ${published.provider === 'cut' ? 'the word timings found when the recording was cut' : `${published.provider}'s published word timings`}, ` +
         (heard ? 'cut where the aligner heard the reciter pause.' : 'one caption per ayah.')
     }
   };

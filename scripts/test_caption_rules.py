@@ -309,5 +309,20 @@ check(
 check("an id nobody was given finds nothing", ok=regroup.find("not-an-id") is None)
 regroup.MAX_KEPT_SECONDS = kept_before
 
+print("\nwhere two captions meet")
+# The owner's choice (2026-10-17): the next caption comes up with its first
+# word, not halfway through a long pause.
+e = align.Segment("2:1", 0, 2, 0.0, 1.0, 0.9, False)
+f = align.Segment("2:1", 3, 5, 2.5, 3.0, 0.9, False)
+align._close_gaps([e, f], 3.0, [(1.1, 2.4)])
+check("a long silence: the join comes just before the voice resumes", ok=e.end == f.start == 2.3, detail=f"join at {e.end}s, silence 1.10-2.40s")
+
+print("\nan ayah no phrase claimed, at the end of the text")
+# Saad al-Ghamdi runs 107:6 into 107:7, and the phrase holding both is claimed for 107:6 alone.
+ref7 = [("107:6", 0, "ٱلَّذِينَ"), ("107:6", 1, "هُمْ"), ("107:6", 2, "يُرَآءُونَ"), ("107:7", 0, "وَيَمْنَعُونَ"), ("107:7", 1, "ٱلْمَاعُونَ")]
+check("left out by default: a passage may run past the recording", ok=align._restore_skipped_ayahs([0, 1, 2], ref7) == [0, 1, 2])
+check("restored when the recording holds the text to its end", ok=align._restore_skipped_ayahs([0, 1, 2], ref7, "end") == [0, 1, 2, 3, 4])
+check("and at the start when it holds it from there", ok=align._restore_skipped_ayahs([3, 4], ref7, "start") == [0, 1, 2, 3, 4])
+
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

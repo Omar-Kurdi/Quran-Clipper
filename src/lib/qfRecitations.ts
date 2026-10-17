@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { decodeEdit, encodeEdit, isEdited, keptSpans } from './audioEdit';
 import { renderEdit } from './audioRender';
+import { studioMode } from './studioMode';
 import catalog from './qfReciters.json';
 import type { ReciterVerseTiming } from './reciterSegments';
 
@@ -29,13 +30,16 @@ const execFileAsync = promisify(execFile);
 
 export interface QfReciter {
   id: string;
-  qfId: number;
+  /** The Quran Foundation's recitation of one file per ayah. */
+  qfId?: number;
+  /** Or its chapter-only reciter, whose surah recordings `scripts/qf-reciters.mjs` cuts into ayah files. */
+  chapterId?: number;
   name: string;
   arabicName: string;
   style: string;
 }
 
-export const QF_RECITERS: QfReciter[] = catalog.reciters;
+export const QF_RECITERS: QfReciter[] = [...catalog.reciters, ...catalog.chapterReciters];
 
 /**
  * Where the ayah files are: outside the checkout, because `next build` reads
@@ -60,22 +64,49 @@ interface ChapterAyah {
 
 export const qfReciter = (id: string): QfReciter | undefined => QF_RECITERS.find(reciter => reciter.id === id);
 
+/** A reciter's folder of ayah files: its recitation id, or `c` and its chapter-reciter id (QF numbers the two apart). */
+const folderOf = (reciter: QfReciter) => (reciter.chapterId ? `c${reciter.chapterId}` : String(reciter.qfId));
+
+/** A surah of a chapter reciter that could not be cut ayah by ayah exactly, and so is not offered. */
+export class QfSurahUnavailable extends Error {}
+
 const fetching = new Map<string, Promise<void>>();
 
-/** One chapter's ayahs on disk, fetching it first when it is not there yet. */
-async function chapter(qfId: number, surah: number): Promise<ChapterAyah[]> {
-  const file = path.join(audioDir(), String(qfId), `${pad(surah)}.json`);
+const unavailable = (reciter: QfReciter, surah: number) =>
+  `${reciter.name}'s surah ${surah} could not be cut ayah by ayah exactly, so it is not offered. Choose another reciter for it.`;
+
+/**
+ * One chapter's ayahs on disk, fetching it first when it is not there yet. A
+ * chapter reciter's surah is cut by the aligner as well, which takes minutes
+ * for a long one.
+ */
+async function chapter(reciter: QfReciter, surah: number): Promise<{ ayahs: ChapterAyah[]; words: QfPassage['words'] }> {
+  const folder = path.join(audioDir(), folderOf(reciter));
+  const file = path.join(folder, `${pad(surah)}.json`);
   if (!existsSync(file)) {
-    const key = `${qfId}:${surah}`;
+    // A public studio never cuts on a visitor's request: a long surah would keep them waiting for half an
+    // hour and the server's aligner busy. Its surahs are cut ahead of time (./cut_reciters) or not offered.
+    if (reciter.chapterId && studioMode() === 'public') {
+      throw new QfSurahUnavailable(existsSync(path.join(folder, `${pad(surah)}.rejected.json`))
+        ? unavailable(reciter, surah)
+        : `${reciter.name}'s surah ${surah} is not ready on this studio yet. Choose another reciter for it.`);
+    }
+    const key = `${reciter.id}:${surah}`;
     if (!fetching.has(key)) {
       fetching.set(key, execFileAsync(process.execPath, [
-        path.join(process.cwd(), 'scripts', 'qf-reciters.mjs'), 'download', '--reciter', String(qfId), '--surah', String(surah), '--quiet',
-      ], { timeout: 15 * 60_000 }).then(() => undefined).finally(() => fetching.delete(key)));
+        path.join(process.cwd(), 'scripts', 'qf-reciters.mjs'), 'download', '--reciter', reciter.id, '--surah', String(surah), '--quiet',
+      ], { timeout: (reciter.chapterId ? 90 : 15) * 60_000 }).then(() => undefined, () => undefined).finally(() => fetching.delete(key)));
     }
     await fetching.get(key);
+    const rejected = path.join(folder, `${pad(surah)}.rejected.json`);
+    if (!existsSync(file) && existsSync(rejected)) {
+      throw new QfSurahUnavailable(unavailable(reciter, surah));
+    }
     if (!existsSync(file)) throw new Error(`could not fetch surah ${surah} for this reciter from the Quran Foundation`);
   }
-  return chapterAyahs(JSON.parse(readFileSync(file, 'utf8')), file);
+  const data = JSON.parse(readFileSync(file, 'utf8'));
+  // A cut chapter says whose word timings it kept (scripts/qf-reciters.mjs, `writeAyahs`).
+  return { ayahs: chapterAyahs(data, file), words: data?.timing === 'aligner' ? 'cut' : 'qf' };
 }
 
 /** A chapter file's ayahs, checked: one written by another version of the download script is refused, not misread. */
@@ -93,13 +124,16 @@ export interface QfPassage {
   ayahs: { verseKey: string; start: number; end: number; timing: ReciterVerseTiming }[];
   totalSeconds: number;
   files: string[];
+  /** Whose word timings: the Foundation's, or the aligner's from cutting a chapter recording its timings did not fit. */
+  words: 'qf' | 'cut';
 }
 
 /** Where each ayah of `start`-`end` lies in the passage's stitched file. */
 export async function qfPassage(reciterId: string, surah: number, start: number, end: number): Promise<QfPassage | null> {
   const reciter = qfReciter(reciterId);
   if (!reciter) return null;
-  const ayahs = (await chapter(reciter.qfId, surah)).filter(entry => entry.ayah >= start && entry.ayah <= end);
+  const { ayahs: all, words } = await chapter(reciter, surah);
+  const ayahs = all.filter(entry => entry.ayah >= start && entry.ayah <= end);
   if (ayahs.length !== end - start + 1) return null;
   let at = 0;
   const placed = ayahs.map(entry => {
@@ -119,9 +153,10 @@ export async function qfPassage(reciterId: string, surah: number, start: number,
     };
   });
   return {
+    words,
     ayahs: placed,
     totalSeconds: at / 1000,
-    files: ayahs.map(entry => path.join(audioDir(), String(reciter.qfId), entry.file)),
+    files: ayahs.map(entry => path.join(audioDir(), folderOf(reciter), entry.file)),
   };
 }
 

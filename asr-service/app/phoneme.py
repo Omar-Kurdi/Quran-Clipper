@@ -270,12 +270,61 @@ def _read_side_file(model: str, name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def cpu_threads() -> int:
+    """`ASR_CPU_THREADS`: how many CPU threads this service may use, 0 (unset) for as many as there are cores.
+
+    The phoneme model runs on the CPU whatever the GPU (onnxruntime here has no
+    GPU build), and by default it takes every core: a second service cutting
+    chapter recordings in the background (`./cut_reciters`) held 14 of 16 and
+    left the machine sluggish. That service sets this low.
+    """
+    try:
+        return max(0, int(os.getenv("ASR_CPU_THREADS", "0")))
+    except ValueError:
+        return 0
+
+
+def on_gpu() -> bool:
+    """Whether to run the phoneme model on the GPU, in full precision: by default whenever there is one.
+
+    Its int8 weights are what the CPU runs fastest, but on the GPU they fall
+    back to the CPU op by op (slower than the CPU alone, and every core busy);
+    the full-precision weights run there whole -- measured on an RTX 5080, 50
+    reads in 0.45 s and 0.4 s of CPU, against 0.58 s and 8.8 s of CPU for int8
+    on the CPU, and a whole /align request 9 s with 10 s of CPU against 15 s
+    with 184 s. Needs `onnxruntime-gpu` in place of `onnxruntime`
+    (./install.sh puts it in where `nvidia-smi` finds a GPU); without it, or
+    with `ASR_PHONEME_GPU=0` or `ASR_DEVICE=cpu`, the model runs on the CPU as before.
+    """
+    setting = os.getenv("ASR_PHONEME_GPU", "auto").strip().lower()
+    if setting in ("0", "false", "no", "cpu"):
+        return False
+    return (os.getenv("ASR_DEVICE") or "auto").strip().lower() != "cpu"
+
+
+def _session_options(ort):
+    options = ort.SessionOptions()
+    if cpu_threads():
+        options.intra_op_num_threads = cpu_threads()
+        options.inter_op_num_threads = 1
+    return options
+
+
 class Loaded:
     def __init__(self, model: str):
         import onnxruntime as ort
 
         spec = MODELS[model]
-        self.session = ort.InferenceSession(_fetch(spec, spec.onnx), providers=["CPUExecutionProvider"])
+        if on_gpu() and "CUDAExecutionProvider" in ort.get_available_providers():
+            import torch  # noqa: F401 -- loads the CUDA libraries onnxruntime-gpu runs on
+
+            weights = _fetch(spec, spec.onnx.replace(".int8.onnx", ".onnx"))
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        else:
+            weights = _fetch(spec, spec.onnx)
+            providers = ["CPUExecutionProvider"]
+        self.session = ort.InferenceSession(weights, _session_options(ort), providers=providers)
+        log.info("phoneme model %s on %s", model, self.session.get_providers()[0])
         meta = self.session.get_modelmeta().custom_metadata_map
         self.window = int(meta["T"])
         self.shift = int(meta["decode_chunk_len"])

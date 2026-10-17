@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
-import { qfPassageFile, qfPassageOf } from '@/lib/qfRecitations';
+import { qfPassageFile, qfPassageOf, QfSurahUnavailable } from '@/lib/qfRecitations';
 import { findFfmpeg } from '@/lib/renderRunner';
 import { servedFile } from '@/lib/servedFile';
 
@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     const { status, headers, body } = servedFile({ file, size }, req.headers.get('range'), 'audio/mpeg');
     return new NextResponse(body, { status, headers });
   } catch (err) {
+    if (err instanceof QfSurahUnavailable) return NextResponse.json({ error: err.message }, { status: 404 });
     return NextResponse.json({ error: `Could not prepare the recitation: ${(err as Error).message}` }, { status: 502 });
   }
 }

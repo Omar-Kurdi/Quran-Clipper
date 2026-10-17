@@ -86,6 +86,7 @@ if [[ -z "$RECITERS" ]]; then
     echo
     echo "Built-in reciters -- the Quran Foundation's recordings, one file per ayah, about 2 GB each:"
     node -e "require('./src/lib/qfReciters.json').reciters.forEach((r, i) => console.log('  ' + String(i + 1).padStart(2) + ') ' + r.name))"
+    echo "(and $(node -e "console.log(require('./src/lib/qfReciters.json').chapterReciters.length)") more recorded by the surah, cut into ayahs by the aligner when the studio is running -- see README.md)"
     read -r -p "Download [a]ll of them (about 24 GB), [s]ome, or [n]one (each surah is fetched the first time it is used)? [a/s/n] " answer
     case "${answer,,}" in
       s*)
@@ -297,6 +298,13 @@ else
   else
     echo "pip install failed:"; show_log_tail
   fi
+  # The phoneme model on the GPU: onnxruntime's GPU build in place of the CPU one
+  # requirements.txt names (the two cannot sit side by side), when there is an
+  # NVIDIA GPU. Its CUDA 13 build matches torch's. Without it the model runs on the CPU.
+  if nvidia-smi -L >/dev/null 2>&1 && ! "$VENV/bin/python" -c 'import onnxruntime as o, sys; sys.exit("CUDAExecutionProvider" not in o.get_available_providers())' >>"$LOG" 2>&1; then
+    { "${PIP[@]}" uninstall -y onnxruntime onnxruntime-gpu && "${PIP[@]}" install 'onnxruntime-gpu>=1.27'; } >>"$LOG" 2>&1 \
+      || todo "onnxruntime-gpu did not install (see $LOG): the phoneme model runs on the CPU, which works but is slower and busier."
+  fi
   # The one check that proves the pair works: this loads torchaudio's library.
   "$VENV/bin/python" -c 'import torch, torchaudio.functional as F; F.forced_align(torch.randn(1,8,4).log_softmax(-1), torch.tensor([[1,2]]), blank=0)' >>"$LOG" 2>&1 \
     || todo "torch/torchaudio do not load together (see $LOG). On a machine without a GPU: $VENV/bin/pip install --force-reinstall --no-deps torch torchaudio --index-url https://download.pytorch.org/whl/cpu"
@@ -446,11 +454,15 @@ fi
 # CDN (scripts/qf-reciters.mjs; resumable, so a second run fetches only what
 # is missing). A surah not here is fetched the first time it is loaded.
 printf '[9/9] recordings  ... '
-RECITER_COUNT="$(node -e "console.log(require('./src/lib/qfReciters.json').reciters.length)" 2>/dev/null || echo 0)"
 # `<complete reciters> <offered> <surahs here> <folder>`, from the script that keeps them.
 counts() { node scripts/qf-reciters.mjs counts 2>/dev/null; }
+# Every reciter offered, the chapter reciters included, as `counts` counts them complete.
+RECITER_COUNT="$(counts | awk '{print $2}')"; RECITER_COUNT="${RECITER_COUNT:-0}"
+AYAH_RECITERS="$(node -e "console.log(require('./src/lib/qfReciters.json').reciters.length)" 2>/dev/null || echo 0)"
 AUDIO_DIR="$(counts | cut -d' ' -f4-)"
-if [[ "$RECITERS" == "all" ]]; then CHOSEN="$RECITER_COUNT"; PICK=()
+# Only the reciters published one file per ayah: the chapter reciters are cut by
+# the aligner, which is not running yet (README.md, "Built-in reciters").
+if [[ "$RECITERS" == "all" ]]; then CHOSEN="$AYAH_RECITERS"; PICK=(--reciter "$(node -e "console.log(require('./src/lib/qfReciters.json').reciters.map(r => r.id).join(','))")")
 elif [[ "$RECITERS" == "none" ]]; then CHOSEN=0; PICK=()
 else CHOSEN="$(tr ',' '\n' <<<"$RECITERS" | grep -c .)"; PICK=(--reciter "$RECITERS"); fi
 DISK_NOW_10="$(df -Pk "$HOME" | awk 'NR==2 {printf "%d", $4/104857.6}')"
