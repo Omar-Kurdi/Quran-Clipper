@@ -15,7 +15,7 @@
 #   ./cut_reciters                          show progress, ask which reciters, start
 #   ./cut_reciters start qfc-159 [qfc-13]   start these (ids from ./cut_reciters status)
 #   ./cut_reciters start qfc-159 --share 30 each aligner busy at most 30% of the time
-#   ./cut_reciters start qfc-159 --workers 3  three surahs at a time (1-4)
+#   ./cut_reciters start qfc-159 --workers 3  three surahs at a time (1-6)
 #   ./cut_reciters start qfc-159 --threads 4  each aligner may use 4 CPU cores
 #   ./cut_reciters pause                    free the GPU and CPU within seconds; nothing is lost
 #   ./cut_reciters resume                   carry on from where it paused
@@ -71,7 +71,7 @@ start() {
     echo "  name the reciters: ./cut_reciters start qfc-159 (ids from ./cut_reciters status)"
     exit 2
   fi
-  (( workers >= 1 && workers <= 4 )) || { echo "  --workers is 1 to 4"; exit 2; }
+  (( workers >= 1 && workers <= 6 )) || { echo "  --workers is 1 to 6"; exit 2; }
   (( threads >= 1 && threads <= 16 )) || { echo "  --threads is 1 to 16"; exit 2; }
   if curl -sf --max-time 2 http://127.0.0.1:8101/health >/dev/null 2>&1; then
     echo "  an aligner is already on :8101 (left by a run that did not end cleanly?) -- stop it first"

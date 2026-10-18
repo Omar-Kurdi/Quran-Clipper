@@ -181,6 +181,38 @@ describe('the first ayah', () => {
     expect(join.depth).toBeGreaterThanOrEqual(PAUSE_DEPTH_DB);
   });
 
+  it('finds the pause after a basmala the aligner reads on past it (Saad al-Ghamdi 68)', () => {
+    // Basmala read to 4.95s and نٓ from 5.01s; the pause is 4.08-4.76s.
+    const db = track(8, [4.08, 4.76, -60]);
+    const join = afterOpening({ openingEnd: 4.95, firstStart: 5.01, db, silences: [[4.08, 4.76]] });
+    expect(join.at).toBeGreaterThan(4.08);
+    expect(join.at).toBeLessThan(4.76);
+    expect(join.depth).toBeGreaterThanOrEqual(PAUSE_DEPTH_DB);
+  });
+
+  it('finds the long pause after a basmala the aligner reads on over it (Al-Muaiqly 108)', () => {
+    // Basmala read 0.96-10.55s; his basmala ends 6.0s, silence to 7.8s, إِنَّآ from 7.9s.
+    const db = track(14, [6.1, 7.8, -100]);
+    const join = afterOpening({ openingStart: 0.96, openingEnd: 10.55, firstStart: 10.55, db, silences: [[6.1, 7.8]] });
+    expect(join.at).toBeGreaterThan(6.1);
+    expect(join.at).toBeLessThan(7.8);
+  });
+
+  it('measures a pause that fades by how long it stays quiet (Al-Ajmy 36)', () => {
+    // Basmala read to 3.83s; the break after it falls from -34 to -57 dB over 1.5-2.8s.
+    const db = track(8, [1.5, 2.0, -34], [2.0, 2.45, -45], [2.45, 2.8, -57]);
+    const join = afterOpening({ openingStart: 0.16, openingEnd: 3.83, firstStart: 3.83, db, silences: [[1.77, 2.82]] });
+    expect(join.at).toBeGreaterThan(1.5);
+    expect(join.at).toBeLessThan(2.8);
+  });
+
+  it('takes no short pause long before where the aligner ends the basmala for its end', () => {
+    // A 0.3 s pause 3 s before; without the phoneme model hearing the basmala end there, it may be inside it.
+    const db = track(10, [2.3, 2.6, -60]);
+    const join = afterOpening({ openingStart: 0.16, openingEnd: 5.34, firstStart: 5.34, db, silences: [[2.3, 2.6]] });
+    expect(join.at).toBeGreaterThan(5);
+  });
+
   it("takes the phoneme model's silences as one where only slivers part them", () => {
     expect(mergedSilences([[2, 3], [0, 1], [1.04, 1.5]])).toEqual([[0, 1.5], [2, 3]]);
   });
@@ -235,8 +267,18 @@ describe('a chapter cut', () => {
 
   it('is not kept for a join that is neither a pause nor agreed by the Foundation', () => {
     expect(chapterProblems(placed({ joins: [join(2, { depth: 8, overFloor: 10, qf: false }), join(3)] }))[0]).toMatch(/before ayah 2/);
-    expect(chapterProblems(placed({ joins: [join(2, { depth: 8 }), join(3, { heard: false })] }))).toEqual([]);
+    // Agreed by the Foundation but no pause: kept only where the reading of its two ayahs alone confirms it.
+    // (8 dB at the floor is a pause; nothing heard missing is not.)
+    expect(chapterProblems(placed({ joins: [join(2, { depth: 8 }), join(3, { heard: false })] }))).toEqual([
+      "the join before ayah 3 (30s) is not where the Foundation's timings put it, nor a pause or a second reading the aligner's alone stands on"]);
+    expect(chapterProblems(placed({ joins: [join(2, { depth: 8, confirmed: true }), join(3, { heard: false, confirmed: true })] }))).toEqual([]);
     expect(chapterProblems(placed({ joins: [join(1, { opening: true, qf: false }), join(2), join(3)] }))).toEqual([]);
+  });
+
+  it('keeps an opening run straight on only where the reading of it and the first ayah alone confirms it (Al-Ajmy)', () => {
+    const runOn = { opening: true, qf: false, depth: 1, overFloor: 18 };
+    expect(chapterProblems(placed({ joins: [join(1, runOn), join(2), join(3)] }))[0]).toMatch(/before ayah 1/);
+    expect(chapterProblems(placed({ joins: [join(1, { ...runOn, confirmed: true }), join(2), join(3)] }))).toEqual([]);
   });
 
 });
@@ -257,6 +299,71 @@ describe("a chapter cut against the Foundation's timings", () => {
     expect(chapterProblems(placed({ joins }))[0]).toMatch(/before ayah 6/);
   });
 
+});
+
+describe("a chapter cut against the Foundation's timings, where the reciter runs on", () => {
+  const join = (ayah: number, extra = {}) => ({ ayah, at: ayah * 10, depth: 40, overFloor: 0, heard: true, qf: true, ...extra });
+  const placed = (extra = {}) => ({
+    windows: [{ from: 0, to: 40, agreement: 0.8 }],
+    joins: [join(2), join(3)],
+    cuts: [0, 20, 30],
+    duration: 40,
+    ...extra,
+  });
+
+  it('counts its agreement with a join that is no pause only where its own gap is narrow (Al-Muaiqly 39:39-40)', () => {
+    // He goes back across the join; the Foundation's gap holds the repeat, 5 s wide.
+    const joins = Array.from({ length: 10 }, (_, i) => join(i + 2));
+    joins[4] = join(6, { depth: 8, overFloor: 10, qfGap: 5 });
+    expect(chapterProblems(placed({ joins }))[0]).toMatch(/before ayah 6/);
+    joins[4] = join(6, { depth: 8, overFloor: 10, qfGap: 0.03, confirmed: true });
+    expect(chapterProblems(placed({ joins }))).toEqual([]);
+    // And never without the reading of the pair: a dip is at every word boundary, the Foundation's included.
+    joins[4] = join(6, { depth: 8, overFloor: 10, qfGap: 0.03 });
+    expect(chapterProblems(placed({ joins }))[0]).toMatch(/before ayah 6/);
+    joins[4] = join(6, { qfGap: 5 });
+    expect(chapterProblems(placed({ joins }))).toEqual([]);
+  });
+
+  it('never keeps a join the reading of its pair puts elsewhere, pause or not (Saad al-Ghamdi 80:6)', () => {
+    // Cut in the pause before 80:5's last word «ٱسْتَغْنَىٰ», where the Foundation did not put it.
+    const joins = Array.from({ length: 10 }, (_, i) => join(i + 2));
+    joins[4] = join(6, { qf: false, qfInVoice: true, contradicted: true });
+    expect(chapterProblems(placed({ joins }))[0]).toMatch(/before ayah 6/);
+    joins[4] = join(6, { qf: false, qfInVoice: true });
+    expect(chapterProblems(placed({ joins }))).toEqual([]);
+  });
+
+});
+
+describe("a chapter cut's second readings", () => {
+  const join = (ayah: number, extra = {}) => ({ ayah, at: ayah * 10, depth: 40, overFloor: 0, heard: true, qf: true, ...extra });
+  const placed = (extra = {}) => ({
+    windows: [{ from: 0, to: 40, agreement: 0.8 }],
+    joins: [join(2), join(3)],
+    cuts: [0, 20, 30],
+    duration: 40,
+    ...extra,
+  });
+
+  it("trusts no second reading against the Foundation where it mostly fits (Al-Muaiqly 49:12)", () => {
+    // 16 of 18 joins agreed; the run-on 49:12, read twice alike, was where the Foundation said it was not.
+    const joins = Array.from({ length: 18 }, (_, i) => join(i + 2, i < 16 ? {} : { qf: false }));
+    joins[17] = join(19, { qf: false, depth: 8, overFloor: 10, confirmed: true });
+    expect(chapterProblems(placed({ joins })).join()).toMatch(/before ayah 19/);
+    // Where it is another recording's, the second reading stands.
+    const elsewhere = joins.map(j => ({ ...j, qf: false }));
+    expect(chapterProblems(placed({ joins: elsewhere })).join()).not.toMatch(/before ayah 19/);
+    // And where its start for the ayah is nowhere near: Al-Ajmy's 74:28, 39 s on. A second or two is near.
+    joins[17] = join(19, { qf: false, depth: 14, overFloor: 10, confirmed: true, qfStart: 190 + 39 });
+    expect(chapterProblems(placed({ joins })).join()).not.toMatch(/before ayah 19/);
+    // Where the recording all but pauses: in the voice, the aligner alone stands by it again.
+    joins[17] = join(19, { qf: false, depth: 1, overFloor: 10, confirmed: true, qfStart: 190 + 39 });
+    expect(chapterProblems(placed({ joins })).join()).toMatch(/before ayah 19/);
+    joins[17] = join(19, { qf: false, depth: 14, overFloor: 10, confirmed: true, qfStart: 190 + 1.6 });
+    expect(chapterProblems(placed({ joins })).join()).toMatch(/before ayah 19/);
+  });
+
   it("keeps the aligner's pause where the Foundation's join is in the reciter's voice", () => {
     const joins = Array.from({ length: 10 }, (_, i) => join(i + 2));
     joins[4] = join(6, { qf: false, qfInVoice: true });
@@ -270,6 +377,18 @@ describe("a chapter cut against the Foundation's timings", () => {
     const runOn = { ...elsewhere, depth: 8, overFloor: 10 };
     expect(chapterProblems(placed({ joins: [join(2, runOn), join(3, elsewhere)] }))).toHaveLength(1);
     expect(chapterProblems(placed({ joins: [join(2, { ...runOn, confirmed: true }), join(3, elsewhere)] }))).toEqual([]);
+  });
+
+});
+
+describe('a chapter cut placed twice', () => {
+  const join = (ayah: number, extra = {}) => ({ ayah, at: ayah * 10, depth: 40, overFloor: 0, heard: true, qf: true, ...extra });
+  const placed = (extra = {}) => ({
+    windows: [{ from: 0, to: 40, agreement: 0.8 }],
+    joins: [join(2), join(3)],
+    cuts: [0, 20, 30],
+    duration: 40,
+    ...extra,
   });
 
   it('is not kept when two windows cut a join apart, or an ayah would be too short', () => {
@@ -295,6 +414,14 @@ describe("a chapter cut's word timings", () => {
     expect(ayahSegments({ fromMs: 8800, ms: 10449, qf, words: [] })).toEqual([[1, 810, 9240]]);
     const words = [{ verse_key: '32:1', word_index: 1, start: 10, end: 10.5 }, { verse_key: '32:1', word_index: 0, start: 9.6, end: 30 }];
     expect(ayahSegments({ fromMs: 8800, ms: 10449, qf: null, words })).toEqual([[1, 800, 10449], [2, 1200, 1700]]);
+  });
+
+  it('keeps no word timing that falls outside the file (Al-Ajmy 50:17, 57:1)', () => {
+    // A second reading past the file's end, and the Foundation's words timed in the basmala before it.
+    const words = [{ verse_key: '50:17', word_index: 0, start: 1, end: 2 }, { verse_key: '50:17', word_index: 0, start: 12, end: 13 }];
+    expect(ayahSegments({ fromMs: 0, ms: 9247, qf: null, words })).toEqual([[1, 1000, 2000]]);
+    const qf = { timestamp_from: 0, timestamp_to: 12000, segments: [[1, 300, 900], [2, 900, 1500], [3, 1500, 6000]] };
+    expect(ayahSegments({ fromMs: 4400, ms: 7440, qf, words: [] })).toEqual([[3, 0, 1600]]);
   });
 });
 

@@ -323,21 +323,64 @@ const RUN_ON_REACH_SEC = 0.25;
  * for an ayah of separate letters (الٓمٓ, held six counts a letter), it places
  * seconds late: Al-Muaiqly's 32:1 at 14.1 s, not 9.6 s.
  */
-export function afterOpening({ openingEnd, firstStart, db, silences, hop = LEVEL_HOP }) {
-  const lo = Math.max(0, Math.ceil((openingEnd - LOOK_ON_SEC) / hop));
+export function afterOpening({ openingStart = 0, openingEnd, firstStart, db, silences, hop = LEVEL_HOP }) {
+  const lo = Math.max(0, Math.ceil((openingEnd - OPENING_BACK_SEC) / hop));
   const hi = Math.min(db.length - 1, Math.floor((Math.max(firstStart, openingEnd) + LOOK_ON_SEC) / hop));
+  const pause = firstPause({ db, lo, hi, silences, hop });
+  if (pause) return pause;
+  // None there: the aligner can read the opening on over a whole pause and into the ayah -- Al-Muaiqly's 108
+  // basmala to 10.55 s, its silence 6.1-7.8 s, «إِنَّآ» from 7.9 s. The last long pause inside what it gave
+  // the opening, then: no opening holds one.
+  let last = null;
+  const from = Math.max(0, Math.ceil(openingStart / hop));
+  for (let i = from; i < lo; ) {
+    const join = firstPause({ db, lo: i, hi: lo, silences, hop });
+    if (!join) break;
+    if (quietFor(db, join.at, hop) >= OPENING_LONG_PAUSE_SEC) last = join;
+    i = Math.max(i + 1, Math.ceil(join.until / hop) + 1);
+  }
+  return last ?? joinCut({ after: openingEnd - LOOK_ON_SEC, nextStart: firstStart, db, silences, hop });
+}
+
+/** The first pause from `lo` on, cut at its quietest point. */
+function firstPause({ db, lo, hi, silences, hop }) {
   for (let i = lo; i <= hi; i++) {
     const join = cutInLull({ db, pick: i, lo, hi, silences, hop });
     if (inPause(join)) {
-      // The quietest point of this pause, and the cut in it.
       let pick = i;
       const smooth = smoother(db, lo, hi);
       for (let k = i; k <= hi && smooth(k) <= smooth(i) + LULL_DB; k++) if (smooth(k) < smooth(pick)) pick = k;
       return cutInLull({ db, pick, lo, hi, silences, hop });
     }
   }
-  return joinCut({ after: openingEnd - LOOK_ON_SEC, nextStart: firstStart, db, silences, hop });
+  return null;
 }
+
+/** A pause this long inside what the aligner reads as the opening is after it: a basmala holds none. */
+const OPENING_LONG_PAUSE_SEC = 0.8;
+
+/**
+ * How long the recording stays within 20 dB of its level at `at`, either
+ * side: the length of a pause that fades, which its quietest stretch is not --
+ * Al-Ajmy's 36 is quiet 1.5-2.8 s, falling from -34 to -57 dB.
+ */
+function quietFor(db, at, hop) {
+  const pick = Math.round(at / hop);
+  const ceiling = db[pick] + 20;
+  let lo = pick;
+  let hi = pick;
+  while (lo > 0 && db[lo - 1] < ceiling) lo--;
+  while (hi < db.length - 1 && db[hi + 1] < ceiling) hi++;
+  return (hi - lo + 1) * hop;
+}
+
+/**
+ * How far before the end the aligner gives the opening its pause is looked
+ * for: it reads the opening's last word on into the silence after, and
+ * further than the ayah's next word starts -- Saad al-Ghamdi's 68 has his
+ * basmala end at 4.95 s and نٓ at 5.01 s, the pause 4.08-4.76 s.
+ */
+const OPENING_BACK_SEC = 0.6;
 
 /**
  * Whether the Foundation's timings put a join where it was cut: in the lull
@@ -350,6 +393,16 @@ export function afterOpening({ openingEnd, firstStart, db, silences, hop = LEVEL
  * word (Abdullah Abu Sharida's 1:5 at 26.7 s, its first word at 27.2 s) or
  * closes after its last (Tahoun's 67:1 at 15.9 s, its last word ending 15.5 s).
  */
+/** How wide the Foundation's own gap between two ayahs is, seconds: from the end of one to the start of the next. */
+export function qfGap(before, after) {
+  if (!Number.isFinite(before?.timestamp_to) || !Number.isFinite(after?.timestamp_from)) return null;
+  const firstWord = Number((after.segments ?? [])[0]?.[1]);
+  const lastWord = Number((before.segments ?? []).at(-1)?.[2]);
+  const opens = Math.max(after.timestamp_from, Number.isFinite(firstWord) ? firstWord : -Infinity);
+  const closes = Math.min(before.timestamp_to, Number.isFinite(lastWord) ? lastWord : Infinity);
+  return Math.abs(opens - closes) / 1000;
+}
+
 export function qfAgrees(join, before, after) {
   if (!Number.isFinite(before?.timestamp_to) || !Number.isFinite(after?.timestamp_from)) return false;
   const { at, from = at, until = at } = typeof join === 'number' ? { at: join } : join;
@@ -378,17 +431,59 @@ export function qfAgrees(join, before, after) {
  * Nor where the Foundation puts its join in the reciter's voice, and the
  * aligner's is a clean pause (`qfInVoice`, decided where the voice is read).
  * The cut after an opening has no timing of the Foundation's to go by (its
- * timings begin at the ayah): a pause there is enough.
+ * timings begin at the ayah): a pause there is enough, or, run straight on,
+ * a reading of the opening and the first ayah alone that ends the one there
+ * (`confirmed`).
  */
-const joinTrusted = (join, qfFits) => join.qf || join.qfInVoice ||
-  (join.opening ? inPause(join) : !qfFits && !join.tangled && (inPause(join) || join.confirmed));
+/**
+ * The Foundation agreeing with a join counts, for one that is no pause, only
+ * where its own gap between the two ayahs is narrow: where the reciter goes
+ * back across the join, its gap holds the repeat -- Al-Muaiqly's «فَسَوْفَ
+ * تَعْلَمُونَ مَنْ», then the whole again from «فَسَوْفَ» (39:39-40), a gap of
+ * 5 s -- and a cut anywhere in it, between «فَسَوْفَ» and «تَعْلَمُونَ» included,
+ * fell inside it -- unless a reading of the two ayahs alone puts the cut
+ * between them as well (`confirmed`): Al-Ajmy's 1:3-4, «ٱلرَّحِيمِ مَـٰلِكِ», a
+ * dip of 14 dB the Foundation's 1.6 s gap and both readings agree on.
+ */
+export const QF_NARROW_SEC = 1;
+const qfCounts = join => join.qf && (inPause(join) || !(join.qfGap > QF_NARROW_SEC) || Boolean(join.confirmed));
+
+/**
+ * A second reading is the same aligner again, so it cannot overrule the
+ * Foundation where its timings are mostly this recording's: Al-Muaiqly's 49:12
+ * was read twice alike, after its first word «يَـٰٓأَيُّهَا», where the Foundation,
+ * agreeing with 16 of the surah's 18 joins, put it before.
+ */
+const QF_MOSTLY = 0.5;
+/**
+ * Unless the Foundation's start for the ayah is nowhere near the join: then
+ * its timings are not of this stretch of the recording, and say nothing of the
+ * join -- Al-Ajmy's 74:28, which they start 39 s after the pause his reading
+ * of the pair puts it in. Then the recording must all but pause there too
+ * (`NEAR_PAUSE_DB`): the reading of the pair is the aligner again, and it
+ * stood by Saad al-Ghamdi's 56:53 in his voice.
+ */
+const QF_NEAR_SEC = 3;
+const NEAR_PAUSE_DB = 10;
+const qfFar = join => Number.isFinite(join.qfStart) && Math.abs(join.qfStart - join.at) > QF_NEAR_SEC && join.depth >= NEAR_PAUSE_DB;
+const bySources = (join, qfFits, qfShare) => qfCounts(join) || join.qfInVoice ||
+  (join.opening ? inPause(join) || Boolean(join.confirmed) :
+    !qfFits && !join.tangled && (inPause(join) || (join.confirmed && (qfShare < QF_MOSTLY || qfFar(join)))));
+/**
+ * And a join that is no pause, whatever else agrees with it, only where a
+ * reading of its two ayahs alone puts it between their words (`confirmed`);
+ * never one that reading clearly puts elsewhere (`contradicted`): Saad
+ * al-Ghamdi's 80:6 was cut in the pause before 80:5's last word.
+ */
+const joinTrusted = (join, qfFits, qfShare) => !join.contradicted &&
+  bySources(join, qfFits, qfShare) && (join.opening || inPause(join) || Boolean(join.confirmed));
 
 // -- The chapter ----------------------------------------------------------------------------------------------------
 
 /** What every window of a chapter must reach: how far what the recogniser heard agrees with the text placed there. */
 export const MIN_AGREEMENT = 0.45;
 /** No ayah, however short, is less than this. */
-const MIN_AYAH_SEC = 0.3;
+export const MIN_AYAH_SEC = 0.3;
 /** How far apart the cuts two windows make of one join may be. */
 const TWICE_CUT_SEC = 0.15;
 /** The share of joins the Foundation's timings have to agree with for its word timings to be kept. */
@@ -402,11 +497,12 @@ const QF_WORDS_SHARE = 0.9;
 export function chapterProblems({ windows, joins, cuts, duration }) {
   const problems = [];
   const qfFits = qfWordsFit(joins);
+  const qfShare = joins.length ? joins.filter(join => join.qf).length / joins.length : 0;
   for (const window of windows) {
     if (!(window.agreement >= MIN_AGREEMENT)) problems.push(`${window.from.toFixed(1)}-${window.to.toFixed(1)}s read ${window.agreement ?? 'nothing'} of its text`);
   }
   for (const join of joins) {
-    if (!joinTrusted(join, qfFits)) problems.push(`the join before ayah ${join.ayah} (${join.at}s) is not where the Foundation's timings put it, nor a pause or a second reading the aligner's alone stands on`);
+    if (!joinTrusted(join, qfFits, qfShare)) problems.push(`the join before ayah ${join.ayah} (${join.at}s) is not where the Foundation's timings put it, nor a pause or a second reading the aligner's alone stands on`);
   }
   // Placed by two windows, a join has to be cut alike from both -- unless the Foundation's timings agree with
   // it, when they and the pause settle it however the aligner placed it.
@@ -428,17 +524,21 @@ export const qfWordsFit = joins => joins.length === 0 || joins.filter(join => jo
 /**
  * One ayah's word timings within its file, ms: `[word number, start, end]`,
  * from the Foundation's chapter timings when they fit the recording, else
- * from the aligner's words. Clamped to the file.
+ * from the aligner's words. Clamped to the file, and none left there with no
+ * length: a timing outside the file says nothing of where the word is in it
+ * (the aligner's second reading of Al-Ajmy's 50:17, past its file's end).
  */
 export function ayahSegments({ fromMs, ms, qf, words }) {
   const clamp = value => Math.max(0, Math.min(ms, Math.round(value)));
+  const inFile = segment => segment[2] > segment[1];
   if (qf) {
     return (qf.segments ?? []).filter(segment => Array.isArray(segment) && segment.length >= 3)
       .map(([number, start, end]) => [Number(number), clamp(Number(start) - fromMs), clamp(Number(end) - fromMs)])
-      .filter(segment => segment.every(Number.isFinite));
+      .filter(segment => segment.every(Number.isFinite) && inFile(segment));
   }
   return [...(words ?? [])].sort((a, b) => a.start - b.start)
-    .map(word => [word.word_index + 1, clamp(word.start * 1000 - fromMs), clamp(word.end * 1000 - fromMs)]);
+    .map(word => [word.word_index + 1, clamp(word.start * 1000 - fromMs), clamp(word.end * 1000 - fromMs)])
+    .filter(inFile);
 }
 
 /**
