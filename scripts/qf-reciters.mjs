@@ -632,6 +632,16 @@ async function confirmJoin(chapter, join) {
   const again = await alignWindow(chapter.pcm, chapter.surah, verses, pair, { whole: 'both' });
   const said = again.bounds.get(verses[join.index - 1].ayah);
   const next = again.bounds.get(verses[join.index].ayah);
+  // Where the Foundation's timing and the aligner's first reading start the ayah together, a reading of the pair
+  // that puts the join there too is a third source, however well it reads its text: Saad al-Ghamdi's 79:35-36,
+  // read 0.44, with 79:35 reading as little alone wherever it is cut.
+  // It only confirms such a join, never moves one.
+  const qfAndAligner = join.qf && Number.isFinite(join.qfStart) && Math.abs(join.nextStart - join.qfStart) <= QF_EXACT_ALIGNER_SEC;
+  const placedAt = at => Boolean(said && next) && said.end <= at + PAIR_SLACK_SEC && next.start >= at - PAIR_SLACK_SEC;
+  if (qfAndAligner && again.agreement > 0 && again.agreement < MIN_AGREEMENT && placedAt(join.at)) {
+    join.confirmed = true;
+    return;
+  }
   const readWell = Boolean(said && next) && again.agreement >= MIN_AGREEMENT && said.end <= next.start + PAIR_SLACK_SEC;
   const fits = at => readWell && said.end <= at + PAIR_SLACK_SEC && next.start >= at - PAIR_SLACK_SEC;
   join.confirmed = fits(join.at);

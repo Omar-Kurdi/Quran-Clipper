@@ -531,7 +531,9 @@ export function chapterProblems({ windows, joins, cuts, duration, db = null, hop
   // Placed by two windows, a join has to be cut alike from both -- unless the Foundation's timings agree with
   // it, when they and the pause settle it however the aligner placed it.
   for (const join of joins) {
-    if (join.secondCut !== undefined && !join.qf && !join.manual && Math.abs(join.secondCut - join.at) > TWICE_CUT_SEC) {
+    // Two cuts in one pause agree, however far apart: Al-Muaiqly's 49:11, 0.18 s apart in one silence.
+    const samePause = inPause(join) && join.secondCut >= join.from - TWICE_CUT_SEC && join.secondCut <= join.until + TWICE_CUT_SEC;
+    if (join.secondCut !== undefined && !join.qf && !join.manual && !samePause && Math.abs(join.secondCut - join.at) > TWICE_CUT_SEC) {
       problems.push(`the join before ayah ${join.ayah} was cut at ${join.at}s from one window and at ${join.secondCut}s from the next`);
     }
   }

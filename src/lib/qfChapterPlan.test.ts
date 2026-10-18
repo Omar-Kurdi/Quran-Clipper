@@ -377,6 +377,12 @@ describe("a chapter cut's second readings", () => {
     ...extra,
   });
 
+  it('takes two windows cutting one pause as agreeing, however far apart (Al-Muaiqly 49:11)', () => {
+    const inVoice = { qf: false, qfInVoice: true, from: 19.86, until: 20.12 };
+    expect(chapterProblems(placed({ joins: [join(2, { ...inVoice, secondCut: 19.82 }), join(3)] }))).toEqual([]);
+    expect(chapterProblems(placed({ joins: [join(2, { ...inVoice, secondCut: 19.4 }), join(3)] }))[0]).toMatch(/from one window/);
+  });
+
   it("trusts no second reading against the Foundation where it mostly fits (Al-Muaiqly 49:12)", () => {
     // 16 of 18 joins agreed; the run-on 49:12, read twice alike, was where the Foundation said it was not.
     const joins = Array.from({ length: 18 }, (_, i) => join(i + 2, i < 16 ? {} : { qf: false }));
