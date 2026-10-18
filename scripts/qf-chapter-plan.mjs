@@ -342,6 +342,30 @@ export function afterOpening({ openingStart = 0, openingEnd, firstStart, db, sil
   return last ?? joinCut({ after: openingEnd - LOOK_ON_SEC, nextStart: firstStart, db, silences, hop });
 }
 
+/**
+ * A cut where someone listening has said an ayah starts
+ * (scripts/qf-manual-cuts.json): in the pause within half a second of it, so
+ * a time read off a player lands in the pause it meant; where there is none --
+ * the reciter runs one ayah into the next, as Al-Ajmy reads 20:1-2 -- at the
+ * quietest point within 0.15 s, the word boundary they heard. Never before
+ * `after`, the cut before it: a pause half a second back can be that one's.
+ */
+export function manualCut({ at, db, silences, after = 0, hop = LEVEL_HOP }) {
+  const quietest = reach => {
+    const lo = Math.max(0, Math.ceil(Math.max(after, at - reach) / hop));
+    const hi = Math.min(db.length - 1, Math.floor((at + reach) / hop));
+    const smooth = smoother(db, lo, hi);
+    let pick = lo;
+    for (let i = lo; i <= hi; i++) if (smooth(i) < smooth(pick)) pick = i;
+    return cutInLull({ db, pick, lo, hi, silences, hop });
+  };
+  const wide = quietest(MANUAL_REACH_SEC);
+  return wide.depth >= PAUSE_DEPTH_DB ? wide : quietest(MANUAL_RUN_ON_SEC);
+}
+
+const MANUAL_REACH_SEC = 0.5;
+const MANUAL_RUN_ON_SEC = 0.15;
+
 /** The first pause from `lo` on, cut at its quietest point. */
 function firstPause({ db, lo, hi, silences, hop }) {
   for (let i = lo; i <= hi; i++) {
@@ -475,8 +499,8 @@ const bySources = (join, qfFits, qfShare) => qfCounts(join) || join.qfInVoice ||
  * never one that reading clearly puts elsewhere (`contradicted`): Saad
  * al-Ghamdi's 80:6 was cut in the pause before 80:5's last word.
  */
-const joinTrusted = (join, qfFits, qfShare) => !join.contradicted &&
-  bySources(join, qfFits, qfShare) && (join.opening || inPause(join) || Boolean(join.confirmed));
+const joinTrusted = (join, qfFits, qfShare) => Boolean(join.manual) || (!join.contradicted &&
+  bySources(join, qfFits, qfShare) && (join.opening || inPause(join) || Boolean(join.confirmed)));
 
 // -- The chapter ----------------------------------------------------------------------------------------------------
 
@@ -494,7 +518,7 @@ const QF_WORDS_SHARE = 0.9;
  * text it was given, every join is trusted, every join two windows placed is
  * cut alike from both, and no ayah is shorter than a word.
  */
-export function chapterProblems({ windows, joins, cuts, duration }) {
+export function chapterProblems({ windows, joins, cuts, duration, db = null, hop = LEVEL_HOP }) {
   const problems = [];
   const qfFits = qfWordsFit(joins);
   const qfShare = joins.length ? joins.filter(join => join.qf).length / joins.length : 0;
@@ -507,16 +531,34 @@ export function chapterProblems({ windows, joins, cuts, duration }) {
   // Placed by two windows, a join has to be cut alike from both -- unless the Foundation's timings agree with
   // it, when they and the pause settle it however the aligner placed it.
   for (const join of joins) {
-    if (join.secondCut !== undefined && !join.qf && Math.abs(join.secondCut - join.at) > TWICE_CUT_SEC) {
+    if (join.secondCut !== undefined && !join.qf && !join.manual && Math.abs(join.secondCut - join.at) > TWICE_CUT_SEC) {
       problems.push(`the join before ayah ${join.ayah} was cut at ${join.at}s from one window and at ${join.secondCut}s from the next`);
     }
   }
   const edges = [...cuts, duration];
   for (let i = 0; i + 1 < edges.length; i++) {
     if (edges[i + 1] - edges[i] < MIN_AYAH_SEC) problems.push(`ayah ${i + 1} would be ${(edges[i + 1] - edges[i]).toFixed(2)}s`);
+    else if (db && !voiced(db, edges[i], edges[i + 1], hop)) problems.push(`ayah ${i + 1} would hold no voice (${edges[i]}-${edges[i + 1]}s)`);
   }
   return problems;
 }
+
+/**
+ * Whether anything is said between two cuts: somewhere louder than a pause
+ * under the recording's voice. Saad al-Ghamdi's 44 has no basmala; its «حمٓ»
+ * was taken for one, and 44:1's file was the pause after it.
+ */
+function voiced(db, from, to, hop) {
+  const floor = speechOf(db) - PAUSE_DEPTH_DB;
+  for (let i = Math.max(0, Math.floor(from / hop)); i < Math.min(db.length, Math.ceil(to / hop)); i++) if (db[i] > floor) return true;
+  return false;
+}
+
+const speechLevels = new WeakMap();
+const speechOf = db => {
+  if (!speechLevels.has(db)) speechLevels.set(db, speechLevel(db));
+  return speechLevels.get(db);
+};
 
 /** Whether the Foundation's word timings are for this recording: its joins agree with the cuts. */
 export const qfWordsFit = joins => joins.length === 0 || joins.filter(join => join.qf).length / joins.length >= QF_WORDS_SHARE;

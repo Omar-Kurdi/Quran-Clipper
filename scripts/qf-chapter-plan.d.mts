@@ -5,7 +5,7 @@ export interface Verse { ayah: number; words: string[] }
 export interface Window { first: number; keep: number; last: number; from: number; to: number; final: boolean }
 export interface AlignedWord { verse_key: string; word_index: number; start: number; end: number }
 export interface Join { at: number; from?: number; until?: number; depth: number; overFloor: number; heard: boolean }
-export interface CheckedJoin extends Join { ayah: number; qf: boolean; confirmed?: boolean; contradicted?: boolean; tangled?: boolean; opening?: boolean; secondCut?: number; qfInVoice?: boolean; qfGap?: number | null; qfStart?: number | null }
+export interface CheckedJoin extends Join { ayah: number; qf: boolean; confirmed?: boolean; contradicted?: boolean; manual?: boolean; tangled?: boolean; opening?: boolean; secondCut?: number; qfInVoice?: boolean; qfGap?: number | null; qfStart?: number | null }
 export interface AyahTiming { timestamp_from: number; timestamp_to: number; segments?: (number | string)[][] }
 export interface ChapterRecord { record_type: string; chapter_id?: number | string | null; audio_url?: string; file_size?: number | string; updated_at?: string | null }
 export interface FreshChapter { file: ChapterRecord | null; ayahs: ChapterRecord[] }
@@ -24,6 +24,7 @@ export declare function inPause(join: Join): boolean;
 export declare function mergedSilences(silences: [number, number][] | undefined): [number, number][];
 interface Levels { db: Float32Array; silences: [number, number][]; hop?: number }
 export declare function joinCut(input: Levels & { after: number; nextStart: number }): Join;
+export declare function manualCut(input: Levels & { at: number; after?: number }): Join;
 export declare function afterOpening(input: Levels & { openingStart?: number; openingEnd: number; firstStart: number }): Join;
 export declare function qfAgrees(join: number | { at: number; from?: number; until?: number }, before: Partial<AyahTiming> | undefined, after: Partial<AyahTiming> | undefined): boolean;
 export declare const MIN_AGREEMENT: number;
@@ -33,6 +34,8 @@ export declare function chapterProblems(placed: {
   joins: CheckedJoin[];
   cuts: number[];
   duration: number;
+  db?: Float32Array | null;
+  hop?: number;
 }): string[];
 export declare function qfWordsFit(joins: CheckedJoin[]): boolean;
 export declare function ayahSegments(input: { fromMs: number; ms: number; qf: AyahTiming | null | undefined; words: AlignedWord[] | undefined }): number[][];

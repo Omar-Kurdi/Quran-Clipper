@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  afterOpening, ayahBounds, ayahSegments, chapterPace, chapterProblems, chapterRecordsBySurah, cutStale, frameAt, framesMs,
+  afterOpening, manualCut, ayahBounds, ayahSegments, chapterPace, chapterProblems, chapterRecordsBySurah, cutStale, frameAt, framesMs,
   inPause, joinCut, levels, mergedSilences, MIN_AGREEMENT, mp3Frames, nextWindow, PAUSE_DEPTH_DB, qfAgrees, qfWordsFit, speechLevel,
 } from '../../scripts/qf-chapter-plan.mjs';
 
@@ -218,6 +218,25 @@ describe('the first ayah', () => {
   });
 });
 
+describe('cuts someone has listened for', () => {
+  it("cuts where someone listening says an ayah starts, in the quietest point near it (Al-Ajmy 33)", () => {
+    // Told 2 s; the break after his basmala is 1.8-2.1 s.
+    const db = track(6, [1.8, 2.1, -40]);
+    const join = manualCut({ at: 2, db, silences: [] });
+    expect(join.at).toBeGreaterThanOrEqual(1.8);
+    expect(join.at).toBeLessThanOrEqual(2.1);
+  });
+
+  it('cuts a run-on where the listener heard it, not in the pause of the cut before (Al-Ajmy 20:1-2)', () => {
+    // «طه» from 3.8 s, run straight into ayah 2 at about 4.7 s; the pause after the basmala is 3.48-3.80 s.
+    const db = track(8, [3.48, 3.8, -40], [4.66, 4.72, -22]);
+    const first = manualCut({ at: 3.63, db, silences: [] });
+    const second = manualCut({ at: 4.7, after: first.at + 0.3, db, silences: [] });
+    expect(second.at).toBeGreaterThan(4.55);
+    expect(second.at).toBeLessThan(4.85);
+  });
+});
+
 describe('the windows a chapter is aligned in', () => {
   const verse = (ayah: number, letters: number) => ({ ayah, words: ['ب'.repeat(letters)] });
   const verses = Array.from({ length: 40 }, (_, i) => verse(i + 1, 50));
@@ -273,6 +292,18 @@ describe('a chapter cut', () => {
       "the join before ayah 3 (30s) is not where the Foundation's timings put it, nor a pause or a second reading the aligner's alone stands on"]);
     expect(chapterProblems(placed({ joins: [join(2, { depth: 8, confirmed: true }), join(3, { heard: false, confirmed: true })] }))).toEqual([]);
     expect(chapterProblems(placed({ joins: [join(1, { opening: true, qf: false }), join(2), join(3)] }))).toEqual([]);
+  });
+
+  it('is not kept where an ayah would hold no voice (Saad al-Ghamdi 44)', () => {
+    // No basmala: his «حمٓ» was taken for one, and ayah 1 cut out of the pause after it.
+    const db = track(40, [3.7, 4.7, -40]);
+    const joins = [join(1, { opening: true, at: 3.95 }), join(2, { at: 4.52 }), join(3)];
+    expect(chapterProblems(placed({ joins, cuts: [3.95, 4.52, 30], db }))).toEqual(['ayah 1 would hold no voice (3.95-4.52s)']);
+    expect(chapterProblems(placed({ joins, cuts: [3.95, 20, 30], db }))).toEqual([]);
+  });
+
+  it('keeps a join someone has listened for as it is', () => {
+    expect(chapterProblems(placed({ joins: [join(1, { opening: true, qf: false, depth: 1, manual: true }), join(2), join(3)] }))).toEqual([]);
   });
 
   it('keeps an opening run straight on only where the reading of it and the first ayah alone confirms it (Al-Ajmy)', () => {

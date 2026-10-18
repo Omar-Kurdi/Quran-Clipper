@@ -53,7 +53,7 @@ import { promisify } from 'node:util';
 import { apiPath, chapterStale, mutationPlan, normalSegments, recordsBySurah, syncDue, withSources } from './qf-sync-plan.mjs';
 import {
   afterOpening, ayahBounds, ayahSegments, chapterPace, chapterProblems, chapterRecordsBySurah, cutStale, frameAt, framesMs, joinCut, levels,
-  inPause, mergedSilences, MIN_AGREEMENT, MIN_AYAH_SEC, mp3Frames, SEPARATE_LETTERS, nextWindow, qfAgrees, qfGap, qfWordsFit,
+  inPause, manualCut, mergedSilences, MIN_AGREEMENT, MIN_AYAH_SEC, mp3Frames, SEPARATE_LETTERS, nextWindow, qfAgrees, qfGap, qfWordsFit,
 } from './qf-chapter-plan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -878,6 +878,39 @@ async function readRecording(url, source) {
 }
 
 /**
+ * Where ayahs start that someone has listened for, by reciter and surah:
+ * scripts/qf-manual-cuts.json, `{ chapterId: { surah: { ayah: seconds } } }`,
+ * for joins neither the aligner nor the Foundation's timings place -- Al-Ajmy's
+ * 56 opens with the surah's name and the basmala in another voice.
+ */
+const manualCuts = (chapterId, surah) => {
+  try {
+    return JSON.parse(readFileSync(path.join(ROOT, 'scripts', 'qf-manual-cuts.json'), 'utf8'))[chapterId]?.[surah] ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/** The cuts someone listened for put in, each join trusted as it is (`manual`). */
+function withManualCuts(placed, manual) {
+  // In order, so each is looked for after the one before.
+  const entries = Object.entries(manual ?? {}).sort(([a], [b]) => Number(a) - Number(b));
+  for (const [key, seconds] of entries) {
+    const index = placed.verses.findIndex(verse => verse.ayah === Number(key));
+    if (index < 0 || !Number.isFinite(seconds)) continue;
+    const after = index > 0 ? placed.cuts[index - 1] + MIN_AYAH_SEC : 0;
+    const cut = manualCut({ at: seconds, after, db: placed.db, silences: [] });
+    let join = placed.joins.find(join => join.ayah === Number(key) && Boolean(join.opening) === (index === 0));
+    if (!join) {
+      join = { ayah: Number(key), opening: index === 0 || undefined, index: index || undefined, cut: index };
+      placed.joins.push(join);
+    }
+    Object.assign(join, cut, { manual: true });
+    placed.cuts[index] = cut.at;
+  }
+}
+
+/**
  * Chapter reciters on trial whose first ayah's file keeps the basmala where
  * the cut after it cannot be placed: Al-Ajmy runs his basmala straight into
  * the first ayah, letters said by name included, and neither the aligner nor
@@ -886,9 +919,10 @@ async function readRecording(url, source) {
 const BASMALA_WITH_FIRST_AYAH = new Set([19]);
 
 /** Every ayah placed, and why the cut cannot be kept, if it cannot: an ayah no reading placed is a refusal too, kept so it is not tried again for nothing. */
-async function placeOrRefuse(pcm, surah, verses, timings, { basmalaWithFirstAyah = false } = {}) {
+async function placeOrRefuse(pcm, surah, verses, timings, { basmalaWithFirstAyah = false, manual = null } = {}) {
   try {
     const placed = await placeAyahs(pcm, surah, verses, timings);
+    withManualCuts(placed, manual);
     const problems = chapterProblems(placed);
     // Where the cut after the opening is all that is wrong, a reciter on trial keeps the opening in the first
     // ayah's file rather than lose the surah (`BASMALA_WITH_FIRST_AYAH`); `checked.basmalaKept` marks it.
@@ -926,7 +960,9 @@ async function cutChapter(reciter, surah, fresh = null) {
       url: listing.file.audio_url, size: Number(listing.file.file_size), updatedAt: listing.file.updated_at, cutAt: new Date().toISOString(),
       transcoded,
     };
-    const { placed, problems } = await placeOrRefuse(pcm, surah, verses, timings, { basmalaWithFirstAyah: BASMALA_WITH_FIRST_AYAH.has(reciter.chapterId) });
+    const { placed, problems } = await placeOrRefuse(pcm, surah, verses, timings, {
+      basmalaWithFirstAyah: BASMALA_WITH_FIRST_AYAH.has(reciter.chapterId), manual: manualCuts(reciter.chapterId, surah),
+    });
     if (problems.length) {
       await writeFile(rejectedFile(folder, surah), JSON.stringify({
         chapterId: reciter.chapterId, surah, source: sourceInfo, problems, joins: placed.joins, windows: placed.windows, openings: placed.openings,
@@ -990,6 +1026,7 @@ async function writeAyahs({ dir, surah, bytes, parsed, placed, timings, source }
       movedToQf: placed.joins.filter(join => join.recutAtQf).map(join => join.ayah),
       movedByPair: placed.joins.filter(join => join.movedByPair).map(join => join.ayah),
       basmalaKept: Boolean(placed.basmalaKept),
+      manual: placed.joins.filter(join => join.manual).map(join => join.ayah),
       judged: placed.joins.filter(join => join.judged).map(join => join.ayah),
       qfInVoice: placed.joins.filter(join => join.qfInVoice).map(join => join.ayah),
     },
