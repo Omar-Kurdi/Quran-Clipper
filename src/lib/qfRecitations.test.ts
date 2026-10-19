@@ -111,3 +111,30 @@ describe('a chapter reciter on a public studio', () => {
     await expect(qfPassage('qfc-159', 5, 1, 3)).rejects.toThrow(/could not be cut ayah by ayah exactly/);
   });
 });
+
+describe('a chapter reciter surah with an unsure join', () => {
+  const saved = process.env.QC_QF_AUDIO_DIR;
+  let dir = '';
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'qc-qf-'));
+    mkdirSync(path.join(dir, 'c19'));
+    process.env.QC_QF_AUDIO_DIR = dir;
+    // The join before 74:3 was cut where nothing stands by it.
+    writeFileSync(path.join(dir, 'c19', '074.json'), JSON.stringify({ surah: 74, timing: 'qf', unsure: [{ ayah: 3, reasons: ['two readings'] }],
+      ayahs: [1, 2, 3, 4].map(ayah => ({ ayah, file: `07400${ayah}.mp3`, ms: 2000, segments: [[1, 100, 900]] })) }));
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.QC_QF_AUDIO_DIR;
+    else process.env.QC_QF_AUDIO_DIR = saved;
+  });
+
+  it('offers a passage holding both ayahs either side, as the recording is', async () => {
+    expect((await qfPassage('qfc-19', 74, 1, 4))?.totalSeconds).toBe(8);
+    expect((await qfPassage('qfc-19', 74, 2, 3))?.totalSeconds).toBe(4);
+  });
+
+  it('offers none starting or ending at it, and says where to start or end instead', async () => {
+    await expect(qfPassage('qfc-19', 74, 3, 4)).rejects.toThrow(/74:3 cannot start a passage yet.*Start at 74:2/);
+    await expect(qfPassage('qfc-19', 74, 1, 2)).rejects.toThrow(/74:2 cannot end a passage yet.*End at 74:3/);
+  });
+});

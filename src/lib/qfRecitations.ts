@@ -70,6 +70,15 @@ const folderOf = (reciter: QfReciter) => (reciter.chapterId ? `c${reciter.chapte
 /** A surah of a chapter reciter that could not be cut ayah by ayah exactly, and so is not offered. */
 export class QfSurahUnavailable extends Error {}
 
+/**
+ * A passage starting or ending where a chapter reciter's surah was cut at a
+ * join nothing stands by (`unsure` in its chapter file): the ayahs either side
+ * are offered together, but not one without the other.
+ */
+export class QfPassageEdgeUnsure extends QfSurahUnavailable {}
+
+interface UnsureJoin { ayah: number; reasons: string[] }
+
 const fetching = new Map<string, Promise<void>>();
 
 const unavailable = (reciter: QfReciter, surah: number) =>
@@ -80,7 +89,7 @@ const unavailable = (reciter: QfReciter, surah: number) =>
  * chapter reciter's surah is cut by the aligner as well, which takes minutes
  * for a long one.
  */
-async function chapter(reciter: QfReciter, surah: number): Promise<{ ayahs: ChapterAyah[]; words: QfPassage['words'] }> {
+async function chapter(reciter: QfReciter, surah: number): Promise<{ ayahs: ChapterAyah[]; words: QfPassage['words']; unsure: UnsureJoin[] }> {
   const folder = path.join(audioDir(), folderOf(reciter));
   const file = path.join(folder, `${pad(surah)}.json`);
   if (!existsSync(file)) {
@@ -106,7 +115,8 @@ async function chapter(reciter: QfReciter, surah: number): Promise<{ ayahs: Chap
   }
   const data = JSON.parse(readFileSync(file, 'utf8'));
   // A cut chapter says whose word timings it kept (scripts/qf-reciters.mjs, `writeAyahs`).
-  return { ayahs: chapterAyahs(data, file), words: data?.timing === 'aligner' ? 'cut' : 'qf' };
+  const unsure = Array.isArray(data?.unsure) ? (data.unsure as UnsureJoin[]).filter(join => Number.isInteger(join?.ayah)) : [];
+  return { ayahs: chapterAyahs(data, file), words: data?.timing === 'aligner' ? 'cut' : 'qf', unsure };
 }
 
 /** A chapter file's ayahs, checked: one written by another version of the download script is refused, not misread. */
@@ -128,11 +138,24 @@ export interface QfPassage {
   words: 'qf' | 'cut';
 }
 
+/** The unsure join a passage would start or end at, if any: the one before its first ayah, or after its last. */
+export const unsureEdge = (unsure: UnsureJoin[], start: number, end: number): UnsureJoin | undefined =>
+  unsure.find(join => join.ayah === start) ?? unsure.find(join => join.ayah === end + 1);
+
+const unsureMessage = (reciter: QfReciter, surah: number, edge: UnsureJoin, start: number, end: number) =>
+  edge.ayah === start
+    ? (start > 1
+      ? `${reciter.name}'s ${surah}:${start} cannot start a passage yet: where it starts in the recording is not certain. Start at ${surah}:${start - 1}.`
+      : `${reciter.name}'s ${surah}:1 cannot start a passage yet: where the opening ends in the recording is not certain. Choose another reciter for it.`)
+    : `${reciter.name}'s ${surah}:${end} cannot end a passage yet: where it ends in the recording is not certain. End at ${surah}:${end + 1}.`;
+
 /** Where each ayah of `start`-`end` lies in the passage's stitched file. */
 export async function qfPassage(reciterId: string, surah: number, start: number, end: number): Promise<QfPassage | null> {
   const reciter = qfReciter(reciterId);
   if (!reciter) return null;
-  const { ayahs: all, words } = await chapter(reciter, surah);
+  const { ayahs: all, words, unsure } = await chapter(reciter, surah);
+  const edge = unsureEdge(unsure, start, end);
+  if (edge) throw new QfPassageEdgeUnsure(unsureMessage(reciter, surah, edge, start, end));
   const ayahs = all.filter(entry => entry.ayah >= start && entry.ayah <= end);
   if (ayahs.length !== end - start + 1) return null;
   let at = 0;

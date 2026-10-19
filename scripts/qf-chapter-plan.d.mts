@@ -24,19 +24,22 @@ export declare function inPause(join: Join): boolean;
 export declare function mergedSilences(silences: [number, number][] | undefined): [number, number][];
 interface Levels { db: Float32Array; silences: [number, number][]; hop?: number }
 export declare function joinCut(input: Levels & { after: number; nextStart: number }): Join;
+export declare function qfDrift(joins: CheckedJoin[], qfStarts: Map<number, number>): Map<number, number>;
 export declare function manualCut(input: Levels & { at: number; after?: number }): Join;
 export declare function afterOpening(input: Levels & { openingStart?: number; openingEnd: number; firstStart: number }): Join;
 export declare function qfAgrees(join: number | { at: number; from?: number; until?: number }, before: Partial<AyahTiming> | undefined, after: Partial<AyahTiming> | undefined): boolean;
 export declare const MIN_AGREEMENT: number;
 export declare const MIN_AYAH_SEC: number;
-export declare function chapterProblems(placed: {
+export interface PlacedChapter {
   windows: { from: number; to: number; agreement: number | null }[];
   joins: CheckedJoin[];
   cuts: number[];
   duration: number;
   db?: Float32Array | null;
   hop?: number;
-}): string[];
+}
+export declare function chapterProblems(placed: PlacedChapter): string[];
+export declare function chapterVerdict(placed: PlacedChapter): { fatal: string[]; unsure: { ayah: number; reasons: string[] }[] };
 export declare function qfWordsFit(joins: CheckedJoin[]): boolean;
 export declare function ayahSegments(input: { fromMs: number; ms: number; qf: AyahTiming | null | undefined; words: AlignedWord[] | undefined }): number[][];
 export declare function chapterRecordsBySurah(records: ChapterRecord[] | undefined): Map<number, FreshChapter>;

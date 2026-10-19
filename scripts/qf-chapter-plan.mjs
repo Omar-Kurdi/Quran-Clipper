@@ -518,15 +518,44 @@ const QF_WORDS_SHARE = 0.9;
  * text it was given, every join is trusted, every join two windows placed is
  * cut alike from both, and no ayah is shorter than a word.
  */
-export function chapterProblems({ windows, joins, cuts, duration, db = null, hop = LEVEL_HOP }) {
-  const problems = [];
+export function chapterProblems(placed) {
+  return chapterChecks(placed).map(check => check.problem);
+}
+
+/**
+ * What `chapterProblems` finds, sorted: `fatal`, for which the surah is not
+ * offered -- a stretch the aligner did not read, an ayah with no length or no
+ * voice -- and `unsure`, the joins nothing stands by, by ayah, with why. The
+ * ayahs either side of an unsure join are still cut, and a passage holding
+ * both plays the recording as it is; only one starting or ending there cannot
+ * be offered.
+ */
+export function chapterVerdict(placed) {
+  const checks = chapterChecks(placed);
+  const unsure = new Map();
+  for (const check of checks.filter(check => check.ayah !== undefined)) {
+    unsure.set(check.ayah, [...(unsure.get(check.ayah) ?? []), check.reason]);
+  }
+  return {
+    fatal: checks.filter(check => check.ayah === undefined).map(check => check.problem),
+    unsure: [...unsure].sort(([a], [b]) => a - b).map(([ayah, reasons]) => ({ ayah, reasons })),
+  };
+}
+
+function chapterChecks({ windows, joins, cuts, duration, db = null, hop = LEVEL_HOP }) {
+  const checks = [];
   const qfFits = qfWordsFit(joins);
   const qfShare = joins.length ? joins.filter(join => join.qf).length / joins.length : 0;
   for (const window of windows) {
-    if (!(window.agreement >= MIN_AGREEMENT)) problems.push(`${window.from.toFixed(1)}-${window.to.toFixed(1)}s read ${window.agreement ?? 'nothing'} of its text`);
+    if (!(window.agreement >= MIN_AGREEMENT)) checks.push({ problem: `${window.from.toFixed(1)}-${window.to.toFixed(1)}s read ${window.agreement ?? 'nothing'} of its text` });
   }
   for (const join of joins) {
-    if (!joinTrusted(join, qfFits, qfShare)) problems.push(`the join before ayah ${join.ayah} (${join.at}s) is not where the Foundation's timings put it, nor a pause or a second reading the aligner's alone stands on`);
+    if (!joinTrusted(join, qfFits, qfShare)) {
+      checks.push({
+        ayah: join.ayah, reason: `cut at ${join.at}s, where neither the Foundation's timings nor a pause or a second reading put it`,
+        problem: `the join before ayah ${join.ayah} (${join.at}s) is not where the Foundation's timings put it, nor a pause or a second reading the aligner's alone stands on`,
+      });
+    }
   }
   // Placed by two windows, a join has to be cut alike from both -- unless the Foundation's timings agree with
   // it, when they and the pause settle it however the aligner placed it.
@@ -534,15 +563,18 @@ export function chapterProblems({ windows, joins, cuts, duration, db = null, hop
     // Two cuts in one pause agree, however far apart: Al-Muaiqly's 49:11, 0.18 s apart in one silence.
     const samePause = inPause(join) && join.secondCut >= join.from - TWICE_CUT_SEC && join.secondCut <= join.until + TWICE_CUT_SEC;
     if (join.secondCut !== undefined && !join.qf && !join.manual && !samePause && Math.abs(join.secondCut - join.at) > TWICE_CUT_SEC) {
-      problems.push(`the join before ayah ${join.ayah} was cut at ${join.at}s from one window and at ${join.secondCut}s from the next`);
+      checks.push({
+        ayah: join.ayah, reason: `two readings cut it at ${join.at}s and ${join.secondCut}s`,
+        problem: `the join before ayah ${join.ayah} was cut at ${join.at}s from one window and at ${join.secondCut}s from the next`,
+      });
     }
   }
   const edges = [...cuts, duration];
   for (let i = 0; i + 1 < edges.length; i++) {
-    if (edges[i + 1] - edges[i] < MIN_AYAH_SEC) problems.push(`ayah ${i + 1} would be ${(edges[i + 1] - edges[i]).toFixed(2)}s`);
-    else if (db && !voiced(db, edges[i], edges[i + 1], hop)) problems.push(`ayah ${i + 1} would hold no voice (${edges[i]}-${edges[i + 1]}s)`);
+    if (edges[i + 1] - edges[i] < MIN_AYAH_SEC) checks.push({ problem: `ayah ${i + 1} would be ${(edges[i + 1] - edges[i]).toFixed(2)}s` });
+    else if (db && !voiced(db, edges[i], edges[i + 1], hop)) checks.push({ problem: `ayah ${i + 1} would hold no voice (${edges[i]}-${edges[i + 1]}s)` });
   }
-  return problems;
+  return checks;
 }
 
 /**
@@ -561,6 +593,29 @@ const speechOf = db => {
   if (!speechLevels.has(db)) speechLevels.set(db, speechLevel(db));
   return speechLevels.get(db);
 };
+
+/**
+ * How far the Foundation's timings run from this recording, ayah by ayah, in
+ * seconds: the median of where they start the ayahs after the nearest joins
+ * that are pauses, less where those pauses are -- 0 where that is under
+ * `QF_DRIFT_MIN_SEC`. Its timings for some of Al-Ajmy's recordings are of
+ * another edit of them, running on in step and then jumping (74:28, 39 s on).
+ */
+export function qfDrift(joins, qfStarts) {
+  const anchors = joins.filter(join => !join.opening && inPause(join) && Number.isFinite(qfStarts.get(join.ayah)))
+    .map(join => ({ at: join.at, off: qfStarts.get(join.ayah) - join.at }));
+  const drift = new Map();
+  for (const join of joins.filter(join => !join.opening)) {
+    const near = [...anchors].sort((a, b) => Math.abs(a.at - join.at) - Math.abs(b.at - join.at)).slice(0, QF_DRIFT_ANCHORS)
+      .map(anchor => anchor.off).sort((a, b) => a - b);
+    const off = near.length ? near[Math.floor(near.length / 2)] : 0;
+    drift.set(join.ayah, Math.abs(off) >= QF_DRIFT_MIN_SEC ? off : 0);
+  }
+  return drift;
+}
+
+const QF_DRIFT_ANCHORS = 5;
+const QF_DRIFT_MIN_SEC = 1.5;
 
 /** Whether the Foundation's word timings are for this recording: its joins agree with the cuts. */
 export const qfWordsFit = joins => joins.length === 0 || joins.filter(join => join.qf).length / joins.length >= QF_WORDS_SHARE;

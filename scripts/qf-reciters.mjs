@@ -52,8 +52,8 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { apiPath, chapterStale, mutationPlan, normalSegments, recordsBySurah, syncDue, withSources } from './qf-sync-plan.mjs';
 import {
-  afterOpening, ayahBounds, ayahSegments, chapterPace, chapterProblems, chapterRecordsBySurah, cutStale, frameAt, framesMs, joinCut, levels,
-  inPause, manualCut, mergedSilences, MIN_AGREEMENT, MIN_AYAH_SEC, mp3Frames, SEPARATE_LETTERS, nextWindow, qfAgrees, qfGap, qfWordsFit,
+  afterOpening, ayahBounds, ayahSegments, chapterPace, chapterProblems, chapterRecordsBySurah, chapterVerdict, cutStale, frameAt, framesMs, joinCut, levels,
+  inPause, manualCut, mergedSilences, qfDrift, MIN_AGREEMENT, MIN_AYAH_SEC, mp3Frames, SEPARATE_LETTERS, nextWindow, qfAgrees, qfGap, qfWordsFit,
 } from './qf-chapter-plan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -446,6 +446,20 @@ async function alignWindow(pcm, surah, verses, window, { basmala = false, whole:
   };
 }
 
+/**
+ * A reading made only to check a join, or nothing where the aligner cannot
+ * make it: a check that fails leaves the join unconfirmed, the surah still
+ * cut (Al-Ajmy's 75, a stretch of 0.5 s too short for its text).
+ */
+async function readOrNothing(...args) {
+  try {
+    return await alignWindow(...args);
+  } catch (err) {
+    if (/the aligner refused/.test(err.message)) return null;
+    throw err;
+  }
+}
+
 /** Whether the alignment service is up and can align. */
 async function aligner() {
   if (!asr()) return false;
@@ -629,7 +643,8 @@ async function confirmJoin(chapter, join) {
   const pair = { first: join.index - 1, last: join.index, from: cuts[join.index - 1], to: cuts[join.index + 1] ?? chapter.duration };
   // Cuts out of order are refused by `chapterProblems`; there is nothing to read between them.
   if (!(pair.from < join.at && join.at < pair.to)) return;
-  const again = await alignWindow(chapter.pcm, chapter.surah, verses, pair, { whole: 'both' });
+  const again = await readOrNothing(chapter.pcm, chapter.surah, verses, pair, { whole: 'both' });
+  if (!again) return;
   const said = again.bounds.get(verses[join.index - 1].ayah);
   const next = again.bounds.get(verses[join.index].ayah);
   // Where the Foundation's timing and the aligner's first reading start the ayah together, a reading of the pair
@@ -684,7 +699,8 @@ async function readsAlone(chapter, join, at) {
     { first: join.index, last: join.index, from: at, to: cuts[join.index + 1] ?? chapter.duration }];
   // A cut outside the ayahs either side makes no files to read: Al-Ajmy's 44 had the Foundation's past the next cut.
   if (!parts.every(part => part.to - part.from >= MIN_AYAH_SEC)) return 0;
-  const reads = await Promise.all(parts.map(part => alignWindow(chapter.pcm, chapter.surah, verses, part, { whole: 'both' })));
+  const reads = await Promise.all(parts.map(part => readOrNothing(chapter.pcm, chapter.surah, verses, part, { whole: 'both' })));
+  if (reads.some(read => !read)) return 0;
   return Math.min(...reads.map((read, i) => read.bounds.has(verses[join.index - 1 + i].ayah) ? read.agreement ?? 0 : 0));
 }
 
@@ -696,13 +712,20 @@ async function readsAlone(chapter, join, at) {
  * 1.0 and 0.89, the right cut 1.0 and 1.0 -- so how a cut reads alone never
  * keeps a join by itself.
  */
-async function judgeJoin(chapter, join) {
+async function judgeJoin(chapter, join, margin) {
   const [here, atQf] = await Promise.all([readsAlone(chapter, join, join.at), readsAlone(chapter, join, join.qfCut.at)]);
   if (process.env.QC_CUT_DEBUG) console.error(`  judge ${join.ayah}: ${join.at} reads ${here}, the Foundation's ${join.qfCut.at} ${atQf}`);
-  if (atQf < MIN_AGREEMENT || atQf < here + JUDGE_MARGIN) return;
+  if (atQf < MIN_AGREEMENT || atQf < here + margin) return;
   Object.assign(join, join.qfCut, { qf: true, confirmed: true, judged: true, recutAtQf: true });
   chapter.cuts[join.cut] = join.at;
 }
+
+/**
+ * Where the Foundation agrees with nearly every join, or the aligner tangled
+ * the two ayahs, the Foundation's cut is taken when its files read as well;
+ * elsewhere they must read clearly better (`JUDGE_MARGIN`).
+ */
+const QF_ALMOST_ALL = 0.95;
 
 /** How much better the files at the Foundation's cut must read alone than at the aligner's for the join to move there. */
 const JUDGE_MARGIN = 0.15;
@@ -719,7 +742,8 @@ async function confirmOpening(chapter, join) {
   if (SEPARATE_LETTERS.has(`${chapter.surah}:${chapter.verses[0].ayah}`)) return;
   const window = { first: 0, last: 0, from: 0, to: chapter.cuts[1] ?? chapter.duration };
   if (!(join.at < window.to)) return;
-  const again = await alignWindow(chapter.pcm, chapter.surah, chapter.verses, window, { basmala: true, whole: 'end' });
+  const again = await readOrNothing(chapter.pcm, chapter.surah, chapter.verses, window, { basmala: true, whole: 'end' });
+  if (!again) return;
   const basmala = again.openings.find(opening => opening.kind === 'basmala');
   const first = again.bounds.get(chapter.verses[0].ayah);
   join.confirmed = Boolean(basmala && first) && basmala.end <= join.at + PAIR_SLACK_SEC && first.start >= join.at - PAIR_SLACK_SEC &&
@@ -786,6 +810,11 @@ function recutAtQf(chapter, join) {
   const lastWord = Number(before.segments?.at(-1)?.[2]);
   const closes = Math.min(before.timestamp_to, Number.isFinite(lastWord) ? lastWord : Infinity) / 1000;
   const recut = joinCut({ after: Math.max(before.timestamp_from / 1000 + 0.3, closes - 0.35), nextStart, db: chapter.db, silences: join.silences });
+  // Never past the cuts either side: the Foundation's timings, moved back into step (`withQfDrift`), can still
+  // be of another stretch -- Al-Ajmy's 44:47 was moved 36 s back, before 44:46.
+  const lo = chapter.cuts[join.index - 1] + MIN_AYAH_SEC;
+  const hi = (chapter.cuts[join.index + 1] ?? chapter.duration) - MIN_AYAH_SEC;
+  if (!(recut.at > lo && recut.at < hi)) return;
   if (process.env.QC_CUT_DEBUG) console.error(`  qf ${join.ayah}: closes ${closes} starts ${nextStart} recut ${JSON.stringify({ at: recut.at, from: recut.from, until: recut.until, depth: recut.depth })} pause ${inPause(recut)}`);
   // The pause just before where the Foundation starts the next ayah: its starts run late as well as early
   // (Al-Muaiqly's 68:12 a second after the pause that ends at 105.7 s).
@@ -814,6 +843,36 @@ function recutAtQf(chapter, join) {
 }
 
 /**
+ * The Foundation's timings moved back into step with the recording where they
+ * have drifted (`qfDrift`), and every join judged against them again: from
+ * here on they are this recording's.
+ */
+function withQfDrift(chapter) {
+  const starts = new Map([...chapter.qf].map(([ayah, timing]) => [ayah, timing.timestamp_from / 1000]));
+  const drift = qfDrift(chapter.joins, starts);
+  if (![...drift.values()].some(Boolean)) return;
+  // The first ayah's timing moves with the second's.
+  const firstAyah = chapter.verses[0].ayah;
+  const shiftOf = ayah => drift.get(ayah) ?? (ayah === firstAyah ? drift.get(chapter.verses[1]?.ayah) ?? 0 : 0);
+  chapter.qf = new Map([...chapter.qf].map(([ayah, timing]) => {
+    const ms = shiftOf(ayah) * 1000;
+    if (!ms) return [ayah, timing];
+    return [ayah, {
+      ...timing, timestamp_from: timing.timestamp_from - ms, timestamp_to: timing.timestamp_to - ms,
+      segments: (timing.segments ?? []).map(([number, start, end, ...rest]) => [number, Number(start) - ms, Number(end) - ms, ...rest]),
+    }];
+  }));
+  for (const join of chapter.joins.filter(join => !join.opening)) {
+    const before = chapter.qf.get(chapter.verses[join.index - 1]?.ayah);
+    const after = chapter.qf.get(join.ayah);
+    Object.assign(join, {
+      qf: qfAgrees(join, before, after), qfGap: qfGap(before, after), qfStart: after ? after.timestamp_from / 1000 : null,
+      qfDrift: drift.get(join.ayah) || undefined,
+    });
+  }
+}
+
+/**
  * Every ayah of one recording placed by the aligner, a window at a time, and
  * every join cut (`joinCut`): `{ cuts, joins, windows, starts, words, ... }`,
  * cuts in seconds with the first ayah's start first.
@@ -829,6 +888,7 @@ async function placeAyahs(pcm, surah, verses, timings) {
     steppedBack: new Set(),
   };
   await placeFrom(chapter, 0, 0);
+  withQfDrift(chapter);
   for (const join of chapter.joins) secondCut(chapter, join);
   if (qfWordsFit(chapter.joins)) {
     firstAtQf(chapter);
@@ -842,8 +902,10 @@ async function placeAyahs(pcm, surah, verses, timings) {
   const opening = chapter.joins.find(join => join.opening);
   if (opening && !inPause(opening) && !opening.qf) await confirmOpening(chapter, opening);
   // Then a join the Foundation puts elsewhere is moved there where its two files read clearly better alone.
-  await Promise.all(chapter.joins.filter(join => join.index !== undefined && !join.tangled && !join.contradicted && !join.qfInVoice &&
-    !join.qf && join.qfCut).map(join => judgeJoin(chapter, join)));
+  // A tangled join among them too: the aligner's reading there is the one in doubt.
+  const qfShare = chapter.joins.filter(join => join.qf).length / Math.max(1, chapter.joins.length);
+  await Promise.all(chapter.joins.filter(join => join.index !== undefined && !join.contradicted && !join.qfInVoice &&
+    !join.qf && join.qfCut).map(join => judgeJoin(chapter, join, join.tangled || qfShare >= QF_ALMOST_ALL ? 0 : JUDGE_MARGIN)));
   for (const join of chapter.joins) delete join.qfCut;
   for (const join of chapter.joins) delete join.silences;
   return chapter;
@@ -894,6 +956,8 @@ async function readRecording(url, source) {
  * 56 opens with the surah's name and the basmala in another voice.
  */
 const manualCuts = (chapterId, surah) => {
+  // QC_NO_MANUAL=1 cuts without them, to see what the cutter finds by itself.
+  if (process.env.QC_NO_MANUAL) return null;
   try {
     return JSON.parse(readFileSync(path.join(ROOT, 'scripts', 'qf-manual-cuts.json'), 'utf8'))[chapterId]?.[surah] ?? null;
   } catch {
@@ -950,6 +1014,20 @@ async function placeOrRefuse(pcm, surah, verses, timings, { basmalaWithFirstAyah
   }
 }
 
+/**
+ * Every unsure join of a reciter's surahs in one file, unsure.json beside
+ * them, `{ surah: [{ ayah, reasons }] }`: what to listen to, and give a cut
+ * for in scripts/qf-manual-cuts.json.
+ */
+async function listUnsure(dir) {
+  const names = (await readdir(dir)).filter(name => /^\d{3}\.json$/.test(name)).sort();
+  const chapters = await Promise.all(names.map(async name => [Number(name.slice(0, 3)), JSON.parse(await readFile(path.join(dir, name), 'utf8')).unsure]));
+  const list = Object.fromEntries(chapters.filter(([, unsure]) => unsure?.length));
+  const file = path.join(dir, 'unsure.json');
+  if (Object.keys(list).length) await writeFile(file, `${JSON.stringify(list, null, 1)}\n`);
+  else await rm(file, { force: true });
+}
+
 async function cutChapter(reciter, surah, fresh = null) {
   const folder = dirOf(reciter);
   if (existsSync(chapterFile(folder, surah))) return true;
@@ -973,14 +1051,19 @@ async function cutChapter(reciter, surah, fresh = null) {
     const { placed, problems } = await placeOrRefuse(pcm, surah, verses, timings, {
       basmalaWithFirstAyah: BASMALA_WITH_FIRST_AYAH.has(reciter.chapterId), manual: manualCuts(reciter.chapterId, surah),
     });
-    if (problems.length) {
+    // A join nothing stands by leaves the surah offered, all but a passage starting or ending at it (`unsure`);
+    // only a problem of the whole -- a stretch not read, an ayah with no voice -- keeps it from being offered.
+    const { fatal, unsure } = placed.joins ? chapterVerdict(placed) : { fatal: problems, unsure: [] };
+    if (fatal.length) {
       await writeFile(rejectedFile(folder, surah), JSON.stringify({
         chapterId: reciter.chapterId, surah, source: sourceInfo, problems, joins: placed.joins, windows: placed.windows, openings: placed.openings,
       }, null, 1));
-      throw new Error(`not offered ayah by ayah: ${problems.slice(0, 2).join('; ')}${problems.length > 2 ? ` (and ${problems.length - 2} more)` : ''}`);
+      throw new Error(`not offered ayah by ayah: ${fatal.slice(0, 2).join('; ')}${fatal.length > 2 ? ` (and ${fatal.length - 2} more)` : ''}`);
     }
-    await writeFile(chapterFile(folder, surah), JSON.stringify(await writeAyahs({ dir, surah, bytes, parsed, placed, timings, source: sourceInfo })));
+    const written = await writeAyahs({ dir, surah, bytes, parsed, placed, timings, source: sourceInfo });
+    await writeFile(chapterFile(folder, surah), JSON.stringify(unsure.length ? { ...written, unsure } : written));
     await rm(rejectedFile(folder, surah), { force: true });
+    await listUnsure(dir);
     return true;
   } finally {
     await rm(source, { force: true });
@@ -996,7 +1079,7 @@ async function writeAyahs({ dir, surah, bytes, parsed, placed, timings, source }
   const frameOf = seconds => Math.min(parsed.frames.length, frameAt(seconds, parsed.rate, parsed.samples));
   const edges = [...placed.cuts.map(frameOf), parsed.frames.length];
   const useQf = qfWordsFit(placed.joins);
-  const qf = new Map(timings.map(timing => [timing.ayah, timing]));
+  const qf = placed.qf ?? new Map(timings.map(timing => [timing.ayah, timing]));
   // An ayah either side of a join the Foundation put in the reciter's voice keeps the aligner's words:
   // its timings there are for another division of the recording (Saad al-Ghamdi recites 23:102 twice,
   // and the Foundation's 23:103 starts at the repeat).

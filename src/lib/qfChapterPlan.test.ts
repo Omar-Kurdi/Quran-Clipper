@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  afterOpening, manualCut, ayahBounds, ayahSegments, chapterPace, chapterProblems, chapterRecordsBySurah, cutStale, frameAt, framesMs,
+  afterOpening, manualCut, qfDrift, ayahBounds, ayahSegments, chapterPace, chapterProblems, chapterRecordsBySurah, chapterVerdict, cutStale, frameAt, framesMs,
   inPause, joinCut, levels, mergedSilences, MIN_AGREEMENT, mp3Frames, nextWindow, PAUSE_DEPTH_DB, qfAgrees, qfWordsFit, speechLevel,
 } from '../../scripts/qf-chapter-plan.mjs';
 
@@ -237,6 +237,24 @@ describe('cuts someone has listened for', () => {
   });
 });
 
+describe("the Foundation's timings out of step", () => {
+  const pause = (ayah: number, at: number) => ({ ayah, at, qf: false, depth: 40, overFloor: 0, heard: true });
+
+  it('are moved back by how far they run from the nearest pauses (Al-Ajmy 74)', () => {
+    // In step to 100 s, then 39 s on: an edit of the recording the timings are not of.
+    const joins = [10, 30, 50, 70, 90, 110, 130, 150, 170, 190].map((at, i) => pause(i + 2, at));
+    const starts = new Map(joins.map(join => [join.ayah, join.at + (join.at > 100 ? 39 : 0.2)]));
+    const drift = qfDrift(joins, starts);
+    expect(drift.get(2)).toBe(0);
+    expect(drift.get(11)).toBeCloseTo(39, 0);
+  });
+
+  it('are left alone where they keep in step', () => {
+    const joins = [10, 30, 50, 70].map((at, i) => pause(i + 2, at));
+    expect([...qfDrift(joins, new Map(joins.map(join => [join.ayah, join.at + 0.4]))).values()]).toEqual([0, 0, 0, 0]);
+  });
+});
+
 describe('the windows a chapter is aligned in', () => {
   const verse = (ayah: number, letters: number) => ({ ayah, words: ['ب'.repeat(letters)] });
   const verses = Array.from({ length: 40 }, (_, i) => verse(i + 1, 50));
@@ -302,16 +320,34 @@ describe('a chapter cut', () => {
     expect(chapterProblems(placed({ joins, cuts: [3.95, 20, 30], db }))).toEqual([]);
   });
 
-  it('keeps a join someone has listened for as it is', () => {
-    expect(chapterProblems(placed({ joins: [join(1, { opening: true, qf: false, depth: 1, manual: true }), join(2), join(3)] }))).toEqual([]);
-  });
-
   it('keeps an opening run straight on only where the reading of it and the first ayah alone confirms it (Al-Ajmy)', () => {
     const runOn = { opening: true, qf: false, depth: 1, overFloor: 18 };
     expect(chapterProblems(placed({ joins: [join(1, runOn), join(2), join(3)] }))[0]).toMatch(/before ayah 1/);
     expect(chapterProblems(placed({ joins: [join(1, { ...runOn, confirmed: true }), join(2), join(3)] }))).toEqual([]);
   });
 
+});
+
+describe("a chapter cut's joins nothing stands by", () => {
+  const join = (ayah: number, extra = {}) => ({ ayah, at: ayah * 10, depth: 40, overFloor: 0, heard: true, qf: true, ...extra });
+  const placed = (extra = {}) => ({
+    windows: [{ from: 0, to: 40, agreement: 0.8 }],
+    joins: [join(2), join(3)],
+    cuts: [0, 20, 30],
+    duration: 40,
+    ...extra,
+  });
+
+  it('leaves a surah offered with the joins nothing stands by marked unsure, but not one that misses a stretch', () => {
+    const verdict = chapterVerdict(placed({ joins: [join(2, { depth: 8, overFloor: 10, qf: false }), join(3)] }));
+    expect(verdict.fatal).toEqual([]);
+    expect(verdict.unsure).toEqual([{ ayah: 2, reasons: [expect.stringMatching(/neither the Foundation/)] }]);
+    expect(chapterVerdict(placed({ windows: [{ from: 0, to: 40, agreement: 0.1 }] })).fatal).toHaveLength(1);
+  });
+
+  it('keeps a join someone has listened for as it is', () => {
+    expect(chapterProblems(placed({ joins: [join(1, { opening: true, qf: false, depth: 1, manual: true }), join(2), join(3)] }))).toEqual([]);
+  });
 });
 
 describe("a chapter cut against the Foundation's timings", () => {
