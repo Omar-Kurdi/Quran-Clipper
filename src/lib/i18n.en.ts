@@ -472,6 +472,7 @@ export const en = {
     nextToCheckTitle: (count: number) =>
       `${count} ${count === 1 ? 'caption is' : 'captions are'} marked for checking, where the match was least sure. Go to the next one (N).`,
     toCheck: 'marked for checking',
+    repeat: 'repeated by the reciter',
     trimAudio: 'Trim audio',
     trimAudioTitle: 'Trim the uploaded audio — your timeline edits are kept',
     keep: (length: string) => `Keep ${length}`,
@@ -663,6 +664,8 @@ export const en = {
     arabicFontSize: 'Arabic Font Size:',
     translationFontSize: 'Translation Font Size:',
     ayahNumberSize: 'Ayah Number Size:',
+    ayahNumberPlacement: 'Ayah number',
+    ayahNumberPlacements: { end: 'At the end of the ayah', between: 'Between the cards', hidden: 'Hidden' },
 
     coloursLabel: 'Colours:',
     colourArabic: 'Arabic text',

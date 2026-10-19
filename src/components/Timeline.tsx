@@ -123,6 +123,17 @@ function CaptionText({ verse }: { verse: VerseData }) {
   );
 }
 
+/** A caption block's label: its ayah, or the opening it is, and ↻ when the reciter is going back over it. */
+function CaptionLabel({ verse, active }: { verse: VerseData; active: boolean }) {
+  const t = useT();
+  return (
+    <span className={`font-mono text-[10px] truncate w-full ${active ? 'text-gold-bright' : 'text-slate-300'}`}>
+      {verse.repeat && <span aria-label={t.timeline.repeat} title={t.timeline.repeat}>↻ </span>}
+      {isOpening(verse) ? t.timeline.opening[verse.verseKey as OpeningKind] : verse.verseKey}
+    </span>
+  );
+}
+
 /** The dot on a caption marked for checking, and the words a screen reader reads for it. */
 function CheckMark({ label }: { label: string }) {
   return (
@@ -846,7 +857,7 @@ export const Timeline: React.FC<TimelineProps> = ({
               return (
                 <div
                   key={`${verse.verseKey}-${i}`}
-                  className={`absolute top-1 bottom-1 rounded-md border overflow-hidden transition-colors ${
+                  className={`absolute top-1 bottom-1 rounded-md border overflow-hidden transition-colors ${verse.repeat ? 'border-dashed' : ''} ${
                     active
                       ? 'bg-gold/25 border-gold ring-1 ring-gold/50 z-10'
                       : 'bg-slate-800/55 border-slate-600 hover:bg-slate-700/60'
@@ -863,9 +874,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     title={`${verse.verseKey} · ${formatTime(verse.endTime - verse.startTime)}${flagged ? ` · ${t.timeline.toCheck}` : ''}${onReorder ? ` · ${t.timeline.dragToReorder}` : ''}`}
                     className="absolute inset-0 px-2 flex flex-col justify-center items-start text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold-bright"
                   >
-                    <span className={`font-mono text-[10px] truncate w-full ${active ? 'text-gold-bright' : 'text-slate-300'}`}>
-                      {isOpening(verse) ? t.timeline.opening[verse.verseKey as OpeningKind] : verse.verseKey}
-                    </span>
+                    <CaptionLabel verse={verse} active={active} />
                     <CaptionText verse={verse} />
                     {flagged && <CheckMark label={t.timeline.toCheck} />}
                   </button>

@@ -50,6 +50,7 @@ import { FrameBar, SafeAreaOverlay } from '@/components/FrameBar';
 import { framePreset, coveredAreas } from '@/lib/frame';
 import { EXPORT_PRESETS } from '@/lib/exportPresets';
 import { isOpening } from '@/lib/openings';
+import { placementOf } from '@/lib/ayahMarker';
 import { isPhonemeProvider, phonemeTrialOffered, LAB_CHOICES, LAB_DEFAULTS, type PhonemeLab, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
@@ -499,6 +500,8 @@ export default function VideoCreatorPage() {
     // Off by default: a full printed line is about 18 em wide, so on a 9:16
     // card it forces the Arabic down to roughly half the size wrapping gives.
     mushafLines: false,
+    // A new project closes each ayah with its number, as the mushaf does.
+    ayahNumberPlacement: 'end',
     showWaveform: true,
     showSurahBadge: true,
     badgeStyle: DEFAULT_BADGE_STYLE,
@@ -2506,6 +2509,8 @@ export default function VideoCreatorPage() {
         : [DEFAULT_TRANSLATION_ID],
       translationFollowsWords: proj.translationFollowsWords ?? false,
       mushafLines: proj.mushafLines ?? false,
+      // A project saved before the option keeps the number between its cards.
+      ayahNumberPlacement: placementOf(proj.ayahNumberPlacement),
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
       badgeStyle: asBadgeStyle(proj.badgeStyle),

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MatchSegment } from './matchTypes';
-import { inTheGaps, toTheVoice, phrasesFromPublished, timedFromPublished } from './publishedPhrases';
+import { inTheGaps, toTheVoice, phrasesFromPublished, timedFromPublished, withRepeats, goingBack } from './publishedPhrases';
 
 /** Muaiqly's 12:3 and 12:6 as QUL publishes them -- 12:6 goes back over words 8-10. */
 const published = new Map([
@@ -783,5 +783,45 @@ describe("the user's ground truth for the Quran Foundation's ayah files (2026-10
     const quiet: [number, number][] = [[40.94, 41.28], [41.94, 42.14], [45.06, 46.4], [49.46, 49.72], [52.56, 52.94]];
     expect(phrasesFromPublished([{ verseKey: '39:55', wordCount: 16 }], published, aligned, { quiet })!.map(words))
       .toEqual([['39:55', 0, 12], ['39:55', 7, 15]]);
+  });
+});
+
+describe('repeats in a built-in reciter passage', () => {
+  /** A segment of one ayah's words `first`-`last` (0-based), at seconds `startTime`-`endTime`. */
+  const seg = (verseKey: string, startTime: number, endTime: number, first = 0, last = 9) =>
+    ({ verseKey, startTime, endTime, startWordIndex: first, endWordIndex: last });
+  const passage = (...keys: [string, number][]) => keys.map(([verseKey, wordCount]) => ({ verseKey, wordCount }));
+
+  it('are the aligner’s segments from going back to an ayah already read through, until a new one (Al-Ajmy 59:18-21)', () => {
+    const segments = [seg('59:18', 0, 20), seg('59:19', 21, 36), seg('59:20', 36, 54),
+      seg('59:18', 57, 76), seg('59:19', 76, 92), seg('59:20', 92, 109), seg('59:21', 109, 140)];
+    const { repeats, rest } = goingBack(segments, passage(['59:18', 10], ['59:19', 10], ['59:20', 10], ['59:21', 10]));
+    expect(repeats.map(r => [r.verseKey, r.startTime, r.repeat])).toEqual([['59:18', 57, true], ['59:19', 76, true], ['59:20', 92, true]]);
+    expect(rest.map(r => r.verseKey)).toEqual(['59:18', '59:19', '59:20', '59:21']);
+  });
+
+  it('folds a sliver of a repeat into the repeat before it', () => {
+    const segments = [seg('59:19', 0, 10), seg('59:20', 10, 20), seg('59:19', 21, 30), seg('59:19', 30, 30.3, 4, 4), seg('59:20', 30.3, 40)];
+    const { repeats } = goingBack(segments, passage(['59:19', 10], ['59:20', 10]));
+    expect(repeats.map(r => [r.verseKey, r.startTime, r.endTime])).toEqual([['59:19', 21, 30.3], ['59:20', 30.3, 40]]);
+  });
+
+  it('leaves a restart inside the ayah being read with the rest', () => {
+    const segments = [seg('2:255', 0, 10, 0, 30), seg('2:255', 10, 14, 25, 49), seg('2:256', 14, 30)];
+    expect(goingBack(segments, passage(['2:255', 50], ['2:256', 10]))).toEqual({ repeats: [], rest: segments });
+  });
+
+  it('takes no ayah read over another’s words for a repeat (Al-Tunaiji 23:87, read as 23:85 from its third word)', () => {
+    const segments = [seg('23:86', 0, 7, 0, 7), seg('23:87', 7, 11, 0, 1), seg('23:85', 11, 15, 2, 4)];
+    expect(goingBack(segments, passage(['23:86', 8], ['23:87', 5])).repeats).toEqual([]);
+  });
+
+  it('are captions of their own, in time order, the caption before ending where one starts', () => {
+    const captions = [seg('78:35', 0, 6), seg('78:36', 6, 28)];
+    const repeats = [{ ...seg('78:35', 14.3, 20), repeat: true }, { ...seg('78:36', 20.4, 27.8), repeat: true }];
+    expect(withRepeats(captions, repeats).map(c => [c.verseKey, c.startTime, c.endTime, Boolean(c.repeat)])).toEqual([
+      ['78:35', 0, 6, false], ['78:36', 6, 14.3, false], ['78:35', 14.3, 20, true], ['78:36', 20.4, 27.8, true],
+    ]);
+    expect(withRepeats(captions, [])).toBe(captions);
   });
 });

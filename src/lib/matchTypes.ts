@@ -8,6 +8,8 @@ import type { HeardOpening } from './openings';
 
 export type MatchSegment = {
   verseKey?: string;
+  /** The reciter going back over this ayah, or part of it, after reading on: shown as a repeat. */
+  repeat?: boolean;
   verseNumber?: number;
   surahNumber?: number;
   startTime?: number;

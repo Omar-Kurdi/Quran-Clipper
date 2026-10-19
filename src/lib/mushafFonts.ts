@@ -1,3 +1,4 @@
+import { AYAH_MARKER } from './ayahMarker';
 /**
  * The mushaf's own fonts, and how a page of one gets in front of the user.
  *
@@ -287,8 +288,10 @@ export function wrapCaption(
   let line = '';
   for (const token of text.split(/\s+/).filter(Boolean)) {
     const mark = MARK_ONLY.test(token);
+    // The end-of-ayah marker stays with the word it closes, as in the mushaf: never alone at a line's start.
+    const closing = AYAH_MARKER.test(token);
     const test = line ? `${line}${mark ? '' : ' '}${token}` : token;
-    if (line && !mark && measure(test) > limit) {
+    if (line && !mark && !closing && measure(test) > limit) {
       lines.push(line);
       line = token;
     } else {

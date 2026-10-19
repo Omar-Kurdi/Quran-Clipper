@@ -6,6 +6,7 @@ import { asBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout } from '@/lib/frameLayout';
 import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour } from '@/lib/captionMotion';
 import { describeDbError } from '@/lib/dbError';
+import { placementOf } from '@/lib/ayahMarker';
 import { needsContentSync, syncProjectContent, CONTENT_SYNC_MAX_AGE_MS } from '@/lib/contentSync';
 
 const memoryProjects: any[] = [];
@@ -180,6 +181,7 @@ export async function POST(req: NextRequest) {
         : [],
       translationFollowsWords: body.translationFollowsWords ?? false,
       mushafLines: body.mushafLines ?? false,
+      ayahNumberPlacement: placementOf(body.ayahNumberPlacement),
       showWaveform: body.showWaveform ?? true,
       showSurahBadge: body.showSurahBadge ?? true,
       badgeStyle: asBadgeStyle(body.badgeStyle),

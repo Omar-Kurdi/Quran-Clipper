@@ -81,6 +81,8 @@ export interface VerseData {
   checks?: string[];
   /** Someone has dealt with this caption, so it is no longer marked for checking. */
   checked?: boolean;
+  /** The reciter going back over this ayah after reading on: a repeat, marked as one in the editor. */
+  repeat?: boolean;
   // Optional segment-specific display overrides from AI matching.
   // Useful when only part of an ayah is recited or repeated.
   displayTextUthmani?: string;

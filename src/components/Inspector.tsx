@@ -217,6 +217,7 @@ export const Inspector: React.FC<InspectorProps> = ({
         onSelect={onSelect}
       >
         {isActive && <Status tone="live">{t.common.playing}</Status>}
+        {verse.repeat && <Status tone="warning">↻ {t.timeline.repeat}</Status>}
         {typeof verse.matchConfidence === 'number' && (
           <Status tone={verse.matchConfidence >= 0.75 ? 'success' : 'warning'}>
             {t.inspector.matchConfidence(Math.round(verse.matchConfidence * 100))}

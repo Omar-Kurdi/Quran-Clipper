@@ -464,6 +464,7 @@ export const ar: Dictionary = {
     nextToCheckTitle: count =>
       `${count} من المقاطع معلَّمة للمراجعة، حيث كان التطابق أقل يقينًا. انتقل إلى التالي (N).`,
     toCheck: 'معلَّم للمراجعة',
+    repeat: 'كرّرها القارئ',
     trimAudio: 'قص الصوت',
     trimAudioTitle: 'قص الملف الصوتي المرفوع — تعديلاتك على المسار الزمني محفوظة',
     keep: length => `الإبقاء على ${length}`,
@@ -647,6 +648,8 @@ export const ar: Dictionary = {
     arabicFontSize: 'حجم الخط العربي:',
     translationFontSize: 'حجم خط الترجمة:',
     ayahNumberSize: 'حجم رقم الآية:',
+    ayahNumberPlacement: 'رقم الآية',
+    ayahNumberPlacements: { end: 'في نهاية الآية', between: 'بين البطاقتين', hidden: 'مخفي' },
 
     coloursLabel: 'الألوان:',
     colourArabic: 'النص العربي',

@@ -1,6 +1,9 @@
 import { getRange } from './quranCorpus';
 import { qfPassage, qfPassageOf, qfReciter } from './qfRecitations';
 
+/** How many ayahs back a reciter is heard going over again: Al-Ajmy goes back three, from 59:20 to 59:18. */
+const REPEAT_LOOKBACK = 3;
+
 /**
  * A passage's published timings, when `audioUrl` is a built-in reciter's
  * passage recording (`qfPassageUrl`, from any origin) holding these ayahs.
@@ -27,7 +30,8 @@ export async function publishedPassage(audioUrl: string, surah: number, { start,
     sung: qfReciter(file.reciterId)?.style === 'Mujawwad',
     passage: passage.map(verse => ({ verseKey: verse.verseKey, wordCount: verse.words.length, words: verse.words.map(word => word.arabic) })),
     timings,
-    // The recording holds the file's ayahs and no others, so those are the ones to align it against.
-    aligned: { start: file.start, end: file.end },
+    // The recording holds the file's ayahs and no others, so those are the ones to align it against -- with the
+    // few before them, so a reciter going back over them is heard repeating, not read as the passage's own ayahs.
+    aligned: { start: Math.max(1, file.start - REPEAT_LOOKBACK), end: file.end },
   };
 }

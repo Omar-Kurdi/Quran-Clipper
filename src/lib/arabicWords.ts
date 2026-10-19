@@ -47,10 +47,15 @@ export interface WordLook {
  * Unicode words with each waqf sign joined to the word before it, which turns
  * two entries of the word list into one drawn word.
  */
-export function drawnWordTimes(words: readonly TimedWord[] | undefined, lines: readonly string[]): (number | undefined)[][] | null {
+export function drawnWordTimes(
+  words: readonly TimedWord[] | undefined,
+  lines: readonly string[],
+  /** Tokens drawn after the last word that are no word: the end-of-ayah marker. They take no time of their own. */
+  trailing = 0
+): (number | undefined)[][] | null {
   if (!words?.length) return null;
   const drawn = lines.map(tokensOf);
-  const count = drawn.reduce((sum, tokens) => sum + tokens.length, 0);
+  const count = drawn.reduce((sum, tokens) => sum + tokens.length, 0) - trailing;
   const shown = words.filter(word => !word.excluded);
   let times = shown.map(word => word.timestamp);
   if (times.length !== count) {
@@ -70,7 +75,11 @@ export function drawnWordTimes(words: readonly TimedWord[] | undefined, lines: r
   }
   if (times.length !== count || !times.some(at => typeof at === 'number')) return null;
   let next = 0;
-  return drawn.map(tokens => tokens.map(() => times[next++]));
+  return drawn.map(tokens => tokens.map(() => {
+    const at = next < count ? times[next] : undefined;
+    next += 1;
+    return at;
+  }));
 }
 
 /**

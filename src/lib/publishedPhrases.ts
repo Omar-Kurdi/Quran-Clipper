@@ -948,7 +948,9 @@ export function timedFromPublished(
   },
   everything: MatchResult
 ): { result: MatchResult; pausesFromAudio: boolean } {
-  const aligned = passageOnly(everything, published.passage);
+  // What the reciter goes back over is captioned as he reads it, apart from the ayahs' own captions.
+  const { repeats, rest } = goingBack(everything.segments, published.passage);
+  const aligned = passageOnly(repeats.length ? { ...everything, segments: rest } : everything, published.passage);
   const heard = aligned.segments.length > 0 &&
     (!aligned.warning || agreesWithPublished(published.passage, published.timings, aligned.segments));
   const captions = phrasesFromPublished(
@@ -961,7 +963,7 @@ export function timedFromPublished(
     result: {
       audioDuration: aligned.audioDuration,
       confidence: 1,
-      segments: toTheVoice(inTheGaps(captions, everything.quiet, aligned.segments), everything.quiet),
+      segments: toTheVoice(inTheGaps(withRepeats(captions, repeats), everything.quiet, aligned.segments), everything.quiet),
       // What was said before the passage is the aligner's to hear: the
       // published timings start at the first ayah, and dropping these lost
       // every timed reciter's isti'adha and basmala.
@@ -970,6 +972,57 @@ export function timedFromPublished(
         (heard ? 'cut where the aligner heard the reciter pause.' : 'one caption per ayah.')
     }
   };
+}
+
+/**
+ * The aligner's segments where the reciter goes back over what he has read,
+ * apart from the rest: from a segment of an ayah before one already read, on
+ * until he reaches an ayah not yet read -- and only once the ayah he goes back
+ * from has been heard through to its last word. Al-Ajmy reads 78:35 and 78:36,
+ * then both again; 59:18-20, then all three again before 59:21. A restart
+ * inside the ayah being read stays with the rest, and so does an aligner
+ * taking one ayah for another over its words: Al-Tunaiji's 23:87, read as
+ * 23:85 from its third word. Unchanged when there is no repeat.
+ */
+export function goingBack(segments: MatchSegment[], passage: PublishedAyah[]): { repeats: MatchSegment[]; rest: MatchSegment[] } {
+  const wordCounts = new Map(passage.map(ayah => [Number(ayah.verseKey.split(':')[1]), ayah.wordCount]));
+  const readThrough = new Set<number>();
+  const taken = new Set<MatchSegment>();
+  let furthest = 0;
+  let back = false;
+  for (const segment of segments) {
+    const ayah = Number(segment.verseKey?.split(':')[1]);
+    if (!(ayah > 0)) continue;
+    if (ayah < furthest) back = readThrough.has(furthest);
+    else if (ayah > furthest) back = false;
+    furthest = Math.max(furthest, ayah);
+    if (back) taken.add(segment);
+    else if (wordCounts.has(ayah) && (segment.endWordIndex ?? -1) >= wordCounts.get(ayah)! - 1) readThrough.add(ayah);
+  }
+  if (!taken.size) return { repeats: [], rest: segments };
+  // A sliver of a repeat, a fraction of a second at the edge of a phrase, goes with the repeat before it.
+  const repeats: MatchSegment[] = [];
+  for (const segment of segments.filter(one => taken.has(one))) {
+    const last = repeats[repeats.length - 1];
+    if (last && (segment.endTime ?? 0) - (segment.startTime ?? 0) < REPEAT_SLIVER_SEC) last.endTime = Math.max(last.endTime ?? 0, segment.endTime ?? 0);
+    else repeats.push({ ...segment, repeat: true });
+  }
+  return { repeats, rest: segments.filter(segment => !taken.has(segment)) };
+}
+
+const REPEAT_SLIVER_SEC = 0.5;
+
+/**
+ * The captions with each repeat as one of its own, in time order: a caption
+ * running on into a repeat ends where the repeat starts.
+ */
+export function withRepeats(captions: MatchSegment[], repeats: MatchSegment[]): MatchSegment[] {
+  if (!repeats.length) return captions;
+  const clipped = captions.map(caption => {
+    const next = repeats.find(run => (run.startTime ?? 0) > (caption.startTime ?? 0) && (run.startTime ?? 0) < (caption.endTime ?? 0));
+    return next ? { ...caption, endTime: next.startTime } : caption;
+  });
+  return [...clipped, ...repeats].sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0));
 }
 
 /**

@@ -24,6 +24,7 @@ import {
   type CaptionLayer, type CaptionMotion
 } from '@/lib/captionMotion';
 import { drawnWordTimes, fillLineByWord } from '@/lib/arabicWords';
+import { ayahMarker, endsAyah, placementOf, type AyahNumberPlacement } from '@/lib/ayahMarker';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
@@ -106,6 +107,12 @@ export interface VideoCanvasConfig {
    * before it existed.
    */
   mushafLines?: boolean;
+  /**
+   * Where the ayah's number is drawn (`ayahMarker.ts`): closing the ayah in
+   * the Arabic, between the two cards, or not at all. Absent is between, how
+   * every project saved before the option was drawn.
+   */
+  ayahNumberPlacement?: AyahNumberPlacement;
   /**
    * Draw the English of the visible words instead of the whole ayah's.
    *
@@ -1015,8 +1022,16 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // Rows as the page prints them, when asked for and the words carry their
         // lines. They take precedence over `mushaf`, and unlike it they can span
         // a page break: each row is on one page and brings that page's family.
-        const pageRows = config.mushafLines ? mushafRows(activeVerse.words, arabicFontId) : null;
-        const arabicText = pageRows ? pageRows.map(row => row.text).join('\n') : mushaf ? mushaf.text : displayArabic;
+        const placement = placementOf(config.ayahNumberPlacement);
+        // The ayah's number closing it in the Arabic, as the mushaf does, on the caption that reaches its end.
+        const marker = placement === 'end' && endsAyah(activeVerse) ? ayahMarker(activeVerse.verseNumber) : '';
+        const printedRows = config.mushafLines ? mushafRows(activeVerse.words, arabicFontId) : null;
+        const pageRows = printedRows && marker
+          ? printedRows.map((row, index) => (index === printedRows.length - 1 ? { ...row, text: `${row.text} ${marker}` } : row))
+          : printedRows;
+        const arabicText = pageRows
+          ? pageRows.map(row => row.text).join('\n')
+          : [mushaf ? mushaf.text : displayArabic, marker].filter(Boolean).join(' ');
         const arabicFamily = mushaf ? mushaf.family : arabicFontFamily(arabicFontId);
         ctx.save();
         // Moved and sized about the middle of the text's own box, so a zoom
@@ -1044,7 +1059,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // split layout has neither under the Arabic: its numeral sits in the gap
         // between the two cards, where it joins them rather than leaving the
         // Arabic card with a numeral and an empty stretch beneath it.
-        const belowArabic = translationBox ? 0 : ayahFontSize + 48;
+        const belowArabic = translationBox ? 0 : placement === 'between' ? ayahFontSize + 48 : 48;
         const cardPadding = 40;
 
         /**
@@ -1130,7 +1145,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           translationBlocks.map(block => `${block.id}:${block.text}`).join('\u0001'),
           withTranslation, cardWidth, cardHeight, arrangement.id,
           arabicFontId, config.mushafLines, config.fontTranslation, config.arabicFontSize,
-          config.translationFontSize, config.ayahNumberFontSize,
+          config.translationFontSize, config.ayahNumberFontSize, placement,
           typeof document !== 'undefined' ? document.fonts.status : '',
         ].join('|');
 
@@ -1196,7 +1211,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // drawing lines up with the word list; otherwise the lines are drawn
         // whole, as with no effect.
         const wordTimes = motion.words === 'none' || frame.whole
-          ? null : drawnWordTimes(activeVerse.words, layout.arabicLines.map(line => line.text));
+          ? null : drawnWordTimes(activeVerse.words, layout.arabicLines.map(line => line.text), marker ? 1 : 0);
         const allTimes = wordTimes?.flat() ?? [];
         // The highlight is the reveal with the words to come left faint
         // rather than gone, and the one being recited in the accent.
@@ -1230,7 +1245,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // U+FD3E opens and U+FD3F closes when read right-to-left, despite their
         // Unicode names ("ornate left/right parenthesis") suggesting the reverse.
         // An isti'adha or basmala before the passage is verse 0: no numeral.
-        const numeral = activeVerse.verseNumber > 0 ? `﴾ ${activeVerse.verseNumber} ﴿` : '';
+        // Only where the number sits between the cards: at the ayah's end it is in the Arabic, and hidden is hidden.
+        const numeral = placement === 'between' && activeVerse.verseNumber > 0 ? `﴾ ${activeVerse.verseNumber} ﴿` : '';
         ctx.fillStyle = goldAccent;
         if (translationBox) {
           // Centred in the gap between the cards, and no larger than it.
@@ -1243,9 +1259,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           ctx.shadowColor = 'transparent';
           ctx.textBaseline = 'top';
         } else {
-          ctx.font = `600 ${ayahFontSize}px '${LABEL_FAMILY}', serif`;
-          ctx.fillText(numeral, width / 2, y);
-          y += ayahFontSize + 24;
+          if (placement === 'between') {
+            ctx.font = `600 ${ayahFontSize}px '${LABEL_FAMILY}', serif`;
+            ctx.fillText(numeral, width / 2, y);
+            y += ayahFontSize;
+          }
+          y += 24;
 
           ctx.strokeStyle = goldAccent;
           ctx.globalAlpha = layer.opacity * 0.4;
