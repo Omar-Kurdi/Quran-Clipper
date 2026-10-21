@@ -530,6 +530,7 @@ export const en = {
     moveEndEarlier: 'Move end earlier',
     moveEndLater: 'Move end later',
     ayahNumber: 'Ayah number',
+    markRepeat: 'Repeat (the reciter going back over this ayah)',
     translation: 'Translation',
     alsoAppears: (verseKey: string, count: number, examples: string) =>
       count === 1
@@ -563,6 +564,8 @@ export const en = {
     mushafLines: 'Follow the mushaf’s lines',
     mushafLinesHint:
       'Break the Arabic where the printed page breaks it, instead of wherever the card runs out of room. A long line gets smaller type rather than a new break.',
+    showRepeatMark: 'Mark repeats in the video',
+    showRepeatMarkHint: 'Shows ↻ in the corner of a caption where the reciter goes back over an ayah.',
     headingBranding: 'Watermark',
 
     bgModeLabel: 'How backgrounds are used:',
@@ -665,7 +668,7 @@ export const en = {
     translationFontSize: 'Translation Font Size:',
     ayahNumberSize: 'Ayah Number Size:',
     ayahNumberPlacement: 'Ayah number',
-    ayahNumberPlacements: { end: 'At the end of the ayah', between: 'Between the cards', hidden: 'Hidden' },
+    ayahNumberPlacements: { end: 'At the end of the ayah', between: 'Between the cards' },
 
     coloursLabel: 'Colours:',
     colourArabic: 'Arabic text',

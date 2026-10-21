@@ -61,8 +61,10 @@ export const projects = pgTable('projects', {
   translationFollowsWords: boolean('translation_follows_words').notNull().default(false),
   /** Whether the Arabic breaks where the printed mushaf does. Off for every row written before it existed. */
   mushafLines: boolean('mushaf_lines').notNull().default(false),
-  /** Where the ayah's number is drawn (`ayahMarker.ts`). Every row written before it existed reads as between the cards. */
-  ayahNumberPlacement: text('ayah_number_placement').notNull().default('between'),
+  /** Where the ayah's number is drawn (`ayahMarker.ts`): at the end of the ayah unless between the cards is chosen. */
+  ayahNumberPlacement: text('ayah_number_placement').notNull().default('end'),
+  /** Whether a repeat caption is marked ↻ in the video. */
+  showRepeatMark: boolean('show_repeat_mark').notNull().default(true),
   showWaveform: boolean('show_waveform').notNull().default(true),
   showSurahBadge: boolean('show_surah_badge').notNull().default(true),
   /** How the badge is drawn (`surahBadge.ts`). Every row written before it existed reads as the pill. */

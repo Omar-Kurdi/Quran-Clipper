@@ -19,6 +19,7 @@ import {
   setText,
   setVerseNumber,
   fillFromCorpus,
+  setRepeat,
 } from './verseEdits';
 import type { VerseData } from './quranData';
 
@@ -678,5 +679,18 @@ describe('fillFromCorpus', () => {
     // The page runs this from an effect that reads the same timeline.
     const { verses } = addVerseAfter(timeline(), 2);
     expect(fillFromCorpus(verses, [])).toBe(verses);
+  });
+});
+
+describe('marking a caption as a repeat by hand', () => {
+  const caption = (verseKey: string, extra = {}) =>
+    ({ verseNumber: Number(verseKey.split(':')[1]), verseKey, textUthmani: 'x', translation: 'x', startTime: 0, endTime: 1, ...extra });
+
+  it('sets and clears the mark, and leaves an opening alone', () => {
+    const verses = [caption('70:36'), caption('70:37')];
+    const marked = setRepeat(verses, 1, true);
+    expect(marked[1].repeat).toBe(true);
+    expect(setRepeat(marked, 1, false)[1]).not.toHaveProperty('repeat');
+    expect(setRepeat(verses, 0, false)).toBe(verses);
   });
 });

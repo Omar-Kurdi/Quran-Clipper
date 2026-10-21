@@ -502,6 +502,7 @@ export default function VideoCreatorPage() {
     mushafLines: false,
     // A new project closes each ayah with its number, as the mushaf does.
     ayahNumberPlacement: 'end',
+    showRepeatMark: true,
     showWaveform: true,
     showSurahBadge: true,
     badgeStyle: DEFAULT_BADGE_STYLE,
@@ -2509,8 +2510,8 @@ export default function VideoCreatorPage() {
         : [DEFAULT_TRANSLATION_ID],
       translationFollowsWords: proj.translationFollowsWords ?? false,
       mushafLines: proj.mushafLines ?? false,
-      // A project saved before the option keeps the number between its cards.
       ayahNumberPlacement: placementOf(proj.ayahNumberPlacement),
+      showRepeatMark: proj.showRepeatMark ?? true,
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
       badgeStyle: asBadgeStyle(proj.badgeStyle),
@@ -3353,6 +3354,7 @@ export default function VideoCreatorPage() {
                     index={selectedIndex}
                     isActive={selectedIndex === activeVerseIndex}
                     onText={edit.text}
+                    ayahNumberAtEnd={placementOf(canvasConfig.ayahNumberPlacement) === 'end'}
                     translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
                     onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
                     onTranslationText={edit.translationText}
@@ -3360,6 +3362,7 @@ export default function VideoCreatorPage() {
                     onTranslationFollowsWords={follows =>
                       setCanvasConfig(prev => ({ ...prev, translationFollowsWords: follows }))}
                     onVerseNumber={edit.verseNumber}
+                    onRepeat={edit.repeat}
                     onToggleWord={edit.toggleWord}
                     onNudge={(edge, delta) => edit.nudge(edge, delta, audioDuration, rippleEdits)}
                     onReorder={edit.reorder}

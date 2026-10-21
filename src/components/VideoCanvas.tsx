@@ -109,10 +109,11 @@ export interface VideoCanvasConfig {
   mushafLines?: boolean;
   /**
    * Where the ayah's number is drawn (`ayahMarker.ts`): closing the ayah in
-   * the Arabic, between the two cards, or not at all. Absent is between, how
-   * every project saved before the option was drawn.
+   * the Arabic and its translation (the default), or between the two cards.
    */
   ayahNumberPlacement?: AyahNumberPlacement;
+  /** Mark a repeat caption in the video with ↻. Absent means on. */
+  showRepeatMark?: boolean;
   /**
    * Draw the English of the visible words instead of the whole ayah's.
    *
@@ -274,6 +275,44 @@ const MIN_ARABIC_PX = 16;
 const MIN_TRANSLATION_PX = 10;
 /** How faint the words still to come are under the highlight. */
 const HIGHLIGHT_REST = 0.35;
+
+/**
+ * The end-of-ayah marker is drawn in a face of its own rather than the
+ * caption's: the mushaf page faces have no ornament or digits, and IndoPak
+ * Nastaleeq has them blank. Amiri draws both, at a size the ayah-number
+ * setting scales from the Arabic's.
+ */
+const MARKER_FAMILY = 'Amiri';
+const markerFont = (size: number) => `${size}px '${MARKER_FAMILY}', '${FALLBACK_ARABIC_FAMILY}', serif`;
+const markerSize = (arabicSize: number, ayahNumberFontSize: number | undefined) =>
+  arabicSize * Math.min(1.6, Math.max(0.6, (ayahNumberFontSize || 50) / 45));
+/** A drawn line and the marker closing it, when it ends with one. */
+const withoutMarker = (line: string): { body: string; marker: string } => {
+  const found = line.match(/\s*(\u06DD[\u0660-\u0669]+)\s*$/);
+  return found ? { body: line.slice(0, found.index).trim(), marker: found[1] } : { body: line, marker: '' };
+};
+/** The gap before the marker, in ems of the Arabic. */
+const MARKER_GAP = 0.12;
+/**
+ * Where a line's words end and its marker starts, laid out as one run about
+ * the line's anchor: right-to-left, the marker on the left of the words.
+ */
+function placeMarker(
+  ctx: CanvasRenderingContext2D,
+  { text, marker, x, arabicSize, config }: {
+    text: string; marker: string; x: number; arabicSize: number; config: { ayahNumberFontSize?: number; textAlignment: string };
+  }
+): { textRight: number; left: number; size: number } {
+  const size = markerSize(arabicSize, config.ayahNumberFontSize);
+  const font = ctx.font;
+  const textWidth = ctx.measureText(text).width;
+  ctx.font = markerFont(size);
+  const markerWidth = ctx.measureText(marker).width;
+  ctx.font = font;
+  const total = textWidth + arabicSize * MARKER_GAP + markerWidth;
+  const left = config.textAlignment === 'right' ? x - total : config.textAlignment === 'left' ? x : x - total / 2;
+  return { textRight: left + total, left, size };
+}
 
 // Handed to `document.fonts.load` so the subsets a webfont actually needs are
 // the ones fetched. Google splits a family by unicode range, and the card
@@ -608,6 +647,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       [`bold 60px '${LABEL_FAMILY}'`, ARABIC_SAMPLE],
       [`600 60px '${LABEL_FAMILY}'`, '0123456789'],
       [`60px '${config.fontTranslation}'`, 'Ag'],
+      // The end-of-ayah marker's own face (`markerFont`).
+      [`60px '${MARKER_FAMILY}'`, '\u06DD\u0661\u0662\u0663'],
       // Named only when drawn: a face nothing asks for is never fetched.
       ...(badgeStyle === 'calligraphic' ? [SURAH_NAME_FONT_SPEC] : []),
     ];
@@ -1047,10 +1088,12 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // One block per chosen translation, in the order they were chosen. A
         // language whose text has not arrived yet is absent rather than blank,
         // so the card never reserves space for nothing.
+        // Each translation closes with the ayah's number too, on the caption that closes the ayah, unless edited out.
         const translationBlocks = captionTranslations(
           activeVerse,
           config.translationIds || [DEFAULT_TRANSLATION_ID],
-          config.translationFollowsWords
+          config.translationFollowsWords,
+          marker ? activeVerse.verseNumber : 0
         );
         const withTranslation = Boolean(config.showTranslation && translationBlocks.length);
         const maxTextWidth = cardWidth - 80;
@@ -1107,7 +1150,13 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           let arabicWidest = 0;
           for (const line of arabicLines) {
             ctx.font = arabicFontIn(line.family, arabic);
-            arabicWidest = Math.max(arabicWidest, ctx.measureText(line.text).width);
+            const { body, marker: closing } = withoutMarker(line.text);
+            let lineWidth = ctx.measureText(body).width;
+            if (closing) {
+              ctx.font = markerFont(markerSize(arabic, config.ayahNumberFontSize));
+              lineWidth += arabic * MARKER_GAP + ctx.measureText(closing).width;
+            }
+            arabicWidest = Math.max(arabicWidest, lineWidth);
           }
           let translationWidest = 0;
           const blocks: { lines: string[]; rtl: boolean; lineHeight: number }[] = [];
@@ -1222,20 +1271,50 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         let firstWord = 0;
         layout.arabicLines.forEach((line, index) => {
           ctx.font = arabicFontIn(line.family, layout.arabicSize);
-          const text = line.text.trim();
+          const { body: text, marker: closing } = withoutMarker(line.text.trim());
           const count = wordTimes?.[index].length ?? 0;
+          // A line closing the ayah: the words and the marker after them placed as one, the marker in its own face.
+          const mark = closing ? placeMarker(ctx, { text, marker: closing, x: textX, arabicSize: layout.arabicSize, config }) : null;
+          const from = firstWord;
+          const at = { x: mark ? mark.textRight : textX, y, size: layout.arabicSize };
+          const align = ctx.textAlign;
+          if (mark) ctx.textAlign = 'right';
           if (shown) {
-            const from = firstWord;
-            fillLineByWord(ctx, text, { x: textX, y, size: layout.arabicSize }, word => ({
+            fillLineByWord(ctx, text, at, word => ({
               amount: rest + (1 - rest) * shown[from + word],
               colour: from + word === recited ? highlight : undefined,
             }));
           } else {
-            fillArabicLine(ctx, text, textX, y, layout.arabicSize);
+            fillArabicLine(ctx, text, at.x, y, layout.arabicSize);
+          }
+          ctx.textAlign = align;
+          if (mark) {
+            const alpha = ctx.globalAlpha;
+            const fill = ctx.fillStyle;
+            // It comes in with the ayah's last word.
+            if (shown) ctx.globalAlpha = alpha * (rest + (1 - rest) * shown[from + count - 1]);
+            ctx.font = markerFont(mark.size);
+            ctx.fillStyle = goldAccent;
+            ctx.textAlign = 'left';
+            ctx.fillText(closing, mark.left, y + (layout.arabicSize - mark.size) * 0.55);
+            ctx.textAlign = align;
+            ctx.fillStyle = fill;
+            ctx.globalAlpha = alpha;
           }
           firstWord += count;
           y += layout.arabicLineHeight;
         });
+        // A repeat -- the reciter going back over this ayah -- marked in the card's top corner.
+        if (activeVerse.repeat && config.showRepeatMark !== false) {
+          const fill = ctx.fillStyle;
+          const align = ctx.textAlign;
+          ctx.font = `${Math.round(layout.arabicSize * 0.5)}px 'Inter', 'DejaVu Sans', sans-serif`;
+          ctx.fillStyle = goldAccent;
+          ctx.textAlign = 'right';
+          ctx.fillText('\u21BB', arrangement.text.x + arrangement.text.width - 24, arrangement.text.y + 16);
+          ctx.fillStyle = fill;
+          ctx.textAlign = align;
+        }
         ctx.direction = 'ltr';
         ctx.shadowColor = 'transparent';
         ctx.shadowOffsetY = 0;
@@ -1245,7 +1324,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // U+FD3E opens and U+FD3F closes when read right-to-left, despite their
         // Unicode names ("ornate left/right parenthesis") suggesting the reverse.
         // An isti'adha or basmala before the passage is verse 0: no numeral.
-        // Only where the number sits between the cards: at the ayah's end it is in the Arabic, and hidden is hidden.
+        // Only where the number sits between the cards: at the ayah's end it is in the Arabic.
         const numeral = placement === 'between' && activeVerse.verseNumber > 0 ? `﴾ ${activeVerse.verseNumber} ﴿` : '';
         ctx.fillStyle = goldAccent;
         if (translationBox) {

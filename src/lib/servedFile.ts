@@ -16,11 +16,19 @@ export function byteRange(header: string | null, size: number): { start: number;
   return start > end || start >= size ? 'unsatisfiable' : { start, end };
 }
 
-/** `file` as a response body and its headers, honouring Range. */
+/**
+ * `file` as a response body and its headers, honouring Range. With an `etag`
+ * the browser asks again each time and is told when nothing changed: a file
+ * remade at the same address -- a reciter's passage after one of its cuts was
+ * moved -- would otherwise play its old copy for a day.
+ */
 export function servedFile(
-  file: { file: string; size: number }, rangeHeader: string | null, contentType: string
+  file: { file: string; size: number; etag?: string }, rangeHeader: string | null, contentType: string
 ): { status: number; headers: Headers; body: ReadableStream<Uint8Array> | null } {
-  const headers = new Headers({ 'content-type': contentType, 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=86400' });
+  const headers = new Headers({
+    'content-type': contentType, 'accept-ranges': 'bytes',
+    'cache-control': file.etag ? 'no-cache' : 'public, max-age=86400', ...(file.etag ? { etag: file.etag } : {}),
+  });
   const range = byteRange(rangeHeader, file.size);
   if (range === 'unsatisfiable') {
     headers.set('content-range', `bytes */${file.size}`);

@@ -7,7 +7,7 @@ const verse = (extra = {}) => ({ verseNumber: 21, textUthmani: 'لَوْ أَن�
 
 describe('the end-of-ayah marker', () => {
   it('is the number in Arabic digits between the ornate brackets', () => {
-    expect(ayahMarker(21)).toBe('﴿٢١﴾');
+    expect(ayahMarker(21)).toBe('\u06DD٢١');
     expect(AYAH_MARKER.test(ayahMarker(286))).toBe(true);
     expect(AYAH_MARKER.test('أَنزَلْنَا')).toBe(false);
   });
@@ -33,9 +33,9 @@ describe('the end-of-ayah marker', () => {
     expect(drawnWordTimes(words, [`لَوْ أَنزَلْنَا ${ayahMarker(21)}`], 1)).toEqual([[1, 2, undefined]]);
   });
 
-  it('keeps a project saved before the option between its cards', () => {
-    expect(placementOf(undefined)).toBe('between');
-    expect(placementOf('end')).toBe('end');
-    expect(placementOf('anything')).toBe('between');
+  it('is at the end of the ayah unless between the cards is chosen', () => {
+    expect(placementOf(undefined)).toBe('end');
+    expect(placementOf('between')).toBe('between');
+    expect(placementOf('hidden')).toBe('end');
   });
 });

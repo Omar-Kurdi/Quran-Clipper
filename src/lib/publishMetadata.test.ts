@@ -118,6 +118,10 @@ describe('publish metadata', () => {
     expect(meta.description).not.toContain('Translation:');
   });
 
+  it('names the Quran Foundation in the description, the credit its terms ask of a video', () => {
+    expect(buildPublishMetadata(base).description).toContain('Quran Foundation');
+  });
+
   it('names the translations that are on screen', () => {
     const meta = buildPublishMetadata({ ...base, translationNames: ['Saheeh International'] });
     expect(meta.description).toContain('Translation: Saheeh International');

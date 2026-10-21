@@ -119,6 +119,8 @@ type AlignRequest = {
   retime?: PhonemeRetime;
   /** The phoneme lab's other stages, as the sidecar's `lab` field; see `phonemeTrial`. */
   lab?: string;
+  /** How many of the reference's first ayahs were recited before the recording starts: going back over them is a repeat. */
+  heardBefore?: number;
 };
 
 /** The sidecar's `/align` form for one request. */
@@ -136,6 +138,7 @@ function alignmentForm(params: AlignRequest): FormData {
   if (params.breaks && params.breaks !== 'normal') formData.append('breaks', params.breaks);
   if (params.retime) formData.append('retime', params.retime);
   if (params.lab) formData.append('lab', params.lab);
+  if (params.heardBefore) formData.append('heard_before', String(params.heardBefore));
   return formData;
 }
 
@@ -255,7 +258,7 @@ export async function runForcedAlignMatch(params: {
   assist?: AlignAssist;
   breaks?: ScreenBreaks;
   retime?: PhonemeRetime;
-  lab?: string;
+  lab?: string; heardBefore?: number;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
 
@@ -285,7 +288,7 @@ export async function runForcedAlignMatch(params: {
     assist: params.assist,
     breaks: params.breaks,
     retime: params.retime,
-    lab: params.lab
+    lab: params.lab, heardBefore: params.heardBefore
   });
   return matchFromAlignment(result, params);
 }

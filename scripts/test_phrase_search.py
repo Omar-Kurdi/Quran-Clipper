@@ -132,5 +132,29 @@ check(
     ok=align._absorb_orphan_words(late, decodes[1:], imran)[0][0] == first_189 + 5,
 )
 
+print("\nmatch_decoded_to_range -- a window holding two ayahs")
+ref70 = corpus.words_for_range(70, 8, 19)
+start15 = next(i for i, w in enumerate(ref70) if w[0] == "70:15")
+heard = "كَلَّا إِنَّهَا لَظَى نَزَّاعَةً لِّلشَّوَى"  # Al-Ajmy going back over 70:15-16 in one breath
+one = align.match_decoded_to_range(heard, ref70, start15)
+two = align.match_decoded_to_range(heard, ref70, start15, two_ayahs=True)
+check(
+    "read as one ayah, half of it is lost",
+    ok=one is not None and ref70[one[0]][0] == ref70[one[1]][0],
+)
+check(
+    "read as two, both are kept, each to its last word",
+    ok=two is not None and (ref70[two[0]][0], ref70[two[1]][0]) == ("70:15", "70:16") and two[1] + 1 < len(ref70) and ref70[two[1] + 1][0] != "70:16",
+    detail=f"got {two and (ref70[two[0]][0], ref70[two[1]][0], two[1])}",
+)
+ref41 = corpus.words_for_range(41, 30, 31)
+partial = "وَأَبْشِرُوا بِالْجَنَّةِ الَّتِي كُنتُمْ تُوعَدُونَ نَحْنُ أَوْلِيَاؤُكُمْ"  # stops inside 41:31, then he goes back
+kept = align.match_decoded_to_range(partial, ref41, 0, two_ayahs=True)
+check(
+    "a window stopping inside the second ayah stays one ayah (Fussilat 41:31)",
+    ok=kept is not None and ref41[kept[0]][0] == ref41[kept[1]][0] == "41:30",
+    detail=f"got {kept and (ref41[kept[0]][0], ref41[kept[1]][0])}",
+)
+
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

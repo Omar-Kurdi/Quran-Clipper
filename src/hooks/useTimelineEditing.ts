@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { VerseData } from '@/lib/quranData';
 import {
   setBoundary, nudgeBoundary, markBoundaryAt, reorder, setText,
-  setTranslationText, setVerseNumber,
+  setTranslationText, setRepeat, setVerseNumber,
   toggleWord, addVerseAfter, removeVerse, duplicateVerse, splitSegment, mergeWithNext,
 } from '@/lib/verseEdits';
 import { markChecked } from '@/lib/captionChecks';
@@ -43,6 +43,7 @@ export function useTimelineEditing(initial: VerseData[]) {
       apply(setTranslationText(verses, selectedIndex, id, value)),
 
     verseNumber: (value: number) => apply(setVerseNumber(verses, selectedIndex, value)),
+    repeat: (value: boolean) => apply(setRepeat(verses, selectedIndex, value)),
 
     toggleWord: (wordIndex: number) => apply(toggleWord(verses, selectedIndex, wordIndex)),
 

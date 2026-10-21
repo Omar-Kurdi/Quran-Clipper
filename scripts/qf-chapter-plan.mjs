@@ -165,13 +165,33 @@ export function nextWindow({ verses, first, from, duration, pace, stretch = 1 })
   return { first, keep, last, from, to, final: false };
 }
 
-/** Each ayah's first and last word in an aligner answer, on the recording's clock: `ayah -> {start, end}`. */
+/**
+ * Each ayah's first and last word in an aligner answer, on the recording's clock: `ayah -> {start, end}`.
+ *
+ * An ayah starts at the first of its words that the reciter carries on from:
+ * not one heard just before he goes back over an earlier ayah. The aligner
+ * hears a stray word of the next ayah there -- Al-Ajmy's 29:64 «وَمَا» before
+ * his «لَا يَعْقِلُونَ» again, 68:38 «إِنَّ» for 20 ms before «فِيهِ تَدْرُسُونَ»
+ * again -- and the join was cut there, 2-4 s early, the going-back left in the
+ * next ayah's file. Going back is two words of an earlier ayah or more; one is
+ * the aligner misplacing a word. A going-back after the ayah has started
+ * (78:35-36, read again after 78:36) stays in that ayah's file, as before.
+ */
 export function ayahBounds(words, offset = 0) {
+  const ayahOf = word => Number(String(word.verse_key).split(':')[1]);
+  const heard = [...words].sort((a, b) => a.start - b.start);
   const bounds = new Map();
-  for (const word of words) {
-    const ayah = Number(String(word.verse_key).split(':')[1]);
-    const seen = bounds.get(ayah) ?? { start: Infinity, end: -Infinity };
-    bounds.set(ayah, { start: Math.min(seen.start, word.start + offset), end: Math.max(seen.end, word.end + offset) });
+  for (const [i, word] of heard.entries()) {
+    const ayah = ayahOf(word);
+    const seen = bounds.get(ayah) ?? { start: Infinity, end: -Infinity, carried: false };
+    // Going back is two words or more of an earlier ayah: one is the aligner misplacing a word (63:5's last).
+    const stray = i + 2 < heard.length && ayahOf(heard[i + 1]) < ayah && ayahOf(heard[i + 2]) < ayah;
+    const start = seen.carried || stray ? seen.start : Math.min(seen.start, word.start + offset);
+    bounds.set(ayah, { start, end: Math.max(seen.end, word.end + offset), carried: seen.carried || !stray });
+  }
+  // An ayah heard only as strays keeps its earliest word.
+  for (const [ayah, { start, end }] of bounds) {
+    bounds.set(ayah, { start: Number.isFinite(start) ? start : Math.min(...heard.filter(word => ayahOf(word) === ayah).map(word => word.start + offset)), end });
   }
   return bounds;
 }

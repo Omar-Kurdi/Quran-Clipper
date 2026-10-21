@@ -1,31 +1,30 @@
 import type { VerseData } from './quranData';
 
 /**
- * Where a caption shows its ayah's number: closing the ayah inside the Arabic,
- * as the mushaf does (`end`), in the gap between the Arabic and translation
- * cards (`between`, how every project made before this option was drawn), or
- * not at all.
+ * Where a caption shows its ayah's number: closing the ayah inside the Arabic
+ * and its translation, as the mushaf does (`end`, the default), or in the gap
+ * between the Arabic and translation cards (`between`).
  */
-export type AyahNumberPlacement = 'end' | 'between' | 'hidden';
+export type AyahNumberPlacement = 'end' | 'between';
 
-export const AYAH_NUMBER_PLACEMENTS: readonly AyahNumberPlacement[] = ['end', 'between', 'hidden'];
+export const AYAH_NUMBER_PLACEMENTS: readonly AyahNumberPlacement[] = ['end', 'between'];
 
-/** A saved project with no placement predates the option, and keeps the look it was made with. */
+/** Anything else -- a project saved before the option, or one that chose a placement no longer offered -- is the default. */
 export const placementOf = (value: unknown): AyahNumberPlacement =>
-  AYAH_NUMBER_PLACEMENTS.includes(value as AyahNumberPlacement) ? (value as AyahNumberPlacement) : 'between';
+  AYAH_NUMBER_PLACEMENTS.includes(value as AyahNumberPlacement) ? (value as AyahNumberPlacement) : 'end';
 
 export const toArabicDigits = (n: number): string => String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
 
 /**
- * The end-of-ayah marker, ﴿٢١﴾, in the order an RTL line wants it. The
- * mushaf page faces have no digits or ornate brackets, and the caption's font
- * stack falls back to a Unicode Arabic face for them, so one string serves
- * every face.
+ * The end-of-ayah marker as the mushaf prints it: U+06DD, the end-of-ayah
+ * sign, before the number's digits, which a mushaf face draws as one ornament
+ * with the number inside it -- ۝٢١. It is drawn in a face of its own
+ * (`VideoCanvas`), whatever the caption's.
  */
-export const ayahMarker = (verseNumber: number): string => `﴿${toArabicDigits(verseNumber)}﴾`;
+export const ayahMarker = (verseNumber: number): string => `\u06DD${toArabicDigits(verseNumber)}`;
 
 /** A token that is an end-of-ayah marker: wrapping keeps it on the line of the word it closes. */
-export const AYAH_MARKER = /^﴿[٠-٩]+﴾$/;
+export const AYAH_MARKER = /^\u06DD[٠-٩]+$/;
 
 /**
  * Whether a caption reaches its ayah's end, and so carries the marker: its

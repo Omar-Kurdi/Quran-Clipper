@@ -282,6 +282,28 @@ describe('the windows a chapter is aligned in', () => {
     ];
     expect(ayahBounds(words, 100).get(2)).toEqual({ start: 108.5, end: 110 });
   });
+
+  it("start an ayah where the reciter carries on into it, not at a word heard before he goes back (Al-Ajmy's 68:38)", () => {
+    const word = (verse_key: string, word_index: number, start: number, end: number) => ({ verse_key, word_index, start, end });
+    const words = [word('68:37', 3, 2.59, 2.87), word('68:37', 4, 3.17, 3.9), word('68:38', 0, 3.97, 3.99),
+      word('68:37', 3, 4.13, 4.15), word('68:37', 4, 5.09, 6.85), word('68:38', 0, 6.85, 6.93), word('68:38', 1, 8.49, 8.61)];
+    expect(ayahBounds(words).get(38)).toEqual({ start: 6.85, end: 8.61 });
+    expect(ayahBounds(words).get(37)).toEqual({ start: 2.59, end: 6.85 });
+  });
+
+  it('start an ayah at its first word when the aligner misplaces one word of the ayah before after it (63:5-6)', () => {
+    const word = (verse_key: string, word_index: number, start: number, end: number) => ({ verse_key, word_index, start, end });
+    const words = [word('63:5', 12, 107.89, 108.32), word('63:6', 0, 112.05, 114.39), word('63:5', 13, 114.4, 114.6), word('63:6', 1, 114.81, 115.35)];
+    expect(ayahBounds(words).get(6)?.start).toBe(112.05);
+  });
+
+  it("keep a going-back after the ayah has started in that ayah (78:35-36, read again after 78:36)", () => {
+    const word = (verse_key: string, word_index: number, start: number) => ({ verse_key, word_index, start, end: start + 0.5 });
+    const words = [word('78:35', 0, 0), word('78:35', 1, 1), word('78:36', 0, 6), word('78:36', 1, 7),
+      word('78:35', 0, 14), word('78:35', 1, 15), word('78:36', 0, 20), word('78:36', 1, 21), word('78:37', 0, 28)];
+    expect(ayahBounds(words).get(36)?.start).toBe(6);
+    expect(ayahBounds(words).get(37)?.start).toBe(28);
+  });
 });
 
 describe('a chapter cut', () => {

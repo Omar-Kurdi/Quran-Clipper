@@ -564,23 +564,34 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               </select>
             </div>
 
-            {/* The size is the label's, between the cards; at the ayah's end the number is the Arabic's size. */}
-            {placementOf(config.ayahNumberPlacement) === 'between' && (
-              <div>
-                <div className="flex justify-between text-slate-300 mb-1">
-                  <span>{t.style.ayahNumberSize}</span>
-                  <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
-                </div>
-                <input
-                  type="range"
-                  min={20}
-                  max={72}
-                  value={config.ayahNumberFontSize}
-                  onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
-                  className="w-full accent-amber-500"
-                />
+            <label className="col-span-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={config.showRepeatMark !== false}
+                onChange={e => updateConfig('showRepeatMark', e.target.checked)}
+                className="mt-0.5 accent-amber-500"
+              />
+              <span>
+                <span className="font-semibold text-slate-200">{t.style.showRepeatMark}</span>
+                <span className="block text-slate-400">{t.style.showRepeatMarkHint}</span>
+              </span>
+            </label>
+
+            {/* Between the cards it is the label's size; at the ayah's end it scales the marker against the Arabic. */}
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.ayahNumberSize}</span>
+                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
               </div>
-            )}
+              <input
+                type="range"
+                min={20}
+                max={72}
+                value={config.ayahNumberFontSize}
+                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
           </div>
 
           {/* Colours.

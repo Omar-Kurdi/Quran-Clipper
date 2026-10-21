@@ -210,6 +210,16 @@ export function setText(
  * times described the ayah that is no longer there, and nobody can retype
  * them. Timing is kept -- the segment still sits where it sat.
  */
+/** A caption marked as the reciter going back over its ayah, or not: a repeat (`VerseData.repeat`). */
+export function setRepeat(verses: VerseData[], index: number, repeat: boolean): VerseData[] {
+  const current = verses[index];
+  if (!current || isOpening(current) || Boolean(current.repeat) === repeat) return verses;
+  const updated = [...verses];
+  const { repeat: _was, ...rest } = current;
+  updated[index] = repeat ? { ...rest, repeat: true } : rest;
+  return updated;
+}
+
 export function setVerseNumber(verses: VerseData[], index: number, value: number): VerseData[] {
   const updated = [...verses];
   const current = updated[index];

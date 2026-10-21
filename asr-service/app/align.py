@@ -872,7 +872,9 @@ def _dips_below(db: np.ndarray, window_sec: float, threshold: float) -> list[tup
         else:
             dips.append([begin, end])
             quiet_for.append(end - begin)
-    return [(begin, end) for (begin, end), quiet in zip(dips, quiet_for) if quiet >= MIN_DIP_SEC]
+    # Rounded to the frame: ten 20ms frames add up to 0.1999999999999993s, and a dip of exactly
+    # `MIN_DIP_SEC` -- Al-Ajmy's between 44:43 and 44:44 -- was not offered.
+    return [(begin, end) for (begin, end), quiet in zip(dips, quiet_for) if round(quiet, 6) >= MIN_DIP_SEC]
 
 
 # ---------------------------------------------------------------------------
@@ -1187,11 +1189,31 @@ def carries_position(decoded: str) -> bool:
     return len(tokens) >= MIN_ANCHOR_TOKENS and sum(len(t) for t in tokens) >= MIN_ANCHOR_CHARS
 
 
+def _vocatives_joined(tokens: list[str]) -> list[str]:
+    """A decoded يَا joined to the word it calls, as the mushaf writes it.
+
+    The decoder writes the vocative as a word of its own -- «يَا أَيُّهَا» --
+    and the mushaf never does: يَـٰٓأَيُّهَا, يَـٰقَوْمِ, يَـٰبَنِىٓ are one word each.
+    Left apart, the two decoded words stood against one in the text, and a
+    phrase opening on يَـٰٓأَيُّهَا matched better from the word after it: Al-Ajmy
+    going back to 59:18 was heard from ٱلَّذِينَ.
+    """
+    joined: list[str] = []
+    for token in tokens:
+        if joined and normalize_for_vocab(joined[-1]) == "يا":
+            joined[-1] += token
+        else:
+            joined.append(token)
+    return joined
+
+
 def match_decoded_to_range(
     decoded: str,
     ref_words: list[tuple[str, int, str]],
     cursor: int,
     near_only: bool = False,
+    *,
+    two_ayahs: bool = False,
 ) -> tuple[int, int, float] | None:
     """Locate what a phrase decoded to within the reference text.
 
@@ -1205,7 +1227,7 @@ def match_decoded_to_range(
     when a reciter says a phrase and then repeats it extended, both phrases
     simply match near the same place in the text, and the overlap falls out.
     """
-    tokens = [_skeleton(t) for t in decoded.split()]
+    tokens = [_skeleton(t) for t in _vocatives_joined(decoded.split())]
     tokens = [t for t in tokens if t]
     if not tokens:
         return None
@@ -1240,7 +1262,58 @@ def match_decoded_to_range(
             if best is None or score > best[2]:
                 best = (start, end, score)
 
-    return best
+    return _or_two_ayahs(best, tokens, ref_words, cursor, range(first, last + 1)) if two_ayahs else best
+
+
+#: How much better than any one ayah a window must read as the end of one and
+#: the start of the next before it is given both: see `_two_ayahs`.
+TWO_AYAH_MARGIN = 0.15
+#: A window reading one ayah at least this well is that ayah.
+ONE_AYAH_ENOUGH = 0.85
+
+
+def _or_two_ayahs(best, tokens: list[str], ref_words: list[tuple[str, int, str]], cursor: int, starts: range):
+    """`best`, or the window read as two ayahs where one reads poorly and two clearly better: see `_two_ayahs`."""
+    if best is not None and best[2] >= ONE_AYAH_ENOUGH:
+        return best
+    two = _two_ayahs(tokens, ref_words, cursor, starts)
+    return two if two is not None and (best is None or two[2] >= best[2] + TWO_AYAH_MARGIN) else best
+
+
+def _ayah_end(ref_words: list[tuple[str, int, str]], at: int) -> int:
+    """The last reference word of the ayah word `at` is in."""
+    end = at
+    while end + 1 < len(ref_words) and ref_words[end + 1][0] == ref_words[at][0]:
+        end += 1
+    return end
+
+
+def _two_ayahs(tokens: list[str], ref_words: list[tuple[str, int, str]], cursor: int, starts: range):
+    """The window as two ayahs, where no pause between them was offered and one reads poorly.
+
+    A phrase window is otherwise one ayah's words. Where the recording offers
+    no boundary between two ayahs, the window holding both could claim only
+    one, and the other went unread -- Al-Ajmy going back over 70:15-16 in
+    one breath matched nothing, and 70:17-18 was read as 70:17. Every word
+    still goes to the forced alignment, which times it from the audio.
+
+    Only for one window the audio offered, never windows the search joined
+    (Ghafir 40:23, said twice, was swallowed into 40:23-24), and only when it
+    reads the second ayah to its end: a window stopping inside it is a
+    reciter about to go back to its start (Fussilat 41:31).
+    """
+    corpus = [_skeleton(w[2]) for w in ref_words]
+    n = len(corpus)
+    two = None
+    for start in starts:
+        end = _ayah_end(ref_words, start)
+        if end + 1 >= n or _ayah_end(ref_words, end + 1) - start + 1 > MAX_PHRASE_WORDS:
+            continue
+        stop = _ayah_end(ref_words, end + 1)
+        score = difflib.SequenceMatcher(None, tokens, corpus[start : stop + 1]).ratio() - 0.05 * min(abs(start - cursor), n) / max(n, 1)
+        if two is None or score > two[2]:
+            two = (start, stop, score)
+    return two
 
 
 def _match_ratio(decoded: str, ref_words: list[tuple[str, int, str]], start: int, end: int) -> float:
@@ -1249,7 +1322,7 @@ def _match_ratio(decoded: str, ref_words: list[tuple[str, int, str]], start: int
     The similarity `match_decoded_to_range` ranks candidates by, minus its
     proximity tie-break -- here the range is supplied rather than searched for.
     """
-    tokens = [token for token in (_skeleton(t) for t in decoded.split()) if token]
+    tokens = [token for token in (_skeleton(t) for t in _vocatives_joined(decoded.split())) if token]
     if not tokens or end < start:
         return 0.0
     window = [_skeleton(ref_words[i][2]) for i in range(start, end + 1)]
@@ -1719,6 +1792,7 @@ def assign_phrase_ranges_by_decode(
     decoded_phrases: list[str] | None = None,
     emission=None,
     sec_per_frame: float | None = None,
+    heard_before: int = 0,
 ) -> list[tuple[int, int, float, float, float]]:
     """Decode each phrase, then locate what it said in the reference text.
 
@@ -1778,9 +1852,13 @@ def assign_phrase_ranges_by_decode(
         routes = sorted(states[i].values(), key=lambda route: route[:2], reverse=True)[:BEAM_WIDTH]
 
         for explained, used, assignments, decodes in routes:
-            reached = assignments[-1][1] if assignments else -1
+            # The first `heard_before` reference words were recited before the recording starts -- the ayahs
+            # before a built-in reciter's passage -- so the reading starts after them, and going back over
+            # them is a repeat, not text skipped. Read as new, they outscored the passage's own first
+            # ayah: Al-Ajmy's 70:18, «وَجَمَعَ فَأَوْعَىٰٓ», lost to his going back over 70:15-17 after it.
+            reached = assignments[-1][1] if assignments else heard_before - 1
             cursor = reached + 1
-            said = {word for start, end, *_ in assignments for word in range(start, end + 1)}
+            said = {word for start, end, *_ in assignments for word in range(start, end + 1)} | set(range(heard_before))
 
             for j in range(i + 1, min(i + 1 + max_span, phrases + 1)):
                 if j > i + 1 and not _cuts_a_word(decode, i, j, cursor, ref_words, match_from):
@@ -1795,7 +1873,7 @@ def assign_phrase_ranges_by_decode(
                     continue
                 decoded = decode(i, j, cursor)
                 match = match_decoded_to_range(
-                    decoded, ref_words, cursor, near_only=not carries_position(decoded)
+                    decoded, ref_words, cursor, near_only=not carries_position(decoded), two_ayahs=j == i + 1
                 )
                 slot = states.setdefault(j, {})
                 unclaimed = (explained, used + 1, assignments, decodes)
@@ -3114,7 +3192,7 @@ def decode_agreement(
     for i, text in enumerate(decoded_phrases):
         if i + 1 >= len(boundaries):
             break
-        tokens = [t for t in (_skeleton(t) for t in text.split()) if t]
+        tokens = [t for t in (_skeleton(t) for t in _vocatives_joined(text.split())) if t]
         if len(tokens) < MIN_ANCHOR_TOKENS or sum(len(t) for t in tokens) < MIN_ANCHOR_CHARS:
             # Too little read back to be evidence either way -- see MIN_ANCHOR_TOKENS.
             continue
@@ -3216,6 +3294,7 @@ def _script_by_decode(
     decoded_phrases: list[str] | None = None,
     phrase_ends: list[tuple[float, int]] | None = None,
     whole: str = "",
+    heard_before: int = 0,
 ) -> tuple[list[int], list[bool]]:
     """What was recited, by decoding each phrase and finding it in the reference: the script, and its repeats.
 
@@ -3223,7 +3302,7 @@ def _script_by_decode(
     phrase and began the next, as (time, last reference word) -- see
     `decoded_phrase_ends`.
     """
-    assignments = assign_phrase_ranges_by_decode(pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame)
+    assignments = assign_phrase_ranges_by_decode(pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame, heard_before)
     if phrase_ends is not None:
         phrase_ends.extend(decoded_phrase_ends(assignments))
 
@@ -3272,6 +3351,7 @@ def align_recitation(
     phoneme_timing: str = "",
     phoneme_reading: str = "",
     whole: str = "",
+    heard_before: int = 0,
 ) -> RecitationResult:
     """Full pipeline: decide *what* was recited, then align it, then group it.
 
@@ -3332,7 +3412,7 @@ def align_recitation(
     phrase_ends: list[tuple[float, int]] = []
 
     def by_decode() -> tuple[list[int], list[bool]]:
-        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases, phrase_ends, whole)
+        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases, phrase_ends, whole, heard_before)
 
     read = None
     if phoneme_reading:

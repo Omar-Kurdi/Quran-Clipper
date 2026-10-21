@@ -279,24 +279,33 @@ export function wordByWordTranslation(
 export function captionText(
   verse: CaptionSource,
   id: string,
-  wordByWord = false
+  wordByWord = false,
+  /**
+   * The ayah's number, to close the text with, on a caption that closes the
+   * ayah with it in the Arabic (`ayahMarker.ts`). Only the text as fetched
+   * carries it: a hand-edited text is drawn as typed, so deleting the number
+   * from it, as from the parts of a long ayah another caption shows, keeps it
+   * off. 0 for none.
+   */
+  number = 0
 ): { text: string; source: CaptionTextSource } {
   const isOwn = id === DEFAULT_TRANSLATION_ID;
   const correction = (isOwn ? verse.displayTranslation : verse.displayTranslations?.[id]) || '';
   if (correction.trim()) return { text: correction, source: 'correction' };
+  const numbered = (text: string) => (number > 0 ? `${text.trimEnd()} (${number})` : text);
 
   // One dataset, not one per edition: quran.com publishes a single word-by-word
   // English, so every slot that follows the mask resolves to the same line.
   // `captionTranslations` collapses the repeats rather than stacking them.
   if (wordByWord) {
     const glosses = wordByWordTranslation(verse.words);
-    if (glosses) return { text: glosses, source: 'words' };
+    if (glosses) return { text: numbered(glosses), source: 'words' };
   }
 
   const fetched = isOwn
     ? verse.translation || verse.translations?.[DEFAULT_TRANSLATION_ID]
     : verse.translations?.[id];
-  return fetched ? { text: fetched, source: 'fetched' } : { text: '', source: 'none' };
+  return fetched ? { text: numbered(fetched), source: 'fetched' } : { text: '', source: 'none' };
 }
 
 /** The text alone, for the callers that do not care where it came from. */
@@ -310,13 +319,12 @@ export function captionTextFor(verse: CaptionSource, id: string, wordByWord = fa
  * Each slot resolves through `captionTextFor`, so the mask reaches all of them
  * rather than the first. A language whose text has not arrived yet is absent
  * rather than blank, so the card never reserves space for nothing.
+ *
+ * `wordByWord` builds every translation from the visible words rather than
+ * the ayah; `number` is the ayah's number to close each text with
+ * (`captionText`), 0 for none.
  */
-export function captionTranslations(
-  verse: CaptionSource,
-  ids: string[],
-  /** Build every translation from the visible words rather than the ayah. */
-  wordByWord = false
-): CaptionTranslation[] {
+export function captionTranslations(verse: CaptionSource, ids: string[], wordByWord = false, number = 0): CaptionTranslation[] {
   const wanted = ids.length ? ids : [DEFAULT_TRANSLATION_ID];
   const out: CaptionTranslation[] = [];
   // Two editions of the same language resolve to one word-by-word line, and
@@ -324,7 +332,7 @@ export function captionTranslations(
   // card saying the same thing twice in a smaller font.
   const drawn = new Set<string>();
   for (const id of wanted) {
-    const { text, source } = captionText(verse, id, wordByWord);
+    const { text, source } = captionText(verse, id, wordByWord, number);
     const trimmed = text.trim();
     if (!trimmed || drawn.has(trimmed)) continue;
     drawn.add(trimmed);

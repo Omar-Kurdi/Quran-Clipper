@@ -522,6 +522,7 @@ export const ar: Dictionary = {
     moveEndEarlier: 'تقديم النهاية',
     moveEndLater: 'تأخير النهاية',
     ayahNumber: 'رقم الآية',
+    markRepeat: 'تكرار (القارئ يعيد هذه الآية)',
     translation: 'الترجمة',
     alsoAppears: (verseKey, count, examples) =>
       count === 1
@@ -553,6 +554,8 @@ export const ar: Dictionary = {
     mushafLines: 'اتّبع أسطر المصحف',
     mushafLinesHint:
       'اكسر النص العربي حيث تكسره الصفحة المطبوعة، لا حيث تضيق البطاقة. والسطر الطويل يصغر خطه بدل أن يُكسر من جديد.',
+    showRepeatMark: 'علّم التكرار في الفيديو',
+    showRepeatMarkHint: 'يظهر ↻ في زاوية التسمية حيث يعيد القارئ آيةً.',
     headingBranding: 'العلامة المائية',
 
     bgModeLabel: 'طريقة استخدام الخلفيات:',
@@ -649,7 +652,7 @@ export const ar: Dictionary = {
     translationFontSize: 'حجم خط الترجمة:',
     ayahNumberSize: 'حجم رقم الآية:',
     ayahNumberPlacement: 'رقم الآية',
-    ayahNumberPlacements: { end: 'في نهاية الآية', between: 'بين البطاقتين', hidden: 'مخفي' },
+    ayahNumberPlacements: { end: 'في نهاية الآية', between: 'بين البطاقتين' },
 
     coloursLabel: 'الألوان:',
     colourArabic: 'النص العربي',

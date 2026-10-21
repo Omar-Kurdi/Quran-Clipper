@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import align, corpus, detect, phoneme, phoneme_reading, qul, regroup
@@ -229,18 +229,48 @@ def _alignment_warning(
     return warning
 
 
+def _words_of_leading_ayahs(ref_words: list[tuple[str, int, str]], ayahs: int) -> int:
+    """How many reference words the text's first `ayahs` ayahs hold."""
+    if ayahs <= 0:
+        return 0
+    keys: list[str] = []
+    for verse_key, _, _ in ref_words:
+        if not keys or keys[-1] != verse_key:
+            keys.append(verse_key)
+    leading = set(keys[:ayahs])
+    return sum(1 for verse_key, _, _ in ref_words if verse_key in leading)
+
+
+def _coverage_after(ref_words: list[tuple[str, int, str]], aligned: list, leading: int) -> float:
+    """How much of the text after its first `leading` words was given time.
+
+    Those words are the ayahs before a built-in reciter's passage, there to be
+    heard if the reciter goes back over them, and mostly not recited: counted,
+    a passage read in full came out at 17% (Al-Ajmy's 59:19-20) and was
+    warned as a range wider than its audio.
+    """
+    own = {(verse_key, index) for verse_key, index, _ in ref_words[leading:]}
+    given = {(word.verse_key, word.word_index) for word in aligned}
+    return round(len(given & own) / len(own), 4) if own else 0.0
+
+
+def _url_window(window_start: float = Form(0.0), window_end: float = Form(0.0)) -> tuple[float, float]:
+    """The stretch of `audio_url` to read, seconds: its two form fields as one."""
+    return window_start, window_end
+
+
 @app.post("/align")
 async def align_endpoint(
     audio: UploadFile | None = File(None),
     reference: str = Form(""),
     audio_url: str = Form(""),
-    window_start: float = Form(0.0),
-    window_end: float = Form(0.0),
+    window: tuple[float, float] = Depends(_url_window),
     assist: str = Form(""),
     breaks: str = Form(""),
     retime: str = Form(""),  # the phoneme model to re-time the words with (`phoneme.chosen`); `none` for fastconformer's
     lab: str = Form(""),  # the dev-only phoneme lab's other stages, `reading=v31;timing=old`; see `phoneme.lab_stages`
     whole: str = Form(""),  # the recording holds every ayah of the text from its `start`, to its `end`, or `both`; see `align.WHOLE_TEXT`
+    heard_before: int = Form(0),  # the text's first N ayahs were recited before the recording starts: going back over them is a repeat
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -274,6 +304,7 @@ async def align_endpoint(
     # Resolved before any decoding, so a missing export fails in milliseconds.
     detect_assist = _assist(assist)
 
+    window_start, window_end = window
     if audio_url:
         if not (window_end > window_start >= 0):
             raise HTTPException(
@@ -362,7 +393,11 @@ async def align_endpoint(
     # heard from the recording itself.
     aligner_pcm = _without_istiadha(pcm, _istiadha_before_basmala(pcm, ref_words[0][0]))
     try:
-        result = align.align_recitation(aligner_pcm, ref_words, boundaries, decoded_phrases, breaks, whole=whole, **phoneme.lab_stages(lab))
+        leading = _words_of_leading_ayahs(ref_words, heard_before)
+        result = align.align_recitation(
+            aligner_pcm, ref_words, boundaries, decoded_phrases, breaks, whole=whole,
+            heard_before=leading, **phoneme.lab_stages(lab),
+        )
     except align.AlignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -370,7 +405,7 @@ async def align_endpoint(
     retimed = phoneme.retime(retime, aligner_pcm, aligned, segments)
     silences = phoneme.silences(retime, aligner_pcm)
     mean_score = result.mean_score
-    coverage = result.reference_coverage
+    coverage = _coverage_after(ref_words, aligned, leading) if leading else result.reference_coverage
     agreement = result.decode_agreement
 
     # Detection reads the passage from phrase matches, so it can reach one ayah

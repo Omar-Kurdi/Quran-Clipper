@@ -17,8 +17,11 @@ export async function GET(req: NextRequest) {
   try {
     const file = await qfPassageFile(passage.reciterId, passage.surah, passage.start, passage.end, ffmpeg);
     if (!file) return NextResponse.json({ error: 'That passage is not in this recitation.' }, { status: 404 });
-    const { size } = await stat(file);
-    const { status, headers, body } = servedFile({ file, size }, req.headers.get('range'), 'audio/mpeg');
+    const { size, ino } = await stat(file);
+    // The file is touched each time it is served, so its times change; a passage made again is a new file.
+    const etag = `"${ino}-${size}"`;
+    if (req.headers.get('if-none-match') === etag) return new NextResponse(null, { status: 304, headers: { etag, 'cache-control': 'no-cache' } });
+    const { status, headers, body } = servedFile({ file, size, etag }, req.headers.get('range'), 'audio/mpeg');
     return new NextResponse(body, { status, headers });
   } catch (err) {
     if (err instanceof QfSurahUnavailable) return NextResponse.json({ error: err.message }, { status: 404 });

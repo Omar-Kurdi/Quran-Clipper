@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MatchSegment } from './matchTypes';
-import { inTheGaps, toTheVoice, phrasesFromPublished, timedFromPublished, withRepeats, goingBack } from './publishedPhrases';
+import { inTheGaps, toTheVoice, phrasesFromPublished, timedFromPublished, withRepeats, goingBack, readAgain } from './publishedPhrases';
 
 /** Muaiqly's 12:3 and 12:6 as QUL publishes them -- 12:6 goes back over words 8-10. */
 const published = new Map([
@@ -823,5 +823,136 @@ describe('repeats in a built-in reciter passage', () => {
       ['78:35', 0, 6, false], ['78:36', 6, 14.3, false], ['78:35', 14.3, 20, true], ['78:36', 20.4, 27.8, true],
     ]);
     expect(withRepeats(captions, [])).toBe(captions);
+  });
+
+  it('drop a caption of the ayah laid over its own repeat (Al-Ajmy 70:37)', () => {
+    const captions = [seg('70:36', 0, 5.9), seg('70:37', 5.9, 10.9), seg('70:37', 16.9, 21.8)];
+    const repeats = [{ ...seg('70:36', 10.9, 16.8), repeat: true }, { ...seg('70:37', 16.8, 21.8), repeat: true }];
+    expect(withRepeats(captions, repeats).map(c => [c.verseKey, c.startTime, Boolean(c.repeat)])).toEqual([
+      ['70:36', 0, false], ['70:37', 5.9, false], ['70:36', 10.9, true], ['70:37', 16.8, true],
+    ]);
+  });
+});
+
+describe('a word listed for no time at all', () => {
+  it("is no pass of its own: Al-Ajmy's 68:38 lists إِنَّ for 20ms before saying it, and the aligner heard it then too", () => {
+    const listed = new Map([
+      ['68:37', { from: 0, to: 6500, segments: [[1, 227, 273], [2, 507, 751], [3, 1027, 1868], [4, 2542, 2825], [5, 3187, 6500]] }],
+      ['68:38', { from: 6500, to: 14075, segments: [[1, 6500, 6520], [1, 6861, 7021], [2, 8555, 8696], [3, 9115, 9573], [4, 9915, 10131], [5, 10500, 14075]] }],
+    ]);
+    const timed = (segment: MatchSegment, at: [number, number, number][]): MatchSegment =>
+      ({ ...segment, wordTimings: at.map(([index, start, end]) => ({ index, start, end })) });
+    const heard = [
+      timed(seg('68:37', 0, 4, 0.209, 3.905), [[0, 0.209, 0.399], [4, 3.169, 3.905]]),
+      timed(seg('68:38', 0, 0, 3.965, 3.985), [[0, 3.965, 3.985]]),
+      timed(seg('68:37', 3, 4, 4.125, 6.854), [[3, 4.125, 4.145], [4, 5.089, 6.854]]),
+      timed(seg('68:38', 0, 4, 6.854, 14.0), [[0, 6.854, 6.934], [1, 8.489, 8.608], [4, 10.5, 14.0]]),
+    ];
+    const captions = phrasesFromPublished([{ verseKey: '68:37', wordCount: 5 }, { verseKey: '68:38', wordCount: 5 }], listed, heard)!;
+    expect(captions.filter(c => c.verseKey === '68:38').map(words)).toEqual([['68:38', 0, 4]]);
+  });
+});
+
+describe('readAgain', () => {
+  const passage = (...ayahs: [string, number][]) => ayahs.map(([verseKey, wordCount]) => ({ verseKey, wordCount }));
+  it("is the ayah read again after it was read through: Al-Ajmy's 39:56", () => {
+    const segments = [seg('39:55', 7, 15, 8.54, 16.6), seg('39:56', 0, 9, 19.35, 29.08), seg('39:56', 10, 13, 29.08, 36.05),
+      seg('39:56', 0, 9, 36.05, 46.24), seg('39:56', 10, 12, 46.24, 49.2), seg('39:56', 13, 13, 49.2, 52.35)];
+    expect(readAgain(segments, passage(['39:55', 16], ['39:56', 14]))).toEqual([[36.05, 52.35]]);
+  });
+  it("is not a restart inside an ayah not yet read through: his 29:63, back to مَآءً", () => {
+    const segments = [seg('29:63', 0, 6, 0.4, 10.5), seg('29:63', 6, 14, 10.9, 20.15), seg('29:63', 15, 21, 20.15, 27)];
+    expect(readAgain(segments, passage(['29:63', 22]))).toEqual([]);
+  });
+});
+
+describe('a going-back the export leaves out, after a short stop', () => {
+  it("is a caption of its own: Al-Ajmy's 29:63 stops after مَآءً for 0.26s and says it again", () => {
+    const text = ['وَلَئِن', 'سَأَلْتَهُم', 'مَّن', 'نَّزَّلَ', 'مِنَ', 'ٱلسَّمَآءِ', 'مَآءً', 'فَأَحْيَا', 'بِهِ', 'ٱلْأَرْضَ'];
+    // The Foundation's words, مَآءً once, and فَأَحْيَا listed over the second مَآءً.
+    const listed = new Map([['29:63', { from: 0, to: 15000, segments: [[1, 0, 2109], [2, 2109, 2949], [3, 3039, 3979], [4, 4259, 5189],
+      [5, 5189, 5579], [6, 5579, 8199], [7, 8199, 9789], [8, 9789, 12779], [9, 12779, 13849], [10, 13849, 15000]] }]]);
+    const at = [[0, 0.4, 1.12], [1, 2.19, 3.75], [2, 3.94, 4.07], [3, 4.5, 5.02], [4, 5.33, 5.66], [5, 5.93, 8.05], [6, 8.37, 10.52],
+      [6, 10.93, 11.96], [7, 12.47, 13.39], [8, 13.57, 13.79], [9, 14.01, 14.59]];
+    const heard = [{ ...seg('29:63', 0, 9, 0.4, 15), wordTimings: at.map(([index, start, end]) => ({ index, start, end })) }];
+    const captions = phrasesFromPublished([{ verseKey: '29:63', wordCount: 10, words: text }], listed, heard,
+      { quiet: [[0, 0.24], [10.12, 10.38]] })!;
+    expect(captions.map(words)).toEqual([['29:63', 0, 6], ['29:63', 6, 9]]);
+    const timed = inTheGaps(captions, [[0, 0.24], [10.12, 10.38]], heard);
+    expect(timed[1].startTime).toBeCloseTo(10.28, 1);
+  });
+});
+
+describe('a long stop the aligner read through', () => {
+  it("is a caption change with no stop sign: Al-Ajmy, weeping through 74:31, stops 2.2s after لِيَسْتَيْقِنَ", () => {
+    const text = ['كَفَرُوا۟', 'لِيَسْتَيْقِنَ', 'ٱلَّذِينَ', 'أُوتُوا۟', 'ٱلْكِتَـٰبَ', 'وَيَزْدَادَ'];
+    const at = [[0, 82.85, 83.33], [1, 83.69, 84.77], [2, 86.97, 87.32], [3, 87.77, 88.19], [4, 88.33, 89.95], [5, 91.01, 92.1]];
+    const timing = { from: 82800, to: 92200, segments: at.map(([index, start, end]) => [index + 1, start * 1000, end * 1000]) };
+    const heard = [{ ...seg('74:31', 0, 5, 82.8, 92.2), wordTimings: at.map(([index, start, end]) => ({ index, start, end })) }];
+    const captions = (quiet: [number, number][]) =>
+      phrasesFromPublished([{ verseKey: '74:31', wordCount: 6, words: text }], new Map([['74:31', timing]]), heard, { quiet })!.map(words);
+    expect(captions([[84.84, 85.34], [90.42, 90.86]])).toEqual([['74:31', 0, 1], ['74:31', 2, 4], ['74:31', 5, 5]]);
+    // The same words with no quiet between them: the aligner's gap alone is no stop.
+    expect(captions([])).toEqual([['74:31', 0, 5]]);
+    // Nor pieces of quiet, as inside a held ghunnah (Al-Tablawi's 32:24).
+    expect(captions([[85.2, 85.4], [86.5, 86.75], [90.42, 90.86]])).toEqual([['74:31', 0, 4], ['74:31', 5, 5]]);
+  });
+});
+
+describe('inTheGaps, a last word listed over the pause after it', () => {
+  it("puts the change in the pause: Al-Ajmy's 59:20 lists ٱلْفَآئِزُونَ through 0.8s of quiet before he goes back", () => {
+    const captions = [{ ...seg('59:20', 6, 9, 44.8, 53.91), wordTimings: [{ index: 9, start: 48.31, end: 53.8 }] }, seg('59:18', 0, 9, 53.91, 63.94)];
+    expect(inTheGaps(captions, [[53.0, 53.8]]).map(c => c.startTime)).toEqual([44.8, 53.7]);
+  });
+});
+
+describe('phrasesFromPublished where a nasal is held across a breath', () => {
+  it('cuts where a nasal is held across only for twice the quiet of a breath (39:55, رَّبِّكُم | مِّن)', () => {
+    const text = ['وَٱتَّبِعُوٓا۟', 'أَحْسَنَ', 'مَآ', 'أُنزِلَ', 'إِلَيْكُم', 'مِّن', 'رَّبِّكُم', 'مِّن', 'قَبْلِ'];
+    const timing = { from: 0, to: 10000, segments: text.map((_, i) => [i + 1, i * 1000 + 100, i * 1000 + 900]) };
+    const heard = [seg('39:55', 0, 6, 0, 7), seg('39:55', 7, 8, 7, 9)];
+    const captions = (quiet: [number, number][]) =>
+      phrasesFromPublished([{ verseKey: '39:55', wordCount: 9, words: text }], new Map([['39:55', timing]]), heard, { quiet })!.map(words);
+    // Al-Ajmy stopped there, 0.64s.
+    expect(captions([[6.8, 7.44]])).toEqual([['39:55', 0, 6], ['39:55', 7, 8]]);
+    // As quiet as the ghunnah itself, where reciters run on.
+    expect(captions([[6.85, 7.15]])).toEqual([['39:55', 0, 8]]);
+  });
+});
+
+describe('repeats in a built-in reciter passage, at their edges', () => {
+  /** A segment of one ayah's words `first`-`last` (0-based), at seconds `startTime`-`endTime`. */
+  const seg = (verseKey: string, startTime: number, endTime: number, first = 0, last = 9) =>
+    ({ verseKey, startTime, endTime, startWordIndex: first, endWordIndex: last });
+  const passage = (...keys: [string, number][]) => keys.map(([verseKey, wordCount]) => ({ verseKey, wordCount }));
+
+  it("take in a segment going back over what the repeat read with no stop before it (Al-Ajmy 59:19's madd)", () => {
+    const segments = [seg('59:18', 0, 10), seg('59:19', 10, 20), seg('59:20', 20, 30),
+      seg('59:18', 30, 40), seg('59:19', 40, 48, 0, 6), seg('59:19', 48, 52, 7, 9), seg('59:19', 52.2, 55.3, 8, 9), seg('59:20', 55.3, 63)];
+    const repeats = (quiet: [number, number][]) => goingBack(segments, passage(['59:18', 10], ['59:19', 10], ['59:20', 10]), quiet)
+      .repeats.map(r => [r.verseKey, r.startTime, r.endTime]);
+    // He held ٱلْفَـٰسِقُونَ: no quiet before 52.2s.
+    expect(repeats([[29.5, 30.1], [47.5, 48.1], [54.7, 55.4]]))
+      .toEqual([['59:18', 30, 40], ['59:19', 40, 48], ['59:19', 48, 55.3], ['59:20', 55.3, 63]]);
+    // Had he stopped, it would be a going-back of its own.
+    expect(repeats([[29.5, 30.1], [47.5, 48.1], [51.6, 52.1], [54.7, 55.4]])).toHaveLength(5);
+  });
+
+
+  it("keep a caption that only starts in a repeat's last moments, from where it ends (Al-Ajmy 74:31)", () => {
+    const captions = [seg('74:30', 24, 28.9), seg('74:31', 66.74, 77.3), seg('74:31', 77.3, 98.9)];
+    const repeats = [{ ...seg('74:21', 28.9, 31.8), repeat: true }, { ...seg('74:30', 62.6, 66.96), repeat: true }];
+    expect(withRepeats(captions, repeats).map(c => [c.verseKey, c.startTime, Boolean(c.repeat)])).toEqual([
+      ['74:30', 24, false], ['74:21', 28.9, true], ['74:30', 62.6, true], ['74:31', 66.96, false], ['74:31', 77.3, false],
+    ]);
+  });
+
+
+  it("drop a caption a repeat leaves a sliver of (Al-Ajmy 44:51, whose file opens on his going back)", () => {
+    const captions = [seg('44:50', 0, 7.78), seg('44:51', 7.78, 55.88), seg('44:51', 55.88, 61.6)];
+    const repeats = [{ ...seg('44:43', 7.9, 19.9), repeat: true }, { ...seg('44:50', 46.4, 55.03), repeat: true }];
+    expect(withRepeats(captions, repeats).map(c => [c.verseKey, c.startTime, Boolean(c.repeat)])).toEqual([
+      ['44:50', 0, false], ['44:43', 7.9, true], ['44:50', 46.4, true], ['44:51', 55.88, false],
+    ]);
   });
 });

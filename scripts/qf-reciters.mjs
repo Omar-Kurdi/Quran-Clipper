@@ -43,7 +43,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { execFile } from 'node:child_process';
 import { closeSync, createWriteStream, existsSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -931,8 +931,9 @@ async function constantBitrate(file, bitrate) {
  * constant first) and its sound decoded from those frames alone, so the
  * aligner's clock is the frames' clock the cuts are made on.
  */
-async function readRecording(url, source) {
-  await patiently(() => download(url, source));
+async function readRecording(url, source, { local = false } = {}) {
+  if (local) await copyFile(url, source);
+  else await patiently(() => download(url, source));
   let bytes = await readFile(source);
   let parsed = mp3Frames(bytes);
   const transcoded = parsed.variable;
@@ -1647,14 +1648,58 @@ async function addCommand(args) {
   console.log('Rebuild and restart the studio (./stop.sh && ./start.sh) to offer them, and commit src/lib/qfReciters.json.');
 }
 
+/**
+ * `cut-file <recording.mp3> --surah N [--out DIR]`: a recording of a whole
+ * surah from anywhere -- a reciter the Foundation does not publish -- cut into
+ * one file per ayah the same way, with no timings of its to go by, so every
+ * join stands on a pause or a second reading. Into DIR, by default `ayahs/SSS`
+ * beside the recording; a surah that fails a check leaves SSS.rejected.json
+ * there saying why.
+ */
+async function cutFileCommand(args) {
+  const surah = Number(args[args.indexOf('--surah') + 1]);
+  const outAt = args.indexOf('--out');
+  const file = args.find((arg, i) => !arg.startsWith('--') && !['--surah', '--out'].includes(args[i - 1]));
+  if (!file || !(surah >= 1 && surah <= 114)) {
+    console.log('Usage: node scripts/qf-reciters.mjs cut-file <recording.mp3> --surah N [--out DIR]');
+    process.exitCode = 2;
+    return;
+  }
+  if (!await aligner()) throw new Error(`cutting it into ayahs needs the alignment service: ${alignerNeeded()}`);
+  const dir = outAt >= 0 ? path.resolve(args[outAt + 1]) : path.join(path.dirname(path.resolve(file)), 'ayahs', pad(surah));
+  await mkdir(dir, { recursive: true });
+  const source = path.join(dir, `${pad(surah)}.source.${process.pid}.mp3`);
+  const started = Date.now();
+  try {
+    const { bytes, parsed, transcoded, pcm } = await readRecording(path.resolve(file), source, { local: true });
+    const verses = await patiently(() => chapterText(surah));
+    const sourceInfo = { file: path.basename(file), cutAt: new Date().toISOString(), transcoded };
+    const { placed, problems } = await placeOrRefuse(pcm, surah, verses, []);
+    if (problems.length) {
+      await writeFile(path.join(dir, `${pad(surah)}.rejected.json`), JSON.stringify({
+        surah, source: sourceInfo, problems, joins: placed.joins, windows: placed.windows, openings: placed.openings,
+      }, null, 1));
+      console.log(`  surah ${surah}: not cut into ayahs: ${problems.join('; ')}`);
+      process.exitCode = 1;
+      return;
+    }
+    const chapter = await writeAyahs({ dir, surah, bytes, parsed, placed, timings: [], source: sourceInfo });
+    await writeFile(path.join(dir, `${pad(surah)}.json`), JSON.stringify(chapter));
+    await rm(path.join(dir, `${pad(surah)}.rejected.json`), { force: true });
+    console.log(`  surah ${surah}: ${chapter.ayahs.length} ayahs in ${dir} (${Math.round((Date.now() - started) / 60_000)} min)`);
+  } finally {
+    await rm(source, { force: true });
+  }
+}
+
 loadEnv();
 const [command, ...args] = process.argv.slice(2);
 const commands = {
   download: downloadCommand, status: statusCommand, counts: countsCommand, check: checkCommand, add: addCommand,
-  sync: syncCommand, synced: syncedCommand, cut: cutCommand, 'cut-status': cutStatusCommand,
+  sync: syncCommand, synced: syncedCommand, cut: cutCommand, 'cut-status': cutStatusCommand, 'cut-file': cutFileCommand,
 };
 if (!commands[command]) {
-  console.log('Usage: node scripts/qf-reciters.mjs download|status|check|add|sync|synced|cut|cut-status [...]');
+  console.log('Usage: node scripts/qf-reciters.mjs download|status|check|add|sync|synced|cut|cut-status|cut-file [...]');
   process.exitCode = 2;
 } else {
   await commands[command](args);

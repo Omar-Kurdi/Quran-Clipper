@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { endsAyah } from '@/lib/ayahMarker';
 import { useInkOverhang } from '@/hooks/useInkOverhang';
 import { TranslationChooser } from './TranslationChooser';
 import { wordFace, pagesUsedBy, ensureQpcPages, QPC_V2 } from '@/lib/mushafFonts';
@@ -26,6 +27,8 @@ interface InspectorProps {
   isActive: boolean;
   onText: (field: 'translation', value: string) => void;
   onVerseNumber: (value: number) => void;
+  /** Mark the caption as a repeat -- the reciter going back over its ayah -- or not. */
+  onRepeat?: (repeat: boolean) => void;
   onToggleWord: (wordIndex: number) => void;
   onNudge: (edge: 'startTime' | 'endTime', delta: number) => void;
   onReorder: (to: number) => void;
@@ -75,6 +78,8 @@ interface InspectorProps {
    * this is the panel the mask lives in -- the label says so.
    */
   translationFollowsWords: boolean;
+  /** Whether a caption closing its ayah closes its translation with the ayah's number too (`ayahMarker.ts`). */
+  ayahNumberAtEnd?: boolean;
   onTranslationFollowsWords: (follows: boolean) => void;
 }
 
@@ -88,10 +93,10 @@ interface InspectorProps {
  */
 export const Inspector: React.FC<InspectorProps> = ({
   verses, index, isActive,
-  onText, onVerseNumber, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onCutAudio, onAdd,
+  onText, onVerseNumber, onRepeat, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onCutAudio, onAdd,
   onSplit, onMerge, onChecked, currentTime, timeOrigin = 0, onSelect,
   translationIds, onTranslationIds, onTranslationText,
-  translationFollowsWords, onTranslationFollowsWords
+  translationFollowsWords, onTranslationFollowsWords, ayahNumberAtEnd = false
 }) => {
   const t = useT();
   const verse = verses[index];
@@ -138,7 +143,7 @@ export const Inspector: React.FC<InspectorProps> = ({
   const alreadyShown = new Set<string>();
   for (const option of chosen) {
     const { text, source } = verse
-      ? captionText(verse, option.id, translationFollowsWords)
+      ? captionText(verse, option.id, translationFollowsWords, ayahNumberAtEnd && endsAyah(verse) ? verse.verseNumber : 0)
       : { text: '', source: 'none' as CaptionTextSource };
     const key = text.trim();
     if (key && alreadyShown.has(key)) { collapsed += 1; continue; }
@@ -372,6 +377,11 @@ export const Inspector: React.FC<InspectorProps> = ({
               dir="ltr"
               className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-100 font-mono"
             />
+          </label>}
+          {/* Found by the aligner where the reciter goes back over ayahs, and set by hand where it was missed. */}
+          {!isOpening(verse) && onRepeat && <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+            <input type="checkbox" checked={!!verse.repeat} onChange={e => onRepeat(e.target.checked)} className="accent-amber-500" />
+            <span className="font-semibold text-slate-200">↻ {t.inspector.markRepeat}</span>
           </label>}
         </div>
       </details>

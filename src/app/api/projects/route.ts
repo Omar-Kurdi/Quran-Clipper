@@ -60,6 +60,9 @@ async function syncIfDue(
  * together; two projects in the same surah share one chapter request, because
  * `quranCorpus` caches the request itself, not only its answer.
  */
+/** How many of the most recent projects the drawer lists: twenty hid a set of test projects and the user's own clips. */
+const PROJECTS_LISTED = 50;
+
 export async function GET() {
   try {
     const bindings = await getDbBindings();
@@ -70,7 +73,7 @@ export async function GET() {
       })));
       const list = synced
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-        .slice(0, 20);
+        .slice(0, PROJECTS_LISTED);
       return NextResponse.json({ success: true, source: 'memory', projects: list });
     }
     const { db, projects } = bindings;
@@ -86,7 +89,7 @@ export async function GET() {
     const notes = new Map<string, string[]>(
       synced.filter(row => row.syncRemovedIds).map(row => [row.id, row.syncRemovedIds])
     );
-    const list = await db.select().from(projects).orderBy(desc(projects.updatedAt)).limit(20);
+    const list = await db.select().from(projects).orderBy(desc(projects.updatedAt)).limit(PROJECTS_LISTED);
     const rows = list.map(row => (notes.has(row.id) ? { ...row, syncRemovedIds: notes.get(row.id) } : row));
     return NextResponse.json({ success: true, source: 'database', projects: rows });
   } catch (err: unknown) {
@@ -182,6 +185,7 @@ export async function POST(req: NextRequest) {
       translationFollowsWords: body.translationFollowsWords ?? false,
       mushafLines: body.mushafLines ?? false,
       ayahNumberPlacement: placementOf(body.ayahNumberPlacement),
+      showRepeatMark: body.showRepeatMark ?? true,
       showWaveform: body.showWaveform ?? true,
       showSurahBadge: body.showSurahBadge ?? true,
       badgeStyle: asBadgeStyle(body.badgeStyle),

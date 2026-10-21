@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DEFAULT_TRANSLATION_ID, MAX_TRANSLATIONS, TranslationOption,
+  captionText, DEFAULT_TRANSLATION_ID, MAX_TRANSLATIONS, TranslationOption,
   toggleTranslation, groupByLanguage, searchTranslations, selectedOptions,
   captionTranslations, drawnTranslationIds, missingTranslationIds, isRtlText, isRtlLanguage,
   wordByWordTranslation
@@ -238,5 +238,19 @@ describe('which translations a clip actually draws', () => {
     const plain = { translation: 'en', words: [{ arabic: 'قُلْ', translation: '' }] };
     // The second caption has no glosses to fall back on, so it draws the ayah.
     expect(drawnTranslationIds([glossed, plain], [DEFAULT_TRANSLATION_ID], true)).toEqual(['20']);
+  });
+});
+
+describe("the ayah's number closing a translation", () => {
+  const verse = { translation: 'Allah - there is no deity except Him.', words: [] };
+
+  it('closes the text as fetched, on the caption that closes the ayah', () => {
+    expect(captionText(verse, DEFAULT_TRANSLATION_ID, false, 255).text).toBe('Allah - there is no deity except Him. (255)');
+    expect(captionText(verse, DEFAULT_TRANSLATION_ID, false, 0).text).toBe('Allah - there is no deity except Him.');
+  });
+
+  it('is part of the text: edited out, it stays out', () => {
+    const edited = { ...verse, displayTranslation: 'there is no deity except Him.' };
+    expect(captionText(edited, DEFAULT_TRANSLATION_ID, false, 255).text).toBe('there is no deity except Him.');
   });
 });

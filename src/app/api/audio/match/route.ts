@@ -349,7 +349,9 @@ export async function POST(req: NextRequest) {
           assist: provider === 'qul' ? 'qul' : undefined,
           breaks: screenBreaksFrom(formData.get('breaks')),
           retime: lab?.starts,
-          lab: lab ? labStages(lab) : undefined
+          lab: lab ? labStages(lab) : undefined,
+          // The ayahs before a built-in passage are in the aligner's text as heard already (`publishedPassage`).
+          heardBefore: published?.aligned.heardBefore
         }), {
           // On a public studio each visitor holds only a small share of the
           // queue, and a visitor who closes the tab gives up their place.
