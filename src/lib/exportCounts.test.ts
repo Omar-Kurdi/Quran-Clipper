@@ -42,10 +42,19 @@ describe('summariseExports', () => {
     ], now);
     expect([stats.total, stats.last7Days, stats.last30Days, stats.totalSec]).toEqual([4, 2, 3, 120]);
     expect(stats.byDay).toHaveLength(30);
-    expect(stats.byDay[29]).toEqual({ day: '2026-10-11', count: 1 });
-    expect(stats.byDay[26]).toEqual({ day: '2026-10-08', count: 1 });
+    expect(stats.byDay[29]).toEqual({ day: '2026-10-11', count: 1, surahs: [{ surah: 12, count: 1 }] });
+    expect(stats.byDay[26]).toEqual({ day: '2026-10-08', count: 1, surahs: [{ surah: 12, count: 1 }] });
+    expect(stats.byDay[0].surahs).toEqual([]);
     expect(stats.bySurah).toEqual([{ surah: 12, count: 2 }, { surah: 1, count: 1 }]);
     expect(stats.byAspectRatio).toEqual([{ aspectRatio: '9:16', count: 3 }, { aspectRatio: '16:9', count: 1 }]);
+  });
+});
+
+describe('summariseExports, by day', () => {
+  it("lists each day's surahs, most exported first", () => {
+    const now = new Date('2026-10-21T18:00:00Z');
+    const stats = summariseExports([12, 1, 12, 55, null].map(surah => ({ surah, durationSec: 30, aspectRatio: '9:16', createdAt: now })), now);
+    expect(stats.byDay[29]).toEqual({ day: '2026-10-21', count: 5, surahs: [{ surah: 12, count: 2 }, { surah: 1, count: 1 }, { surah: 55, count: 1 }, { surah: null, count: 1 }] });
   });
 });
 

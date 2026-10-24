@@ -69,8 +69,11 @@ export interface ExportStats {
   last30Days: number;
   /** Total length of every export, in seconds. */
   totalSec: number;
-  /** The last 30 days, oldest first, each `YYYY-MM-DD` (UTC) with its count, days with none included. */
-  byDay: { day: string; count: number }[];
+  /**
+   * The last 30 days, oldest first, each `YYYY-MM-DD` (UTC) with its count, days with none included,
+   * and that day's surahs, most exported first (`surah` null for an export that named none).
+   */
+  byDay: { day: string; count: number; surahs: { surah: number | null; count: number }[] }[];
   /** Most exported first. */
   bySurah: { surah: number; count: number }[];
   byAspectRatio: { aspectRatio: string; count: number }[];
@@ -87,12 +90,18 @@ export function summariseExports(rows: CountedExport[], now: Date = new Date()):
   const at = now.getTime();
   const within = (days: number) => rows.filter(row => at - row.createdAt.getTime() < days * DAY_MS).length;
   const days = new Map<string, number>();
+  const daySurahs = new Map<string, Map<number | null, number>>();
   for (let k = 29; k >= 0; k--) days.set(new Date(at - k * DAY_MS).toISOString().slice(0, 10), 0);
   const surahs = new Map<number, number>();
   const shapes = new Map<string, number>();
   for (const row of rows) {
     const day = row.createdAt.toISOString().slice(0, 10);
-    if (days.has(day)) days.set(day, days.get(day)! + 1);
+    if (days.has(day)) {
+      days.set(day, days.get(day)! + 1);
+      const those = daySurahs.get(day) ?? new Map<number | null, number>();
+      those.set(row.surah, (those.get(row.surah) ?? 0) + 1);
+      daySurahs.set(day, those);
+    }
     if (row.surah) surahs.set(row.surah, (surahs.get(row.surah) ?? 0) + 1);
     if (row.aspectRatio) shapes.set(row.aspectRatio, (shapes.get(row.aspectRatio) ?? 0) + 1);
   }
@@ -101,7 +110,10 @@ export function summariseExports(rows: CountedExport[], now: Date = new Date()):
     last7Days: within(7),
     last30Days: within(30),
     totalSec: rows.reduce((sum, row) => sum + row.durationSec, 0),
-    byDay: [...days].map(([day, count]) => ({ day, count })),
+    byDay: [...days].map(([day, count]) => ({
+      day, count,
+      surahs: [...(daySurahs.get(day) ?? [])].sort((a, b) => b[1] - a[1] || (a[0] ?? 999) - (b[0] ?? 999)).map(([surah, n]) => ({ surah, count: n })),
+    })),
     bySurah: ranked(surahs).map(([surah, count]) => ({ surah, count })),
     byAspectRatio: ranked(shapes).map(([aspectRatio, count]) => ({ aspectRatio, count })),
   };

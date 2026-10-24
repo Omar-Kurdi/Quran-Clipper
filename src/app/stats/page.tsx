@@ -52,6 +52,12 @@ const STYLE = `
   .row .bar { height: 10px; background: var(--bar); border-radius: 2px; min-width: 1px; }
   .row .n { text-align: right; font-variant-numeric: tabular-nums; }
   .row .d { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .day summary { list-style: none; cursor: pointer; border-radius: 4px; }
+  .day summary::-webkit-details-marker { display: none; }
+  .day summary:hover { background: var(--line); }
+  .day[open] summary .d { color: var(--fg); font-weight: 600; }
+  .day ul { margin: 2px 0 8px 104px; padding: 0; list-style: none; font-size: 13px; }
+  .day li { padding: 1px 0; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   td { border-bottom: 1px solid var(--line); padding: 6px 4px; }
   td.n { text-align: right; font-variant-numeric: tabular-nums; }
@@ -70,13 +76,23 @@ function Counts({ stats }: { stats: ExportStats }) {
         <div className="tile"><b>{Math.round(stats.totalSec / 60)}</b><span>minutes of video</span></div>
       </div>
       <h2>Last 30 days</h2>
-      {stats.byDay.map(({ day, count }) => (
-        <div className="row" key={day}>
-          <span className="d">{day}</span>
-          <div className="bar" style={{ width: `${(count / busiest) * 100}%`, opacity: count ? 1 : 0 }} />
-          <span className="n">{count}</span>
-        </div>
-      ))}
+      {stats.byDay.map(({ day, count, surahs }) => {
+        const listed = surahs.map(({ surah, count: n }) => `${surah ? `${surah}. ${surahName(surah)}` : 'No surah'}${n > 1 ? ` ×${n}` : ''}`);
+        const row = (
+          <>
+            <span className="d">{day}</span>
+            <div className="bar" style={{ width: `${(count / busiest) * 100}%`, opacity: count ? 1 : 0 }} />
+            <span className="n">{count}</span>
+          </>
+        );
+        // A day with exports opens to its surahs; hovering it shows them too.
+        return count ? (
+          <details className="day" key={day}>
+            <summary className="row" title={listed.join('\n')}>{row}</summary>
+            <ul>{listed.map(line => <li key={line}>{line}</li>)}</ul>
+          </details>
+        ) : <div className="row" key={day}>{row}</div>;
+      })}
       <h2>By surah</h2>
       <Ranked rows={stats.bySurah.slice(0, 20).map(({ surah, count }) => [`${surah}. ${surahName(surah)}`, count])} />
       <h2>By shape</h2>
