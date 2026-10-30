@@ -79,6 +79,8 @@ export interface VerseData {
    * the line on a mushaf stop mark with no silence heard. See `captionChecks`.
    */
   checks?: string[];
+  /** With `misheard` among the checks: the words, by index in the ayah, the recogniser did not hear as written. */
+  unheardWords?: number[];
   /** Someone has dealt with this caption, so it is no longer marked for checking. */
   checked?: boolean;
   /** The reciter going back over this ayah after reading on: a repeat, marked as one in the editor. */

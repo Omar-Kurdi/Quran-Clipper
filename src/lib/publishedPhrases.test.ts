@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MatchSegment } from './matchTypes';
-import { inTheGaps, toTheVoice, phrasesFromPublished, timedFromPublished, withRepeats, goingBack, readAgain } from './publishedPhrases';
+import { inTheGaps, toTheVoice, phrasesFromPublished, timedFromPublished, withRepeats, goingBack, readAgain, withUnheard } from './publishedPhrases';
 
 /** Muaiqly's 12:3 and 12:6 as QUL publishes them -- 12:6 goes back over words 8-10. */
 const published = new Map([
@@ -954,5 +954,30 @@ describe('repeats in a built-in reciter passage, at their edges', () => {
     expect(withRepeats(captions, repeats).map(c => [c.verseKey, c.startTime, Boolean(c.repeat)])).toEqual([
       ['44:50', 0, false], ['44:43', 7.9, true], ['44:50', 46.4, true], ['44:51', 55.88, false],
     ]);
+  });
+});
+
+describe('withUnheard', () => {
+  // Al-Mousa's 4:157: the aligner's segment says «مَا لَهُم» (words 23-24) was not heard as written.
+  const aligned: MatchSegment[] = [{
+    verseKey: '4:157', startTime: 40.6, endTime: 49.4, startWordIndex: 21, endWordIndex: 30, checks: ['misheard'],
+    unheard: [{ word: 23, start: 43.0, end: 43.1 }, { word: 24, start: 43.1, end: 43.4 }],
+  }];
+
+  it('marks the caption the words fall inside, by ayah, word and time', () => {
+    const [before, inside, after] = withUnheard([
+      { verseKey: '4:157', startTime: 33, endTime: 42.5, startWordIndex: 13, endWordIndex: 22 },
+      { verseKey: '4:157', startTime: 42.5, endTime: 52.7, startWordIndex: 23, endWordIndex: 33, checks: ['stop_mark'] },
+      { verseKey: '4:158', startTime: 52.7, endTime: 56.8, startWordIndex: 0, endWordIndex: 3 },
+    ], aligned);
+    expect(before.checks).toBeUndefined();
+    expect(inside.checks).toEqual(['stop_mark', 'misheard']);
+    expect(inside.unheard?.map(entry => entry.word)).toEqual([23, 24]);
+    expect(after.unheard).toBeUndefined();
+  });
+
+  it('not a caption of the same words said at another time', () => {
+    const [again] = withUnheard([{ verseKey: '4:157', startTime: 60, endTime: 70, startWordIndex: 23, endWordIndex: 33 }], aligned);
+    expect(again.checks).toBeUndefined();
   });
 });

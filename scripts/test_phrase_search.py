@@ -155,6 +155,24 @@ check(
     ok=kept is not None and ref41[kept[0]][0] == ref41[kept[1]][0] == "41:30",
     detail=f"got {kept and (ref41[kept[0]][0], ref41[kept[1]][0])}",
 )
+ref4 = corpus.words_for_range(4, 156, 158)
+# Abdullah Al-Mousa reads 4:156 and 4:157's first twelve words in one breath, then goes back over them.
+into157 = "فْرِهِمْ وَقَوْلِهِمْ عَلَى مَرْيَمَ بُهْتَانًا عَظِيمًا وَقَوْلِهِمْ إِنَّا قَتَلْنَا الْمَسِيحَ عِيسَى ابْنَ مَرْيَمَ رَسُولَ اللَّهِ وَمَا قَتَلُوا وَمَا"
+both = align.match_decoded_to_range(into157, ref4, 0, two_ayahs=True)
+check(
+    "a window reading well into the second ayah keeps the first (An-Nisa 4:156-157)",
+    ok=both is not None and (ref4[both[0]][0], ref4[both[1]][0]) == ("4:156", "4:157") and ref4[both[1]][1] >= 11,
+    detail=f"got {both and (ref4[both[0]][0], ref4[both[1]][0], ref4[both[1]][1] + 1)}",
+)
+ref163 = corpus.words_for_range(4, 163, 164)
+# The same reciter from 4:163's إِسْحَـٰقَ to 4:164's عَلَيْكَ, يُونُسَ heard as «موسوس».
+garbled = "وَإِسْحَاقَ وَعِيسَى وَأَيُّوبَ وَمُوسوسَ وَهَارُوُونَ وَسُلَيْمَانَ وَآتَيْنَا دَاوُودَ زَبُورًا وَرُسُلًا قَدْ قَصَصْنَاهُمْ عَلَيْكَ مِن قَبْلُ وَرُسُلًا لَّمْ نَقْصُصْهُمْ عَلَيْكَ"
+kept163 = align.match_decoded_to_range(garbled, ref163, 15, two_ayahs=True)
+check(
+    "a garbled window clearly better read as two ayahs keeps both (An-Nisa 4:163-164)",
+    ok=kept163 is not None and (ref163[kept163[0]][0], ref163[kept163[1]][0]) == ("4:163", "4:164"),
+    detail=f"got {kept163 and (ref163[kept163[0]][0], ref163[kept163[1]][0])}",
+)
 
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

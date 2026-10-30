@@ -524,6 +524,8 @@ export const en = {
       'This line ends at a stop mark, but no pause was heard there. If the reciter ran straight on, merge it with the next caption.',
     checkLowMatch: (percent: number) =>
       `The aligner was unsure of this caption (${percent}%). Play it and check where it starts and ends.`,
+    checkMisheard: (words: string) =>
+      `The recogniser did not hear ${words} as written. The reciter may have said it differently, or it may be misheard or placed where it was not said. Play it and listen.`,
     looksRight: 'Looks right',
     moveStartEarlier: 'Move start earlier',
     moveStartLater: 'Move start later',

@@ -213,14 +213,19 @@ for setting, want in (("normal", [("40:21", 19, 22)]), ("more", [("40:21", 19, 2
     )
     check(f"0.25s of quiet at an unmarked word, {setting}", ok=ranges(segments) == want, detail=f"got {ranges(segments)}")
 
-# test_this.mp3 carries on through مَوْلَىٰكُمْ ۖ, leaving only a 0.32s gap in the alignment.
+# test_this.mp3 carries on through مَوْلَىٰكُمْ ۖ, leaving only a 0.32s gap in the alignment:
+# one caption, as its ground truth has it, unless more breaks are asked for.
 tahrim2 = [
     word("66:2", 6, "وَٱللَّهُ", 0.0, 0.8),
     word("66:2", 7, "مَوْلَىٰكُمْ ۖ", 0.9, 1.6),
     word("66:2", 8, "وَهُوَ", 1.92, 2.4),
     word("66:2", 9, "ٱلْعَلِيمُ", 2.5, 3.2),
 ]
-for setting, want in (("normal", [("66:2", 7, 8), ("66:2", 9, 10)]), ("fewer", [("66:2", 7, 10)])):
+for setting, want in (
+    ("normal", [("66:2", 7, 10)]),
+    ("more", [("66:2", 7, 8), ("66:2", 9, 10)]),
+    ("fewer", [("66:2", 7, 10)]),
+):
     segments, _ = align._segment_the_timeline(tahrim2, [6, 7, 8, 9], 3.3, pauses=[], bar_scale=align.BREAK_SCALES[setting])
     check(f"a stop mark on the alignment's gap alone, {setting}", ok=ranges(segments) == want, detail=f"got {ranges(segments)}")
 
@@ -323,6 +328,24 @@ ref7 = [("107:6", 0, "ٱلَّذِينَ"), ("107:6", 1, "هُمْ"), ("107:6", 
 check("left out by default: a passage may run past the recording", ok=align._restore_skipped_ayahs([0, 1, 2], ref7) == [0, 1, 2])
 check("restored when the recording holds the text to its end", ok=align._restore_skipped_ayahs([0, 1, 2], ref7, "end") == [0, 1, 2, 3, 4])
 check("and at the start when it holds it from there", ok=align._restore_skipped_ayahs([3, 4], ref7, "start") == [0, 1, 2, 3, 4])
+
+print("\na word not heard as written")
+nisa = ["وَمَا", "قَتَلُوهُ", "وَمَا", "صَلَبُوهُ"]
+shares = align._heard_shares("وَمَا قَتَلُوهُ وَمَا صدَقُوا", nisa)
+check("a word read as another is not heard; the rest are", ok=shares[3] < align.UNHEARD_FRACTION <= min(shares[:3]), detail=f"got {shares}")
+joined = align._heard_shares("وَمَاقَتَلُوهُ", nisa[:2])
+check("two words read run together are both heard", ok=min(joined) >= align.UNHEARD_FRACTION, detail=f"got {joined}")
+placed = [word("2:257", 21, "هُمْ", 1.0, 1.2), word("2:257", 21, "هُمْ", 1.2, 1.4), word("2:257", 22, "فِيهَا", 1.5, 2.0)]
+caption = align.Segment("2:257", 21, 22, 1.0, 2.0, 0.9, False)
+check("a word placed twice inside a caption is one word of it", ok=[w.word_index for w in align._caption_words(placed, caption)] == [21, 22])
+placed[2].unheard = True
+align._with_unheard([caption], placed)
+align._with_unheard([caption], placed)
+check(
+    "a caption lists its unheard word, with when it was placed, and is checked once",
+    ok=caption.checks == ["misheard"] and caption.unheard == [{"word": 22, "start": 1.5, "end": 2.0}],
+    detail=f"got {caption.checks} {caption.unheard}",
+)
 
 print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all checks passed'}")
 sys.exit(1 if FAILED else 0)

@@ -494,7 +494,7 @@ is 9/11:
 
 - a **marked** place needs only the reciter's own hesitation (`ALIGN_MIN_WAQF_PAUSE_SEC`, read
   from the alignment because a real stop in a reverberant room need not go quiet at all);
-- an **unmarked** place needs measured silence (`ALIGN_MIN_UNMARKED_PAUSE_SEC`, 0.30s);
+- an **unmarked** place needs measured silence (`ALIGN_MIN_UNMARKED_PAUSE_SEC`, 0.38s);
 - a **repeat** after a stop ends a line wherever it happens;
 - a **held nasal** raises the bar rather than lowering it.
 

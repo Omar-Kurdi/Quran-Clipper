@@ -1038,9 +1038,9 @@ export function timedFromPublished(
     result: {
       audioDuration: aligned.audioDuration,
       confidence: 1,
-      segments: toTheVoice(inTheGaps(withRepeats(captions, repeats).map(caption =>
+      segments: withUnheard(toTheVoice(inTheGaps(withRepeats(captions, repeats).map(caption =>
         again.some(([from, to]) => (caption.startTime ?? 0) >= from - READ_AGAIN_EDGE_SEC && (caption.startTime ?? 0) < to)
-          ? { ...caption, repeat: true } : caption), everything.quiet, aligned.segments), everything.quiet),
+          ? { ...caption, repeat: true } : caption), everything.quiet, aligned.segments), everything.quiet), everything.segments),
       // What was said before the passage is the aligner's to hear: the
       // published timings start at the first ayah, and dropping these lost
       // every timed reciter's isti'adha and basmala.
@@ -1049,6 +1049,35 @@ export function timedFromPublished(
         (heard ? 'cut where the aligner heard the reciter pause.' : 'one caption per ayah.')
     }
   };
+}
+
+/**
+ * Each caption with the words the aligner's segments found not heard as
+ * written (`unheard`) that fall inside it -- the same ayah, a word it shows,
+ * placed within its time -- and `misheard` among its checks. The captions
+ * here are cut from the published timings, not the aligner's segments, so
+ * its marks are carried over by word and time.
+ */
+export function withUnheard(captions: MatchSegment[], aligned: MatchSegment[]): MatchSegment[] {
+  return captions.map(caption => {
+    const start = caption.startTime ?? 0;
+    const end = caption.endTime ?? start;
+    const first = caption.startWordIndex ?? 0;
+    const last = caption.endWordIndex ?? Number.MAX_SAFE_INTEGER;
+    const unheard = new Map<number, { word: number; start: number; end: number }>();
+    for (const segment of aligned) {
+      if (segment.verseKey !== caption.verseKey) continue;
+      for (const entry of segment.unheard ?? []) {
+        const middle = (entry.start + entry.end) / 2;
+        if (entry.word >= first && entry.word <= last && middle >= start && middle <= end && !unheard.has(entry.word)) {
+          unheard.set(entry.word, entry);
+        }
+      }
+    }
+    if (!unheard.size) return caption;
+    const checks = caption.checks?.includes('misheard') ? caption.checks : [...(caption.checks ?? []), 'misheard'];
+    return { ...caption, checks, unheard: [...unheard.values()].sort((a, b) => a.word - b.word) };
+  });
 }
 
 /**

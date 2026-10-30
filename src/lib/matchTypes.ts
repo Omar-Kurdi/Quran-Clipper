@@ -17,6 +17,12 @@ export type MatchSegment = {
   confidence?: number;
   /** The aligner's reasons to check this caption; see `captionChecks`. */
   checks?: string[];
+  /**
+   * Its words the recogniser did not hear as written (`misheard` among the
+   * checks): each word's index in the ayah, 0-based, and when it was placed,
+   * in seconds on the original recording.
+   */
+  unheard?: { word: number; start: number; end: number }[];
   notes?: string;
   displayTextUthmani?: string;
   recitedTextUthmani?: string;

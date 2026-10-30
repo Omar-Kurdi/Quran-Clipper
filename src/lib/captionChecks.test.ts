@@ -27,6 +27,11 @@ describe('captionChecks', () => {
     expect(captionChecks(caption({ matchConfidence: undefined }))).toEqual([]);
   });
 
+  it('marks a caption with a word the recogniser did not hear as written', () => {
+    expect(captionChecks(caption({ checks: ['misheard'], unheardWords: [3] }))).toEqual(['misheard']);
+    expect(captionChecks(caption({ checks: ['misheard'], unheardWords: [3], checked: true }))).toEqual([]);
+  });
+
   it('drops the mark once the caption has been dealt with', () => {
     expect(captionChecks(caption({ checks: ['stop_mark'], matchConfidence: 0.2, checked: true }))).toEqual([]);
   });

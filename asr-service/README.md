@@ -138,10 +138,10 @@ CPU build back beside it: uninstall both and install `onnxruntime-gpu` again aft
 | `ALIGN_QUIET_MERGE_SEC` | `0.12` | Quiet either side of a drawn breath is one pause, not two. |
 | `ALIGN_MAX_PAUSE_INSET` | `0.25` | How far short of a word's end a silence may stop and still count as following it. Beyond this it is inside the word, not at the join. |
 | `ALIGN_NASAL_JUNCTION_FACTOR` | `2` | Extra evidence needed where tajweed holds a sound across a join — a ghunnah or a madd, both of which read as silence. |
-| `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.30` | Silence needed to end a line with no waqf mark licensing it — a reciter may stop anywhere. Raise it if lines break mid-phrase. |
+| `ALIGN_MIN_UNMARKED_PAUSE_SEC` | `0.38` | Silence needed to end a line with no waqf mark licensing it — a reciter may stop anywhere. Raise it if lines break mid-phrase. |
 | `ALIGN_MIN_RESTART_GAP_SEC` | `0.30` | Least time between two utterances of a word for it to count as repeated. |
 | `ALIGN_MAX_MEMORY_GB` | `2.0` | Most memory one forced-alignment pass may ask for. Cost grows with the *square* of the recording, so an over-long upload is refused with the figure rather than killing the process. About 45 minutes of recitation at the default. |
-| `ALIGN_MIN_WAQF_PAUSE_SEC` | `0.30` | Pause needed on a stop mark for it to end a line. |
+| `ALIGN_MIN_WAQF_PAUSE_SEC` | `0.36` | Pause needed on a stop mark for it to end a line. |
 | `ALIGN_MIN_DECODE_AGREEMENT` | `0.40` | Below this agreement between decode and alignment, `/align` sets `warning`. This is the wrong-passage guard. |
 | `ALIGN_MIN_REFERENCE_COVERAGE` | `0.75` | Below this fraction of the supplied text being recited at all, `/align` sets `warning`. |
 | `ALIGN_DIP_PERCENTILE` | `15` | Energy percentile treated as a phrase boundary. |

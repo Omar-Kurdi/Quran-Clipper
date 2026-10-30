@@ -10,6 +10,11 @@
  * - `low_match`: the aligner's score for the caption is under `LOW_MATCH`.
  *   With the stop mark, 16 flagged and 4 of the 10 wrong -- one caption in
  *   ten to check, a quarter of them wrong, where one in seventeen is overall.
+ * - `misheard`: a word of the caption the recogniser, reading it again, did
+ *   not hear as written (`unheardWords`) -- a reciter's slip, a mishearing, or
+ *   a word placed where it was not said. Not a matter of where the caption
+ *   breaks, so the ground truth cannot score it; it marked about one caption
+ *   in fifty of the ground-truth clips (2026-10-30).
  *
  * What did not earn a mark: the Inspector's 0.75 (60 flagged, 4 wrong), a
  * restart and a stretch the aligner had to read again -- each about as likely
@@ -22,7 +27,7 @@
  */
 import type { VerseData } from './quranData';
 
-export type CaptionCheck = 'stop_mark' | 'low_match';
+export type CaptionCheck = 'stop_mark' | 'low_match' | 'misheard';
 
 /** Below this the aligner's own score is worth a look. */
 export const LOW_MATCH = 0.5;
@@ -33,6 +38,7 @@ export function captionChecks(verse: Pick<VerseData, 'checks' | 'checked' | 'mat
   const reasons: CaptionCheck[] = [];
   if (verse.checks?.includes('stop_mark')) reasons.push('stop_mark');
   if (typeof verse.matchConfidence === 'number' && verse.matchConfidence < LOW_MATCH) reasons.push('low_match');
+  if (verse.checks?.includes('misheard')) reasons.push('misheard');
   return reasons;
 }
 

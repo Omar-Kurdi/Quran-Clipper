@@ -50,6 +50,8 @@ type AlignResponse = {
     is_restart: boolean;
     /** Why a person should check this caption; see `captionChecks`. Absent from older sidecars. */
     checks?: string[];
+    /** Its words the recogniser did not hear as written, with when each was placed. Absent from older sidecars. */
+    unheard?: { word: number; start: number; end: number }[];
   }[];
   meanScore: number;
   /**
@@ -352,6 +354,7 @@ function toMatchSegment(segment: AlignedSegment, verses: Verse[], wordsByVerse: 
     endTime: segment.end,
     confidence: Math.max(0, Math.min(1, segment.score)),
     checks: segment.checks?.length ? segment.checks : undefined,
+    unheard: segment.unheard?.length ? segment.unheard : undefined,
     displayTextUthmani: recited.map(word => word.arabic).join(' '),
     // No translation of its own. This used to copy the ayah's translation
     // into every segment on the reasoning that per-word glosses are

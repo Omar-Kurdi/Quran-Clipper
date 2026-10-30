@@ -238,6 +238,9 @@ export const Inspector: React.FC<InspectorProps> = ({
           {checks.includes('low_match') && (
             <p>{t.inspector.checkLowMatch(Math.round((verse.matchConfidence ?? 0) * 100))}</p>
           )}
+          {checks.includes('misheard') && (
+            <p>{t.inspector.checkMisheard((verse.unheardWords ?? []).map(index => `«${words[index]?.arabic ?? ''}»`).join(' '))}</p>
+          )}
         </CheckNote>
       )}
 

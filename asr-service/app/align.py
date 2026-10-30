@@ -82,6 +82,9 @@ class AlignedWord:
     #: True when this word is a second (or later) utterance inserted by repeat
     #: detection rather than part of the linear reference.
     is_repeat: bool = False
+    #: The recogniser, reading this word's caption again, did not hear it as
+    #: written: the reciter said something else, or nothing -- see `_mark_unheard`.
+    unheard: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -954,7 +957,13 @@ class Segment:
     #: 6, and 3 of them were wrong, against 10 wrong in all. A restart marked
     #: 19 (3 wrong) and a blind stretch read again 72 (4 wrong) -- about the
     #: rate of picking captions at random, so neither is reported.
+    #:
+    #: ``misheard`` -- a word of the caption the recogniser did not hear as
+    #: written, listed in `unheard`: see `_mark_unheard`.
     checks: list[str] = field(default_factory=list)
+    #: The caption's words not heard as written, each ``{"word", "start", "end"}``:
+    #: its index in the ayah, 0-based, and when the aligner placed it.
+    unheard: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -1266,10 +1275,16 @@ def match_decoded_to_range(
 
 
 #: How much better than any one ayah a window must read as the end of one and
-#: the start of the next before it is given both: see `_two_ayahs`.
-TWO_AYAH_MARGIN = 0.15
+#: the start of the next before it is given both: see `_two_ayahs`. At 0.15
+#: An-Nisa 4:163-164 in one breath (0.81 as both, 0.68 as 4:164, its يُونُسَ
+#: heard as «موسوس») kept only 4:164 and lost 4:163's last nine words.
+TWO_AYAH_MARGIN = 0.10
 #: A window reading one ayah at least this well is that ayah.
 ONE_AYAH_ENOUGH = 0.85
+#: Fewest words of the second ayah a window stopping inside it must read to be
+#: given both: fewer is a reciter about to go back to its start (Fussilat 41:31's
+#: «نَحْنُ أَوْلِيَآؤُكُمْ», two words).
+TWO_AYAH_MIN_WORDS = 4
 
 
 def _or_two_ayahs(best, tokens: list[str], ref_words: list[tuple[str, int, str]], cursor: int, starts: range):
@@ -1298,8 +1313,10 @@ def _two_ayahs(tokens: list[str], ref_words: list[tuple[str, int, str]], cursor:
     still goes to the forced alignment, which times it from the audio.
 
     Only for one window the audio offered, never windows the search joined
-    (Ghafir 40:23, said twice, was swallowed into 40:23-24), and only when it
-    reads the second ayah to its end: a window stopping inside it is a
+    (Ghafir 40:23, said twice, was swallowed into 40:23-24). The second ayah
+    may be read only in part, as Abdullah Al-Mousa reads 4:156 with 4:157's
+    first twelve words before going back over them, but by at least
+    `TWO_AYAH_MIN_WORDS`: a window stopping a word or two into it is a
     reciter about to go back to its start (Fussilat 41:31).
     """
     corpus = [_skeleton(w[2]) for w in ref_words]
@@ -1307,13 +1324,26 @@ def _two_ayahs(tokens: list[str], ref_words: list[tuple[str, int, str]], cursor:
     two = None
     for start in starts:
         end = _ayah_end(ref_words, start)
-        if end + 1 >= n or _ayah_end(ref_words, end + 1) - start + 1 > MAX_PHRASE_WORDS:
+        if end + 1 >= n:
             continue
-        stop = _ayah_end(ref_words, end + 1)
-        score = difflib.SequenceMatcher(None, tokens, corpus[start : stop + 1]).ratio() - 0.05 * min(abs(start - cursor), n) / max(n, 1)
-        if two is None or score > two[2]:
-            two = (start, stop, score)
+        found = _into_second_ayah(tokens, corpus, start, end, _ayah_end(ref_words, end + 1))
+        if found is not None:
+            stop, ratio = found
+            score = ratio - 0.05 * min(abs(start - cursor), n) / max(n, 1)
+            if two is None or score > two[2]:
+                two = (start, stop, score)
     return two
+
+
+def _into_second_ayah(tokens: list[str], corpus: list[str], start: int, end: int, second_end: int):
+    """(last word, ratio) of the best reading from `start` through the first ayah's `end` into the second.
+
+    At least `TWO_AYAH_MIN_WORDS` of the second ayah, or all of a shorter one,
+    and no more than `MAX_PHRASE_WORDS` in all; None where that leaves nothing.
+    """
+    stops = range(min(end + TWO_AYAH_MIN_WORDS, second_end), min(second_end, start + MAX_PHRASE_WORDS - 1) + 1)
+    readings = [(stop, difflib.SequenceMatcher(None, tokens, corpus[start : stop + 1]).ratio()) for stop in stops]
+    return max(readings, key=lambda reading: reading[1]) if readings else None
 
 
 def _match_ratio(decoded: str, ref_words: list[tuple[str, int, str]], start: int, end: int) -> float:
@@ -2460,8 +2490,13 @@ MIN_ANCHOR_CHARS = 4
 #: A pause on a stop mark only has to be long enough to be deliberate; the
 #: mark carries the rest of the decision. Expressed against the clip's own
 #: word gaps so it travels across reciters and tempos.
-WAQF_PAUSE_FACTOR = float(os.getenv("ALIGN_WAQF_PAUSE_FACTOR", "1.5"))
-MIN_WAQF_PAUSE_SEC = float(os.getenv("ALIGN_MIN_WAQF_PAUSE_SEC", "0.30"))
+#:
+#: At 1.5 and 0.30s a gap of 0.32s on a mark broke the line where the reciter
+#: ran on: test_this.mp3's مَوْلَىٰكُمْ ۖ, and Abdullah Al-Mousa's ذَٰلِكَ ۚ (4:153)
+#: and ٱلظَّنِّ ۚ (4:157), whose stops at a mark are 0.48s and longer. Raised, the
+#: ground-truth clips went 444 to 449 of 504, none worse.
+WAQF_PAUSE_FACTOR = float(os.getenv("ALIGN_WAQF_PAUSE_FACTOR", "2.25"))
+MIN_WAQF_PAUSE_SEC = float(os.getenv("ALIGN_MIN_WAQF_PAUSE_SEC", "0.36"))
 
 #: How far below the clip's own speech level counts as "not making sound".
 #:
@@ -2572,7 +2607,12 @@ MIN_MARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_MARKED_PAUSE_SEC", "0.18"))
 #: own on another recording, and makes the same passage segment differently
 #: depending on how much audio surrounds it. Marginal decisions are where the
 #: two disagree, so the bar is kept above them.
-MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.34"))
+#:
+#: At 0.34 a reverberant room's dip inside a phrase passed for a stop: Abdullah
+#: Al-Mousa's 4:154 broke after بِمِيثَـٰقِهِمْ on 0.34s, where he ran on. At 0.38
+#: the ground-truth clips went 449 to 452 of 504, none worse; at 0.44 test.mp3
+#: and Al-Hadid lost real stops.
+MIN_UNMARKED_PAUSE_SEC = float(os.getenv("ALIGN_MIN_UNMARKED_PAUSE_SEC", "0.38"))
 
 #: The studio's "fewer / more screen breaks" setting: how far it moves every
 #: bar for calling a pause a stop -- both pause bars and the stop mark's gap.
@@ -3163,6 +3203,120 @@ def _segment_the_timeline(
     return segments, spans
 
 
+#: Of a word's letters (its skeleton, `_skeleton`), the share a reading must
+#: carry, in order, for the word to count as heard.
+UNHEARD_FRACTION = 0.5
+#: How much of a caption's letters its best reading must carry before a word
+#: missing from it means anything. A sliver at a repeat's edge reads as a
+#: letter or nothing, which says only that it is short.
+HEARD_ENOUGH = 0.6
+#: Audio either side of a caption read with it, so a word at its edge is not
+#: cut in half by the read-out.
+UNHEARD_PAD_SEC = 0.12
+
+
+def _heard_shares(decoded: str, words: list[str]) -> list[float]:
+    """For each word, the share of its skeleton's letters a reading carries, in order.
+
+    Letter by letter rather than word by word, so a reading that runs two
+    words together or splits one, as the decoder often does, still hears both.
+    """
+    ref = [_skeleton(word) for word in words]
+    heard = " ".join(token for token in (_skeleton(t) for t in _vocatives_joined(decoded.split())) if token)
+    # Which word each letter of the joined text belongs to; -1 for the spaces.
+    owner = np.array([k for k, letters in enumerate(ref) for k in [k] * len(letters) + [-1]], dtype=int)
+    matched = np.zeros(len(owner), dtype=bool)
+    for a, _, size in difflib.SequenceMatcher(None, " ".join(ref), heard, autojunk=False).get_matching_blocks():
+        matched[a : a + size] = True
+    hits = np.bincount(owner[matched & (owner >= 0)], minlength=len(ref))
+    return [float(hits[k]) / max(1, len(letters)) for k, letters in enumerate(ref)]
+
+
+def _caption_words(aligned: list[AlignedWord], segment: Segment) -> list[AlignedWord]:
+    """The placed words a caption shows, each once, in order."""
+    inside = [word for word in aligned if _placed_in(word, segment)]
+    return [word for k, word in enumerate(inside) if all(w.word_index != word.word_index for w in inside[:k])]
+
+
+def _placed_in(word: AlignedWord, segment: Segment) -> bool:
+    """Is this placed word one of the caption's, said within its time?"""
+    return (
+        word.verse_key == segment.verse_key
+        and segment.start_word <= word.word_index <= segment.end_word
+        and segment.start - 0.05 <= word.start
+        and word.end <= segment.end + 0.05
+    )
+
+
+def _caption_readings(pcm: np.ndarray, emission, sec_per_frame: float, segment: Segment) -> list[str]:
+    """A caption's audio read again: out of the clip's emission, and from its own where long enough."""
+    start = max(0.0, segment.start - UNHEARD_PAD_SEC)
+    end = min(len(pcm) / SAMPLE_RATE, segment.end + UNHEARD_PAD_SEC)
+    readings = [decode_window(emission, int(start / sec_per_frame), int(end / sec_per_frame) + 1)]
+    chunk = pcm[int(start * SAMPLE_RATE) : int(end * SAMPLE_RATE)]
+    if len(chunk) >= SAMPLE_RATE // 4:
+        own = compute_emission(chunk)
+        readings.append(decode_window(own, 0, own.shape[1]))
+    return readings
+
+
+def _not_heard(readings: list[str], words: list[AlignedWord]) -> list[AlignedWord]:
+    """The words no reading carries `UNHEARD_FRACTION` of -- none where no reading carries `HEARD_ENOUGH` of them all."""
+    texts = [word.text for word in words]
+    letters = [len(_skeleton(text)) for text in texts]
+    shares = [_heard_shares(reading, texts) for reading in readings]
+    carried = max(sum(share * n for share, n in zip(each, letters)) / max(1, sum(letters)) for each in shares)
+    if carried < HEARD_ENOUGH:
+        return []
+    return [word for word, best in zip(words, (max(column) for column in zip(*shares))) if best < UNHEARD_FRACTION]
+
+
+def _mark_unheard(pcm: np.ndarray, emission, sec_per_frame: float, aligned: list[AlignedWord], segments: list[Segment]) -> None:
+    """Mark the placed words the recogniser does not hear as written when it reads their caption again.
+
+    The aligner fits the mushaf's words to whatever was said, so a word the
+    reciter got wrong is captioned as written and nothing shows it. Read
+    again, a caption's audio says what was heard: once from its own emission
+    and once from the clip's, as `span_decoder` reads a phrase, since the two
+    do not make the same mistakes -- a word either hears is heard. A word
+    neither carries half of is marked. That is a reciter's slip, or the
+    recogniser mishearing a sound one, or the aligner putting a word where it
+    was not said. Each is worth a listen; none changes a caption.
+
+    Each word once, however many times the aligner placed it within the
+    caption: the caption shows it once. Measured on the 544 captions of the
+    ground-truth clips (2026-10-30) this marked 12 words in 11 captions --
+    Al-Mousa's صَلَبُوهُ heard «صدقوا», إِلَيْكَ heard «إليه» -- where reading each
+    placing marked 22 captions, most of them for a word placed twice inside
+    one caption and heard once, which nobody watching could see.
+    """
+    for segment in segments:
+        words = _caption_words(aligned, segment)
+        if words:
+            _mark_caption(_caption_readings(pcm, emission, sec_per_frame, segment), words, aligned, segment)
+
+
+def _mark_caption(readings: list[str], words: list[AlignedWord], aligned: list[AlignedWord], segment: Segment) -> None:
+    """Mark every placing, within this caption, of a word its readings did not hear as written."""
+    missed = {word.word_index for word in _not_heard(readings, words)}
+    for word in words:
+        if word.word_index in missed:
+            log.info("%s:%d not heard as written in %r", word.verse_key, word.word_index + 1, max(readings, key=len)[:60])
+    for placed in aligned:
+        if placed.word_index in missed and _placed_in(placed, segment):
+            placed.unheard = True
+
+
+def _with_unheard(segments: list[Segment], aligned: list[AlignedWord]) -> list[Segment]:
+    """Each caption with the words `_mark_unheard` marked in it listed, and `misheard` among its checks."""
+    for segment in segments:
+        unheard = [word for word in _caption_words(aligned, segment) if word.unheard]
+        segment.unheard = [{"word": word.word_index, "start": round(word.start, 3), "end": round(word.end, 3)} for word in unheard]
+        if unheard and "misheard" not in segment.checks:
+            segment.checks.append("misheard")
+    return segments
+
+
 def decode_agreement(
     aligned: list[AlignedWord],
     boundaries: list[float],
@@ -3260,7 +3414,7 @@ def group_recitation(grouping: Grouping, breaks: str = "normal") -> list[Segment
         grouping.phrase_ends,
     )
     segments = _extend_over_repeated_tail(segments, spans, grouping.ref_words, grouping.pcm)
-    return _close_gaps(segments, duration, grouping.quiet)
+    return _with_unheard(_close_gaps(segments, duration, grouping.quiet), grouping.aligned)
 
 
 #: How well both phrases either side of a join must match the reference for the
@@ -3436,6 +3590,9 @@ def align_recitation(
 
     grouping = prepare_grouping(pcm, aligned, script, repeated, ref_words, phrase_ends)
     segments = group_recitation(grouping, breaks)
+    # Once, on the words: a re-cut at another setting (`group_recitation`) lists them again without reading.
+    _mark_unheard(pcm, emission, sec_per_frame, aligned, segments)
+    segments = _with_unheard(segments, aligned)
 
     if decoded_phrases is None:
         # Not free, but this is the only check that can catch a wrong ayah

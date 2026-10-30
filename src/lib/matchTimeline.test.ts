@@ -324,3 +324,18 @@ describe('reachClipEnds', () => {
     expect(reachClipEnds(verses, 0, 10)).toEqual(verses);
   });
 });
+
+describe('fetchVersesByDetectedSegments with a word not heard as written', () => {
+  it('keeps the check and which words of the ayah it names', async () => {
+    const timeline = await fetchVersesByDetectedSegments({
+      segments: [{
+        verseKey: '25:1', startTime: 0, endTime: 4, startWordIndex: 0, endWordIndex: 3,
+        checks: ['misheard'], unheard: [{ word: 2, start: 2.1, end: 2.8 }],
+      }],
+      selectedSurah: 25,
+      audioDuration: 10,
+    });
+    expect(timeline[0].checks).toEqual(['misheard']);
+    expect(timeline[0].unheardWords).toEqual([2]);
+  });
+});
