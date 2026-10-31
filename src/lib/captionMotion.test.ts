@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   motionForNewMatch,
-  captionLayers, parkedOnCaption, transitionWindow, leadingLayer, revealedWords, recitedWord,
+  captionLayers, parkedOnCaption, transitionWindow, leadingLayer, revealedWords, recitedWord, settledWordTimes,
   asCaptionTransition, TRANSITION_SECONDS, WORD_FADE_SECONDS, type CaptionMotion
 } from './captionMotion';
 
@@ -160,6 +160,42 @@ describe('recitedWord', () => {
     expect(recitedWord([1, 2, 3], 4, 2.5)).toBe(1);
     expect(recitedWord([1, undefined, 3], 4, 3.5)).toBe(2);
     expect(recitedWord([1, 2, 3], 4, 4)).toBe(-1);
+  });
+});
+
+describe('settledWordTimes', () => {
+  it('leaves a caption the aligner timed as it is', () => {
+    expect(settledWordTimes([1, 2, 3], 0.5, 4)).toEqual([1, 2, 3]);
+  });
+
+  it('times the half of a split the aligner had not, from the caption alone', () => {
+    // The tail of a hand split: its words were hidden where they were timed.
+    expect(settledWordTimes([undefined, undefined, undefined], 6, 9)).toEqual([6, 7, 8]);
+  });
+
+  it('places a word shown by hand between the timed words either side', () => {
+    expect(settledWordTimes([1, undefined, 3], 0.5, 4)).toEqual([1, 2, 3]);
+    expect(settledWordTimes([1, 2, undefined, undefined], 0.5, 5)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('brings in a word timed past the caption end, and one timed before it opens with it', () => {
+    expect(settledWordTimes([0.2, 2, 9], 1, 4)).toEqual([1, 2, 3]);
+  });
+
+  it('places a time out of order again', () => {
+    expect(settledWordTimes([1, 3, 2, 3.5], 0.5, 4)).toEqual([1, 3, 3.25, 3.5]);
+  });
+
+  it('keeps the end marker untimed, so it is never the word highlighted', () => {
+    const times = settledWordTimes([1, undefined, undefined], 0.5, 4, 1);
+    expect(times).toEqual([1, 2.5, undefined]);
+    expect(recitedWord(times, 4, 3.9)).toBe(1);
+  });
+
+  it('lets the highlight reach every word of a hand-split caption', () => {
+    const times = settledWordTimes([undefined, undefined], 6, 8);
+    expect(recitedWord(times, 8, 6.1)).toBe(0);
+    expect(recitedWord(times, 8, 7.5)).toBe(1);
   });
 });
 

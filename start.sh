@@ -185,6 +185,8 @@ RECITERS_LINE=$'\n'"  reciters     $COUNT offered, $HERE fully downloaded; $NEW_
 # six hours (src/instrumentation.ts) -- and this line says when it last did.
 SYNCED="$(node scripts/qf-reciters.mjs synced 2>/dev/null || echo 'sync state could not be read')"
 node scripts/qf-reciters.mjs sync --if-due --quiet >>"$RUN_DIR/qf-sync.log" 2>&1 &
+# And the Quran text saved projects are checked against (scripts/qf-text.mjs).
+node scripts/qf-text.mjs sync --if-due --quiet >>"$RUN_DIR/qf-sync.log" 2>&1 &
 RECITERS_LINE+=$'\n'"  recordings   $SYNCED"
 cat <<SUMMARY
 

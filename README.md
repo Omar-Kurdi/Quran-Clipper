@@ -205,7 +205,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   *Clean up my recording* takes out hum and room noise. *Loop-friendly ending* is for Shorts
   and Reels, which play again from the start: a gentle fade at each end and half a second of
   silence after the last word, with the last caption held over it. It is on when a recording
-  is first edited. The server renders the edit (lossless,
+  is first edited. *Fade in and out* fades the clip's first and last moments, 0.3s each unless
+  you set it longer; it is off unless ticked. The server renders the edit (lossless,
   so the captions stay on the sound) and Undo puts it back. A built-in reciter's edit is rebuilt
   from the synced recordings rather than kept as a copy. On a built-in reciter the timeline now
   counts from the first caption, so its length is the clip's, not the ayah files' silence.
@@ -265,6 +266,14 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   default, since a full printed line needs smaller type on a portrait card, and it also draws a caption that runs across a page break. Each colour
   offers eleven swatches, hue/saturation/lightness sliders, a hex field, and the system colour
   picker in the last cell of the grid.
+- **Ayah ending**, with the number at the end of the ayah: the ornament with the number in it (the
+  default), the mushaf page's own end glyph when the Arabic is in the Madani Mushaf face, ornate
+  brackets, the number alone, or the number in a ring.
+- **Brief tafsir**, under *Style → Card*, off by default: Tafsir al-Muyassar, in Arabic, a sentence
+  or two on each ayah under the translation, a size smaller, under its name. Its box in the
+  Captions tab edits it for every caption of the ayah, and of the ayahs it explains together with
+  it; the edit is saved with the project, as a translation's correction is, while the text as
+  fetched never is.
 - **Layouts**, under *Style → Card*: the centred card; **no card**, the text set straight on the
   picture; and the **Arabic and the translation apart**, each on its own card, with the ayah
   number between them. Each is a set of positions as
@@ -792,11 +801,22 @@ are left alone. A translation the upstream no longer serves is removed from the 
 if that leaves none, the default takes its place. The auto-saved draft is checked the same way
 when it is older than seven days.
 
+With the Quran Foundation's client id and secret set, the text a project is checked against is
+not fetched from the ordinary API: it comes from a copy of the Foundation's text kept through
+Content Sync, as its terms ask of content that is kept — the verse text and word list, the QCF V2
+and Uthmani Hafs mushafs, the English word glosses and each translation a project uses (about
+20 MB, in `~/.local/share/quran-clipper/qf-text/`). `./start.sh` and the running studio sync it
+on the same schedule as the recordings (`node scripts/qf-text.mjs sync` by hand). A translation
+no project used before is added the first time one is checked with it; until then, and whenever
+the copy has gone more than seven days unsynced, projects are left unchecked and tried again.
+Without the keys, projects are checked against the open API as before.
+
 The built-in reciters' recordings on disk are kept current through the Foundation's Content Sync
 API, also at least every seven days: `./start.sh` and the running studio (every six hours) sync
 each recitation once six days have passed, fetch again any surah whose files or word timings the
 Foundation changed, and remove anything it no longer publishes (`node scripts/qf-reciters.mjs sync`
-does the same by hand). This needs the client id and secret.
+does the same by hand). With the client id and secret, a surah's first download is listed from
+the same Content Sync snapshot, or from the open API when the snapshot cannot be reached. Syncing needs the client id and secret.
 
 ---
 
@@ -811,6 +831,9 @@ and the styling in any order, which is how the work actually goes.
 **Source — what you are making**
 Source shows one way in at a time, chosen at the top: **Built-in reciter** or **My recording**.
 1. **Built-in reciter**: choose a surah, an ayah range and a reciter, then **Load ayahs & audio**.
+   **Bookmark this passage** keeps the surah and ayahs a click away, and the star beside the
+   reciter puts them at the top of the list, above the ones used lately. All three are kept in
+   your browser.
 2. **My recording**: drop or choose your own recitation — audio **or video** — pick a timing
    engine, then **Match recording** (or **Time it by hand**). For a video, its audio drives the
    timing and a checkbox offers the footage as the background, synced to playback.
@@ -1389,3 +1412,7 @@ advertising, and a hosted copy may recover only its running costs.
 
 Free for personal, educational, and other non-commercial use — see [LICENSE](LICENSE) for the
 full terms. There is no commercial licence, and none will be granted.
+
+**Not for monetized videos:** share what you make freely, but do not monetize it: no ad revenue,
+sponsorships, paid content or sales. The studio and the speech models that time its captions are
+licensed for non-commercial use only.

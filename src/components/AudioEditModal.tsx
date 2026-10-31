@@ -8,7 +8,7 @@ import { formatDuration } from './AudioTrimModal';
 import { AudioEditWaveform, CaptionLane, WAVE_BUCKETS, type Selection } from './AudioEditWaveform';
 import { audioBufferToWav, computePeaks, decodeAudioFile } from '@/lib/audioTrim';
 import {
-  MAX_TEMPO, MIN_CUT_SEC, NO_EDIT, editedLength, encodeEdit, normalizeEdit, withCuts,
+  DEFAULT_FADE_SEC, MAX_FADE_SEC, MAX_TEMPO, MIN_CUT_SEC, NO_EDIT, editedLength, encodeEdit, normalizeEdit, withCuts,
   type AudioCut, type AudioEdit, type Span,
 } from '@/lib/audioEdit';
 import { fitToLength, openingCut, pauseCuts, silencesWithin, silentSpans, voiceSpan, withAutoCuts, type FitResult } from '@/lib/audioEditPlan';
@@ -389,6 +389,16 @@ const FitAndCleanUp: React.FC<PlanProps & { isUpload: boolean }> = ({ draft, dur
       {fit && encodeEdit(fit.edit) === encodeEdit(draft) && <FitOutcome fit={fit} duration={duration} captions={captions} draft={draft} onDraft={onDraft} />}
       <Check checked={draft.loudness} label={t.editAudio.loudness} help={t.editAudio.loudnessHelp} onChange={on => onDraft({ ...draft, loudness: on })} />
       <Check checked={draft.loop} label={t.editAudio.loop} help={t.editAudio.loopHelp} onChange={on => onDraft({ ...draft, loop: on })} />
+      <Check checked={draft.fade > 0} label={t.editAudio.fade} help={t.editAudio.fadeHelp} onChange={on => onDraft({ ...draft, fade: on ? DEFAULT_FADE_SEC : 0 })} />
+      {draft.fade > 0 && (
+        <label className="flex flex-col gap-1 ps-6">
+          <span className="flex items-center justify-between">
+            <span className="text-xs text-slate-300">{t.editAudio.fadeLength}</span>
+            <span className="font-mono text-xs text-slate-300" dir="ltr">{draft.fade.toFixed(1)}s</span>
+          </span>
+          <input type="range" min={0.1} max={MAX_FADE_SEC} step={0.1} value={draft.fade} dir="ltr" onChange={e => onDraft({ ...draft, fade: Number(e.target.value) })} />
+        </label>
+      )}
       {isUpload && <Check checked={draft.denoise} label={t.editAudio.denoise} help={t.editAudio.denoiseHelp} onChange={on => onDraft({ ...draft, denoise: on })} />}
     </section>
   );

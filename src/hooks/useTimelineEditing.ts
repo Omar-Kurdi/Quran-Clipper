@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { VerseData } from '@/lib/quranData';
 import {
   setBoundary, nudgeBoundary, markBoundaryAt, reorder, setText,
-  setTranslationText, setRepeat, setVerseNumber,
+  setTranslationText, setTafsirText, setRepeat, setVerseNumber,
   toggleWord, addVerseAfter, removeVerse, duplicateVerse, splitSegment, mergeWithNext,
 } from '@/lib/verseEdits';
 import { markChecked } from '@/lib/captionChecks';
@@ -92,5 +92,11 @@ export function useTimelineEditing(initial: VerseData[]) {
     [verses, apply]
   );
 
-  return { verses, setVerses, selectedIndex, setSelectedIndex, edit, reorderAt };
+  /** The tafsir of `keys`: every caption of those ayahs, not only the selected one (`setTafsirText`). */
+  const setTafsir = useCallback(
+    (keys: string[], fetched: string, value: string) => apply(setTafsirText(verses, keys, fetched, value)),
+    [verses, apply]
+  );
+
+  return { verses, setVerses, selectedIndex, setSelectedIndex, edit, reorderAt, setTafsir };
 }

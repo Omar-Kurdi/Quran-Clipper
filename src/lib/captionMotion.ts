@@ -214,6 +214,63 @@ export function leadingLayer<V extends Timed>(layers: readonly CaptionLayer<V>[]
 }
 
 /**
+ * Every drawn word given a time inside its caption, for the reveal and the
+ * highlight, when the caption's times will not do as they are.
+ *
+ * The aligner times only the words it put in a caption. A caption corrected
+ * by hand -- split where the aligner ran two phrases together, a word shown
+ * that it had hidden, an edge dragged -- can show words with no time of their
+ * own, or with one outside it: the highlight then stopped on the last timed
+ * word, or never started, and a word timed past the caption's end never came
+ * in at all. Such a word is placed between the timed words either side of it,
+ * evenly with its untimed neighbours, the caption's own start and end standing
+ * in where there are none; a time before the caption opens is its start, and
+ * one out of order with the words before it is dropped and placed the same
+ * way. The last `trailing` entries -- the ayah's end marker -- are no word and
+ * keep no time.
+ */
+export function settledWordTimes(
+  times: readonly (number | undefined)[],
+  captionStart: number,
+  captionEnd: number,
+  trailing = 0
+): (number | undefined)[] {
+  const count = Math.max(0, times.length - trailing);
+  const settled = usableTimes(times.slice(0, count), captionStart, captionEnd);
+  for (let index = 0; index < count; index++) {
+    if (settled[index] !== undefined) continue;
+    let last = index;
+    while (last + 1 < count && settled[last + 1] === undefined) last++;
+    placeRun(settled, index, last, last + 1 < count ? settled[last + 1]! : captionEnd, captionStart);
+    index = last;
+  }
+  return [...settled, ...times.slice(count).map(() => undefined)];
+}
+
+/** The times that can stand: inside the caption (one before it is its start) and in order with those before. */
+function usableTimes(times: readonly (number | undefined)[], captionStart: number, captionEnd: number): (number | undefined)[] {
+  let latest = captionStart;
+  return times.map(at => {
+    if (typeof at !== 'number' || at >= captionEnd || Math.max(at, captionStart) < latest) return undefined;
+    latest = Math.max(at, captionStart);
+    return latest;
+  });
+}
+
+/**
+ * Times the untimed words `first`..`last` between the word before them and
+ * `after`. Opening the caption, the first of them is said as it opens; after
+ * a timed word, each takes an equal share of the time to the next.
+ */
+function placeRun(settled: (number | undefined)[], first: number, last: number, after: number, captionStart: number): void {
+  const before = first > 0 ? settled[first - 1] : undefined;
+  const from = before ?? captionStart;
+  const offset = before === undefined ? 0 : 1;
+  const steps = last - first + offset + 1;
+  for (let run = first; run <= last; run++) settled[run] = from + ((after - from) * (run - first + offset)) / steps;
+}
+
+/**
  * How far each drawn word has appeared at `time`, 0 to 1, for the reveal.
  *
  * A word with no time of its own appears with the one before it, and the

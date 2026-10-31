@@ -18,13 +18,18 @@
  *
  * `applyContentSync` is the whole decision and touches no network, so it can
  * be tested. `syncProjectContent` fetches what it needs and calls it.
+ *
+ * Where the current text comes from: with the Quran Foundation's client id and
+ * secret set, the store kept through their Content Sync (`qfTextStore`), as
+ * their terms ask of content that is kept; without them, the open API.
  */
 
 import type { VerseData } from './quranData';
 import { getChapter, type CorpusVerse } from './quranCorpus';
-import { defaultTranslationId } from './quranApi';
+import { defaultTranslationId, quranApiConfigured, translationIdsToRequest } from './quranApi';
 import { fetchTranslationTexts, availableTranslationIds, type TranslationTexts } from './translationTexts';
 import { applyContentSync, type ContentSyncResult } from './contentSyncCore';
+import { storedChapter, storedEditionIds, storedTranslationTexts } from './qfTextStore';
 
 export { CONTENT_SYNC_MAX_AGE_MS, needsContentSync } from './contentSyncAge';
 export { applyContentSync } from './contentSyncCore';
@@ -65,6 +70,7 @@ export interface SyncSources {
  * next time rather than stripped.
  */
 export async function fetchSyncSources(ranges: AyahRange[], keyed: string[]): Promise<SyncSources | null> {
+  if (quranApiConfigured()) return storedSyncSources(ranges, keyed);
   const available = await availableTranslationIds();
   if (!available) return null;
   const wanted = keyed.filter(id => available.has(id)).slice(0, 5);
@@ -83,6 +89,28 @@ export async function fetchSyncSources(ranges: AyahRange[], keyed: string[]): Pr
   if (results.some(result => !result.texts)) return null;
   return {
     corpus: results.flatMap(result => result.chapter),
+    texts: Object.assign({}, ...results.map(result => result.texts)),
+    available: [...available],
+    defaultId: defaultTranslationId()
+  };
+}
+
+/**
+ * `fetchSyncSources` from the Content Sync store. Null, as there, when any
+ * part of it cannot answer: not built yet, not synced within the week, or an
+ * edition not held yet (whose sync this starts).
+ */
+function storedSyncSources(ranges: AyahRange[], keyed: string[]): SyncSources | null {
+  const available = storedEditionIds();
+  if (!available) return null;
+  const wanted = keyed.filter(id => available.has(id)).slice(0, 5);
+  const results = ranges.map(({ surah, start, end }) => ({
+    chapter: storedChapter(surah, translationIdsToRequest())?.filter(verse => verse.verseNumber >= start && verse.verseNumber <= end),
+    texts: wanted.length ? storedTranslationTexts(surah, start, end, wanted) : ({} as TranslationTexts)
+  }));
+  if (results.some(result => !result.chapter || !result.texts)) return null;
+  return {
+    corpus: results.flatMap(result => result.chapter ?? []),
     texts: Object.assign({}, ...results.map(result => result.texts)),
     available: [...available],
     defaultId: defaultTranslationId()

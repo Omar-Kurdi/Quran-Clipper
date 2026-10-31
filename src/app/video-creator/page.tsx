@@ -17,6 +17,10 @@ import { useFileDrop } from '@/hooks/useFileDrop';
 import type { ExportHealth } from '@/lib/exportHealth';
 import type { ExportPlan } from '@/lib/exportPresets';
 import { createBooleanPreference, createNumberPreference } from '@/lib/uiPreference';
+import { recentReciters, reciterGroups, usedLast, type PassageBookmark } from '@/lib/sourceShortcuts';
+import { FavouriteStar, PassageBookmarks, useFavouriteReciters } from '@/components/SourceShortcuts';
+import { useTafsir } from '@/hooks/useTafsir';
+import { shownTafsir, TAFSIR_NAME } from '@/lib/tafsirName';
 import type { ScreenBreaks } from '@/lib/forcedAligner';
 
 /** Module scope, so every render subscribes to the same store. */
@@ -50,7 +54,7 @@ import { FrameBar, SafeAreaOverlay } from '@/components/FrameBar';
 import { framePreset, coveredAreas } from '@/lib/frame';
 import { EXPORT_PRESETS } from '@/lib/exportPresets';
 import { isOpening } from '@/lib/openings';
-import { placementOf } from '@/lib/ayahMarker';
+import { markerStyleOf, placementOf } from '@/lib/ayahMarker';
 import { isPhonemeProvider, phonemeTrialOffered, LAB_CHOICES, LAB_DEFAULTS, type PhonemeLab, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
@@ -243,6 +247,8 @@ export default function VideoCreatorPage() {
     ripplePreference.getServerSnapshot
   );
   const toggleRippleEdits = () => ripplePreference.set(!rippleEdits);
+  const favouriteReciterIds = useFavouriteReciters();
+  const recentReciterIds = useSyncExternalStore(recentReciters.subscribe, recentReciters.get, recentReciters.getServerSnapshot);
   const skipAlignerSetting = useSyncExternalStore(
     skipAlignerPreference.subscribe,
     skipAlignerPreference.get,
@@ -298,7 +304,7 @@ export default function VideoCreatorPage() {
   const [surahNameArabic, setSurahNameArabic] = useState<string>('الفاتحة');
   const [surahNameEnglish, setSurahNameEnglish] = useState<string>('Al-Fatihah');
   const [audioUrl, setAudioUrl] = useState<string>(DEFAULT_AUDIO_URL);
-  const { verses, setVerses, selectedIndex, setSelectedIndex, edit, reorderAt } = useTimelineEditing(SAMPLE_PROJECTS[0].verses);
+  const { verses, setVerses, selectedIndex, setSelectedIndex, edit, reorderAt, setTafsir } = useTimelineEditing(SAMPLE_PROJECTS[0].verses);
   /**
    * The studio opens with Al-Fatihah already in the timeline so the preview is
    * not blank on a first visit. That is useful, but it is indistinguishable
@@ -502,6 +508,8 @@ export default function VideoCreatorPage() {
     mushafLines: false,
     // A new project closes each ayah with its number, as the mushaf does.
     ayahNumberPlacement: 'end',
+    ayahMarkerStyle: 'medallion',
+    showTafsir: false,
     showRepeatMark: true,
     showWaveform: true,
     showSurahBadge: true,
@@ -526,6 +534,8 @@ export default function VideoCreatorPage() {
     fps: 60,
     gpuAccelerated: true
   });
+  /** The brief tafsir as fetched, in memory only, while the style shows it; a hand edit is in `verses`. */
+  const tafsir = useTafsir(verses, canvasConfig.showTafsir === true);
   /** A new clip starts with no motion, whatever the last one had; the rest of its style carries over. */
   const beginClip = () => {
     if (!newClipPending.current) return;
@@ -712,6 +722,19 @@ export default function VideoCreatorPage() {
     }
   };
 
+  /** A bookmarked passage chosen: its surah and ayahs together, so nothing resets the range after. */
+  const pickPassage = (passage: PassageBookmark) => {
+    const surah = SURAHS_LIST.find(s => s.number === passage.surah);
+    if (!surah) return;
+    const start = Math.min(passage.start, surah.numberOfAyahs);
+    const end = Math.min(Math.max(passage.end, start), surah.numberOfAyahs);
+    setSelectedSurah(surah.number);
+    setAyahStart(start);
+    setAyahEnd(end);
+    setAyahStartInput(String(start));
+    setAyahEndInput(String(end));
+  };
+
   /** A new recording: nothing of the last one's edit applies. */
   const resetAudioEdit = () => {
     audioEditRef.current = NO_EDIT;
@@ -754,6 +777,7 @@ export default function VideoCreatorPage() {
         ? retime(fitVersesToAudio(data.verses || [], customAudioDuration || audioDuration), NO_EDIT, audioEditRef.current)
         : data.verses || [];
       setVerses(loaded);
+      if (!customAudioUrl) recentReciters.set(usedLast(recentReciters.get(), selectedReciter));
       setIsSampleProject(false);
       setSelectedIndex(0);
       // Measured timings are absolute positions in the whole chapter file, so
@@ -2197,11 +2221,13 @@ export default function VideoCreatorPage() {
       ayahEnd: clipPassage.end,
       reciterName: customAudioFile ? '' : selectedReciterMeta?.name || '',
       wordByWord: !!canvasConfig.translationFollowsWords,
+      // Credited only when the card draws it.
+      tafsirName: canvasConfig.showTafsir && verses.some(verse => shownTafsir(verses, tafsir.texts, verse.verseKey)) ? TAFSIR_NAME : undefined,
       verses
     }),
     [
       clipPassage, surahNameArabic, surahNameEnglish, customAudioFile,
-      selectedReciterMeta, canvasConfig.translationFollowsWords, verses
+      selectedReciterMeta, canvasConfig.translationFollowsWords, canvasConfig.showTafsir, verses, tafsir.texts
     ]
   );
 
@@ -2511,6 +2537,8 @@ export default function VideoCreatorPage() {
       translationFollowsWords: proj.translationFollowsWords ?? false,
       mushafLines: proj.mushafLines ?? false,
       ayahNumberPlacement: placementOf(proj.ayahNumberPlacement),
+      ayahMarkerStyle: markerStyleOf(proj.ayahMarkerStyle),
+      showTafsir: proj.showTafsir === true,
       showRepeatMark: proj.showRepeatMark ?? true,
       showWaveform: proj.showWaveform ?? true,
       showSurahBadge: proj.showSurahBadge ?? true,
@@ -3180,26 +3208,44 @@ export default function VideoCreatorPage() {
                     />
                   </div>
                 </div>
+                <PassageBookmarks passage={{ surah: selectedSurah, start: ayahStart, end: ayahEnd }} onPick={pickPassage} />
 
                 {/* Reciter Selector */}
                 <div>
                   <label htmlFor="reciter-select" className="text-xs font-semibold text-slate-300 block mb-1.5">{t.source.selectReciter}</label>
+                  <div className="flex gap-2">
                   <select
                     id="reciter-select"
                     value={selectedReciter}
                     onChange={(e) => setSelectedReciter(e.target.value)}
                     className="w-full h-11 bg-slate-950 border border-slate-700 rounded-lg px-3 text-slate-100 text-sm"
                   >
-                    {/* A project saved with a reciter since hidden still shows who it is. */}
-                    {[
-                      ...listedReciters(),
-                      ...RECITERS.filter(r => r.id === selectedReciter && !listedReciters().includes(r)),
-                    ].map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {locale === 'ar' ? `${r.arabicName} — ${r.name}` : `${r.name} — ${r.arabicName}`}
-                      </option>
-                    ))}
+                    {(() => {
+                      // A project saved with a reciter since hidden still shows who it is.
+                      const groups = reciterGroups([
+                        ...listedReciters(),
+                        ...RECITERS.filter(r => r.id === selectedReciter && !listedReciters().includes(r)),
+                      ], favouriteReciterIds, recentReciterIds);
+                      // An option's value appears once in a select, so a starred
+                      // reciter is listed under its group and not again below.
+                      const shortcut = new Set([...groups.favourites, ...groups.recent].map(r => r.id));
+                      const options = (reciters: typeof groups.all) => reciters.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {locale === 'ar' ? `${r.arabicName} — ${r.name}` : `${r.name} — ${r.arabicName}`}
+                        </option>
+                      ));
+                      if (!shortcut.size) return options(groups.all);
+                      return (
+                        <>
+                          {groups.favourites.length > 0 && <optgroup label={t.source.favouriteReciters}>{options(groups.favourites)}</optgroup>}
+                          {groups.recent.length > 0 && <optgroup label={t.source.recentReciters}>{options(groups.recent)}</optgroup>}
+                          <optgroup label={t.source.allReciters}>{options(groups.all.filter(r => !shortcut.has(r.id)))}</optgroup>
+                        </>
+                      );
+                    })()}
                   </select>
+                  <FavouriteStar reciterId={selectedReciter} />
+                  </div>
                   {/* Whether this voice has published ayah timings decides
                       whether "Load ayahs & audio" produces a real timeline
                       or one you have to set by hand, so it stays beside the
@@ -3358,6 +3404,8 @@ export default function VideoCreatorPage() {
                     translationIds={canvasConfig.translationIds?.length ? canvasConfig.translationIds : [DEFAULT_TRANSLATION_ID]}
                     onTranslationIds={ids => setCanvasConfig(prev => ({ ...prev, translationIds: ids }))}
                     onTranslationText={edit.translationText}
+                    tafsir={canvasConfig.showTafsir ? tafsir.texts : undefined}
+                    onTafsirText={setTafsir}
                     translationFollowsWords={!!canvasConfig.translationFollowsWords}
                     onTranslationFollowsWords={follows =>
                       setCanvasConfig(prev => ({ ...prev, translationFollowsWords: follows }))}
@@ -3440,6 +3488,7 @@ export default function VideoCreatorPage() {
                 ref={canvasRef}
                 config={canvasConfig}
                 verses={verses}
+                tafsir={tafsir.texts}
                 currentTime={currentTime}
                 playhead={playhead}
                 audioAnalyser={audioAnalyserNode}

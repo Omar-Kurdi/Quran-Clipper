@@ -73,7 +73,10 @@ export function drawnWordTimes(
     const pieces = shown.flatMap(word => (word.arabic ? tokensOf(word.arabic) : ['']).map(() => word.timestamp));
     if (pieces.length === count) times = pieces;
   }
-  if (times.length !== count || !times.some(at => typeof at === 'number')) return null;
+  // A caption none of whose words was ever timed is drawn whole. One whose
+  // shown words have no times while its others do -- the half of a split the
+  // aligner had not timed -- is timed by `settledWordTimes`.
+  if (times.length !== count || !words.some(word => typeof word.timestamp === 'number')) return null;
   let next = 0;
   return drawn.map(tokens => tokens.map(() => {
     const at = next < count ? times[next] : undefined;

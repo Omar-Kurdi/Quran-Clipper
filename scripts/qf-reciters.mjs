@@ -32,6 +32,9 @@
  *
  * Reads QF through the client id and secret in `.env.local` when they are set,
  * otherwise through the open api.quran.com, which serves the same recitations.
+ * With them, what is kept -- a surah's ayah files and timings, or its
+ * recording -- is listed from the reciter's Content Sync snapshot, as `sync`
+ * later keeps it, or from the open API when the snapshot cannot be reached.
  *
  * `sync` keeps what is on disk within the Foundation's Developer Terms: stored
  * content may be kept past a week only when it is maintained through their
@@ -220,11 +223,26 @@ const pad = n => String(n).padStart(3, '0');
 const chapterFile = (folder, surah) => path.join(AUDIO, String(folder), `${pad(surah)}.json`);
 const fileUrl = url => (url.startsWith('//') ? `https:${url}` : /^https?:/.test(url) ? url : FILE_HOST + url.replace(/^\//, ''));
 
-/** One chapter's ayah files and word timings from QF, every page of them. */
-async function chapterListing(qfId, surah, page = 1) {
+/**
+ * One chapter's ayah files and word timings, as first fetched: from the
+ * recitation's Content Sync snapshot when the client id and secret are set --
+ * QF's terms say content kept is to be obtained through Content Sync, as
+ * `sync` keeps it -- else, or when the snapshot cannot be had, from the open
+ * API, which has no snapshot.
+ */
+async function firstListing(qfId, surah) {
+  if (foundation()) {
+    const records = await fromSnapshot({ qfId });
+    if (records) return recordsBySurah(records).get(surah) ?? [];
+  }
+  return openChapterListing(qfId, surah);
+}
+
+/** One chapter's ayah files and word timings from the open API, every page of them. */
+async function openChapterListing(qfId, surah, page = 1) {
   const data = await api(`/recitations/${qfId}/by_chapter/${surah}?fields=segments&per_page=300&page=${page}`);
   const files = data.audio_files || [];
-  return data.pagination?.next_page ? [...files, ...await chapterListing(qfId, surah, page + 1)] : files;
+  return data.pagination?.next_page ? [...files, ...await openChapterListing(qfId, surah, page + 1)] : files;
 }
 
 /** One file, kept only whole; tried four times, a little later each time. */
@@ -283,7 +301,7 @@ async function fetchChapter(qfId, surah, records = null) {
   if (removedRecitation(qfId)) throw new Error(`the Quran Foundation no longer publishes recitation ${qfId}`);
   const dir = path.join(AUDIO, String(qfId));
   await mkdir(dir, { recursive: true });
-  const listing = records ?? await chapterListing(qfId, surah);
+  const listing = records ?? await firstListing(qfId, surah);
   if (listing.length !== AYAHS[surah - 1]) throw new Error(`QF lists ${listing.length} ayahs of ${surah} for ${qfId}, not ${AYAHS[surah - 1]}`);
   const ayahs = [];
   await inParallel(listing, async entry => {
@@ -351,8 +369,14 @@ async function patiently(work, attempt = 1) {
   }
 }
 
-/** One surah's recording and ayah timings, from the Content Sync snapshot or asked for afresh. */
+/** One surah's recording and ayah timings, as first fetched: from the Content Sync snapshot when it can be had (`firstListing`). */
 async function chapterRecording(reciter, surah) {
+  const records = foundation() ? await fromSnapshot(reciter) : null;
+  if (records) {
+    const fresh = chapterRecordsBySurah(records).get(surah);
+    if (!fresh?.file?.audio_url) throw new Error(`QF lists no recording of surah ${surah} for ${reciter.name}`);
+    return fresh;
+  }
   const { audio_file: file } = await api(`/chapter_recitations/${reciter.chapterId}/${surah}?segments=true`);
   if (!file?.audio_url) throw new Error(`QF lists no recording of surah ${surah} for ${reciter.name}`);
   return {
@@ -1258,6 +1282,29 @@ async function reconcileChapter(reciter, surah, fresh, names) {
 const resourceOf = reciter => (reciter.chapterId
   ? { name: `chapter_recitations:${reciter.chapterId}`, snapshot: `/resources/snapshots/chapter_recitations/${reciter.chapterId}` }
   : { name: `recitations:${reciter.qfId}`, snapshot: `/resources/snapshots/recitations/${reciter.qfId}` });
+
+/** A reciter's snapshot records, fetched once a run (some 4 MB): a download of many surahs reads them all from one. */
+const snapshots = new Map();
+function snapshotRecords(reciter) {
+  const resource = resourceOf(reciter);
+  if (!snapshots.has(resource.name)) {
+    const records = foundationApi(resource.snapshot, 300_000).then(snapshot => snapshot.records ?? []);
+    // A failed fetch is not kept: the next surah asks again.
+    records.catch(() => snapshots.delete(resource.name));
+    snapshots.set(resource.name, records);
+  }
+  return snapshots.get(resource.name);
+}
+
+/** A reciter's snapshot records, or null when the snapshot cannot be had: a download then falls back to the open API. */
+async function fromSnapshot(reciter) {
+  try {
+    return await snapshotRecords(reciter);
+  } catch (err) {
+    console.warn(`Content Sync snapshot of ${resourceOf(reciter).name} not reached (${err.message}); listing from the open API.`);
+    return null;
+  }
+}
 
 /** One reciter synced; the state entry to keep for it. */
 async function syncReciter(reciter, entry) {

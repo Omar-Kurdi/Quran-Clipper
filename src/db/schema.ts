@@ -63,6 +63,10 @@ export const projects = pgTable('projects', {
   mushafLines: boolean('mushaf_lines').notNull().default(false),
   /** Where the ayah's number is drawn (`ayahMarker.ts`): at the end of the ayah unless between the cards is chosen. */
   ayahNumberPlacement: text('ayah_number_placement').notNull().default('end'),
+  /** How the number is drawn at the ayah's end (`AyahMarkerStyle`). Every row written before it existed reads as the medallion. */
+  ayahMarkerStyle: text('ayah_marker_style').notNull().default('medallion'),
+  /** Whether each ayah's brief tafsir is drawn under the translation. Off for every row written before it existed; its fetched text is never stored, only a caption's hand edit, in `verses`. */
+  showTafsir: boolean('show_tafsir').notNull().default(false),
   /** Whether a repeat caption is marked ↻ in the video. */
   showRepeatMark: boolean('show_repeat_mark').notNull().default(true),
   showWaveform: boolean('show_waveform').notNull().default(true),

@@ -231,8 +231,19 @@ export const ar: Dictionary = {
     surahOption: (number, english, arabic, ayahs) => `${number}. ${arabic} (${english}) - ${ayahs} آية`,
     startAyah: 'من الآية',
     endAyah: 'إلى الآية',
+    bookmarkPassage: 'احفظ هذا المقطع في العلامات',
+    unbookmarkPassage: 'أزل هذا المقطع من العلامات',
+    bookmarksLabel: 'العلامات',
+    passageLabel: (_english, arabic, surah, start, end) =>
+      `${arabic} ${surah}: ${start === end ? start : `${start}–${end}`}`,
+    removeBookmark: (passage) => `أزل علامة ${passage}`,
 
     selectReciter: 'القارئ',
+    favouriteReciter: 'أضف هذا القارئ إلى المفضّلين',
+    unfavouriteReciter: 'أزل هذا القارئ من المفضّلين',
+    favouriteReciters: 'المفضّلون',
+    recentReciters: 'استُخدموا مؤخرًا',
+    allReciters: 'كل القرّاء',
     reciterTimed: 'موقوت',
     reciterTimedTitle: 'حدود الآيات لهذا القارئ مأخوذة من التسجيل نفسه',
     reciterStyles: {
@@ -539,6 +550,10 @@ export const ar: Dictionary = {
         : `${count} ترجمات أخرى مخفيّة ما دام هذا الخيار مفعّلًا: معاني الكلمات مصدرها إنجليزيّ واحد كلمةً كلمة، فستعرض السطر نفسه حرفيًّا. أزل التحديد لتحريرها وحدها.`,
     wordByWord: 'كلمة كلمة',
     wordByWordFrom: (language, provider) => `${language} · ${provider}`,
+    tafsir: 'التفسير',
+    tafsirAyah: 'يظهر هذا النص في كل تعليق من هذه الآية.',
+    tafsirShared: (from, to) => `فُسّرت مع ما يجاورها: يظهر هذا النص في كل تعليق من ${from}–${to.split(':')[1]}.`,
+    tafsirRestore: 'استعادة النص الأصلي',
     moveAyahEarlier: 'تقديم الآية',
     moveAyahLater: 'تأخير الآية',
     splitHint: 'إنهاء هذا المقطع عند المؤشر وبدء التالي منه',
@@ -655,6 +670,15 @@ export const ar: Dictionary = {
     ayahNumberSize: 'حجم رقم الآية:',
     ayahNumberPlacement: 'رقم الآية',
     ayahNumberPlacements: { end: 'في نهاية الآية', between: 'بين البطاقتين' },
+    ayahMarkerStyle: 'علامة نهاية الآية',
+    ayahMarkerStyles: {
+      medallion: 'زخرفة فيها الرقم',
+      page: 'علامة صفحة المصحف نفسها',
+      brackets: 'أقواس مزخرفة',
+      plain: 'الرقم وحده',
+      circle: 'الرقم في دائرة',
+    },
+    ayahMarkerPageHint: 'تُرسم من خطوط صفحات المصحف المدني؛ وفي أي خط آخر تظهر الزخرفة.',
 
     coloursLabel: 'الألوان:',
     colourArabic: 'النص العربي',
@@ -677,6 +701,8 @@ export const ar: Dictionary = {
     audioVisualizer: 'مؤشر الصوت',
     surahBadge: 'شارة السورة',
     englishTranslation: 'الترجمة',
+    tafsir: 'تفسير موجز (الميسر)',
+    tafsirHint: 'التفسير الميسر بالعربية: جملة أو جملتان عن كل آية، تحت الترجمة. لا يظهر إلا إذا اخترته.',
 
     watermarkLabel: 'العلامة المائية / المعرّف:',
     watermarkPlaceholder: '@MyDawahChannel',
@@ -817,6 +843,9 @@ export const ar: Dictionary = {
     loudnessHelp: 'إلى المستوى الذي تشغّل به منصات البث الكلام (-16 LUFS)، بتضخيم واحد ثابت.',
     loop: 'نهاية مناسبة للتكرار',
     loopHelp: 'للشورتس والريلز التي تُعاد من البداية: تلاشٍ خفيف عند الطرفين ونصف ثانية من الصمت بعد آخر كلمة، ويبقى آخر تعليق ظاهرًا خلالها.',
+    fade: 'ظهور وتلاشٍ تدريجي',
+    fadeHelp: 'يبدأ المقطع وينتهي بهدوء: تتدرّج أولى لحظاته وآخرها. لا يُطبَّق إلا إذا اخترته.',
+    fadeLength: 'مدة كل تدرّج',
     denoise: 'تنظيف تسجيلي',
     denoiseHelp: 'يزيل الطنين وصوت المروحة وضجيج الغرفة.',
     trimToVoice: 'القصّ إلى الصوت',
@@ -901,6 +930,9 @@ export const ar: Dictionary = {
     beforeYouPublish: 'قبل النشر:',
     beforeYouPublishBody:
       'راجع بنفسك كل آية وتوقيتها وترجمتها. أنت المسؤول عمّا تنشره.',
+    notMonetized: 'ليس لمقاطع تُحقَّق منها أرباح:',
+    notMonetizedBody:
+      'انشر ما تصنعه مجانًا، لكن لا تحقّق منه ربحًا: لا عائدات إعلانات ولا رعاية ولا محتوى مدفوع ولا بيع. الاستوديو ونماذج الكلام التي تضبط توقيت مقاطعه مرخّصة للاستعمال غير التجاري فقط.',
 
     presetLabel: 'إلى أين سيُنشر؟',
     destinationsHint: 'اختر وجهة أو أكثر',

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { VideoCanvas, type VideoCanvasRef } from '@/components/VideoCanvas';
+import { useTafsir } from '@/hooks/useTafsir';
 import { describeError, loadRenderJob, reportRender, runRenderJob, ticketFromLocation } from '@/lib/renderPage';
 import type { RenderSpec } from '@/lib/serverRender';
 
@@ -19,6 +20,8 @@ export default function RenderPage() {
   // Once per page: development mounts effects twice, and a second render of
   // the same job would race the first to upload.
   const startedRef = useRef(false);
+  // Fetched afresh, never sent with the job: the render waits for it, so every frame has it.
+  const tafsir = useTafsir(spec?.verses ?? [], spec?.config.showTafsir === true);
 
   useEffect(() => {
     const ticket = ticketFromLocation();
@@ -26,12 +29,12 @@ export default function RenderPage() {
   }, []);
 
   useEffect(() => {
-    if (!spec || startedRef.current) return;
+    if (!spec || !tafsir.ready || startedRef.current) return;
     startedRef.current = true;
     const ticket = ticketFromLocation();
     runRenderJob(ticket, spec, () => canvasRef.current)
       .catch(err => reportRender(ticket, { error: describeError(err) }));
-  }, [spec]);
+  }, [spec, tafsir.ready]);
 
   if (!spec) return null;
   return (
@@ -40,6 +43,7 @@ export default function RenderPage() {
         ref={canvasRef}
         config={spec.config}
         verses={spec.verses}
+        tafsir={tafsir.texts}
         currentTime={spec.range.start}
         surahNameArabic={spec.surahNameArabic}
         surahNameEnglish={spec.surahNameEnglish}

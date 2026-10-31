@@ -27,10 +27,25 @@ const RATE = 44100;
 /**
  * A loop-friendly ending: the first moment faded in and the last faded out,
  * each too short to touch a word -- a passage starts and ends in its own
- * silence -- then the tail of silence. The fade out runs on the reversed
- * stream, which needs no length up front.
+ * silence -- then the tail of silence.
  */
-const LOOP_ENDING = `afade=t=in:d=0.1,areverse,afade=t=in:d=0.15,areverse,apad=pad_dur=${LOOP_TAIL_SEC}`;
+const LOOP_FADE = { in: 0.1, out: 0.15 };
+
+/**
+ * The clip's edges: faded in and out by the longer of the edit's own fade and
+ * a loop's, so the two never fade one stretch twice, then a loop's silence.
+ * Last in the graph, so a fade's seconds are seconds of what plays. The fade
+ * out runs on the reversed stream, which needs no length up front.
+ */
+function edges(edit: AudioEdit): string[] {
+  const fadeIn = Math.max(edit.fade, edit.loop ? LOOP_FADE.in : 0);
+  const fadeOut = Math.max(edit.fade, edit.loop ? LOOP_FADE.out : 0);
+  const steps: string[] = [];
+  if (fadeIn > 0) steps.push(`afade=t=in:d=${fadeIn}`);
+  if (fadeOut > 0) steps.push('areverse', `afade=t=in:d=${fadeOut}`, 'areverse');
+  if (edit.loop) steps.push(`apad=pad_dur=${LOOP_TAIL_SEC}`);
+  return steps;
+}
 const RENDER_TIMEOUT_MS = 10 * 60_000;
 
 export interface Loudness {
@@ -65,7 +80,7 @@ export function editGraph(edit: AudioEdit, duration: number, options: { rubberba
       ? `loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
       : `loudnorm=${target}:print_format=json`);
   }
-  if (edit.loop) after.push(LOOP_ENDING);
+  after.push(...edges(edit));
   chains.push(`[${label}]${after.length ? after.join(',') : 'anull'}[out]`);
   return chains.join(';');
 }

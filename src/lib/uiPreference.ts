@@ -152,3 +152,72 @@ export function createNumberPreference(
     },
   };
 }
+
+export interface ListPreference<T> {
+  subscribe: (onChange: () => void) => () => void;
+  get: () => readonly T[];
+  getServerSnapshot: () => readonly T[];
+  set: (value: readonly T[]) => void;
+}
+
+const EMPTY: readonly never[] = [];
+
+/** What is usable in a stored value: its entries that `parse`, at most `max` of them. */
+const cleanList = <T,>(value: unknown, parse: (entry: unknown) => T | null, max: number): readonly T[] =>
+  (Array.isArray(value) ? value : []).map(parse).filter((entry): entry is T => entry !== null).slice(0, max);
+
+/**
+ * The same store, for a short list: favourite reciters, recent ones, bookmarked
+ * passages. Kept as JSON; each entry goes through `parse` on the way in and on
+ * the way out, so a stored list of anything else comes back as what is
+ * usable in it, at most `max` long.
+ */
+export function createListPreference<T>(key: string, parse: (entry: unknown) => T | null, max: number): ListPreference<T> {
+  const listeners = new Set<() => void>();
+  let cached: readonly T[] | null = null;
+  const clean = (value: unknown) => cleanList(value, parse, max);
+
+  const read = (): readonly T[] => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? EMPTY : clean(JSON.parse(raw));
+    } catch {
+      return EMPTY;
+    }
+  };
+
+  return {
+    subscribe(onChange) {
+      listeners.add(onChange);
+      const onStorage = (event: StorageEvent) => {
+        if (event.key === key) {
+          cached = null;
+          onChange();
+        }
+      };
+      window.addEventListener('storage', onStorage);
+      return () => {
+        listeners.delete(onChange);
+        window.removeEventListener('storage', onStorage);
+      };
+    },
+    get() {
+      if (cached === null) cached = read();
+      return cached;
+    },
+    getServerSnapshot() {
+      return EMPTY;
+    },
+    set(value) {
+      const next = clean(value);
+      cached = next;
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch (error) {
+        // Kept in memory for this session even when it cannot be persisted, and said so.
+        console.warn(`[preference] ${key} is kept for this session only: ${error}`);
+      }
+      listeners.forEach(listener => listener());
+    },
+  };
+}

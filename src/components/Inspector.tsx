@@ -19,6 +19,7 @@ import { useTranslationCatalogue } from '@/hooks/useTranslationCatalogue';
 import { Button } from './Button';
 import { Status } from './Status';
 import { captionChecks } from '@/lib/captionChecks';
+import { sharedTafsirKeys, shownTafsir, TAFSIR_LABEL } from '@/lib/tafsirName';
 import { useT } from './LocaleProvider';
 
 interface InspectorProps {
@@ -81,6 +82,10 @@ interface InspectorProps {
   /** Whether a caption closing its ayah closes its translation with the ayah's number too (`ayahMarker.ts`). */
   ayahNumberAtEnd?: boolean;
   onTranslationFollowsWords: (follows: boolean) => void;
+  /** The fetched tafsir by verse key while Style shows it (`useTafsir`); absent when it is off, and the box with it. */
+  tafsir?: Record<string, string>;
+  /** Edits the tafsir of `keys`: the caption's ayah and any explained with it (`setTafsirText`). */
+  onTafsirText?: (keys: string[], fetched: string, value: string) => void;
 }
 
 /**
@@ -96,7 +101,8 @@ export const Inspector: React.FC<InspectorProps> = ({
   onText, onVerseNumber, onRepeat, onToggleWord, onNudge, onReorder, onDuplicate, onDelete, onCutAudio, onAdd,
   onSplit, onMerge, onChecked, currentTime, timeOrigin = 0, onSelect,
   translationIds, onTranslationIds, onTranslationText,
-  translationFollowsWords, onTranslationFollowsWords, ayahNumberAtEnd = false
+  translationFollowsWords, onTranslationFollowsWords, ayahNumberAtEnd = false,
+  tafsir, onTafsirText
 }) => {
   const t = useT();
   const verse = verses[index];
@@ -212,6 +218,15 @@ export const Inspector: React.FC<InspectorProps> = ({
   const words = ensureWords(verse);
   const duration = verse.endTime - verse.startTime;
   const checks = captionChecks(verse);
+  const fetchedTafsir = tafsir?.[verse.verseKey];
+  const shown = tafsir ? shownTafsir(verses, tafsir, verse.verseKey) : undefined;
+  // Offered where the fetched text arrived, or an edit stands in for it.
+  const tafsirBox = tafsir && onTafsirText && (fetchedTafsir || shown !== undefined) ? {
+    keys: sharedTafsirKeys(tafsir, verse.verseKey),
+    fetched: fetchedTafsir ?? '',
+    text: shown ?? '',
+    edited: shown !== fetchedTafsir,
+  } : null;
 
   return (
     <div className="flex flex-col gap-4 p-4 text-[13px]">
@@ -290,6 +305,38 @@ export const Inspector: React.FC<InspectorProps> = ({
           />
         </div>
       ))}
+
+      {/* The tafsir drawn under the translations, editable like them. It is the
+          ayah's, not this caption's: the edit goes to every caption of the
+          ayahs it explains, and the box says which those are. */}
+      {tafsirBox && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="insp-tafsir" className="text-xs font-semibold text-slate-300">
+            {t.inspector.tafsir}
+            <span className="ms-1.5 font-normal text-slate-400">{TAFSIR_LABEL}</span>
+          </label>
+          <textarea
+            id="insp-tafsir"
+            value={tafsirBox.text}
+            onChange={e => onTafsirText?.(tafsirBox.keys, tafsirBox.fetched, e.target.value)}
+            dir="rtl"
+            rows={5}
+            className="w-full resize-y bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 leading-relaxed"
+          />
+          <p className="text-xs text-slate-400">
+            {tafsirBox.keys.length > 1 ? t.inspector.tafsirShared(tafsirBox.keys[0], tafsirBox.keys[tafsirBox.keys.length - 1]) : t.inspector.tafsirAyah}
+            {tafsirBox.edited && (
+              <button
+                type="button"
+                onClick={() => onTafsirText?.(tafsirBox.keys, tafsirBox.fetched, tafsirBox.fetched)}
+                className="ms-2 font-semibold text-amber-300 hover:text-amber-200"
+              >
+                {t.inspector.tafsirRestore}
+              </button>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Beside the translation because that is what it changes, though it
           applies to every caption rather than this one. */}

@@ -45,6 +45,8 @@ export interface PublishInput {
    * Empty is fine; the source is still credited.
    */
   translationNames?: string[];
+  /** Set when the card draws a tafsir: its name, credited like a translator's. */
+  tafsirName?: string;
   /** The captions themselves, when the text is to be included. */
   verses?: VerseData[];
   /** Whether the ayah text and its translation go in the description. */
@@ -220,6 +222,7 @@ export function buildPublishMetadata(input: PublishInput): PublishMetadata {
     ? [`Word-by-word glosses (${WORD_BY_WORD_PROVIDER})`, ...named]
     : named;
   if (credited.length) credits.push(`Translation: ${credited.join(', ')}`);
+  if (input.tafsirName?.trim()) credits.push(`Tafsir: ${input.tafsirName.trim()}`);
   // The Arabic comes from quran.com; a translation may not -- an installation
   // can hold an edition locally -- so the translator is credited on its own
   // line above rather than folded into a source that is only half right.

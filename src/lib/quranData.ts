@@ -109,6 +109,13 @@ export interface VerseData {
    * correction instead of being blocked by it.
    */
   displayTranslations?: Record<string, string>;
+  /**
+   * A hand edit to the ayah's brief tafsir, which outranks the fetched text
+   * (`useTafsir`). Only the edit is kept, never the fetched text, and every
+   * caption of the ayahs that tafsir explains carries the same one
+   * (`setTafsirText`). Empty hides the tafsir on those captions.
+   */
+  displayTafsir?: string;
 }
 
 /**

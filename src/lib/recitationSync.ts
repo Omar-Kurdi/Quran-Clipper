@@ -8,6 +8,9 @@
  * runs it when due, and a server left running for weeks runs it from here,
  * checking every six hours. The script decides whether anything is due and
  * holds a lock, so a check here costs nothing when it is not.
+ *
+ * The Quran text saved projects are checked against is kept the same way
+ * (`scripts/qf-text.mjs sync`, `qfTextStore`), on the same checks.
  */
 
 import { execFile } from 'node:child_process';
@@ -22,12 +25,17 @@ const SYNC_TIMEOUT_MS = 60 * 60 * 1000;
 
 let scheduled = false;
 
-function syncIfDue(): void {
-  execFile(process.execPath, [path.join(process.cwd(), 'scripts', 'qf-reciters.mjs'), 'sync', '--if-due', '--quiet'],
+function runSync(script: string, label: string): void {
+  execFile(process.execPath, [path.join(process.cwd(), 'scripts', script), 'sync', '--if-due', '--quiet'],
     { timeout: SYNC_TIMEOUT_MS }, (error, _stdout, stderr) => {
-      // Reported, never thrown: the recordings stay as they are and the next check tries again.
-      if (error) console.warn(`[recitation sync] ${stderr.trim() || error.message}`);
+      // Reported, never thrown: what is kept stays as it is and the next check tries again.
+      if (error) console.warn(`[${label}] ${stderr.trim() || error.message}`);
     });
+}
+
+function syncIfDue(): void {
+  runSync('qf-reciters.mjs', 'recitation sync');
+  runSync('qf-text.mjs', 'text sync');
 }
 
 /** Starts the checks, once per server. */

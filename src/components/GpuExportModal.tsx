@@ -545,6 +545,13 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   {t.exportModal.beforeYouPublishBody}
                 </span>
               </p>
+              <p className="flex items-start gap-2.5 text-xs leading-relaxed text-amber-100">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" aria-hidden="true" />
+                <span>
+                  <strong className="text-amber-200">{t.exportModal.notMonetized}</strong>{' '}
+                  {t.exportModal.notMonetizedBody}
+                </span>
+              </p>
               {/* Said before it costs anything, so it is a known rule rather
                   than a surprise afterwards. */}
               {!fastPath && (

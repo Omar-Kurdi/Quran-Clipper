@@ -233,8 +233,19 @@ export const en = {
       `${number}. ${english} (${arabic}) - ${ayahs} Ayahs`,
     startAyah: 'From ayah',
     endAyah: 'To ayah',
+    bookmarkPassage: 'Bookmark this passage',
+    unbookmarkPassage: 'Remove this passage’s bookmark',
+    bookmarksLabel: 'Bookmarks',
+    passageLabel: (english: string, _arabic: string, surah: number, start: number, end: number) =>
+      `${english} ${surah}:${start === end ? start : `${start}–${end}`}`,
+    removeBookmark: (passage: string) => `Remove the bookmark for ${passage}`,
 
     selectReciter: 'Reciter',
+    favouriteReciter: 'Add this reciter to your favourites',
+    unfavouriteReciter: 'Remove this reciter from your favourites',
+    favouriteReciters: 'Favourites',
+    recentReciters: 'Used lately',
+    allReciters: 'All reciters',
     reciterTimed: 'timed',
     reciterTimedTitle: 'Ayah boundaries for this reciter come from the recording',
     reciterStyles: {
@@ -547,6 +558,10 @@ export const en = {
         : `${count} other translations are hidden while this is ticked: the word-by-word glosses are a single English dataset, so they would all draw the identical line. Untick to edit them on their own.`,
     wordByWord: 'Word-by-word',
     wordByWordFrom: (language: string, provider: string) => `${language} · ${provider}`,
+    tafsir: 'Tafsir',
+    tafsirAyah: 'Every caption of this ayah shows this text.',
+    tafsirShared: (from: string, to: string) => `Explained together with its neighbours: every caption of ${from}–${to.split(':')[1]} shows this text.`,
+    tafsirRestore: 'Restore the original',
     moveAyahEarlier: 'Move ayah earlier',
     moveAyahLater: 'Move ayah later',
     splitHint: 'End this caption at the playhead and start the next one there',
@@ -671,6 +686,15 @@ export const en = {
     ayahNumberSize: 'Ayah Number Size:',
     ayahNumberPlacement: 'Ayah number',
     ayahNumberPlacements: { end: 'At the end of the ayah', between: 'Between the cards' },
+    ayahMarkerStyle: 'Ayah ending',
+    ayahMarkerStyles: {
+      medallion: 'Ornament with the number',
+      page: 'The mushaf page’s own',
+      brackets: 'Ornate brackets',
+      plain: 'The number alone',
+      circle: 'The number in a ring',
+    },
+    ayahMarkerPageHint: 'Drawn from the Madani Mushaf face’s page fonts; in any other face it is the ornament.',
 
     coloursLabel: 'Colours:',
     colourArabic: 'Arabic text',
@@ -694,6 +718,8 @@ export const en = {
     audioVisualizer: 'Audio Visualizer',
     surahBadge: 'Surah Badge',
     englishTranslation: 'Translation',
+    tafsir: 'Brief tafsir (Al-Muyassar)',
+    tafsirHint: 'Tafsir al-Muyassar, in Arabic: a sentence or two on each ayah, under the translation. Off unless you tick it.',
 
     watermarkLabel: 'Watermark / Social Handle:',
     watermarkPlaceholder: '@MyDawahChannel',
@@ -836,6 +862,9 @@ export const en = {
     loudnessHelp: 'To the level streaming platforms play speech at (-16 LUFS), as one gain, so nothing pumps.',
     loop: 'Loop-friendly ending',
     loopHelp: 'For Shorts and Reels, which play again from the start: a gentle fade at each end and half a second of silence after the last word, the last caption held over it.',
+    fade: 'Fade in and out',
+    fadeHelp: 'The clip’s first and last moments faded, so it starts and ends softly. Off unless you tick it.',
+    fadeLength: 'Each fade',
     denoise: 'Clean up my recording',
     denoiseHelp: 'Takes out hum, fan and room noise.',
     trimToVoice: 'Trim to the voice',
@@ -921,6 +950,9 @@ export const en = {
     beforeYouPublish: 'Before you publish:',
     beforeYouPublishBody:
       'review every ayah, its timing and its translation yourself. You are responsible for what you publish.',
+    notMonetized: 'Not for monetized videos:',
+    notMonetizedBody:
+      'share what you make freely, but do not monetize it: no ad revenue, sponsorships, paid content or sales. The studio and the speech models that time its captions are licensed for non-commercial use only.',
 
     presetLabel: 'Where is it going?',
     destinationsHint: 'Pick one or more',

@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { drawnWordTimes, fillLineByWord } from './arabicWords';
 import type { TextCanvas } from './waqfMarks';
+import { recitedWord, settledWordTimes } from './captionMotion';
+import { splitSegment } from './verseEdits';
+import type { VerseData } from './quranData';
 
 describe('drawnWordTimes', () => {
   it('gives each drawn word its time, line by line', () => {
@@ -107,5 +110,29 @@ describe('fillLineByWord', () => {
     drawn.length = 0;
     fillLineByWord(ctx, 'aaa bb cc', { x: 100, y: 0, size: 40 }, () => ({ amount: 1 }));
     expect(drawn.map(d => d.text)).toEqual(['aaa bb cc']);
+  });
+});
+
+describe('a caption corrected by hand', () => {
+  // The aligner ran two phrases into one caption and timed only the first two
+  // words; the user splits it where the second phrase starts.
+  const verse: VerseData = {
+    verseNumber: 1, verseKey: '112:1', textUthmani: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ', translation: '',
+    startTime: 0, endTime: 6,
+    words: [
+      { arabic: 'قُلْ', translation: '', timestamp: 0.5 },
+      { arabic: 'هُوَ', translation: '', timestamp: 1.5 },
+      { arabic: 'ٱللَّهُ', translation: '' },
+      { arabic: 'أَحَدٌ', translation: '' },
+    ],
+  };
+
+  it('still highlights every word of the half the aligner had not timed', () => {
+    const [, tail] = splitSegment([verse], 0, 3);
+    const drawn = drawnWordTimes(tail.words, [tail.displayTextUthmani!]);
+    expect(drawn).not.toBeNull();
+    const times = settledWordTimes(drawn!.flat(), tail.startTime, tail.endTime);
+    expect(recitedWord(times, tail.endTime, tail.startTime + 0.1)).toBe(0);
+    expect(recitedWord(times, tail.endTime, tail.endTime - 0.1)).toBe(1);
   });
 });

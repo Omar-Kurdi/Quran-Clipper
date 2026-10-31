@@ -6,7 +6,7 @@ import { useOffsetBox } from '@/hooks/useOffsetBox';
 import { VerseData, arabicFontFamily, usableArabicFont } from '@/lib/quranData';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import {
-  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, inFaceScript, FALLBACK_ARABIC_FAMILY, QPC_V2, SURAH_NAME_FAMILY,
+  mushafCaption, mushafRows, pagesUsedBy, ensureQpcPages, wrapCaption, inFaceScript, FALLBACK_ARABIC_FAMILY, QPC_V2, SURAH_NAME_FAMILY, qpcPageFamily,
   type MushafRow
 } from '@/lib/mushafFonts';
 import { blurPath } from '@/lib/glBlur';
@@ -16,15 +16,18 @@ import { openBackgroundClip, type BackgroundClip } from '@/lib/videoFrames';
 import { knownLoopWindow, loadLoopWindow, loopFor, loopPhase } from '@/lib/clipLoop';
 import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, BackgroundMode, BackgroundSegment } from '@/lib/backgroundTimeline';
 import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
+import { shownTafsir, TAFSIR_LABEL } from '@/lib/tafsirName';
 import { frameLayout, blockTop, textFits, splitFits } from '@/lib/frameLayout';
 import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { fillArabicLine } from '@/lib/waqfMarks';
 import {
-  captionLayers, parkedOnCaption, leadingLayer, revealedWords, recitedWord, asCaptionTransition, asWordEffect, asMotionSpeed,
+  captionLayers, parkedOnCaption, leadingLayer, revealedWords, recitedWord, settledWordTimes, asCaptionTransition, asWordEffect, asMotionSpeed,
   type CaptionLayer, type CaptionMotion
 } from '@/lib/captionMotion';
 import { drawnWordTimes, fillLineByWord } from '@/lib/arabicWords';
-import { ayahMarker, endsAyah, placementOf, type AyahNumberPlacement } from '@/lib/ayahMarker';
+import {
+  ayahMarker, endsAyah, markerDigits, markerStyleOf, pageEndGlyph, placementOf, type AyahMarkerStyle, type AyahNumberPlacement,
+} from '@/lib/ayahMarker';
 
 /**
  * A background is a clip or a still, and the two are interchangeable
@@ -112,7 +115,11 @@ export interface VideoCanvasConfig {
    * the Arabic and its translation (the default), or between the two cards.
    */
   ayahNumberPlacement?: AyahNumberPlacement;
+  /** How that number is drawn at the end of the ayah (`AyahMarkerStyle`). Absent means the medallion. */
+  ayahMarkerStyle?: AyahMarkerStyle;
   /** Mark a repeat caption in the video with ↻. Absent means on. */
+  /** Draw the ayah's brief tafsir (`tafsirTexts.ts`) under the translation. Absent means off. */
+  showTafsir?: boolean;
   showRepeatMark?: boolean;
   /**
    * Draw the English of the visible words instead of the whole ayah's.
@@ -220,6 +227,8 @@ export interface VideoCanvasRef {
 interface VideoCanvasProps {
   config: VideoCanvasConfig;
   verses: VerseData[];
+  /** The brief tafsir by verse key (`useTafsir`), drawn under the translation when `showTafsir` is on. */
+  tafsir?: Record<string, string>;
   currentTime: number;
   /**
    * The playback position as of now, read once per painted frame while
@@ -293,23 +302,94 @@ const withoutMarker = (line: string): { body: string; marker: string } => {
 };
 /** The gap before the marker, in ems of the Arabic. */
 const MARKER_GAP = 0.12;
+
+/** The marker's style, and the page glyph the `page` style draws when the caption is drawn from a page face. */
+interface MarkerFace {
+  style: AyahMarkerStyle;
+  endGlyph: { glyph: string; page: number } | null;
+}
+
+/** A ring's width, and the digits inside it, as parts of the marker's size. */
+const RING_WIDTH = 1.05;
+const RING_DIGITS = 0.5;
+
+/**
+ * What the marker token is drawn as in its style: the text and its face, and
+ * whether a ring goes round it. The page style falls back to the medallion
+ * where there is no page glyph -- a face that is not the mushaf's own.
+ */
+function markerDrawing(marker: string, size: number, face: MarkerFace): { text: string; font: string; ring: boolean } {
+  const digits = markerDigits(marker);
+  switch (face.style) {
+    case 'page':
+      return face.endGlyph
+        ? { text: face.endGlyph.glyph, font: `${size}px '${qpcPageFamily(face.endGlyph.page)}', '${MARKER_FAMILY}'`, ring: false }
+        : { text: marker, font: markerFont(size), ring: false };
+    case 'brackets':
+      return { text: `\uFD3F${digits}\uFD3E`, font: markerFont(size), ring: false };
+    case 'plain':
+      return { text: digits, font: markerFont(size), ring: false };
+    case 'circle':
+      return { text: digits, font: markerFont(size * RING_DIGITS), ring: true };
+    default:
+      return { text: marker, font: markerFont(size), ring: false };
+  }
+}
+
+/** How wide the marker is drawn, the context's font left as it was. */
+function markerWidth(ctx: CanvasRenderingContext2D, marker: string, size: number, face: MarkerFace): number {
+  const drawing = markerDrawing(marker, size, face);
+  if (drawing.ring) return size * RING_WIDTH;
+  const font = ctx.font;
+  ctx.font = drawing.font;
+  const width = ctx.measureText(drawing.text).width;
+  ctx.font = font;
+  return width;
+}
+
+/** The marker drawn from `left`, its top at `top`, in the fill already set. */
+function drawMarker(
+  ctx: CanvasRenderingContext2D,
+  { marker, left, top, size, face }: { marker: string; left: number; top: number; size: number; face: MarkerFace }
+) {
+  const drawing = markerDrawing(marker, size, face);
+  ctx.font = drawing.font;
+  if (!drawing.ring) {
+    ctx.textAlign = 'left';
+    ctx.fillText(drawing.text, left, top);
+    return;
+  }
+  const radius = (size * RING_WIDTH) / 2;
+  const centre = { x: left + radius, y: top + size * 0.55 };
+  const stroke = ctx.strokeStyle;
+  const line = ctx.lineWidth;
+  const baseline = ctx.textBaseline;
+  ctx.strokeStyle = ctx.fillStyle;
+  ctx.lineWidth = Math.max(1, size * 0.06);
+  ctx.beginPath();
+  ctx.arc(centre.x, centre.y, radius * 0.9, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(drawing.text, centre.x, centre.y);
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = line;
+  ctx.textBaseline = baseline;
+}
+
 /**
  * Where a line's words end and its marker starts, laid out as one run about
  * the line's anchor: right-to-left, the marker on the left of the words.
  */
 function placeMarker(
   ctx: CanvasRenderingContext2D,
-  { text, marker, x, arabicSize, config }: {
-    text: string; marker: string; x: number; arabicSize: number; config: { ayahNumberFontSize?: number; textAlignment: string };
+  { text, marker, x, arabicSize, config, face }: {
+    text: string; marker: string; x: number; arabicSize: number; config: { ayahNumberFontSize?: number; textAlignment: string }; face: MarkerFace;
   }
 ): { textRight: number; left: number; size: number } {
   const size = markerSize(arabicSize, config.ayahNumberFontSize);
-  const font = ctx.font;
   const textWidth = ctx.measureText(text).width;
-  ctx.font = markerFont(size);
-  const markerWidth = ctx.measureText(marker).width;
-  ctx.font = font;
-  const total = textWidth + arabicSize * MARKER_GAP + markerWidth;
+  const total = textWidth + arabicSize * MARKER_GAP + markerWidth(ctx, marker, size, face);
   const left = config.textAlignment === 'right' ? x - total : config.textAlignment === 'left' ? x : x - total / 2;
   return { textRight: left + total, left, size };
 }
@@ -382,7 +462,15 @@ type TranslationBlockLayout = {
   /** Right-to-left blocks are drawn in the verse face, on a looser line. */
   rtl: boolean;
   lineHeight: number;
+  /** Its type size: the translation's, or a size smaller for the tafsir. */
+  size: number;
+  /** A heading drawn on a line of its own above the text, in the accent colour: the tafsir's name. */
+  label?: string;
 };
+
+/** The tafsir's block among the translations, and its size beside theirs. */
+const TAFSIR_BLOCK = 'tafsir';
+const TAFSIR_SCALE = 0.8;
 
 type CardTextLayout = {
   /** Each row with the family it is drawn in -- one per page when the rows follow the mushaf. */
@@ -431,6 +519,7 @@ function drawRoundRect(
 export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   config,
   verses,
+  tafsir,
   currentTime,
   playhead,
   audioAnalyser,
@@ -1067,6 +1156,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // The ayah's number closing it in the Arabic, as the mushaf does, on the caption that reaches its end.
         const marker = placement === 'end' && endsAyah(activeVerse) ? ayahMarker(activeVerse.verseNumber) : '';
         const printedRows = config.mushafLines ? mushafRows(activeVerse.words, arabicFontId) : null;
+        // The page's own end glyph is drawn only where the words are drawn from the page faces, which are then loaded.
+        const markerFace: MarkerFace = {
+          style: markerStyleOf(config.ayahMarkerStyle),
+          endGlyph: mushaf || printedRows ? pageEndGlyph(activeVerse.words) : null,
+        };
         const pageRows = printedRows && marker
           ? printedRows.map((row, index) => (index === printedRows.length - 1 ? { ...row, text: `${row.text} ${marker}` } : row))
           : printedRows;
@@ -1089,13 +1183,18 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // language whose text has not arrived yet is absent rather than blank,
         // so the card never reserves space for nothing.
         // Each translation closes with the ayah's number too, on the caption that closes the ayah, unless edited out.
-        const translationBlocks = captionTranslations(
-          activeVerse,
-          config.translationIds || [DEFAULT_TRANSLATION_ID],
-          config.translationFollowsWords,
-          marker ? activeVerse.verseNumber : 0
-        );
-        const withTranslation = Boolean(config.showTranslation && translationBlocks.length);
+        const tafsirText = config.showTafsir ? shownTafsir(verses, tafsir ?? {}, activeVerse.verseKey) : undefined;
+        // The tafsir, when asked for, is one more block under the translations, a size smaller, under a heading of its own.
+        const translationBlocks: { id: string; text: string; rtl: boolean; label?: string }[] = [
+          ...(config.showTranslation ? captionTranslations(
+            activeVerse,
+            config.translationIds || [DEFAULT_TRANSLATION_ID],
+            config.translationFollowsWords,
+            marker ? activeVerse.verseNumber : 0
+          ) : []),
+          ...(tafsirText ? [{ id: TAFSIR_BLOCK, text: tafsirText, rtl: true, label: TAFSIR_LABEL }] : []),
+        ];
+        const withTranslation = translationBlocks.length > 0;
         const maxTextWidth = cardWidth - 80;
         const ayahFontSize = (config.ayahNumberFontSize || 34) * (height / 1920);
         // Ayah numeral, the gap around the divider, and the room under it. The
@@ -1152,23 +1251,22 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
             ctx.font = arabicFontIn(line.family, arabic);
             const { body, marker: closing } = withoutMarker(line.text);
             let lineWidth = ctx.measureText(body).width;
-            if (closing) {
-              ctx.font = markerFont(markerSize(arabic, config.ayahNumberFontSize));
-              lineWidth += arabic * MARKER_GAP + ctx.measureText(closing).width;
-            }
+            if (closing) lineWidth += arabic * MARKER_GAP + markerWidth(ctx, closing, markerSize(arabic, config.ayahNumberFontSize), markerFace);
             arabicWidest = Math.max(arabicWidest, lineWidth);
           }
           let translationWidest = 0;
-          const blocks: { lines: string[]; rtl: boolean; lineHeight: number }[] = [];
+          const blocks: TranslationBlockLayout[] = [];
           let translationHeight = 0;
           if (withTranslation) {
             translationBlocks.forEach((block, index) => {
-              ctx.font = block.rtl ? rtlTranslationFont(translation) : translationFont(translation);
+              const size = block.id === TAFSIR_BLOCK ? translation * TAFSIR_SCALE : translation;
+              ctx.font = block.rtl ? rtlTranslationFont(size) : translationFont(size);
               const lines = wrapAll(block.text, maxTextWidth);
-              const lineHeight = blockLineHeight(translation, block.rtl);
+              const lineHeight = blockLineHeight(size, block.rtl);
               for (const line of lines) translationWidest = Math.max(translationWidest, ctx.measureText(line).width);
-              blocks.push({ lines, rtl: block.rtl, lineHeight });
-              translationHeight += lines.length * lineHeight + (index > 0 ? blockGap(translation) : 0);
+              if (block.label) translationWidest = Math.max(translationWidest, ctx.measureText(block.label).width);
+              blocks.push({ lines, rtl: block.rtl, lineHeight, size, label: block.label });
+              translationHeight += (lines.length + (block.label ? 1 : 0)) * lineHeight + (index > 0 ? blockGap(translation) : 0);
             });
           }
           return {
@@ -1194,7 +1292,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           translationBlocks.map(block => `${block.id}:${block.text}`).join('\u0001'),
           withTranslation, cardWidth, cardHeight, arrangement.id,
           arabicFontId, config.mushafLines, config.fontTranslation, config.arabicFontSize,
-          config.translationFontSize, config.ayahNumberFontSize, placement,
+          config.translationFontSize, config.ayahNumberFontSize, placement, markerFace.style, markerFace.endGlyph?.glyph,
           typeof document !== 'undefined' ? document.fonts.status : '',
         ].join('|');
 
@@ -1261,7 +1359,9 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         // whole, as with no effect.
         const wordTimes = motion.words === 'none' || frame.whole
           ? null : drawnWordTimes(activeVerse.words, layout.arabicLines.map(line => line.text), marker ? 1 : 0);
-        const allTimes = wordTimes?.flat() ?? [];
+        // Words a hand edit left without a time inside the caption take one between their neighbours'.
+        const allTimes = wordTimes
+          ? settledWordTimes(wordTimes.flat(), activeVerse.startTime, activeVerse.endTime, marker ? 1 : 0) : [];
         // The highlight is the reveal with the words to come left faint
         // rather than gone, and the one being recited in the accent.
         const shown = wordTimes ? revealedWords(allTimes, activeVerse.startTime, frame.time) : null;
@@ -1274,7 +1374,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           const { body: text, marker: closing } = withoutMarker(line.text.trim());
           const count = wordTimes?.[index].length ?? 0;
           // A line closing the ayah: the words and the marker after them placed as one, the marker in its own face.
-          const mark = closing ? placeMarker(ctx, { text, marker: closing, x: textX, arabicSize: layout.arabicSize, config }) : null;
+          const mark = closing ? placeMarker(ctx, { text, marker: closing, x: textX, arabicSize: layout.arabicSize, config, face: markerFace }) : null;
           const from = firstWord;
           const at = { x: mark ? mark.textRight : textX, y, size: layout.arabicSize };
           const align = ctx.textAlign;
@@ -1293,10 +1393,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
             const fill = ctx.fillStyle;
             // It comes in with the ayah's last word.
             if (shown) ctx.globalAlpha = alpha * (rest + (1 - rest) * shown[from + count - 1]);
-            ctx.font = markerFont(mark.size);
             ctx.fillStyle = goldAccent;
-            ctx.textAlign = 'left';
-            ctx.fillText(closing, mark.left, y + (layout.arabicSize - mark.size) * 0.55);
+            drawMarker(ctx, { marker: closing, left: mark.left, top: y + (layout.arabicSize - mark.size) * 0.55, size: mark.size, face: markerFace });
             ctx.textAlign = align;
             ctx.fillStyle = fill;
             ctx.globalAlpha = alpha;
@@ -1382,11 +1480,18 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
               ctx.restore();
               y += gap;
             }
-            ctx.font = block.rtl ? rtlTranslationFont(layout.translationSize) : translationFont(layout.translationSize);
+            ctx.font = block.rtl ? rtlTranslationFont(block.size) : translationFont(block.size);
             // Set per block, not once: two translations in one card can run in
             // opposite directions, and the second would otherwise inherit
             // whatever the first left behind.
             ctx.direction = block.rtl ? 'rtl' : 'ltr';
+            if (block.label) {
+              ctx.save();
+              ctx.fillStyle = goldAccent;
+              ctx.fillText(block.label, textX, y);
+              ctx.restore();
+              y += block.lineHeight;
+            }
             for (const line of block.lines) {
               ctx.fillText(line.trim(), textX, y);
               y += block.lineHeight;
@@ -1415,7 +1520,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
         ctx.restore();
       }
 
-  }, [config, verses, surahNameArabic, surahNameEnglish, dimensions,
+  }, [config, verses, tafsir, surahNameArabic, surahNameEnglish, dimensions,
       getDisplayArabic, surahNumber, ayahStart, ayahEnd, arabicFontId, badgeStyle, motion]);
 
   // ---- LIVE PREVIEW LOOP ----

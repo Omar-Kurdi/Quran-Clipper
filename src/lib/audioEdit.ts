@@ -39,9 +39,14 @@ export interface AudioEdit {
    * recitation does not run straight back into its own beginning.
    */
   loop: boolean;
+  /**
+   * The clip's first and last moments faded, this many seconds each, on the
+   * clock of what plays; 0 is no fade. Off unless asked for.
+   */
+  fade: number;
 }
 
-export const NO_EDIT: AudioEdit = { cuts: [], tempo: 1, loudness: false, denoise: false, loop: false };
+export const NO_EDIT: AudioEdit = { cuts: [], tempo: 1, loudness: false, denoise: false, loop: false, fade: 0 };
 
 /** Past this recitation sounds hurried, however well the pitch is kept. */
 export const MAX_TEMPO = 1.25;
@@ -53,6 +58,9 @@ export const MIN_CUT_SEC = 0.05;
 export const CUT_FADE_SEC = 0.01;
 /** Silence a loop-friendly ending adds after the last sound. */
 export const LOOP_TAIL_SEC = 0.5;
+/** The longest fade at the clip's edges, and the one the studio suggests. */
+export const MAX_FADE_SEC = 3;
+export const DEFAULT_FADE_SEC = 0.3;
 
 const ms = (seconds: number) => Math.round(seconds * 1000) / 1000;
 /** A moment this near a join is on it: times are kept to the millisecond. */
@@ -85,18 +93,20 @@ export function normalizeEdit(value: unknown, duration?: number): AudioEdit {
     }
   }
   const tempo = Number(raw.tempo);
+  const fade = Number(raw.fade);
   return {
     cuts: cuts.slice(0, MAX_CUTS).map(({ start, end, auto }) => (auto ? { start, end, auto } : { start, end })),
     tempo: Number.isFinite(tempo) ? Math.round(Math.min(MAX_TEMPO, Math.max(1, tempo)) * 100) / 100 : 1,
     loudness: raw.loudness === true,
     denoise: raw.denoise === true,
     loop: raw.loop === true,
+    fade: Number.isFinite(fade) && fade > 0 ? Math.round(Math.min(MAX_FADE_SEC, fade) * 100) / 100 : 0,
   };
 }
 
 /** Whether the edit changes anything at all. */
 export const isEdited = (edit: AudioEdit | null | undefined): edit is AudioEdit =>
-  !!edit && (edit.cuts.length > 0 || edit.tempo !== 1 || edit.loudness || edit.denoise || edit.loop);
+  !!edit && (edit.cuts.length > 0 || edit.tempo !== 1 || edit.loudness || edit.denoise || edit.loop || edit.fade > 0);
 
 /** What is left of a recording `duration` long once `cuts` are taken out. */
 export function keptSpans(cuts: Span[], duration: number): Span[] {
@@ -214,6 +224,7 @@ export function encodeEdit(edit: AudioEdit): string {
     l: edit.loudness ? 1 : 0,
     d: edit.denoise ? 1 : 0,
     ...(edit.loop ? { p: 1 } : {}),
+    ...(edit.fade > 0 ? { f: edit.fade } : {}),
   };
   const bytes = new TextEncoder().encode(JSON.stringify(compact));
   let binary = '';
@@ -236,6 +247,7 @@ export function decodeEdit(text: string): AudioEdit | null {
       loudness: compact.l === 1,
       denoise: compact.d === 1,
       loop: compact.p === 1,
+      fade: compact.f,
     });
   } catch {
     return null;

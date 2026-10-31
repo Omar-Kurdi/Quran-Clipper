@@ -180,6 +180,38 @@ export function setTranslationText(
 }
 
 /**
+ * Edits the brief tafsir shown with the selected caption.
+ *
+ * Unlike a translation's correction, this is not one caption's: the tafsir is
+ * the ayah's, so every caption of the ayahs in `keys` -- the ayah and any it is
+ * explained together with (`sharedTafsirKeys`) -- takes the same text, and the
+ * card shows one tafsir for them wherever they appear. Typing it back to the
+ * fetched text drops the edit, and the fetched text shows again.
+ */
+export function setTafsirText(
+  verses: VerseData[],
+  keys: string[],
+  fetched: string,
+  value: string
+): VerseData[] {
+  const group = new Set(keys);
+  let changed = false;
+  const updated = verses.map(verse => {
+    if (!group.has(verse.verseKey)) return verse;
+    const { displayTafsir: was, ...rest } = verse;
+    if (value === fetched) {
+      if (was === undefined) return verse;
+      changed = true;
+      return rest;
+    }
+    if (was === value) return verse;
+    changed = true;
+    return { ...rest, displayTafsir: value };
+  });
+  return changed ? updated : verses;
+}
+
+/**
  * Sets a caption's own translation line.
  *
  * Translation only. The Arabic is never set by hand: it is the corpus's text
@@ -238,7 +270,8 @@ export function setVerseNumber(verses: VerseData[], index: number, value: number
     displayTranslation: '',
     words: [],
     translations: undefined,
-    displayTranslations: undefined
+    displayTranslations: undefined,
+    displayTafsir: undefined
   };
   return updated;
 }

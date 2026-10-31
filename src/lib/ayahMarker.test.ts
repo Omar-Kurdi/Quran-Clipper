@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ayahMarker, AYAH_MARKER, endsAyah, placementOf } from './ayahMarker';
+import { ayahMarker, AYAH_MARKER, endsAyah, markerDigits, markerStyleOf, pageEndGlyph, placementOf } from './ayahMarker';
 import { wrapCaption } from './mushafFonts';
 import { drawnWordTimes } from './arabicWords';
 
@@ -37,5 +37,23 @@ describe('the end-of-ayah marker', () => {
     expect(placementOf(undefined)).toBe('end');
     expect(placementOf('between')).toBe('between');
     expect(placementOf('hidden')).toBe('end');
+  });
+});
+
+describe('the ayah-ending styles', () => {
+  it('draw the medallion unless another is chosen, as every project before them did', () => {
+    expect(markerStyleOf(undefined)).toBe('medallion');
+    expect(markerStyleOf('rosette')).toBe('medallion');
+    expect(markerStyleOf('circle')).toBe('circle');
+    expect(markerDigits(ayahMarker(286))).toBe('٢٨٦');
+  });
+
+  it('take the page face\'s end glyph as the code after the last word\'s, on its page', () => {
+    // Al-Mulk 67:1 and 67:2 on page 562, as the upstream sends them.
+    expect(pageEndGlyph([{ glyph: '\ufc48', glyphPage: 562 }, { glyph: '\ufc49', glyphPage: 562 }])).toEqual({ glyph: '\ufc4a', page: 562 });
+    expect(pageEndGlyph([{ glyph: '\ufc52\ufc53', glyphPage: 562 }, { glyph: '\ufc56', glyphPage: 562 }])).toEqual({ glyph: '\ufc57', page: 562 });
+    expect(pageEndGlyph([{ glyph: '\ufc52\ufc53', glyphPage: 562 }])).toEqual({ glyph: '\ufc54', page: 562 });
+    expect(pageEndGlyph([{}])).toBeNull();
+    expect(pageEndGlyph(undefined)).toBeNull();
   });
 });

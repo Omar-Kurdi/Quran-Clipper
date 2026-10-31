@@ -45,3 +45,17 @@ describe('a loop-friendly ending in the graph', () => {
     expect(graph).toBe('[0:a]rubberband=tempo=1.1:pitchq=quality,afade=t=in:d=0.1,areverse,afade=t=in:d=0.15,areverse,apad=pad_dur=0.5[out]');
   });
 });
+
+describe('a fade at the clip\'s edges in the graph', () => {
+  it('fades both ends by its own length, after the speed-up, so its seconds are what plays', () => {
+    const graph = editGraph(normalizeEdit({ tempo: 1.2, fade: 0.3 }), 10, { rubberband: true });
+    expect(graph).toBe('[0:a]rubberband=tempo=1.2:pitchq=quality,afade=t=in:d=0.3,areverse,afade=t=in:d=0.3,areverse[out]');
+  });
+
+  it('with a loop, fades each end once, by the longer of the two, before the silence', () => {
+    expect(editGraph(normalizeEdit({ loop: true, fade: 0.5 }), 10, { rubberband: true }))
+      .toBe('[0:a]afade=t=in:d=0.5,areverse,afade=t=in:d=0.5,areverse,apad=pad_dur=0.5[out]');
+    expect(editGraph(normalizeEdit({ loop: true, fade: 0.12 }), 10, { rubberband: true }))
+      .toBe('[0:a]afade=t=in:d=0.12,areverse,afade=t=in:d=0.15,areverse,apad=pad_dur=0.5[out]');
+  });
+});

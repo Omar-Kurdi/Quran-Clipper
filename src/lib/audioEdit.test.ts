@@ -35,6 +35,19 @@ describe('an edit as given', () => {
     expect(decodeEdit(encodeEdit(made))).toEqual(made);
     expect(decodeEdit('not an edit')).toBeNull();
   });
+
+  it('has no fade unless asked, keeps one within reach, and carries it in an address', () => {
+    expect(normalizeEdit({}).fade).toBe(0);
+    expect(isEdited(normalizeEdit({}))).toBe(false);
+    expect(normalizeEdit({ fade: -1 }).fade).toBe(0);
+    expect(normalizeEdit({ fade: 9 }).fade).toBe(3);
+    const faded = normalizeEdit({ fade: 0.34 });
+    expect(isEdited(faded)).toBe(true);
+    expect(decodeEdit(encodeEdit(faded))).toEqual(faded);
+    // An address made before the fade existed is read as no fade, and is unchanged by it.
+    expect(encodeEdit(normalizeEdit({ loop: true }))).toBe(encodeEdit({ ...NO_EDIT, loop: true }));
+    expect(decodeEdit(encodeEdit({ ...NO_EDIT, loop: true }))?.fade).toBe(0);
+  });
 });
 
 describe('the edited clock', () => {

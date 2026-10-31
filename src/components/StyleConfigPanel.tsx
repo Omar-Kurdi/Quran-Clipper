@@ -14,7 +14,7 @@ import { ColorField } from './ColorField';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useT } from './LocaleProvider';
 import { useFileDrop } from '@/hooks/useFileDrop';
-import { AYAH_NUMBER_PLACEMENTS, placementOf } from '@/lib/ayahMarker';
+import { AYAH_MARKER_STYLES, AYAH_NUMBER_PLACEMENTS, markerStyleOf, placementOf } from '@/lib/ayahMarker';
 import {
   subscribeToLibrary, librarySnapshot, serverLibrarySnapshot, hydrateLibrary,
   addLibraryUpload, addLibraryLink, removeLibraryItem
@@ -564,6 +564,20 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               </select>
             </div>
 
+            {placementOf(config.ayahNumberPlacement) === 'end' && (
+              <div>
+                <div className="text-slate-300 mb-1">{t.style.ayahMarkerStyle}</div>
+                <select
+                  value={markerStyleOf(config.ayahMarkerStyle)}
+                  onChange={(e) => updateConfig('ayahMarkerStyle', e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  {AYAH_MARKER_STYLES.map(id => <option key={id} value={id}>{t.style.ayahMarkerStyles[id]}</option>)}
+                </select>
+                {markerStyleOf(config.ayahMarkerStyle) === 'page' && <p className="mt-1 text-xs text-slate-400 leading-relaxed">{t.style.ayahMarkerPageHint}</p>}
+              </div>
+            )}
+
             <label className="col-span-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -798,6 +812,16 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   className="rounded accent-amber-500"
                 />
                 <span>{t.style.englishTranslation}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300" title={t.style.tafsirHint}>
+                <input
+                  type="checkbox"
+                  checked={config.showTafsir === true}
+                  onChange={(e) => updateConfig('showTafsir', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.tafsir}</span>
               </label>
             </div>
 

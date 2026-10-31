@@ -125,6 +125,9 @@ describe('publish metadata', () => {
   it('names the translations that are on screen', () => {
     const meta = buildPublishMetadata({ ...base, translationNames: ['Saheeh International'] });
     expect(meta.description).toContain('Translation: Saheeh International');
+    expect(meta.description).not.toContain('Tafsir:');
+    expect(buildPublishMetadata({ ...base, tafsirName: 'Al-Tafsir al-Muyassar (King Fahd Complex)' }).description)
+      .toContain('Tafsir: Al-Tafsir al-Muyassar (King Fahd Complex)');
   });
 
   it('leaves the ayah text out unless it is asked for', () => {
