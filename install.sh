@@ -232,7 +232,17 @@ FRESH_ENV=""
 # The same settings go at the end of .env.local too, so the app is the mode it
 # was installed as however it is started -- a plain `npm run start`, a service
 # unit -- and not a personal studio with no token behind a public domain. The
-# last line for a name wins, so appending is enough, and nothing is read.
+# last line for a name wins, so appending is enough, and nothing is read; the
+# block an earlier run wrote is taken out first, its lines only as it wrote
+# them, so installing again does not pile up copies.
+awk '
+  /^# Written by \.\/install\.sh --(personal|public)\.$/ { inblock = 1; blanks = ""; next }
+  inblock && /^(STUDIO_MODE=(personal|public)|QURAN_TRANSLATION_ID=20|NEXT_PUBLIC_QURAN_TRANSLATION_ID=20|ALIGN_AUDIO_PROXY_ORIGIN=http:\/\/127\.0\.0\.1:3000)$/ { next }
+  { inblock = 0 }
+  /^$/ { blanks = blanks "\n"; next }
+  { printf "%s", blanks; blanks = ""; print }
+  END { printf "%s", blanks }
+' .env.local >.env.local.install && cat .env.local.install >.env.local && rm -f .env.local.install
 {
   echo ""
   echo "# Written by ./install.sh --$USE."
