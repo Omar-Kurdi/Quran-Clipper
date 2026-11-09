@@ -29,6 +29,13 @@ export const projects = pgTable('projects', {
   audioFileName: text('audio_file_name').default(''),
   audioKey: text('audio_key').default(''),
   trimWindow: jsonb('trim_window').$type<{ start: number; end: number } | null>(),
+  /**
+   * The clips cut from an upload, each a window on its recording's clock with
+   * whatever look it has of its own (`recordingClips.ts`). The project's own
+   * style columns are the look the clips share. Empty for every row written
+   * before it existed, and for a project with no clips.
+   */
+  clips: jsonb('clips').$type<{ id: string; start: number; end: number; style: Record<string, unknown> | null }[]>().default([]),
 
 
   // Customization & Style Settings

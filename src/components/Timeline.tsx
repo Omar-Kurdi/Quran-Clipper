@@ -4,7 +4,7 @@ import { isOpening, type OpeningKind } from '@/lib/openings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines, Layers, Plus } from 'lucide-react';
 import { captionChecks, toCheckCount } from '@/lib/captionChecks';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform, type Waveform as WaveformData } from '@/lib/waveform';
@@ -86,7 +86,25 @@ interface TimelineProps {
    */
   clip?: ClipWindow | null;
   view?: ClipWindow | null;
+  /**
+   * The clips cut from an uploaded recording (`recordingClips.ts`), drawn on a
+   * lane of their own; the open one, and how to open another, or the whole
+   * recording for null. `onAddClip` makes the stretch between the clip
+   * handles a new clip.
+   */
+  clips?: { id: string; start: number; end: number; label: string }[];
+  activeClipId?: string | null;
+  onOpenClip?: (id: string | null) => void;
+  onAddClip?: (start: number, end: number) => void;
 }
+
+/** One colour per clip, in turn, so overlapping clips can be told apart. */
+const CLIP_COLOURS = [
+  'border-amber-400/70 bg-amber-400/15 text-amber-100',
+  'border-emerald-400/70 bg-emerald-400/15 text-emerald-100',
+  'border-violet-400/70 bg-violet-400/15 text-violet-100',
+  'border-sky-400/70 bg-sky-400/15 text-sky-100'
+];
 
 const ZOOMS = [1, 2, 4, 8];
 
@@ -150,7 +168,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   onTrim, onEditAudio, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
-  onNextToCheck
+  onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip
 }) => {
   const t = useT();
   const toCheck = useMemo(() => toCheckCount(verses), [verses]);
@@ -540,6 +558,17 @@ export const Timeline: React.FC<TimelineProps> = ({
           </button>
         )}
 
+        {activeClipId && onOpenClip && (
+          <button
+            onClick={() => onOpenClip(null)}
+            title={t.clips.wholeRecordingTitle}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          >
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">{t.clips.wholeRecording}</span>
+          </button>
+        )}
+
         {onEditAudio && (
           <button
             onClick={onEditAudio}
@@ -553,21 +582,36 @@ export const Timeline: React.FC<TimelineProps> = ({
 
         {/* Only offered once the handles have actually been moved: a button that
             cuts the clip to exactly itself is a button that does nothing. */}
-        {onTrimRange && !clipIsWhole && (
+        {(onTrimRange || onAddClip) && !clipIsWhole && (
           <>
-            <button
+            {onTrimRange && <button
               onClick={() => {
                 onTrimRange(clipRange.start, clipRange.end);
                 // A built-in reciter keeps its recording, so the handles would
                 // otherwise stay where they were, offering the same cut again.
                 setClip(null);
               }}
-              title={t.timeline.cutDownTo(clock(clipRange.start), clock(clipRange.end))}
+              title={activeClipId
+                ? t.clips.setClipTo(clock(clipRange.start), clock(clipRange.end))
+                : t.timeline.cutDownTo(clock(clipRange.start), clock(clipRange.end))}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-xs font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
             >
               <Scissors className="w-3.5 h-3.5" />
               <span>{t.timeline.keep(formatTime(clipRange.end - clipRange.start))}</span>
-            </button>
+            </button>}
+            {onAddClip && (
+              <button
+                onClick={() => {
+                  onAddClip(clipRange.start, clipRange.end);
+                  setClip(null);
+                }}
+                title={t.clips.newClipTitle(clock(clipRange.start), clock(clipRange.end))}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-gold/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+              >
+                <Plus className="w-3.5 h-3.5 text-amber-400" />
+                <span>{t.clips.newClip(formatTime(clipRange.end - clipRange.start))}</span>
+              </button>
+            )}
             <button
               onClick={() => setClip(null)}
               title={t.timeline.resetClip}
@@ -632,7 +676,7 @@ export const Timeline: React.FC<TimelineProps> = ({
               background block. What falls outside is dimmed all the way down
               the timeline -- the cut has to be legible against the ayahs it
               will take with it, not just against its own row. */}
-          {onTrimRange && (
+          {(onTrimRange || onAddClip) && (
             <div className="relative h-4 border-b border-slate-800/70 bg-slate-950/60">
               <span
                 className="absolute inset-y-0 left-0 bg-slate-950/70 pointer-events-none"
@@ -664,6 +708,33 @@ export const Timeline: React.FC<TimelineProps> = ({
               <span className="absolute left-1 top-0 text-[9px] font-mono leading-4 text-slate-400 pointer-events-none">
                 {t.timeline.clip}
               </span>
+            </div>
+          )}
+          {/* The recording's clips. Overlapping clips stack in two rows, each a
+              click away from being the one open. */}
+          {clips.length > 0 && (
+            <div className="relative h-8 border-b border-slate-800/70 bg-slate-950/40" aria-label={t.clips.lane}>
+              {clips.map((each, i) => {
+                const left = pct(each.start);
+                const width = Math.max(0.4, pct(each.end) - left);
+                const overlapsEarlier = clips.slice(0, i).some(other => other.end > each.start && other.start < each.end);
+                const name = t.clips.name(i + 1);
+                const active = each.id === activeClipId;
+                return (
+                  <button
+                    key={each.id}
+                    onClick={() => onOpenClip?.(active ? null : each.id)}
+                    title={`${active ? t.clips.wholeRecordingTitle : t.clips.openTitle(name)} · ${clock(each.start)} – ${clock(each.end)}`}
+                    aria-pressed={active}
+                    className={`absolute ${overlapsEarlier ? 'top-[15px] h-[15px]' : 'top-0.5 h-[15px]'} rounded-sm border px-1 text-[9px] leading-none text-start truncate transition-colors ${
+                      CLIP_COLOURS[i % CLIP_COLOURS.length]
+                    } ${active ? 'ring-2 ring-gold z-10' : 'hover:brightness-125'}`}
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                  >
+                    {name}{each.label ? ` · ${each.label}` : ''}
+                  </button>
+                );
+              })}
             </div>
           )}
           {/* Ruler. Click or drag anywhere along it to move the playhead --
@@ -922,7 +993,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             )}
 
             {/* What the clip handles above would cut away. */}
-            {onTrimRange && !clipIsWhole && (
+            {(onTrimRange || onAddClip) && !clipIsWhole && (
               <>
                 <span
                   className="absolute inset-y-0 left-0 bg-slate-950/65 pointer-events-none z-10"

@@ -7,6 +7,7 @@ import { asFrameLayout } from '@/lib/frameLayout';
 import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour } from '@/lib/captionMotion';
 import { describeDbError } from '@/lib/dbError';
 import { markerStyleOf, placementOf } from '@/lib/ayahMarker';
+import { normalizeClips } from '@/lib/recordingClips';
 import { needsContentSync, syncProjectContent, CONTENT_SYNC_MAX_AGE_MS } from '@/lib/contentSync';
 
 const memoryProjects: any[] = [];
@@ -165,6 +166,8 @@ export async function POST(req: NextRequest) {
         body.trimWindow.end > body.trimWindow.start
           ? { start: body.trimWindow.start, end: body.trimWindow.end }
           : null,
+      // An upload's clips, as windows on its recording; anything else is dropped.
+      clips: normalizeClips(body.clips),
       aspectRatio: body.aspectRatio || '9:16',
       fontArabic: resolveArabicFont(body.fontArabic),
       fontTranslation: body.fontTranslation || 'Inter',

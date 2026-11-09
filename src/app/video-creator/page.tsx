@@ -72,6 +72,7 @@ import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour, MO
 import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
 import { nextToCheck, captionChecks } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
+import { cutLong, isLongFile } from '@/hooks/useLongAudio';
 import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
@@ -115,6 +116,9 @@ import type { BatchResult } from '@/lib/batchMatch';
 import { buildRenderForm } from '@/lib/serverRenderForm';
 import { exportFileName } from '@/lib/exportName';
 import { exportRangeFor } from '@/lib/exportRange';
+import { useRecordingClips } from '@/hooks/useRecordingClips';
+import { ayahWindow, clipLabel, clipVerses, inPlayOrder, normalizeClips, styleDiff } from '@/lib/recordingClips';
+import { ClipsPanel } from '@/components/ClipsPanel';
 import { saveProject } from '@/lib/projectStore';
 import { newMatchTicket, watchQueue, roughWait } from '@/lib/queueWatch';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
@@ -536,6 +540,15 @@ export default function VideoCreatorPage() {
   });
   /** The brief tafsir as fetched, in memory only, while the style shows it; a hand edit is in `verses`. */
   const tafsir = useTafsir(verses, canvasConfig.showTafsir === true);
+  /**
+   * Clips cut from an uploaded recording, each a window on its one timeline
+   * (`recordingClips.ts`). `recordingClip` is the one open, for an upload only:
+   * a built-in reciter's passage is already a window of its own.
+   */
+  const recordingClips = useRecordingClips(canvasConfig, setCanvasConfig);
+  const recordingClip = customAudioFile ? recordingClips.active : null;
+  /** Whether the upload has clips, which a trim or an audio edit would move out from under. */
+  const hasRecordingClips = !!customAudioFile && recordingClips.clips.length > 0;
   /** A new clip starts with no motion, whatever the last one had; the rest of its style carries over. */
   const beginClip = () => {
     if (!newClipPending.current) return;
@@ -744,6 +757,7 @@ export default function VideoCreatorPage() {
   // Fetch Verses on Surah / Reciter / Ayah change
   const handleLoadSurahVerses = async () => {
     beginClip();
+    recordingClips.reset();
     setCanvasConfig(prev => ({ ...prev, ...motionForNewMatch(prev.captionTransition) }));
     // Back to the clip's summary in Source, which reports how the load went.
     setSourceEditing(false);
@@ -869,7 +883,10 @@ export default function VideoCreatorPage() {
    */
   const adoptAwaitedAudio = async (file: File, expecting: { fileName: string; trim: { start: number; end: number } | null }) => {
     let adopted: TrimResult;
-    if (expecting.trim) {
+    if (expecting.trim && (await isLongFile(file))) {
+      // Too long for the browser to decode: cut on the server, as it was trimmed (`useLongAudio`).
+      adopted = await cutLong(file, { id: '', duration: Infinity }, expecting.trim.start, expecting.trim.end);
+    } else if (expecting.trim) {
       const buffer = await decodeAudioFile(file);
       adopted = buildTrimmedFile(buffer, expecting.trim.start, expecting.trim.end, expecting.fileName);
     } else {
@@ -919,6 +936,8 @@ export default function VideoCreatorPage() {
       const url = URL.createObjectURL(file);
       const video = isVideoFile(file);
       resetAudioEdit();
+      // A different recording: the clips were windows on the last one.
+      recordingClips.reset();
       setCustomAudioUrl(url);
       setCustomAudioName(file.name);
       setCustomAudioFile(file);
@@ -1154,7 +1173,7 @@ export default function VideoCreatorPage() {
    */
   // An upload can be edited before it is matched -- trimmed to the voice first;
   // a passage once it is loaded.
-  const canEditAudio = customAudioFile ? studio.mode !== 'public' : verses.length > 0 && !!editedAddress(audioUrl, NO_EDIT);
+  const canEditAudio = customAudioFile ? studio.mode !== 'public' && !hasRecordingClips : verses.length > 0 && !!editedAddress(audioUrl, NO_EDIT);
   /** What Edit audio opens on: the recording, the edit, and the captions, all on the recording's clock. */
   const [editAudioStart, setEditAudioStart] = useState<{ edit: AudioEdit; captions: VerseData[] } | null>(null);
   const editAudioSource = useMemo(
@@ -1696,19 +1715,27 @@ export default function VideoCreatorPage() {
     })();
   }, [canvasConfig.translationIds, verses, setVerses]);
 
-  /** The stretch of audio an export should cover -- see `exportRangeFor`. */
+  /**
+   * The stretch of audio an export should cover -- see `exportRangeFor` --
+   * or the open clip of an upload, which is its window on the recording.
+   */
   const exportRange = useMemo(
-    () => exportRangeFor(verses, audioDuration, !!customAudioUrl),
-    [verses, audioDuration, customAudioUrl]
+    () => recordingClip
+      ? { start: recordingClip.start, end: recordingClip.end, span: recordingClip.end - recordingClip.start }
+      : exportRangeFor(verses, audioDuration, !!customAudioUrl),
+    [verses, audioDuration, customAudioUrl, recordingClip]
   );
 
   /**
-   * A built-in reciter's passage inside its chapter file, and the stretch of
-   * that file the timeline draws -- see `clipWindow`. Null for an upload.
+   * A built-in reciter's passage inside its chapter file, or an upload's open
+   * clip inside the recording, and the stretch of that file the timeline draws
+   * -- see `clipWindow`. Null for an upload played whole.
    */
   const passage = useMemo(
-    () => clipWindow(exportRange, audioDuration, !!customAudioUrl),
-    [exportRange, audioDuration, customAudioUrl]
+    () => recordingClip
+      ? { start: recordingClip.start, end: recordingClip.end }
+      : clipWindow(exportRange, audioDuration, !!customAudioUrl),
+    [exportRange, audioDuration, customAudioUrl, recordingClip]
   );
   const timelineWindow = useMemo(() => timelineView(passage, audioDuration), [passage, audioDuration]);
 
@@ -1884,7 +1911,11 @@ export default function VideoCreatorPage() {
     // The ayahs the timeline holds, not the ones first asked for: a project
     // trimmed down kept the old range in its title and passage.
     const held = timelinePassage(verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd });
-    return buildProjectPayload({
+    // An upload's clips are saved with it, and the project's look is the one
+    // they share: the open clip's own look is kept on the clip.
+    const { base, clips } = customAudioFile ? recordingClips.settled() : { base: canvasConfig, clips: [] };
+    const storedBase = withStoredBackgrounds(base);
+    const payload = buildProjectPayload({
       surahNumber: selectedSurah,
       surahNameArabic,
       surahNameEnglish,
@@ -1897,7 +1928,7 @@ export default function VideoCreatorPage() {
       audioUrl: !isEdited(audioEdit) ? audioUrl : customAudioFile ? uploadEditAddress(audioEdit) : editedAddress(audioUrl, audioEdit) ?? audioUrl,
       // How long the clip is, for the Projects list -- the whole chapter's
       // recording for a built-in reciter, which is not what anyone means by it.
-      audioDurationSeconds: exportRange.span,
+      audioDurationSeconds: recordingClip ? audioDuration : exportRange.span,
       audioFileName: customAudioFile ? uploadOriginalName : '',
       audioKey,
       trimWindow,
@@ -1905,8 +1936,20 @@ export default function VideoCreatorPage() {
       // An uploaded background is a `blob:` url that dies with this tab, so
       // what goes to the row is the library's id for the file instead. A
       // pasted link is already durable and passes through untouched.
-      config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
+      config: storedBase as unknown as Record<string, unknown>,
     });
+    return {
+      ...payload,
+      clips: clips.map(clip => clip.style
+        ? {
+            ...clip,
+            style: styleDiff(
+              withStoredBackgrounds({ ...base, ...clip.style }) as unknown as Record<string, unknown>,
+              storedBase as unknown as Record<string, unknown>
+            )
+          }
+        : clip),
+    };
   };
 
   /**
@@ -2179,6 +2222,26 @@ export default function VideoCreatorPage() {
       : t.header.notSavedYet);
 
 
+  /** The upload's clips as listed and drawn: in the order they play, each named by its ayahs. */
+  const listedClips = useMemo(
+    () => customAudioFile
+      ? inPlayOrder(recordingClips.clips).map(clip => ({ ...clip, label: clipLabel(verses, clip), own: !!clip.style }))
+      : [],
+    [customAudioFile, recordingClips.clips, verses]
+  );
+  /** Opens a clip of the recording, or the whole of it, with the playhead at its start. */
+  const openRecordingClip = (id: string | null) => {
+    recordingClips.open(id);
+    const clip = recordingClips.clips.find(each => each.id === id);
+    if (clip) handleSeek(clip.start);
+  };
+  /** A new clip of the recording, opened to work on. */
+  const addRecordingClip = (start: number, end: number) => {
+    const id = recordingClips.add(start, end, audioDuration);
+    if (!id) return;
+    recordingClips.open(id);
+    handleSeek(Math.max(0, Math.min(start, end)));
+  };
   /**
    * The passage the export actually contains, read off the timeline.
    *
@@ -2191,8 +2254,8 @@ export default function VideoCreatorPage() {
    * falls back to the request.
    */
   const clipPassage = useMemo(
-    () => timelinePassage(verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd }),
-    [verses, selectedSurah, ayahStart, ayahEnd]
+    () => timelinePassage(recordingClip ? clipVerses(verses, recordingClip) : verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd }),
+    [verses, selectedSurah, ayahStart, ayahEnd, recordingClip]
   );
 
   /**
@@ -2223,11 +2286,12 @@ export default function VideoCreatorPage() {
       wordByWord: !!canvasConfig.translationFollowsWords,
       // Credited only when the card draws it.
       tafsirName: canvasConfig.showTafsir && verses.some(verse => shownTafsir(verses, tafsir.texts, verse.verseKey)) ? TAFSIR_NAME : undefined,
-      verses
+      // An open clip's description quotes the ayahs it holds, not the recording's.
+      verses: recordingClip ? clipVerses(verses, recordingClip) : verses
     }),
     [
       clipPassage, surahNameArabic, surahNameEnglish, customAudioFile,
-      selectedReciterMeta, canvasConfig.translationFollowsWords, canvasConfig.showTafsir, verses, tafsir.texts
+      selectedReciterMeta, canvasConfig.translationFollowsWords, canvasConfig.showTafsir, verses, tafsir.texts, recordingClip
     ]
   );
 
@@ -2566,6 +2630,10 @@ export default function VideoCreatorPage() {
       fps: proj.fps || 60,
       gpuAccelerated: proj.gpuAccelerated ?? true
     }));
+    // An upload's clips, with the whole recording open; the look just set is the one they share.
+    recordingClips.reset(normalizeClips(proj.clips).map(clip =>
+      clip.style ? { ...clip, style: withRestoredBackgrounds(clip.style as Partial<VideoCanvasConfig>) } : clip
+    ));
   };
 
   const currentSurahObj = SURAHS_LIST.find(s => s.number === selectedSurah) || SURAHS_LIST[0];
@@ -3082,7 +3150,7 @@ export default function VideoCreatorPage() {
                         <Button onClick={() => { setSourceMode(customAudioFile ? 'recording' : 'reciter'); setAdvancedOpen(true); newClipPending.current = false; setSourceEditing(true); }}>
                           {t.source.editSource}
                         </Button>
-                        {customAudioFile && (
+                        {customAudioFile && !hasRecordingClips && (
                           <Button icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />} onClick={() => setShowTrimModal(true)}>
                             {customAudioDuration > 0
                               ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
@@ -3096,6 +3164,21 @@ export default function VideoCreatorPage() {
                         )}
                       </div>
                     </section>
+
+                    {customAudioFile && (
+                      <ClipsPanel
+                        clips={listedClips}
+                        activeId={recordingClip?.id ?? null}
+                        captions={verses}
+                        onOpen={openRecordingClip}
+                        onRemove={recordingClips.remove}
+                        onOwnLook={recordingClips.ownLook}
+                        onAddByAyahs={(first, last) => {
+                          const span = ayahWindow(verses, first, last, audioDuration);
+                          if (span) addRecordingClip(span.start, span.end);
+                        }}
+                      />
+                    )}
 
                     {/* Where the work goes next, said once the passage is in. */}
                     <div className="rounded-xl border border-amber-500/40 p-4 flex items-center gap-3">
@@ -3314,7 +3397,7 @@ export default function VideoCreatorPage() {
                           <span id="recitation-upload-help" className="text-xs leading-relaxed text-slate-400">{t.source.dropHelp}</span>
                         </div>
 
-                        {customAudioFile && (
+                        {customAudioFile && !hasRecordingClips && (
                           <TrimStep
                             length={customAudioDuration > 0 ? formatDuration(customAudioDuration) : ''}
                             onTrim={() => setShowTrimModal(true)}
@@ -3558,9 +3641,16 @@ export default function VideoCreatorPage() {
           onToggleRippleEdits={toggleRippleEdits}
           onMarkHere={handleMarkHere}
           onNextToCheck={goToNextCheck}
-          onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
+          onTrim={customAudioFile && !hasRecordingClips ? () => setShowTrimModal(true) : undefined}
           onEditAudio={canEditAudio ? () => { void openEditAudio(); } : undefined}
-          onTrimRange={customAudioFile || verses.length ? handleTrimRange : undefined}
+          // With clips, the handles set the open clip's stretch rather than cut the recording.
+          onTrimRange={hasRecordingClips
+            ? recordingClip ? (start, end) => recordingClips.move(recordingClip.id, start, end, audioDuration) : undefined
+            : customAudioFile || verses.length ? handleTrimRange : undefined}
+          clips={listedClips}
+          activeClipId={recordingClip?.id ?? null}
+          onOpenClip={openRecordingClip}
+          onAddClip={customAudioFile && verses.length ? addRecordingClip : undefined}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}
@@ -3638,6 +3728,9 @@ export default function VideoCreatorPage() {
         buildServerRender={buildServerRender}
         exportLane={exportLane}
         renderCheck={renderCheckInput}
+        clips={listedClips.map((clip, i) => ({ id: clip.id, label: `${t.clips.name(i + 1)}${clip.label ? ` · ${clip.label}` : ''}` }))}
+        clipId={recordingClip?.id ?? null}
+        onClip={(id, keep) => recordingClips.open(id, { keep })}
       />
 
       {/* Saved Projects Drawer */}

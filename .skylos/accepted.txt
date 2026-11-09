@@ -121,3 +121,12 @@ scripts/qf-reciters.mjs  SKY-D216  1
 # known reciter's passage is refused). Skylos cannot see a negative test that
 # moved to another file.
 src/app/api/audio/proxy/route.test.ts  SKY-A101  1
+
+# The long-recording trim (`POST /api/audio/long`), accepted by the owner on
+# 2026-11-09. Built like Edit audio's route (src/app/api/audio/edited, in the
+# baseline): it refuses a public studio outright, sits behind the STUDIO_TOKEN
+# middleware like every route, and only keeps, reads and cuts the uploads of
+# the studio's own machine. The rule accepts only next-auth or Clerk as a
+# route-local guard; adding one would protect nothing more. SKY-D280 on any
+# other route still blocks.
+src/app/api/audio/long/route.ts  SKY-D280  1

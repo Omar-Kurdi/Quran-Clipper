@@ -24,6 +24,15 @@ export interface ExportJob {
   aspectRatio: string;
   tier: QualityTier;
   fps: number;
+  /**
+   * The clip of the recording this render is of (`recordingClips.ts`), which
+   * the queue opens before it starts; absent for a render of what is open.
+   */
+  clipId?: string | null;
+  /** That clip as the list names it -- `Clip 2 · 2:4–9` -- for the queue. */
+  clipLabel?: string;
+  /** Its number in the list, for the file name. */
+  clipNumber?: number;
   status: JobStatus;
   /** 0-100 while rendering. */
   progress: number;
@@ -33,7 +42,9 @@ export interface ExportJob {
 
 let counter = 0;
 
-export function newJob(input: Pick<ExportJob, 'presetId' | 'aspectRatio' | 'tier' | 'fps'>): ExportJob {
+type JobInput = Pick<ExportJob, 'presetId' | 'aspectRatio' | 'tier' | 'fps' | 'clipId' | 'clipLabel' | 'clipNumber'>;
+
+export function newJob(input: JobInput): ExportJob {
   counter += 1;
   return { ...input, id: `job-${Date.now().toString(36)}-${counter}`, status: 'queued', progress: 0 };
 }
@@ -48,7 +59,9 @@ export function addJob(jobs: ExportJob[], job: ExportJob): ExportJob[] {
       other.status === 'queued' &&
       other.presetId === job.presetId &&
       other.tier === job.tier &&
-      other.fps === job.fps
+      other.fps === job.fps &&
+      // The same render of two clips is two videos.
+      (other.clipId ?? null) === (job.clipId ?? null)
   );
   return duplicate ? jobs : [...jobs, job];
 }
@@ -61,7 +74,7 @@ export function addJob(jobs: ExportJob[], job: ExportJob): ExportJob[] {
  */
 export function addJobs(
   jobs: ExportJob[],
-  inputs: Pick<ExportJob, 'presetId' | 'aspectRatio' | 'tier' | 'fps'>[]
+  inputs: JobInput[]
 ): ExportJob[] {
   return inputs.reduce((current, input) => addJob(current, newJob(input)), jobs);
 }
@@ -113,4 +126,15 @@ export function withAspect(fileName: string, aspectRatio: string): string {
   const tag = aspectRatio.replace(':', 'x');
   const dot = fileName.lastIndexOf('.');
   return dot > 0 ? `${fileName.slice(0, dot)}_${tag}${fileName.slice(dot)}` : `${fileName}_${tag}`;
+}
+
+/**
+ * `Al-Baqarah_2_4-9.mp4` -> `Al-Baqarah_2_4-9_clip-2.mp4` for the second clip
+ * of a recording, so two clips holding the same ayahs do not download under
+ * one name.
+ */
+export function withClip(fileName: string, clipNumber: number | undefined): string {
+  if (!clipNumber) return fileName;
+  const dot = fileName.lastIndexOf('.');
+  return dot > 0 ? `${fileName.slice(0, dot)}_clip-${clipNumber}${fileName.slice(dot)}` : `${fileName}_clip-${clipNumber}`;
 }

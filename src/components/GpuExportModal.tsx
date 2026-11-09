@@ -100,6 +100,14 @@ interface GpuExportModalProps {
   exportLane: ExportLane;
   /** What the finished file is checked against, on request. */
   renderCheck: RenderCheckInput;
+  /**
+   * The clips cut from the recording, in the order they are listed, so every
+   * one can be rendered in one go; empty when the recording has none.
+   */
+  clips?: { id: string; label: string }[];
+  /** The clip open now, null for the whole recording; and how the queue opens another. */
+  clipId?: string | null;
+  onClip?: (id: string | null, keep: boolean) => void;
 }
 
 
@@ -128,7 +136,10 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   exportSeconds,
   buildServerRender,
   exportLane,
-  renderCheck
+  renderCheck,
+  clips = [],
+  clipId = null,
+  onClip
 }) => {
   const t = useT();
   // The card is named on the result screen only when the browser gives its
@@ -147,6 +158,9 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const [destinations, setDestinations] = useState<string[]>(() => [framePresetId]);
   /** Whether to hand the renders to the studio's server, so the tab can be closed. */
   const [onServer, setOnServer] = useState(false);
+  /** Every clip of the recording, each to every destination, through the queue in this tab. */
+  const [everyClip, setEveryClip] = useState(false);
+  const allClips = everyClip && clips.length > 0;
   const [tier, setTier] = useState<QualityTier>('standard');
   const [exportedBlobUrl, setExportedBlobUrl] = useState<string | null>(null);
   /** The file itself, for the render check to read back. */
@@ -299,13 +313,15 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
     isExporting,
     exportProgress,
     exportSeconds,
+    clipId,
+    onClip,
     fileNameFor: blob =>
       exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd, blob.type.includes('mp4') ? 'mp4' : 'webm'),
     onSaveExportRecord
   });
   const server = useServerRenders(isOpen);
-  const describeJob = (job: { presetId: string; tier: QualityTier; fps: number }) =>
-    `${t.exportModal.presets[job.presetId as keyof typeof t.exportModal.presets] ?? job.presetId} · ` +
+  const describeJob = (job: { presetId: string; tier: QualityTier; fps: number; clipLabel?: string }) =>
+    `${job.clipLabel ? `${job.clipLabel} · ` : ''}${t.exportModal.presets[job.presetId as keyof typeof t.exportModal.presets] ?? job.presetId} · ` +
     `${t.exportModal.qualityNames[job.tier]} · ${job.fps}fps`;
 
   /** Closing mid-render means stopping it, not leaving it running unseen. */
@@ -369,6 +385,12 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   /** While anything renders, the choices it was started with stay as they are. */
   const busy = isExporting || queue.running;
   const render = async () => {
+    // Each clip is opened in turn, so they render here, one after another.
+    if (allClips) {
+      return queue.runAll(clips.flatMap((clip, i) => destinations.map(presetId => ({
+        presetId, tier, fps: selectedFps, clipId: clip.id, clipLabel: clip.label, clipNumber: i + 1
+      }))));
+    }
     const route = exportRoute(plans.map(p => p.aspectRatio), aspectRatio, onServer && serverReady);
     if (route === 'single') return handleExport(plans[0]);
     if (route === 'queue') return queue.runAll(destinations.map(presetId => ({ presetId, tier, fps: selectedFps })));
@@ -607,7 +629,13 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                     {t.exportModal.previewButton}
                   </button>
                 )}
-                {serverReady && (
+                {clips.length > 0 && (
+                  <label className="flex items-center gap-2 text-[13px] text-slate-300 cursor-pointer" title={t.clips.everyClipTitle}>
+                    <input type="checkbox" checked={everyClip} onChange={e => setEveryClip(e.target.checked)} disabled={busy} className="w-4 h-4 accent-amber-500" />
+                    {t.clips.everyClip(clips.length)}
+                  </label>
+                )}
+                {serverReady && !allClips && (
                   <label className="flex items-center gap-2 text-[13px] text-slate-300 cursor-pointer">
                     <input type="checkbox" checked={onServer} onChange={e => setOnServer(e.target.checked)} className="w-4 h-4 accent-amber-500" />
                     {t.exportModal.renderOnServer}
@@ -619,7 +647,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   title={plans.length === 0 ? t.exportModal.noDestination : undefined}
                   className="ms-auto h-11 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 text-[15px] font-bold transition-colors"
                 >
-                  {server.sending ? t.serverRender.sending : t.exportModal.renderVideos(plans.length)}
+                  {server.sending ? t.serverRender.sending : t.exportModal.renderVideos(plans.length * (allClips ? clips.length : 1))}
                 </button>
               </div>
               {server.error && (

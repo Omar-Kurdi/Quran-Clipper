@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  addJob, addJobs, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect, type ExportJob
+  addJob, addJobs, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect, withClip, type ExportJob
 } from './exportQueue';
 
 const job = (presetId: string, aspectRatio = '9:16') => newJob({ presetId, aspectRatio, tier: 'standard', fps: 30 });
@@ -20,6 +20,17 @@ describe('addJob', () => {
   it('does not queue the same render twice', () => {
     const once = addJob([], job('reels'));
     expect(addJob(once, job('reels'))).toBe(once);
+  });
+
+  it('queues the same render of two clips as two renders', () => {
+    const first = newJob({ presetId: 'reels', aspectRatio: '9:16', tier: 'standard', fps: 30, clipId: 'a' });
+    const second = newJob({ presetId: 'reels', aspectRatio: '9:16', tier: 'standard', fps: 30, clipId: 'b' });
+    expect(addJob(addJob([], first), second)).toHaveLength(2);
+  });
+
+  it('does not queue the same render of one clip twice', () => {
+    const once = addJob([], newJob({ presetId: 'reels', aspectRatio: '9:16', tier: 'standard', fps: 30, clipId: 'a' }));
+    expect(addJob(once, newJob({ presetId: 'reels', aspectRatio: '9:16', tier: 'standard', fps: 30, clipId: 'a' }))).toBe(once);
   });
 
   it('does queue it again once the first has run', () => {
@@ -80,5 +91,15 @@ describe('withAspect', () => {
   it('tags each file with its shape, so a queue does not overwrite itself', () => {
     expect(withAspect('Al-Fatihah_1_1-7.mp4', '9:16')).toBe('Al-Fatihah_1_1-7_9x16.mp4');
     expect(withAspect('clip', '1:1')).toBe('clip_1x1');
+  });
+});
+
+describe('withClip', () => {
+  it('numbers a clip of a recording into its file name', () => {
+    expect(withClip('Al-Baqarah_2_4-9_9x16.mp4', 2)).toBe('Al-Baqarah_2_4-9_9x16_clip-2.mp4');
+  });
+
+  it('leaves a render of no clip as it was', () => {
+    expect(withClip('Al-Baqarah_2_4-9.mp4', undefined)).toBe('Al-Baqarah_2_4-9.mp4');
   });
 });

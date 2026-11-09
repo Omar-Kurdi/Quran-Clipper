@@ -16,6 +16,7 @@
  */
 
 import type { HeardOpening } from './openings';
+import { sidecarRequest } from './sidecarRequest';
 import { getRange } from '@/lib/quranCorpus';
 import type { MatchResult, MatchSegment } from '@/lib/matchTypes';
 
@@ -163,7 +164,7 @@ async function askSidecar(serviceUrl: string, path: string, formData?: FormData)
   const base = serviceUrl.replace(/\/$/, '');
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, formData ? { method: 'POST', body: formData } : undefined);
+    res = await sidecarRequest(`${base}${path}`, formData);
   } catch {
     throw new Error(`Could not reach the alignment service at ${base}. Is it running? See asr-service/README.md.`);
   }

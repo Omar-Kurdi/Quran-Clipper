@@ -7,9 +7,11 @@ passage it is when no text is given, and re-cuts an alignment's captions
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -27,6 +29,26 @@ logging.basicConfig(
 log = logging.getLogger("asr-service")
 
 MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "200"))
+
+# One alignment at a time, as there always was: a long one holds gigabytes, and
+# the evaluation scripts call this service directly, past the studio's queue.
+_ALIGN_LOCK = threading.Lock()
+
+
+def _one_at_a_time(endpoint):
+    """Runs a blocking endpoint in FastAPI's thread pool, one call at a time.
+
+    `/align` used to be `async` while doing minutes of blocking work, which
+    stalled the event loop: `/health` went unanswered for as long as a long
+    recording took, and the studio read a busy aligner as one not running.
+    """
+
+    @functools.wraps(endpoint)
+    def run(*args, **kwargs):
+        with _ALIGN_LOCK:
+            return endpoint(*args, **kwargs)
+
+    return run
 
 #: Fraction of the reference text an alignment must account for before the
 #: result is presented without a warning. See `RecitationResult.reference_coverage`.
@@ -260,7 +282,8 @@ def _url_window(window_start: float = Form(0.0), window_end: float = Form(0.0)) 
 
 
 @app.post("/align")
-async def align_endpoint(
+@_one_at_a_time
+def align_endpoint(
     audio: UploadFile | None = File(None),
     reference: str = Form(""),
     audio_url: str = Form(""),
@@ -322,7 +345,7 @@ async def align_endpoint(
         window_offset = 0.0
         if audio is None:
             raise HTTPException(status_code=400, detail="Send either an audio file or an audio_url with a window.")
-        raw = await audio.read()
+        raw = audio.file.read()
         size_mb = len(raw) / 1024 / 1024
         if size_mb > MAX_UPLOAD_MB:
             raise HTTPException(status_code=413, detail=f"Audio is {size_mb:.1f} MB, above the {MAX_UPLOAD_MB:.0f} MB limit.")

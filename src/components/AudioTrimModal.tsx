@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, ChevronsLeft, ChevronsRight, Move, Maximize2 } from 'lucide-react';
+import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, ChevronsLeft, ChevronsRight, Move, Maximize2, Volume2 } from 'lucide-react';
 import { decodeAudioFile, computePeaks, buildTrimmedFile, TrimResult } from '@/lib/audioTrim';
 import { Dialog } from './Dialog';
 import { useT } from './LocaleProvider';
 import { useVolume, volumePreference } from '@/hooks/useVolume';
+import { cutLong, useLongAudio } from '@/hooks/useLongAudio';
+import { envelopePeaks, MAX_LONG_TRIM_SEC } from '@/lib/longAudio';
 
 interface AudioTrimModalProps {
   isOpen: boolean;
@@ -53,6 +55,8 @@ const WAVEFORM_BUCKETS = 400;
 const MAX_WAVEFORM_BUCKETS = 6000;
 const MIN_TRIM_SECONDS = 0.3;
 const ZOOM_LEVELS = [1, 2, 4, 8, 16];
+/** Playback speeds, for skimming a long recording to the stretch to keep. */
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2, 3];
 /** Ruler intervals in seconds -- the smallest one that keeps labels from colliding wins. */
 const TICK_STEPS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
 const TICKS_PER_SCREEN = 6;
@@ -96,7 +100,10 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const gainRef = useRef<GainNode | null>(null);
   const volume = useVolume();
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const playFromRef = useRef<{ startedAt: number; offset: number } | null>(null);
+  const playFromRef = useRef<{ startedAt: number; offset: number; rate: number } | null>(null);
+  /** How fast it plays; a ref as well, because `playFrom` reads it when it starts a source. */
+  const [rate, setRate] = useState(1);
+  const rateRef = useRef(1);
   /** Where a scrub has reached, and whether playback owes it a resume. */
   const scrubToRef = useRef(0);
   const resumeAfterScrubRef = useRef(false);
@@ -112,7 +119,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
    * message sitting on screen. A key is translated at render instead, and follows
    * a switch for free.
    */
-  const [error, setError] = useState<'decodeFailed' | 'trimFailed' | null>(null);
+  const [error, setError] = useState<'decodeFailed' | 'trimFailed' | 'tooLongHere' | null>(null);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [duration, setDuration] = useState(0);
   const [trimStart, setTrimStart] = useState(0);
@@ -222,7 +229,23 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   // here, which would otherwise show a stale waveform for an instant when
   // reopening with a different file. Runs even while closed (`isOpen` false)
   // so the waveform is already there the moment the user opens the modal.
+  // A recording too long for the browser to decode is read on the server instead (`useLongAudio`).
+  const longAudio = useLongAudio(file, {
+    onRead: read => {
+      setDuration(read.duration);
+      setTrimStart(0);
+      setTrimEnd(read.duration);
+      setIsDecoding(false);
+    },
+    onFailed: failure => {
+      setError(failure);
+      setIsDecoding(false);
+    }
+  });
+  const { long, mode: audioMode } = longAudio;
+
   useEffect(() => {
+    if (audioMode !== 'short') return;
     let cancelled = false;
     decodeAudioFile(file)
       .then(decoded => {
@@ -241,13 +264,16 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     return () => {
       cancelled = true;
     };
-  }, [file]);
+  }, [file, audioMode]);
 
   // Zooming in re-buckets the peaks so the extra width shows real detail
   // rather than the same 400 bars stretched wider. Memoised because the
   // playhead re-renders this component every animation frame while playing.
   const bucketCount = Math.min(MAX_WAVEFORM_BUCKETS, Math.round(WAVEFORM_BUCKETS * zoom));
-  const peaks = useMemo(() => (buffer ? computePeaks(buffer, bucketCount) : null), [buffer, bucketCount]);
+  const peaks = useMemo(
+    () => (buffer ? computePeaks(buffer, bucketCount) : long ? envelopePeaks(long.envelope, bucketCount) : null),
+    [buffer, long, bucketCount]
+  );
 
   const xToTime = useCallback(
     (clientX: number) => {
@@ -274,7 +300,9 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   }, [duration]);
 
   /** Silences whatever is playing. Safe to call when nothing is. */
+  const { stop: stopLong, play: playLong, position: longPosition, setVolume: setLongVolume, setRate: setLongRate } = longAudio;
   const stopSource = useCallback(() => {
+    stopLong();
     const source = sourceRef.current;
     sourceRef.current = null;
     playFromRef.current = null;
@@ -282,7 +310,24 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     source.onended = null;
     try { source.stop(); } catch { /* already stopped */ }
     source.disconnect();
-  }, []);
+  }, [stopLong]);
+
+  /** Plays a long recording's copy from `seconds` (`useLongAudio`); the frame loop stops a selection preview at its end. */
+  const playLongFrom = useCallback(
+    (seconds: number) => {
+      if (!long) return;
+      stopSource();
+      const from = Math.max(0, Math.min(seconds, long.duration - 0.01));
+      playLong(from, rateRef.current, () => {
+        stopSource();
+        setIsPlaying(false);
+        setPlayhead(long.duration);
+      });
+      playFromRef.current = { startedAt: 0, offset: from, rate: rateRef.current };
+      setIsPlaying(true);
+    },
+    [long, playLong, stopSource]
+  );
 
   /**
    * Plays from `seconds`, optionally stopping at `stopAt`.
@@ -295,6 +340,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
    */
   const playFrom = useCallback(
     (seconds: number, stopAt?: number) => {
+      if (long) return playLongFrom(seconds);
       if (!buffer) return;
       const ctx =
         audioCtxRef.current ??
@@ -328,20 +374,25 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
         setIsPlaying(false);
         setPlayhead(Math.min(stopAt ?? buffer.duration, buffer.duration));
       };
+      // Faster raises the pitch here: a buffer source has no way to keep it. The
+      // long-recording path plays through an element, which does.
+      const speed = rateRef.current;
+      source.playbackRate.value = speed;
       source.start(0, from);
-      if (stopAt !== undefined && stopAt > from) source.stop(ctx.currentTime + (stopAt - from));
+      if (stopAt !== undefined && stopAt > from) source.stop(ctx.currentTime + (stopAt - from) / speed);
       sourceRef.current = source;
-      playFromRef.current = { startedAt: ctx.currentTime, offset: from };
+      playFromRef.current = { startedAt: ctx.currentTime, offset: from, rate: speed };
       setIsPlaying(true);
     },
-    [buffer, stopSource]
+    [buffer, long, playLongFrom, stopSource]
   );
 
   // Applied live, so moving the slider is heard mid-playback rather than at
   // the next press.
   useEffect(() => {
     if (gainRef.current) gainRef.current.gain.value = volume;
-  }, [volume]);
+    setLongVolume(volume);
+  }, [volume, setLongVolume]);
 
   const seek = useCallback(
     (seconds: number) => {
@@ -419,8 +470,8 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const syncPlayhead = useCallback(() => {
     const ctx = audioCtxRef.current;
     const from = playFromRef.current;
-    if (!ctx || !from) return;
-    const t = from.offset + (ctx.currentTime - from.startedAt);
+    if (!from || (!ctx && !long)) return;
+    const t = long ? longPosition() : from.offset + (ctx!.currentTime - from.startedAt) * from.rate;
     setPlayhead(Math.min(t, duration));
     if (stopAtSelectionEndRef.current && t >= trimEndRef.current) {
       stopSource();
@@ -431,7 +482,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
       // pointer just as the user is placing a trim point.
       scrollToTime(t, 'ensure');
     }
-  }, [scrollToTime, duration, stopSource]);
+  }, [scrollToTime, duration, stopSource, long, longPosition]);
 
   // requestAnimationFrame drives the playhead. It is paused while the tab is
   // hidden, so a backgrounded preview can run past the end of the selection --
@@ -480,7 +531,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const zoomIndex = ZOOM_LEVELS.indexOf(zoom);
 
   const togglePlayback = (fromSelection: boolean) => {
-    if (!buffer) return;
+    if (!buffer && !long) return;
     if (isPlaying && !fromSelection) {
       stopSource();
       setIsPlaying(false);
@@ -490,6 +541,14 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     const from = fromSelection || playhead >= duration - 0.01 ? trimStart : playhead;
     setPlayhead(from);
     playFrom(from, fromSelection ? trimEnd : undefined);
+  };
+
+  /** A new speed, heard at once: the element changes in place, a buffer source starts again from where it was. */
+  const changeRate = (next: number) => {
+    setRate(next);
+    rateRef.current = next;
+    if (long) return setLongRate(next);
+    if (sourceRef.current) playFrom(playhead, stopAtSelectionEndRef.current ? trimEnd : undefined);
   };
 
   const handleReset = () => {
@@ -512,6 +571,16 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   };
 
   const handleApply = () => {
+    if (long) {
+      setIsApplying(true);
+      cutLong(file, long, trimStart, trimEnd)
+        .then(result => onApply({ ...result, trimStart, trimEnd }))
+        .catch(() => {
+          setError('trimFailed');
+          setIsApplying(false);
+        });
+      return;
+    }
     if (!buffer) return;
     setIsApplying(true);
     try {
@@ -528,6 +597,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const endPct = duration > 0 ? pct(trimEnd) : 100;
   const playheadPct = pct(playhead);
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
+  const overLongCap = !!long && trimmedDuration > MAX_LONG_TRIM_SEC + 0.05;
   const timecodeInputClass =
     'w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono';
 
@@ -586,7 +656,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
         {isDecoding ? (
           <div className="h-24 flex items-center justify-center gap-2 text-slate-400 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>{t.trim.readingAudio}</span>
+            <span>{audioMode === 'long' ? t.trim.readingLong : t.trim.readingAudio}</span>
           </div>
         ) : (
           <>
@@ -775,6 +845,10 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
               </div>
             </div>
 
+            {overLongCap && (
+              <p className="mt-3 text-xs text-amber-300">{t.trim.longCap(MAX_LONG_TRIM_SEC / 60)}</p>
+            )}
+
             <div className="flex flex-wrap items-center gap-2 mt-4">
               <button
                 onClick={() => togglePlayback(false)}
@@ -815,6 +889,32 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{t.common.reset}</span>
               </button>
+              <div className="w-px h-6 bg-slate-800" />
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-400" title={t.trim.speedTitle}>
+                {t.trim.speed}
+                <select
+                  value={rate}
+                  onChange={e => changeRate(Number(e.target.value))}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-1.5 py-1.5 text-xs text-slate-100 font-mono"
+                  dir="ltr"
+                >
+                  {SPEEDS.map(speed => <option key={speed} value={speed}>{speed}×</option>)}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={e => volumePreference.set(parseFloat(e.target.value))}
+                  aria-label={t.timeline.volume}
+                  className="w-20 accent-amber-500"
+                  dir="ltr"
+                />
+              </label>
             </div>
 
           </>
@@ -830,7 +930,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
           </button>
           <button
             onClick={handleApply}
-            disabled={isDecoding || isApplying || trimmedDuration < MIN_TRIM_SECONDS}
+            disabled={isDecoding || isApplying || trimmedDuration < MIN_TRIM_SECONDS || overLongCap}
             className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
           >
             {isApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scissors className="w-4 h-4" />}

@@ -45,11 +45,6 @@ if [[ -n "$PUBLIC" ]]; then
   WEB_HOST=(-- -H 127.0.0.1)
 fi
 
-# Where the alignment service this script starts on :8000 answers, for
-# scripts/qf-reciters.mjs, which the studio runs to cut a chapter reciter's
-# surah. Its own name, so an ASR_SERVICE_URL in .env.local still wins.
-export QC_STARTED_ALIGNER=http://127.0.0.1:8000
-
 DB_STATE="skipped"; ASR_STATE="skipped"; WEB_STATE="skipped"; TEXT_STATE="skipped"
 
 alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
@@ -90,23 +85,43 @@ if [[ -n "$SIDECAR_STALE" ]]; then
   for _ in $(seq 1 20); do kill -0 "$SIDECAR_PID" 2>/dev/null || break; sleep 0.5; done
 fi
 
-if [[ -z "$SIDECAR_STALE" ]] && curl -sf --max-time 2 http://127.0.0.1:8000/health >/dev/null 2>&1; then
-  ASR_STATE="already running on :8000"
+# The port is 8000 when it is free, and the next free one when another
+# program has it: a second project's dev server on this machine took 8000
+# while the aligner was restarting, and the studio then had no aligner at all
+# while this script reported one -- it took anything answering /health on
+# 8000 for its own. Only an answer that names an align model counts as ours.
+# The port this script last started it on is kept in .run/asr.port, so a
+# running aligner is found again wherever it is.
+aligner_on() { curl -sf --max-time 2 "http://127.0.0.1:$1/health" 2>/dev/null | grep -q '"alignModel"'; }
+# Anything listening is taken, HTTP or not; curl's 7 is "nothing there".
+port_taken() { curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$1/"; [[ $? -ne 7 ]]; }
+ASR_PORT="$(cat "$RUN_DIR/asr.port" 2>/dev/null || echo 8000)"
+
+if [[ -z "$SIDECAR_STALE" ]] && aligner_on "$ASR_PORT"; then
+  ASR_STATE="already running on :$ASR_PORT"
   echo "already running"
 elif [[ -x asr-service/.venv/bin/python ]]; then
-  ( cd asr-service && exec ./run.sh ) >"$RUN_DIR/asr.log" 2>&1 &
+  ASR_PORT=""
+  for candidate in $(seq 8000 8099); do
+    port_taken "$candidate" || { ASR_PORT="$candidate"; break; }
+  done
+  ASR_PORT="${ASR_PORT:-8000}"
+  ( cd asr-service && exec ./run.sh --port "$ASR_PORT" ) >"$RUN_DIR/asr.log" 2>&1 &
   echo $! >"$RUN_DIR/asr.pid"
+  echo "$ASR_PORT" >"$RUN_DIR/asr.port"
   # Loading the model is the slow part -- a cold CUDA start is 10-40s.
   for _ in $(seq 1 90); do
-    curl -sf --max-time 2 http://127.0.0.1:8000/health >/dev/null 2>&1 && break
+    aligner_on "$ASR_PORT" && break
     sleep 1
   done
-  if curl -sf --max-time 2 http://127.0.0.1:8000/health >/dev/null 2>&1; then
+  OTHER=""
+  [[ "$ASR_PORT" != 8000 ]] && OTHER=" (8000 is taken by another program)"
+  if aligner_on "$ASR_PORT"; then
     if [[ -n "$SIDECAR_STALE" ]]; then
-      ASR_STATE="restarted on :8000 -- it was running code older than asr-service/app/"
+      ASR_STATE="restarted on :$ASR_PORT$OTHER -- it was running code older than asr-service/app/"
       echo "restarted (app code had changed)"
     else
-      ASR_STATE="up on :8000"
+      ASR_STATE="up on :$ASR_PORT$OTHER"
       echo "up"
     fi
   else
@@ -118,10 +133,23 @@ else
   echo "not installed"
 fi
 
+# Where the aligner this script started answers: for the studio, and for
+# scripts/qf-reciters.mjs, which it runs to cut a chapter reciter's surah. An
+# ASR_SERVICE_URL in .env.local naming some other aligner still wins; one
+# naming the default address is this aligner, wherever it now is.
+export QC_STARTED_ALIGNER="http://127.0.0.1:$ASR_PORT"
+CONFIGURED_ALIGNER="$(sed -n 's/^ASR_SERVICE_URL=//p' .env.local 2>/dev/null | tail -n1 | tr -d '"'"'"' ')"
+case "$CONFIGURED_ALIGNER" in
+  ""|http://127.0.0.1:8000|http://127.0.0.1:8000/|http://localhost:8000|http://localhost:8000/) export ASR_SERVICE_URL="$QC_STARTED_ALIGNER" ;;
+esac
+
 # --- web app ----------------------------------------------------------------
 printf '[3/4] web app     ... '
 if curl -sf --max-time 2 http://127.0.0.1:3000 >/dev/null 2>&1; then
   WEB_STATE="already running on :3000"
+  # It reads the aligner's address once, when it starts.
+  [[ "$ASR_PORT" != "$(cat "$RUN_DIR/web-asr.port" 2>/dev/null || echo 8000)" ]] \
+    && WEB_STATE+=" -- but it was started with the aligner elsewhere; ./stop.sh and ./start.sh again"
   echo "already running"
 else
   if [[ "$MODE" == "prod" ]]; then
@@ -136,6 +164,7 @@ else
     if [[ "$MODE" == "prod" ]]; then npm run start "${WEB_HOST[@]}" >"$RUN_DIR/web.log" 2>&1 &
     else npm run dev "${WEB_HOST[@]}" >"$RUN_DIR/web.log" 2>&1 & fi
     echo $! >"$RUN_DIR/web.pid"
+    echo "$ASR_PORT" >"$RUN_DIR/web-asr.port"
     for _ in $(seq 1 60); do
       curl -sf --max-time 2 http://127.0.0.1:3000 >/dev/null 2>&1 && break
       sleep 1

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ExportHealth } from '@/lib/exportHealth';
 import { planExport, presetById, type ExportPlan, type QualityTier } from '@/lib/exportPresets';
 import {
-  addJob, addJobs, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect,
+  addJob, addJobs, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect, withClip,
   type ExportJob
 } from '@/lib/exportQueue';
 
@@ -12,6 +12,13 @@ interface QueueDeps {
   /** The studio's current shape. A job for another shape switches it first. */
   aspectRatio: string;
   onAspectRatio: (aspectRatio: string) => void;
+  /**
+   * The clip of the recording that is open, and how to open another -- for a
+   * job naming one. `keep: false` leaves the clips' looks as they were kept,
+   * since the queue changes the frame's shape and that is no edit to a look.
+   */
+  clipId?: string | null;
+  onClip?: (id: string | null, keep: boolean) => void;
   onStartExport: (
     plan: ExportPlan,
     onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
@@ -39,11 +46,40 @@ function startJob(job: ExportJob, latest: React.RefObject<QueueDeps>, setJobs: S
   const plan = planExport({ presetId: job.presetId, tier: job.tier, fps: job.fps, seconds: exportSeconds });
   onStartExport(plan, (blob, renderMs) => {
     const { fileNameFor, onSaveExportRecord } = latest.current;
-    const fileName = withAspect(fileNameFor(blob), job.aspectRatio);
+    const fileName = withClip(withAspect(fileNameFor(blob), job.aspectRatio), job.clipNumber);
     onSaveExportRecord({ fileName, fileSizeBytes: blob.size, durationSec: exportSeconds, renderMs });
     const result = { url: URL.createObjectURL(blob), fileName, bytes: blob.size };
     setJobs(current => updateJob(current, job.id, { status: 'done', progress: 100, result }));
   });
+}
+
+/** What was open in the studio before the queue started: its shape, and the clip when the queue opens clips. */
+interface Before {
+  shape: string | null;
+  clip?: string | null;
+}
+
+/** Puts the studio back as it was. The clip first: opening it puts its look back, shape included. */
+function restoreStudio(before: Before, deps: QueueDeps) {
+  if (before.clip !== undefined && before.clip !== deps.clipId) deps.onClip?.(before.clip, false);
+  if (before.shape && before.shape !== deps.aspectRatio) deps.onAspectRatio(before.shape);
+}
+
+/**
+ * Switches the studio to what `job` renders, if it is not there yet; true
+ * when it did, and the job has to wait for the studio to commit it. Its clip
+ * before its shape: a clip with a look of its own has a shape of its own.
+ */
+function switchStudioFor(job: ExportJob, deps: QueueDeps): boolean {
+  if (job.clipId !== undefined && job.clipId !== (deps.clipId ?? null)) {
+    deps.onClip?.(job.clipId, false);
+    return true;
+  }
+  if (deps.aspectRatio !== job.aspectRatio) {
+    deps.onAspectRatio(job.aspectRatio);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -58,7 +94,7 @@ function startJob(job: ExportJob, latest: React.RefObject<QueueDeps>, setJobs: S
  */
 function useQueueRunner(deps: QueueDeps, jobs: ExportJob[], setJobs: SetJobs) {
   const [running, setRunning] = useState(false);
-  const shapeBefore = useRef<string | null>(null);
+  const before = useRef<Before>({ shape: null });
   const latest = useRef(deps);
   useEffect(() => {
     latest.current = deps;
@@ -66,10 +102,8 @@ function useQueueRunner(deps: QueueDeps, jobs: ExportJob[], setJobs: SetJobs) {
 
   const finish = useCallback(() => {
     setRunning(false);
-    if (shapeBefore.current && shapeBefore.current !== latest.current.aspectRatio) {
-      latest.current.onAspectRatio(shapeBefore.current);
-    }
-    shapeBefore.current = null;
+    restoreStudio(before.current, latest.current);
+    before.current = { shape: null };
   }, []);
 
   const runJob = useCallback((job: ExportJob) => startJob(job, latest, setJobs), [setJobs]);
@@ -77,24 +111,23 @@ function useQueueRunner(deps: QueueDeps, jobs: ExportJob[], setJobs: SetJobs) {
   useEffect(() => {
     if (!running || deps.isExporting || queueBusy(jobs)) return;
     const job = nextJob(jobs);
-    if (job && deps.aspectRatio !== job.aspectRatio) {
-      deps.onAspectRatio(job.aspectRatio);
-      return;
-    }
+    if (job && switchStudioFor(job, deps)) return;
     // Timers rather than animation frames: a queue is exactly what someone
     // leaves running in a background tab, where frames stop being delivered.
     // The delay is a beat for the canvas to have committed its new shape.
     const timer = window.setTimeout(() => (job ? runJob(job) : finish()), job ? 100 : 0);
     return () => window.clearTimeout(timer);
-    // `deps.onAspectRatio` is read fresh; the rest is what decides whether to start.
+    // The switches are read fresh; the rest is what decides whether to start.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, jobs, deps.isExporting, deps.aspectRatio, runJob, finish]);
+  }, [running, jobs, deps.isExporting, deps.aspectRatio, deps.clipId, runJob, finish]);
 
   return {
     running,
     finish,
     start: () => {
-      shapeBefore.current = deps.aspectRatio;
+      before.current = { shape: deps.aspectRatio, ...(deps.onClip ? { clip: deps.clipId ?? null } : {}) };
+      // The looks as they stand now are the ones each clip renders with and comes back to.
+      deps.onClip?.(deps.clipId ?? null, true);
       setRunning(true);
     }
   };
@@ -128,7 +161,7 @@ export function useExportQueue(deps: QueueDeps) {
      * committed job list, so adding and starting in one go is safe here where
      * `run` -- which reads the list as it was -- would see nothing to run.
      */
-    runAll: (inputs: { presetId: string; tier: QualityTier; fps: number }[]) => {
+    runAll: (inputs: { presetId: string; tier: QualityTier; fps: number; clipId?: string | null; clipLabel?: string; clipNumber?: number }[]) => {
       setJobs(current =>
         addJobs(current, inputs.map(input => ({ ...input, aspectRatio: presetById(input.presetId).aspectRatio })))
       );

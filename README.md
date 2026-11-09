@@ -193,6 +193,16 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   ruler; drag either handle and the playhead follows it, so the preview shows the frame and
   the sound at the cut while you place it. **Keep 0:09.0** applies it — the same edit the
   dialog makes, without covering the thing being trimmed.
+- **Several clips from one recording.** Match a long upload once, then make as many clips
+  from it as you like: drag the clip handles and choose **New clip**, or pick a first and last
+  ayah under *Clips from this recording* in Source. Each clip is a window on the recording, not
+  a copy, so clips may overlap and a caption fixed in one is fixed in every clip that holds it.
+  Opening a clip plays, previews and exports just its stretch. Every clip has the look you are
+  editing unless you tick *Own look* for it; then it keeps only what you change, and a change to
+  the shared look still reaches the rest. *Every clip* in the export dialog renders them all, one
+  after another, each named by its ayahs and number. The clips are saved with the project (run
+  `npm run db:push` once for the new column). While a recording has clips, trimming and Edit audio
+  are off, since both would move every clip.
 - **Edit audio**, for a built-in reciter or your own recording: select any stretch of the
   waveform and delete it or shorten it, or click a caption to cut that ayah with its audio.
   *Shorten long pauses* shortens the pauses, and *Shorten silence* only those inside a
@@ -521,7 +531,7 @@ an optional capability, and the app degrades cleanly without it.
 
 | Variable | Required for | Default | Notes |
 |---|---|---|---|
-| `ASR_SERVICE_URL` | forced alignment | `http://127.0.0.1:8000` | Where the Python sidecar is listening. |
+| `ASR_SERVICE_URL` | forced alignment | `http://127.0.0.1:8000` | Where the Python sidecar is listening. `./start.sh` starts it on 8000, or on the next free port when another program has 8000, and points the studio there; set this only for an aligner somewhere else. |
 | `AUDIO_MATCH_PROVIDER` | — | `gemini` | Fallback for API calls that name no provider. The studio always names one and defaults to `align`, so this only affects direct `/api/audio/match` requests. |
 | `GEMINI_API_KEY` | the `gemini` provider | — | From [Google AI Studio](https://aistudio.google.com/apikey). `GOOGLE_API_KEY` also works. |
 | `GEMINI_MODEL` | — | `gemini-3.6-flash` | Must be a current model that accepts audio. See the note below. |

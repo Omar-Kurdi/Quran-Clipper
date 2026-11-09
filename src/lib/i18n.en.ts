@@ -465,6 +465,31 @@ export const en = {
     dismiss: 'Close this list, or any dialog'
   },
 
+  clips: {
+    title: 'Clips from this recording',
+    intro: 'Match the whole recording once, then make as many clips from it as you like. Each plays and exports only its own stretch, and a caption fixed in one is fixed in every clip that holds it.',
+    empty: 'No clips yet. Drag the clip handles on the timeline and choose New clip, or pick the ayahs here.',
+    name: (n: number) => `Clip ${n}`,
+    lane: 'Clips',
+    wholeRecording: 'Whole recording',
+    wholeRecordingTitle: 'Back to the whole recording and all its clips',
+    open: 'Open',
+    openTitle: (name: string) => `Open ${name}: play, style and export just this stretch`,
+    isOpen: 'Open now',
+    remove: (name: string) => `Remove ${name}`,
+    ownLook: 'Own look',
+    ownLookTitle: 'Style this clip on its own. Off, it has the look you are editing, like every other clip.',
+    byAyahs: 'Clip by ayahs',
+    from: 'From',
+    to: 'To',
+    add: 'Add clip',
+    newClip: (length: string) => `New clip · ${length}`,
+    newClipTitle: (start: string, end: string) => `Make ${start} – ${end} a clip of this recording`,
+    setClipTo: (start: string, end: string) => `Make this clip ${start} – ${end}`,
+    editAudioOff: 'Edit audio is off while the recording has clips: its cuts would move every clip.',
+    everyClip: (n: number) => `Every clip (${n})`,
+    everyClipTitle: 'Render each clip of the recording, one after another in this tab, to every destination ticked.'
+  },
   timeline: {
     opening: { istiadha: 'Isti\'adha', basmala: 'Basmala' },
     dragToReorder: 'drag to move it in the order',
@@ -888,6 +913,11 @@ export const en = {
       'Drag the ruler to move the playhead; drag the amber handles to set what to keep. Drag this bar to move the window, or its bottom-right corner to resize everything in it.',
     resetWindow: (percent: number) => `Reset window (${percent}%)`,
     readingAudio: 'Reading audio…',
+    speed: 'Speed',
+    speedTitle: 'Play faster to skim to the stretch you want, or slower to place a handle exactly.',
+    readingLong: 'Reading a long recording on this computer… (about half a minute for two hours)',
+    tooLongHere: 'This recording is too long to trim in the browser, and this public studio does not trim recordings this long. Trim it to under 30 minutes first.',
+    longCap: (minutes: number) => `Keep at most ${minutes} minutes of a recording this long at a time — about what one match takes. Move the handles closer together.`,
     decodeFailed:
       'Could not read this audio file for trimming. Try a different file, or continue without trimming.',
     trimFailed: 'Could not trim this audio file.',
