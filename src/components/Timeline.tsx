@@ -17,6 +17,7 @@ import { useLoopWindows } from '@/hooks/useLoopWindows';
 import { loopFor } from '@/lib/clipLoop';
 import { useT } from './LocaleProvider';
 import { ClipLane } from './ClipLane';
+import { LengthReadout } from './LengthReadout';
 import { TimelineSkeleton } from './Skeleton';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
 import { usePalette, paletteColor } from '@/hooks/usePalette';
@@ -44,6 +45,8 @@ interface TimelineProps {
   onTrim?: () => void;
   /** Opens Edit audio. Omitted when there is no recording the studio can edit. */
   onEditAudio?: () => void;
+  /** How long the video exports at, shown against each platform's limit; omitted while there is nothing to export. */
+  exportSeconds?: number;
   /**
    * Cuts the uploaded audio down to `[start, end]` of the current clip -- or,
    * for a built-in reciter, the captions, the recording itself left whole.
@@ -167,7 +170,7 @@ function CheckMark({ label }: { label: string }) {
 export const Timeline: React.FC<TimelineProps> = ({
   verses, audioUrl, audioDuration, currentTime, isPlaying,
   selectedIndex, onSelect, onSeek, onPlayPause, onMoveBoundary, onMarkHere, rippleEdits, onToggleRippleEdits,
-  onTrim, onEditAudio, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
+  onTrim, onEditAudio, exportSeconds, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
   onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip, onMoveClip, activeClipOwn = false, onOwnLook
@@ -579,6 +582,8 @@ export const Timeline: React.FC<TimelineProps> = ({
             {t.clips.ownLook}
           </label>
         )}
+
+        {exportSeconds !== undefined && <LengthReadout seconds={exportSeconds} />}
 
         {onEditAudio && (
           <button

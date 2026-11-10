@@ -39,22 +39,23 @@ export function vaultClient(env: Record<string, string | undefined> = process.en
   return id && secret ? { id, secret } : null;
 }
 
-const keyFor = (secret: string) => createHash('sha256').update(`quranclipper.youtube.v1:${secret}`).digest();
+/** `purpose` keeps one platform's cookie from opening under another's key: `tiktokVault` seals its own. */
+const keyFor = (secret: string, purpose: string) => createHash('sha256').update(`quranclipper.${purpose}.v1:${secret}`).digest();
 
 /** The refresh token, sealed for the cookie: IV, tag and ciphertext, base64url. */
-export function seal(refreshToken: string, secret: string): string {
+export function seal(refreshToken: string, secret: string, purpose = 'youtube'): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', keyFor(secret), iv);
+  const cipher = createCipheriv('aes-256-gcm', keyFor(secret, purpose), iv);
   const body = Buffer.concat([cipher.update(refreshToken, 'utf8'), cipher.final()]);
   return Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64url');
 }
 
 /** The refresh token a cookie holds, or null when it was not sealed here (a changed secret, or tampered with). */
-export function unseal(sealed: string | undefined, secret: string): string | null {
+export function unseal(sealed: string | undefined, secret: string, purpose = 'youtube'): string | null {
   if (!sealed) return null;
   try {
     const raw = Buffer.from(sealed, 'base64url');
-    const decipher = createDecipheriv('aes-256-gcm', keyFor(secret), raw.subarray(0, 12));
+    const decipher = createDecipheriv('aes-256-gcm', keyFor(secret, purpose), raw.subarray(0, 12));
     decipher.setAuthTag(raw.subarray(12, 28));
     return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8');
   } catch {

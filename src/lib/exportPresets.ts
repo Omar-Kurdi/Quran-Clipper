@@ -283,3 +283,25 @@ export function formatBytes(bytes: number): string {
 
 /** `12 Mbps`, rounded the way a bitrate is usually quoted. */
 export const formatBitrate = (bitrate: number): string => `${Math.round(bitrate / 100_000) / 10} Mbps`;
+
+/** The platforms that share one length limit, named by the first of them, and whether a clip fits it. */
+export interface LengthFit {
+  id: string;
+  presetIds: string[];
+  maxSeconds: number;
+  fits: boolean;
+}
+
+/**
+ * A clip of `seconds` against each length limit the presets have, shortest
+ * limit last: Shorts, TikTok, then Reels with the other platforms held to the
+ * same minute and a half. Platforms with no limit are left out.
+ */
+export function lengthFits(seconds: number): LengthFit[] {
+  const groups = new Map<number, string[]>();
+  for (const preset of EXPORT_PRESETS) {
+    if (!preset.maxSeconds) continue;
+    groups.set(preset.maxSeconds, [...(groups.get(preset.maxSeconds) ?? []), preset.id]);
+  }
+  return [...groups].map(([maxSeconds, presetIds]) => ({ id: presetIds[0], presetIds, maxSeconds, fits: seconds <= maxSeconds }));
+}

@@ -3671,6 +3671,7 @@ export default function VideoCreatorPage() {
           onNextToCheck={goToNextCheck}
           onTrim={customAudioFile && !hasRecordingClips ? () => setShowTrimModal(true) : undefined}
           onEditAudio={canEditAudio ? () => { void openEditAudio(); } : undefined}
+          exportSeconds={verses.length ? exportRange.span : undefined}
           // With clips, the handles set the open clip's stretch rather than cut the recording.
           onTrimRange={hasRecordingClips
             ? recordingClip ? (start, end) => recordingClips.move(recordingClip.id, start, end, audioDuration) : undefined

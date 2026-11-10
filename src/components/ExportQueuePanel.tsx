@@ -8,6 +8,7 @@ import type { PublishMetadata } from '@/lib/publishMetadata';
 import { youtubeClientId } from '@/lib/youtubeUpload';
 import { useT } from './LocaleProvider';
 import { YouTubeUpload, type UnsentUpload } from './YouTubeUpload';
+import { TikTokUpload, useTikTokOffered } from './TikTokUpload';
 
 interface ExportQueuePanelProps {
   jobs: ExportJob[];
@@ -43,6 +44,7 @@ export const ExportQueuePanel: React.FC<ExportQueuePanelProps> = ({
   jobs, running, describe, onRun, onCancel, onRemove, onMove, onClearFinished, onYouTubeUnsent
 }) => {
   const t = useT();
+  const tiktok = useTikTokOffered();
   const [uploads, setUploads] = useState<Record<string, UnsentUpload>>({});
   const pending = pendingOf(uploads);
   useEffect(() => { onYouTubeUnsent?.(pending); }, [pending, onYouTubeUnsent]);
@@ -72,6 +74,7 @@ export const ExportQueuePanel: React.FC<ExportQueuePanelProps> = ({
             onMove={direction => onMove(job.id, direction)}
             onRemove={() => onRemove(job.id)}
             onUnsent={reportUpload}
+            tiktok={tiktok}
           />
         ))}
       </ol>
@@ -124,7 +127,7 @@ function QueueActions({
 }
 
 function JobRow({
-  job, label, movable, first, last, onMove, onRemove, onUnsent
+  job, label, movable, first, last, onMove, onRemove, onUnsent, tiktok
 }: {
   job: ExportJob;
   label: string;
@@ -134,35 +137,36 @@ function JobRow({
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
   onUnsent: (id: string, pending: UnsentUpload) => void;
+  /** Whether this studio sends to TikTok as well. */
+  tiktok: boolean;
 }) {
   const t = useT();
   const [youtube, setYouTube] = useState<UploadPanel>('closed');
-  const uploadable = job.status === 'done' && job.result?.caption && youtubeClientId() ? job.result : null;
+  const [toTikTok, setToTikTok] = useState<UploadPanel>('closed');
+  const finished = job.status === 'done' && job.result?.caption ? job.result : null;
+  const uploadable = finished && youtubeClientId() ? finished : null;
+  const sendable = finished && tiktok ? finished : null;
   return (
     <li className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-1.5">
       <div className="flex items-center gap-2 text-[11px]">
         <JobIcon job={job} />
         <span className="flex-1 min-w-0 truncate text-slate-200">{label}</span>
-        {movable && (
-          <>
-            <IconButton label={t.exportQueue.moveUp} onClick={() => onMove(-1)} disabled={first}>
-              <ArrowUp className="w-3 h-3" />
-            </IconButton>
-            <IconButton label={t.exportQueue.moveDown} onClick={() => onMove(1)} disabled={last}>
-              <ArrowDown className="w-3 h-3" />
-            </IconButton>
-          </>
+        <WaitingControls movable={movable} queued={job.status === 'queued'} first={first} last={last} onMove={onMove} onRemove={onRemove} />
+        {uploadable && (
+          <UploadToggle name={t.exportQueue.youtube} title={t.exportQueue.youtubeTitle(label)} open={youtube === 'open'}
+            onToggle={() => setYouTube(state => (state === 'open' ? 'folded' : 'open'))} />
         )}
-        {job.status === 'queued' && (
-          <IconButton label={t.exportQueue.remove} onClick={onRemove}>
-            <X className="w-3 h-3" />
-          </IconButton>
+        {sendable && (
+          <UploadToggle name={t.exportQueue.tiktok} title={t.exportQueue.tiktokTitle(label)} open={toTikTok === 'open'}
+            onToggle={() => setToTikTok(state => (state === 'open' ? 'folded' : 'open'))} />
         )}
-        {uploadable && <UploadToggle label={label} open={youtube === 'open'} onToggle={() => setYouTube(state => (state === 'open' ? 'folded' : 'open'))} />}
         {job.status === 'done' && job.result && <DownloadLink result={job.result} />}
         {job.status === 'cancelled' && <span className="text-slate-400">{t.exportQueue.cancelled}</span>}
       </div>
       {uploadable?.caption && <JobUpload jobId={job.id} blob={uploadable.blob} caption={uploadable.caption} panel={youtube} onUnsent={onUnsent} />}
+      {sendable?.caption && (
+        <JobUpload jobId={`${job.id}:tiktok`} blob={sendable.blob} caption={sendable.caption} panel={toTikTok} onUnsent={onUnsent} platform="tiktok" />
+      )}
       {job.status === 'rendering' && (
         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
           <div className="h-full bg-amber-500 transition-all" style={{ width: `${job.progress}%` }} />
@@ -172,23 +176,48 @@ function JobRow({
   );
 }
 
-/** Opens or folds a finished render's YouTube panel. */
-function UploadToggle({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
+/** A waiting job's buttons: earlier, later, and out of the queue. */
+function WaitingControls({ movable, queued, first, last, onMove, onRemove }: {
+  movable: boolean; queued: boolean; first: boolean; last: boolean; onMove: (direction: -1 | 1) => void; onRemove: () => void;
+}) {
   const t = useT();
+  return (
+    <>
+      {movable && (
+        <>
+          <IconButton label={t.exportQueue.moveUp} onClick={() => onMove(-1)} disabled={first}>
+            <ArrowUp className="w-3 h-3" />
+          </IconButton>
+          <IconButton label={t.exportQueue.moveDown} onClick={() => onMove(1)} disabled={last}>
+            <ArrowDown className="w-3 h-3" />
+          </IconButton>
+        </>
+      )}
+      {queued && (
+        <IconButton label={t.exportQueue.remove} onClick={onRemove}>
+          <X className="w-3 h-3" />
+        </IconButton>
+      )}
+    </>
+  );
+}
+
+/** Opens or folds a finished render's YouTube or TikTok panel. */
+function UploadToggle({ name, title, open, onToggle }: { name: string; title: string; open: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={onToggle}
       aria-expanded={open}
-      title={t.exportQueue.youtubeTitle(label)}
+      title={title}
       className="flex items-center gap-1 rounded-md bg-red-500/15 px-1.5 py-0.5 text-red-200 hover:bg-red-500/25"
     >
       <Upload className="w-3 h-3" />
-      {t.exportQueue.youtube}
+      {name}
     </button>
   );
 }
 
-/** A finished render's YouTube panel: not opened yet, open, or folded away. */
+/** A finished render's upload panel: not opened yet, open, or folded away. */
 type UploadPanel = 'closed' | 'open' | 'folded';
 
 /**
@@ -196,19 +225,22 @@ type UploadPanel = 'closed' | 'open' | 'folded';
  * mounted once opened, and only hidden when folded: unmounting it would
  * abandon an upload on its way.
  */
-function JobUpload({ jobId, blob, caption, panel, onUnsent }: {
+function JobUpload({ jobId, blob, caption, panel, onUnsent, platform = 'youtube' }: {
   jobId: string;
   blob: Blob;
   caption: () => Promise<PublishMetadata>;
   panel: UploadPanel;
   onUnsent: (id: string, pending: UnsentUpload) => void;
+  platform?: 'youtube' | 'tiktok';
 }) {
   const reportUnsent = useCallback((pending: UnsentUpload) => onUnsent(jobId, pending), [onUnsent, jobId]);
   if (panel === 'closed') return null;
   return (
     <div className={panel === 'open' ? 'mt-2 flex flex-col gap-1.5' : 'hidden'}>
       <CaptionTitle caption={caption} />
-      <YouTubeUpload clientId={youtubeClientId()} blob={blob} caption={caption} onUnsent={reportUnsent} />
+      {platform === 'tiktok'
+        ? <TikTokUpload blob={blob} caption={caption} onUnsent={reportUnsent} />
+        : <YouTubeUpload clientId={youtubeClientId()} blob={blob} caption={caption} onUnsent={reportUnsent} />}
     </div>
   );
 }

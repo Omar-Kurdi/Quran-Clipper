@@ -6,6 +6,7 @@ import type { PublishMetadata } from '@/lib/publishMetadata';
 import { postTargets, postText, renderedFor, shareableFile, UPLOAD_PAGES, type Platform } from '@/lib/postTargets';
 import { youtubeClientId } from '@/lib/youtubeUpload';
 import { YouTubeUpload, type UnsentUpload } from './YouTubeUpload';
+import { TikTokUpload, useTikTokOffered } from './TikTokUpload';
 import { useT } from './LocaleProvider';
 
 interface PostPanelProps {
@@ -18,7 +19,7 @@ interface PostPanelProps {
   caption: () => Promise<PublishMetadata>;
   /** The "This computer" row's buttons, which the result screen owns. */
   download: React.ReactNode;
-  /** Whether a YouTube upload is set up and not yet sent -- see `YouTubeUpload`. */
+  /** Whether a YouTube or TikTok upload is set up and not yet sent -- see `YouTubeUpload`. */
   onYouTubeUnsent?: (pending: UnsentUpload) => void;
 }
 
@@ -75,6 +76,9 @@ function usePosting({ blob, fileName, caption }: Pick<PostPanelProps, 'blob' | '
   return { file, status, share, open };
 }
 
+/** The rows that open in place rather than opening a page. */
+type Row = 'computer' | 'youtube' | 'tiktok';
+
 const ROW = 'rounded-xl border bg-slate-950/60';
 const ROW_HEAD = 'w-full flex items-center gap-3 px-3 py-3 text-start text-slate-100 hover:bg-slate-800/40 rounded-xl transition-colors';
 
@@ -107,10 +111,11 @@ export const PostPanel: React.FC<PostPanelProps> = ({ blob, fileName, presetIds,
   const t = useT();
   const { file, status, share, open } = usePosting({ blob, fileName, caption });
   const clientId = youtubeClientId();
-  const [expanded, setExpanded] = useState<'computer' | 'youtube' | null>(
+  const tiktok = useTikTokOffered();
+  const [expanded, setExpanded] = useState<Row | null>(
     clientId && renderedFor('youtube', presetIds) ? 'youtube' : 'computer'
   );
-  const toggle = (row: 'computer' | 'youtube') => setExpanded(current => (current === row ? null : row));
+  const toggle = (row: Row) => setExpanded(current => (current === row ? null : row));
 
   return (
     <div className="flex flex-col gap-2">
@@ -126,6 +131,14 @@ export const PostPanel: React.FC<PostPanelProps> = ({ blob, fileName, presetIds,
             <YouTubeUpload clientId={clientId} blob={blob} caption={caption} onUnsent={onYouTubeUnsent} />
             <button onClick={() => open('youtube')} className="self-start text-[11px] text-slate-400 hover:text-emerald-300 underline">
               {t.post.youtubePage}
+            </button>
+          </Destination>
+        ) : platform === 'tiktok' && tiktok ? (
+          <Destination key={platform} icon={<Upload className="w-5 h-5" />} title={t.post.platforms.tiktok} help={t.post.tiktokHelp}
+            highlight={renderedFor(platform, presetIds)} open={expanded === 'tiktok'} onToggle={() => toggle('tiktok')}>
+            <TikTokUpload blob={blob} caption={caption} onUnsent={onYouTubeUnsent} />
+            <button onClick={() => open('tiktok')} className="self-start text-[11px] text-slate-400 hover:text-emerald-300 underline">
+              {t.post.tiktokPage}
             </button>
           </Destination>
         ) : (

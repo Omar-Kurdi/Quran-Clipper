@@ -3,7 +3,7 @@ import {
   EXPORT_PRESETS, presetById, presetForAspect, dimensionsFor, bitrateFor,
   planExport, formatBytes, formatBitrate,
   MAX_EXPORT_BYTES, MAX_EXPORT_HEAP_BYTES, EXPORT_MEMORY_FACTOR,
-  previewPlan, PREVIEW_LONG_SIDE
+  previewPlan, PREVIEW_LONG_SIDE, lengthFits
 } from './exportPresets';
 
 describe('export presets', () => {
@@ -143,5 +143,21 @@ describe('export presets', () => {
     expect(formatBitrate(12_000_000)).toBe('12 Mbps');
     expect(formatBytes(220_000_000)).toBe('220 MB');
     expect(formatBytes(1_400_000_000)).toBe('1.4 GB');
+  });
+});
+
+describe('lengthFits', () => {
+  it('groups the platforms by their limit, Shorts, TikTok and then the minute-and-a-half ones', () => {
+    const fits = lengthFits(60);
+    expect(fits.map(f => [f.id, f.maxSeconds])).toEqual([['shorts', 180], ['tiktok', 600], ['reels', 90]]);
+    expect(fits.find(f => f.id === 'reels')?.presetIds).toEqual(['reels', 'ig-portrait', 'ig-feed', 'facebook']);
+    expect(fits.every(f => f.fits)).toBe(true);
+  });
+
+  it('says which limits a clip is over, a clip exactly at a limit fitting it', () => {
+    expect(lengthFits(90).map(f => f.fits)).toEqual([true, true, true]);
+    expect(lengthFits(90.5).map(f => f.fits)).toEqual([true, true, false]);
+    expect(lengthFits(200).map(f => f.fits)).toEqual([false, true, false]);
+    expect(lengthFits(601).map(f => f.fits)).toEqual([false, false, false]);
   });
 });

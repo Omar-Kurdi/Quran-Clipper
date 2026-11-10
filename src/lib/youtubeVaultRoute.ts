@@ -15,16 +15,20 @@ export function vaultRequest(req: NextRequest):
   return { client, refreshToken: client ? unseal(req.cookies.get(VAULT_COOKIE)?.value, client.secret) : null };
 }
 
+/** Which cookie: YouTube's unless another platform's vault names its own. */
+type Jar = { name: string; path: string };
+const YOUTUBE_JAR: Jar = { name: VAULT_COOKIE, path: VAULT_PATH };
+
 const secure = (req: NextRequest) =>
   (req.headers.get('x-forwarded-proto') || req.nextUrl.protocol.replace(':', '')) === 'https';
 
 /** Keeps the sealed token on this browser for another year. */
-export function keepCookie(res: NextResponse, req: NextRequest, sealed: string): NextResponse {
-  res.cookies.set(VAULT_COOKIE, sealed, { httpOnly: true, sameSite: 'lax', secure: secure(req), path: VAULT_PATH, maxAge: VAULT_MAX_AGE });
+export function keepCookie(res: NextResponse, req: NextRequest, sealed: string, jar: Jar = YOUTUBE_JAR, maxAge = VAULT_MAX_AGE): NextResponse {
+  res.cookies.set(jar.name, sealed, { httpOnly: true, sameSite: 'lax', secure: secure(req), path: jar.path, maxAge });
   return res;
 }
 
-export function dropCookie(res: NextResponse, req: NextRequest): NextResponse {
-  res.cookies.set(VAULT_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: secure(req), path: VAULT_PATH, maxAge: 0 });
+export function dropCookie(res: NextResponse, req: NextRequest, jar: Jar = YOUTUBE_JAR): NextResponse {
+  res.cookies.set(jar.name, '', { httpOnly: true, sameSite: 'lax', secure: secure(req), path: jar.path, maxAge: 0 });
   return res;
 }

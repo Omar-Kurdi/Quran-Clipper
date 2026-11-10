@@ -394,7 +394,9 @@ export const ar: Dictionary = {
     remove: 'احذف من الطابور',
     keepOpen: 'يعمل الطابور في هذا التبويب. أبقه مفتوحًا حتى تنتهي كل التصديرات.',
     youtube: 'يوتيوب',
-    youtubeTitle: name => `ارفع ${name} إلى يوتيوب، بعنوانه ووصفه`
+    youtubeTitle: name => `ارفع ${name} إلى يوتيوب، بعنوانه ووصفه`,
+    tiktok: 'تيك توك',
+    tiktokTitle: name => `أرسل ${name} إلى مسوّداتك في تيك توك`
   },
   serverRender: {
     label: 'تصديرات في الخلفية',
@@ -1075,6 +1077,39 @@ export const ar: Dictionary = {
     disconnect: 'قطع الاتصال',
     signInAgain: 'انتهى تسجيل الدخول إلى YouTube على هذا المتصفح. سيطلب الرفع التالي تسجيل الدخول مجددًا.'
   },
+  lengthReadout: {
+    title: length => `يُصدَّر هذا المقطع بطول ${length}.`,
+    fits: (name, max) => `${name}: مناسب (حتى ${max})`,
+    over: (name, max) => `${name}: أطول من المسموح (حتى ${max})`,
+    short: { shorts: 'Shorts', tiktok: 'TikTok', reels: 'Reels' }
+  },
+  tiktok: {
+    upload: 'أرسله إلى مسوّداتي في TikTok',
+    help:
+      'يسجّل الدخول إلى TikTok في نافذة منبثقة ويرسل هذا الملف إلى صندوق الوارد في TikTok مسوّدةً. افتح TikTok واضغط على الإشعار والصق الوصف وانشره من هناك. لا يُنشر شيء حتى تضغط «نشر» في TikTok.',
+    copyCaption: 'انسخ الوصف للصقه في TikTok',
+    copied: 'نُسخ الوصف',
+    copyFailed: 'لم يسمح المتصفح بالنسخ. انسخه من «وصف هذا المقطع» بدلًا من ذلك.',
+    signingIn: 'بانتظار تسجيل الدخول إلى TikTok في النافذة المنبثقة…',
+    checking: 'أُرسل. نتحقق من وصوله إلى TikTok…',
+    done: {
+      inbox: 'في صندوق الوارد في TikTok. افتح TikTok واضغط على الإشعار لإكمال النشر.',
+      posted: 'نُشر على TikTok.',
+      processing: 'أُرسل. ما زال TikTok يستقبله، وسيظهر في صندوق الوارد قريبًا.'
+    },
+    failed: {
+      signin: 'لم يكتمل تسجيل الدخول إلى TikTok، فلم يُرسل شيء. اضغط الزر للمحاولة مجددًا.',
+      popup: 'حجب المتصفح نافذة تسجيل الدخول إلى TikTok. اسمح بالنوافذ المنبثقة لهذه الصفحة ثم اضغط الزر مجددًا.',
+      pending: 'يسمح TikTok بخمس مسوّدات غير مكتملة في اليوم. انشر بعضها أو احذفه في تطبيق TikTok ثم حاول مجددًا.',
+      rate: 'يطلب TikTok التمهّل. انتظر دقيقة ثم حاول مجددًا.',
+      size: 'لم يقبل TikTok هذا الفيديو: يجب أن يكون MP4 أو WebM أو MOV، لا يتجاوز 10 دقائق، بين 23 و60 إطارًا في الثانية.',
+      rejected: 'رفض TikTok المسوّدة. من دون تفعيل إذن الرفع في صفحة تسجيل الدخول إلى TikTok لا يمكن إرسال شيء.',
+      network: 'انقطع الاتصال أثناء الإرسال. اضغط الزر للبدء من جديد.',
+      other: 'لم يقبل TikTok الفيديو. نزّله وارفعه من تطبيق TikTok بدلًا من ذلك.',
+      cancelled: 'أُلغي الإرسال.'
+    },
+    keptSignedIn: 'مسجّل الدخول إلى TikTok في هذا المتصفح.'
+  },
   post: {
     sendTo: 'أرسله إلى',
     computer: 'هذا الجهاز',
@@ -1082,6 +1117,8 @@ export const ar: Dictionary = {
     uploadsHelp: 'يرفعه إلى قناتك. تسجّل الدخول إلى Google، لا إلى Quran-Clipper أبدًا',
     openHelp: 'يفتح صفحة الرفع مع نسخ الوصف',
     youtubePage: 'أو افتح صفحة الرفع في YouTube بدلًا من ذلك',
+    tiktokHelp: 'يرسله إلى مسوّداتك في TikTok. تسجّل الدخول إلى TikTok، لا إلى Quran-Clipper أبدًا',
+    tiktokPage: 'أو افتح صفحة الرفع في TikTok بدلًا من ذلك',
     share: 'تطبيق آخر على هذا الجهاز',
     shareHelp: 'يفتح قائمة المشاركة في هذا الجهاز',
     platforms: { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' },

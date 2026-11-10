@@ -402,7 +402,9 @@ export const en = {
     remove: 'Remove from queue',
     keepOpen: 'The queue runs in this tab. Keep it open until every render is done.',
     youtube: 'YouTube',
-    youtubeTitle: (name: string) => `Upload ${name} to YouTube, under its own title and description`
+    youtubeTitle: (name: string) => `Upload ${name} to YouTube, under its own title and description`,
+    tiktok: 'TikTok',
+    tiktokTitle: (name: string) => `Send ${name} to your TikTok drafts`
   },
   serverRender: {
     label: 'Background renders',
@@ -1096,6 +1098,39 @@ export const en = {
     disconnect: 'Disconnect',
     signInAgain: 'The YouTube sign-in on this browser has ended. The next upload asks you to sign in again.'
   },
+  lengthReadout: {
+    title: (length: string) => `This clip exports at ${length}.`,
+    fits: (name: string, max: string) => `${name}: fits (up to ${max})`,
+    over: (name: string, max: string) => `${name}: too long (up to ${max})`,
+    short: { shorts: 'Shorts', tiktok: 'TikTok', reels: 'Reels' }
+  },
+  tiktok: {
+    upload: 'Send to my TikTok drafts',
+    help:
+      'Signs in to TikTok in a pop-up and sends this file to your TikTok inbox as a draft. Open TikTok, tap the notification, paste the caption and post it from there. Nothing goes public until you press Post in TikTok.',
+    copyCaption: 'Copy the caption to paste in TikTok',
+    copied: 'Caption copied',
+    copyFailed: 'This browser would not copy it. Copy it from "Caption for this clip" instead.',
+    signingIn: 'Waiting for TikTok sign-in in the pop-up…',
+    checking: 'Sent. Checking that TikTok has it…',
+    done: {
+      inbox: 'In your TikTok inbox. Open TikTok and tap the notification to finish the post.',
+      posted: 'Posted on TikTok.',
+      processing: 'Sent. TikTok is still taking it in; it will show in your TikTok inbox shortly.'
+    },
+    failed: {
+      signin: 'TikTok sign-in did not finish, so nothing was sent. Press the button to try again.',
+      popup: 'The browser blocked the TikTok sign-in window. Allow pop-ups for this page, then press the button again.',
+      pending: 'TikTok allows five unfinished drafts a day. Post or delete some in the TikTok app, then try again.',
+      rate: 'TikTok asks to slow down. Wait a minute and try again.',
+      size: 'TikTok would not take this video: it must be MP4, WebM or MOV, at most 10 minutes, at 23 to 60 frames a second.',
+      rejected: 'TikTok refused the draft. Without the upload permission ticked on TikTok\'s sign-in page, nothing can be sent.',
+      network: 'The connection dropped while sending. Press the button to start again.',
+      other: 'TikTok did not accept the video. Download it and upload it in the TikTok app instead.',
+      cancelled: 'Sending cancelled.'
+    },
+    keptSignedIn: 'Signed in to TikTok on this browser.'
+  },
   post: {
     sendTo: 'Send it to',
     computer: 'This computer',
@@ -1103,6 +1138,8 @@ export const en = {
     uploadsHelp: 'Uploads to your channel. You sign in to Google, never to Quran-Clipper',
     openHelp: 'Opens the upload page with the caption copied',
     youtubePage: 'Or open YouTube\'s upload page instead',
+    tiktokHelp: 'Sends it to your TikTok drafts. You sign in to TikTok, never to Quran-Clipper',
+    tiktokPage: 'Or open TikTok\'s upload page instead',
     share: 'Another app on this device',
     shareHelp: 'Opens this device\'s share menu',
     platforms: { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' },

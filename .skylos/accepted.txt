@@ -130,3 +130,34 @@ src/app/api/audio/proxy/route.test.ts  SKY-A101  1
 # route-local guard; adding one would protect nothing more. SKY-D280 on any
 # other route still blocks.
 src/app/api/audio/long/route.ts  SKY-D280  1
+
+# The TikTok drafts routes, accepted by the owner on 2026-11-10.
+#
+# SKY-D280 on the five that act for a signed-in person (state, init, chunk,
+# status, disconnect, all POST): the same arrangement as the YouTube sign-in
+# routes above -- behind the STUDIO_TOKEN middleware, each refuses anything but
+# a same-origin POST carrying the studio's X-Requested-With header
+# (`fromStudio`), and each acts only on the tokens sealed in the caller's own
+# httpOnly cookie. The rule accepts only next-auth or Clerk; adding one would
+# protect nothing more.
+src/app/api/tiktok/state/route.ts  SKY-D280  1
+src/app/api/tiktok/init/route.ts  SKY-D280  1
+src/app/api/tiktok/chunk/route.ts  SKY-D280  1
+src/app/api/tiktok/status/route.ts  SKY-D280  1
+src/app/api/tiktok/disconnect/route.ts  SKY-D280  1
+#
+# SKY-D216 on the chunk relay: it forwards each piece of the video to the
+# upload address TikTok's init answer gave, and only after `isTikTokUploadUrl`
+# has refused anything but https on tiktokapis.com or a subdomain of it
+# (tested in tiktokUpload.test.ts). The rule fires on the pattern, not the check.
+src/app/api/tiktok/chunk/route.ts  SKY-D216  1
+#
+# SKY-D230 on connect: it redirects only to TikTok's fixed authorize address
+# (`authorizeUrl` in src/lib/tiktokVault.ts); nothing the caller sends picks
+# where it goes.
+src/app/api/tiktok/connect/route.ts  SKY-D230  1
+#
+# SKY-Q402 in the upload hook: TikTok takes a file's pieces in order, one after
+# another, and the draft's status is asked again only after the last answer, so
+# the awaits in those loops are the point, not a missed Promise.all.
+src/components/TikTokUpload.tsx  SKY-Q402  5

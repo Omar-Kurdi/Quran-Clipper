@@ -1044,6 +1044,19 @@ Two things only you can do in Google Cloud: **publish the OAuth consent screen**
 Google ends these sign-ins after 7 days), and pass YouTube's API audit, until which every
 upload stays private whatever was chosen.
 
+### Sending to TikTok
+
+With `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` set (see `.env.example`), a finished render,
+and each clip in the export queue, can go to your TikTok inbox as a draft: you finish it in the
+TikTok app, where the caption is pasted (the button beside it copies it) and nothing is public until
+you press Post. TikTok allows five unfinished drafts a day.
+
+TikTok signs in by redirect, to an **https** address registered with the app as
+`https://your-studio/api/tiktok/callback`, so this works on a studio served over https, not on
+plain `http://localhost`. Its token calls need the secret, so the server makes them, keeps the
+tokens sealed in an httpOnly cookie on that browser, and passes the file on to TikTok in pieces of
+16 MB. Until TikTok reviews the app, only the sandbox's target users can sign in.
+
 ---
 
 ## API reference
@@ -1061,6 +1074,8 @@ App routes:
 | `GET` | `/api/audio/ayahs?reciter=&surah=&start=&end=` | A built-in reciter's passage: its ayah files laid end to end, range requests included |
 | `GET` | `/api/background/resolve?url=` | Turns a Pexels page link into the media file link |
 | `GET` | `/api/background/match?seconds=&orientation=` | A Pexels background about as long as a matched clip |
+| `GET` | `/api/tiktok/connect`, `/api/tiktok/callback` | TikTok sign-in, in a pop-up |
+| `POST` | `/api/tiktok/{state,init,chunk,status,disconnect}` | Sending a render to TikTok drafts (same-origin) |
 | `POST`, `GET` | `/api/audio/long` | Reads and cuts a recording too long to trim in the browser (local studio only) |
 | `GET` `POST` | `/api/projects` | List / save projects |
 | `DELETE` | `/api/projects?id=` | Delete one saved project (`404` if it is already gone) |
