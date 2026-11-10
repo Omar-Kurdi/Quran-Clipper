@@ -29,11 +29,23 @@ export function clipWindow(range: { start: number; end: number }, fileDuration: 
   return whole ? null : { start: range.start, end: range.end };
 }
 
-/** What the timeline draws: the clip and its margins, inside the recording. */
-export function timelineView(clip: ClipWindow | null, fileDuration: number): ClipWindow | null {
+/**
+ * What the timeline draws: the clip and its margins, inside the recording.
+ * `margin` is how much either side, `VIEW_MARGIN_SEC` unless asked for more.
+ */
+export function timelineView(clip: ClipWindow | null, fileDuration: number, margin = VIEW_MARGIN_SEC): ClipWindow | null {
   if (!clip) return null;
   const last = Math.max(fileDuration > 0 ? fileDuration : 0, clip.end);
-  return { start: Math.max(0, clip.start - VIEW_MARGIN_SEC), end: Math.min(last, clip.end + VIEW_MARGIN_SEC) };
+  return { start: Math.max(0, clip.start - margin), end: Math.min(last, clip.end + margin) };
+}
+
+/**
+ * The margin drawn around an open clip of an uploaded recording: half its
+ * length either side, so its bar can be dragged well past where it ends now
+ * -- a clip's edges are where it is being decided, unlike a reciter's passage.
+ */
+export function recordingClipMargin(clip: ClipWindow): number {
+  return Math.max(VIEW_MARGIN_SEC, (clip.end - clip.start) / 2);
 }
 
 /**

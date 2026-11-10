@@ -69,10 +69,12 @@ import {
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY, NEW_PROJECT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
 import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour, MOTION_DEFAULTS, motionForNewMatch } from '@/lib/captionMotion';
-import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
+import { clipWindow, timelineView, playFrom, pastClipEnd, recordingClipMargin } from '@/lib/clipWindow';
 import { nextToCheck, captionChecks } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { cutLong, isLongFile } from '@/hooks/useLongAudio';
+import { STYLE_PRESETS, applyStylePreset, matchingPreset } from '@/lib/stylePresets';
+import { builtInCandidates, chooseBackground, sample, searchOrientation, type BackgroundCandidate } from '@/lib/backgroundMatch';
 import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
@@ -1249,6 +1251,25 @@ export default function VideoCreatorPage() {
     setIsSampleProject(false);
   };
 
+  /**
+   * A matched clip's look: a style preset at random, other than the one on
+   * screen, and a background about as long as the clip (`backgroundMatch.ts`)
+   * -- from Pexels, or from the built-ins when Pexels cannot be asked. One
+   * edit, so undo puts the look before the match back.
+   */
+  const dressForMatch = async (clipSeconds: number) => {
+    const [preset] = sample(STYLE_PRESETS.filter(p => p.id !== matchingPreset(canvasConfig)), 1);
+    const query = new URLSearchParams({ seconds: String(clipSeconds), orientation: searchOrientation(canvasConfig.aspectRatio) });
+    const found: BackgroundCandidate | null = await fetch(`/api/background/match?${query}`)
+      .then(res => (res.ok ? res.json() : null))
+      .catch(() => null);
+    const background = found ?? chooseBackground(builtInCandidates(), clipSeconds);
+    setCanvasConfig(prev => {
+      const styled = preset ? applyStylePreset(prev, preset) : prev;
+      return background ? { ...styled, bgType: 'video', bgUrl: background.url, bgMode: 'single' } : styled;
+    });
+  };
+
   const runAutoMatch = async (
     source: { kind: 'file'; file: File } | { kind: 'url'; url: string; start: number; end: number; skipAligner?: boolean },
     /**
@@ -1336,6 +1357,10 @@ export default function VideoCreatorPage() {
       }
 
       applyMatchData(data);
+      // Every match here is one someone asked for -- Match, or a reciter's Load -- and gets a look with it.
+      const clipSeconds = source.kind === 'url' ? source.end - source.start
+        : recordingClip ? recordingClip.end - recordingClip.start : data.audioDuration ?? audioDuration;
+      if (clipSeconds > 0) void dressForMatch(clipSeconds);
       regroup.remember(data, {
         audioUrl,
         provider: data.provider,
@@ -1737,7 +1762,10 @@ export default function VideoCreatorPage() {
       : clipWindow(exportRange, audioDuration, !!customAudioUrl),
     [exportRange, audioDuration, customAudioUrl, recordingClip]
   );
-  const timelineWindow = useMemo(() => timelineView(passage, audioDuration), [passage, audioDuration]);
+  const timelineWindow = useMemo(
+    () => timelineView(passage, audioDuration, recordingClip && passage ? recordingClipMargin(passage) : undefined),
+    [passage, audioDuration, recordingClip]
+  );
 
   /**
    * What the player plays: the recording with its edit applied. A built-in
@@ -3651,6 +3679,9 @@ export default function VideoCreatorPage() {
           activeClipId={recordingClip?.id ?? null}
           onOpenClip={openRecordingClip}
           onAddClip={customAudioFile && verses.length ? addRecordingClip : undefined}
+          onMoveClip={customAudioFile ? (id, start, end) => recordingClips.move(id, start, end, audioDuration) : undefined}
+          activeClipOwn={!!recordingClip?.style}
+          onOwnLook={recordingClips.ownLook}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}

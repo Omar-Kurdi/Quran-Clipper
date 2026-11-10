@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clipWindow, timelineView, playFrom, pastClipEnd, VIEW_MARGIN_SEC } from './clipWindow';
+import { clipWindow, timelineView, playFrom, pastClipEnd, recordingClipMargin, VIEW_MARGIN_SEC } from './clipWindow';
 
 // Ar-Ra'd 3-12 from Maher's chapter file, the case that was reported: the
 // passage starts 86.8s into a 1330s recording.
@@ -16,6 +16,14 @@ describe('clipWindow', () => {
 
   it('is nothing when the passage is the whole recording', () => {
     expect(clipWindow({ start: 0, end: 43 }, 43, false)).toBeNull();
+  });
+});
+
+describe('recordingClipMargin', () => {
+  it('draws half an open clip either side of it, and never less than the usual margin', () => {
+    expect(recordingClipMargin({ start: 100, end: 160 })).toBe(30);
+    expect(recordingClipMargin({ start: 100, end: 102 })).toBe(VIEW_MARGIN_SEC);
+    expect(timelineView({ start: 100, end: 160 }, 1000, recordingClipMargin({ start: 100, end: 160 }))).toEqual({ start: 70, end: 190 });
   });
 });
 

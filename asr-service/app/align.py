@@ -38,6 +38,7 @@ import logging
 import os
 import re
 import statistics
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 
@@ -1183,6 +1184,21 @@ def _skeleton(word: str) -> str:
     return re.sub(r"[اويه]+$", "", base) or base
 
 
+#: The reference's skeletons, for the reference they were made from: one per alignment.
+_SKELETONS: dict[int, tuple[list, list[str]]] = {}
+
+
+def _skeletons(ref_words: list[tuple[str, int, str]]) -> list[str]:
+    """`_skeleton` of every reference word, made once per reference rather than once per phrase window searched."""
+    kept = _SKELETONS.get(id(ref_words))
+    if kept is not None and kept[0] is ref_words and len(kept[1]) == len(ref_words):
+        return kept[1]
+    skeletons = [_skeleton(w[2]) for w in ref_words]
+    _SKELETONS.clear()
+    _SKELETONS[id(ref_words)] = (ref_words, skeletons)
+    return skeletons
+
+
 def carries_position(decoded: str) -> bool:
     """Is there enough in this read-out to say *where* in the reference it is?
 
@@ -1241,9 +1257,10 @@ def match_decoded_to_range(
     if not tokens:
         return None
 
-    corpus = [_skeleton(w[2]) for w in ref_words]
+    corpus = _skeletons(ref_words)
     n = len(corpus)
     best: tuple[int, int, float] | None = None
+    heard = Counter(tokens)
 
     # A read-out with no position of its own may only continue the reading, not
     # move it. See `carries_position`.
@@ -1259,19 +1276,46 @@ def match_decoded_to_range(
         while limit + 1 < n and ref_words[limit + 1][0] == verse_key:
             limit += 1
 
-        for end in range(start, min(limit, start + MAX_PHRASE_WORDS - 1) + 1):
-            window = corpus[start : end + 1]
-            matcher = difflib.SequenceMatcher(None, tokens, window)
-            similarity = matcher.ratio()
-            # Mild preference for staying near where the last phrase ended, to
-            # break ties between the several places a short formulaic phrase
-            # legitimately matches.
-            distance = min(abs(start - cursor), n) / max(n, 1)
-            score = similarity - 0.05 * distance
-            if best is None or score > best[2]:
-                best = (start, end, score)
+        # Mild preference for staying near where the last phrase ended, to
+        # break ties between the several places a short formulaic phrase
+        # legitimately matches.
+        distance = min(abs(start - cursor), n) / max(n, 1)
+        best = _best_window_from(tokens, heard, corpus, (start, min(limit, start + MAX_PHRASE_WORDS - 1)), distance, best)
 
     return _or_two_ayahs(best, tokens, ref_words, cursor, range(first, last + 1)) if two_ayahs else best
+
+
+def _best_window_from(
+    tokens: list[str], heard: Counter, corpus: list[str], span: tuple[int, int], distance: float,
+    best: tuple[int, int, float] | None = None,
+) -> tuple[int, int, float] | None:
+    """`best`, or a window from the `span`'s start to at most its stop that scores higher: see `match_decoded_to_range`.
+
+    The words a window and the read-out have in common, repeats counted, bound
+    how many difflib can match. A window whose bound cannot beat the best so far
+    is passed over without asking difflib, which is what a long passage spent
+    its time on: thirteen minutes of Al-Baqarah against 725 words was 113
+    million ratios and over seven minutes. Only windows that could never be
+    chosen are skipped, so the answer is the one the full search gives.
+    """
+    start, stop = span
+    seen: Counter[str] = Counter()
+    shared = 0
+    for end in range(start, stop + 1):
+        size = len(tokens) + end - start + 1
+        # Nor can any longer window from here, once even matching every word of
+        # the read-out could not beat it: the bound only falls.
+        if best is not None and 2.0 * len(tokens) / size - 0.05 * distance <= best[2]:
+            break
+        seen[corpus[end]] += 1
+        if seen[corpus[end]] <= heard[corpus[end]]:
+            shared += 1
+        if best is not None and 2.0 * shared / size - 0.05 * distance <= best[2]:
+            continue
+        score = difflib.SequenceMatcher(None, tokens, corpus[start : end + 1]).ratio() - 0.05 * distance
+        if best is None or score > best[2]:
+            best = (start, end, score)
+    return best
 
 
 #: How much better than any one ayah a window must read as the end of one and

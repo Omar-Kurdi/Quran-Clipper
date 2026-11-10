@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { pickVideoFile } from '@/lib/pexelsVideo';
 
 /**
  * Turns a Pexels *page* link into the media file link the canvas can play.
@@ -19,16 +20,6 @@ import { NextRequest, NextResponse } from 'next/server';
 const ALLOWED_HOSTS = new Set(['www.pexels.com', 'pexels.com']);
 
 /**
- * The rendition to hand back: the largest whose long edge still fits 1080p
- * output, falling back to the smallest on offer when everything is bigger. A 4K
- * clip decoding behind a 1080x1920 canvas costs frame rate during export and
- * buys nothing.
- */
-const MAX_LONG_EDGE = 1920;
-
-type PexelsVideoFile = { link?: string; width?: number; height?: number; file_type?: string };
-
-/**
  * Pexels page paths end in `<slug>-<id>`, optionally behind a locale segment:
  * `/video/foo-123/`, `/en-us/photo/bar-456/`.
  */
@@ -40,16 +31,6 @@ function parsePexelsPage(page: URL): { kind: 'video' | 'photo'; id: string } | n
   const id = slug?.match(/-(\d+)$/)?.[1] ?? (/^\d+$/.test(slug ?? '') ? slug : undefined);
   if (!id) return null;
   return { kind: parts[kindIndex] as 'video' | 'photo', id };
-}
-
-function pickVideoFile(files: PexelsVideoFile[]): string | null {
-  const usable = files
-    .filter(file => typeof file.link === 'string' && file.file_type !== 'video/quicktime')
-    .map(file => ({ link: file.link!, longEdge: Math.max(file.width || 0, file.height || 0) }))
-    .sort((a, b) => a.longEdge - b.longEdge);
-  if (usable.length === 0) return null;
-  const withinBudget = usable.filter(file => file.longEdge > 0 && file.longEdge <= MAX_LONG_EDGE);
-  return (withinBudget.length > 0 ? withinBudget[withinBudget.length - 1] : usable[0]).link;
 }
 
 export async function GET(req: NextRequest) {

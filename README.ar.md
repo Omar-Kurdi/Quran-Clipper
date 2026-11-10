@@ -927,6 +927,8 @@ AAC). وتجري التصديرات واحدًا تلو الآخر، وتُسر�
 | `GET` | `/api/audio/match` | أي الأدوات مهيّأة ويمكن الوصول إليها |
 | `GET` | `/api/audio/ayahs?reciter=&surah=&start=&end=` | مقطع لقارئ مدمج: ملفات آياته متتالية، مع دعم طلبات النطاق |
 | `GET` | `/api/background/resolve?url=` | تحويل رابط صفحة Pexels إلى رابط ملف الوسائط |
+| `GET` | `/api/background/match?seconds=&orientation=` | خلفية من Pexels بطول مقارب لطول المقطع المطابَق |
+| `POST`، `GET` | `/api/audio/long` | قراءة تسجيل أطول من أن يُقصّ في المتصفح وقصّه (الاستوديو المحلي فقط) |
 | `GET` `POST` | `/api/projects` | سرد المشاريع / حفظها |
 | `DELETE` | `/api/projects?id=` | حذف مشروع محفوظ واحد (`404` إن كان قد زال) |
 | `GET` `POST` | `/api/exports` | سرد سجلات التصدير / حفظها |

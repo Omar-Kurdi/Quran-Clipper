@@ -400,7 +400,9 @@ export const en = {
     moveUp: 'Earlier',
     moveDown: 'Later',
     remove: 'Remove from queue',
-    keepOpen: 'The queue runs in this tab. Keep it open until every render is done.'
+    keepOpen: 'The queue runs in this tab. Keep it open until every render is done.',
+    youtube: 'YouTube',
+    youtubeTitle: (name: string) => `Upload ${name} to YouTube, under its own title and description`
   },
   serverRender: {
     label: 'Background renders',
@@ -486,6 +488,9 @@ export const en = {
     newClip: (length: string) => `New clip · ${length}`,
     newClipTitle: (start: string, end: string) => `Make ${start} – ${end} a clip of this recording`,
     setClipTo: (start: string, end: string) => `Make this clip ${start} – ${end}`,
+    setClip: (length: string) => `Set clip · ${length}`,
+    barTitle: (name: string, start: string, end: string) =>
+      `${name} · ${start} – ${end} · click to open, drag to move it, drag an end to change where it starts or ends`,
     editAudioOff: 'Edit audio is off while the recording has clips: its cuts would move every clip.',
     everyClip: (n: number) => `Every clip (${n})`,
     everyClipTitle: 'Render each clip of the recording, one after another in this tab, to every destination ticked.'

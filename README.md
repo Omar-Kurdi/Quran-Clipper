@@ -542,7 +542,7 @@ an optional capability, and the app degrades cleanly without it.
 | `QURAN_TRANSLATION_ID` | — | `20` | Which translation a caption's own text is. May name an edition installed locally — see [Translations](#translations). |
 | `NEXT_PUBLIC_QURAN_TRANSLATION_ID` | — | as above | The browser's copy of the line above. Set the two together; they are meant to agree. |
 | `DATABASE_URL` | durable saved projects | — | Leave it **unset** to use in-memory storage. See [Database](#database-optional). |
-| `PEXELS_API_KEY` | pasting Pexels *page* links | — | Without it, copy the file link from Pexels instead. |
+| `PEXELS_API_KEY` | pasting Pexels *page* links; a matched clip's background | — | Without it, copy the file link from Pexels instead, and a match picks among the built-in backgrounds. |
 | `STUDIO_TOKEN` | serving this beyond localhost | — | Shared secret in front of the whole studio. Unset means no authentication at all. See below. |
 | `STUDIO_MODE` | — | `personal` | `public` for a studio anyone can use -- see [A public studio](#a-public-studio). Passed by `./start.sh` from `.studio-mode`, which `./install.sh` writes. |
 | `MATCH_QUEUE_LIMIT` | — | `20` | How many matches may wait at once before the next is told to try later. |
@@ -1060,6 +1060,8 @@ App routes:
 | `GET` | `/api/audio/match` | Which providers are configured and reachable |
 | `GET` | `/api/audio/ayahs?reciter=&surah=&start=&end=` | A built-in reciter's passage: its ayah files laid end to end, range requests included |
 | `GET` | `/api/background/resolve?url=` | Turns a Pexels page link into the media file link |
+| `GET` | `/api/background/match?seconds=&orientation=` | A Pexels background about as long as a matched clip |
+| `POST`, `GET` | `/api/audio/long` | Reads and cuts a recording too long to trim in the browser (local studio only) |
 | `GET` `POST` | `/api/projects` | List / save projects |
 | `DELETE` | `/api/projects?id=` | Delete one saved project (`404` if it is already gone) |
 | `GET` `POST` | `/api/exports` | List / save export records |

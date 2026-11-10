@@ -317,6 +317,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
     onClip,
     fileNameFor: blob =>
       exportFileName(surahNameEnglish, surahNumber, ayahStart, ayahEnd, blob.type.includes('mp4') ? 'mp4' : 'webm'),
+    captionFor: buildCaption,
     onSaveExportRecord
   });
   const server = useServerRenders(isOpen);
@@ -405,7 +406,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   return (
     <Dialog
       isOpen={isOpen}
-      onClose={handleClose}
+      onClose={() => leaveResult(handleClose)}
       label={t.exportModal.dialogLabel}
       // Closing mid-render would orphan the recorder, so the dialog refuses to
       // dismiss while an export is in flight.
@@ -421,7 +422,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
     >
       <div>
         <button
-          onClick={() => (exportedBlobUrl ? leaveResult(handleClose) : handleClose())}
+          onClick={() => leaveResult(handleClose)}
           aria-label={isExporting ? t.exportModal.cancelRender : t.common.close}
           title={isExporting ? t.exportModal.cancelRender : t.common.close}
           className="absolute top-4 end-4 p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
@@ -517,6 +518,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
               onRemove={queue.remove}
               onMove={queue.move}
               onClearFinished={queue.clearFinished}
+              onYouTubeUnsent={setYoutubePending}
             />
 
             {/* Render Progress Bar. A running queue shows its own, per job. */}
@@ -692,7 +694,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
             onYouTubeUnsent={setYoutubePending}
           />
         )}
-        {exportedBlobUrl && confirmLeave && (
+        {confirmLeave && (
           <div role="alertdialog" aria-label={t.exportModal.closeAnyway} className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100 flex flex-col gap-2">
             <p>{youtubePending === 'uploading' ? t.exportModal.youtubeUploading : t.exportModal.youtubeUnsent}</p>
             <div className="flex gap-2 justify-end">

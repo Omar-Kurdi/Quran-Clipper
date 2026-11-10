@@ -16,6 +16,7 @@ import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { useLoopWindows } from '@/hooks/useLoopWindows';
 import { loopFor } from '@/lib/clipLoop';
 import { useT } from './LocaleProvider';
+import { ClipLane } from './ClipLane';
 import { TimelineSkeleton } from './Skeleton';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
 import { usePalette, paletteColor } from '@/hooks/usePalette';
@@ -96,15 +97,16 @@ interface TimelineProps {
   activeClipId?: string | null;
   onOpenClip?: (id: string | null) => void;
   onAddClip?: (start: number, end: number) => void;
+  /** A clip given a new stretch by dragging its bar on the lane. */
+  onMoveClip?: (id: string, start: number, end: number) => void;
+  /**
+   * Whether the open clip has a look of its own, and how to give it one or
+   * the shared one back: beside the clip, where it is seen whichever panel
+   * the look is being edited in.
+   */
+  activeClipOwn?: boolean;
+  onOwnLook?: (on: boolean) => void;
 }
-
-/** One colour per clip, in turn, so overlapping clips can be told apart. */
-const CLIP_COLOURS = [
-  'border-amber-400/70 bg-amber-400/15 text-amber-100',
-  'border-emerald-400/70 bg-emerald-400/15 text-emerald-100',
-  'border-violet-400/70 bg-violet-400/15 text-violet-100',
-  'border-sky-400/70 bg-sky-400/15 text-sky-100'
-];
 
 const ZOOMS = [1, 2, 4, 8];
 
@@ -168,7 +170,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   onTrim, onEditAudio, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
-  onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip
+  onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip, onMoveClip, activeClipOwn = false, onOwnLook
 }) => {
   const t = useT();
   const toCheck = useMemo(() => toCheckCount(verses), [verses]);
@@ -568,6 +570,15 @@ export const Timeline: React.FC<TimelineProps> = ({
             <span className="hidden sm:inline">{t.clips.wholeRecording}</span>
           </button>
         )}
+        {activeClipId && onOwnLook && (
+          <label
+            title={t.clips.ownLookTitle}
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-slate-200 rounded-lg border border-slate-700 cursor-pointer select-none hover:bg-slate-800"
+          >
+            <input type="checkbox" checked={activeClipOwn} onChange={e => onOwnLook(e.target.checked)} className="w-3.5 h-3.5 accent-amber-500" />
+            {t.clips.ownLook}
+          </label>
+        )}
 
         {onEditAudio && (
           <button
@@ -597,7 +608,9 @@ export const Timeline: React.FC<TimelineProps> = ({
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-xs font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
             >
               <Scissors className="w-3.5 h-3.5" />
-              <span>{t.timeline.keep(formatTime(clipRange.end - clipRange.start))}</span>
+              <span>{activeClipId
+                ? t.clips.setClip(formatTime(clipRange.end - clipRange.start))
+                : t.timeline.keep(formatTime(clipRange.end - clipRange.start))}</span>
             </button>}
             {onAddClip && (
               <button
@@ -710,33 +723,16 @@ export const Timeline: React.FC<TimelineProps> = ({
               </span>
             </div>
           )}
-          {/* The recording's clips. Overlapping clips stack in two rows, each a
-              click away from being the one open. */}
-          {clips.length > 0 && (
-            <div className="relative h-8 border-b border-slate-800/70 bg-slate-950/40" aria-label={t.clips.lane}>
-              {clips.map((each, i) => {
-                const left = pct(each.start);
-                const width = Math.max(0.4, pct(each.end) - left);
-                const overlapsEarlier = clips.slice(0, i).some(other => other.end > each.start && other.start < each.end);
-                const name = t.clips.name(i + 1);
-                const active = each.id === activeClipId;
-                return (
-                  <button
-                    key={each.id}
-                    onClick={() => onOpenClip?.(active ? null : each.id)}
-                    title={`${active ? t.clips.wholeRecordingTitle : t.clips.openTitle(name)} · ${clock(each.start)} – ${clock(each.end)}`}
-                    aria-pressed={active}
-                    className={`absolute ${overlapsEarlier ? 'top-[15px] h-[15px]' : 'top-0.5 h-[15px]'} rounded-sm border px-1 text-[9px] leading-none text-start truncate transition-colors ${
-                      CLIP_COLOURS[i % CLIP_COLOURS.length]
-                    } ${active ? 'ring-2 ring-gold z-10' : 'hover:brightness-125'}`}
-                    style={{ left: `${left}%`, width: `${width}%` }}
-                  >
-                    {name}{each.label ? ` · ${each.label}` : ''}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <ClipLane
+            clips={clips}
+            activeId={activeClipId}
+            duration={duration}
+            pct={pct}
+            xToTime={xToTime}
+            clock={clock}
+            onOpen={onOpenClip}
+            onMove={onMoveClip}
+          />
           {/* Ruler. Click or drag anywhere along it to move the playhead --
               the tick labels are inert so a click near "10.0s" scrubs rather
               than landing on the label and doing nothing. */}

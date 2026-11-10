@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  addClip, ayahWindow, clipLabel, clipStyle, clipVerses, inPlayOrder, moveClip, newClip, normalizeClips, removeClip,
+  addClip, ayahWindow, clipLabel, clipStyle, clipVerses, dragClip, inPlayOrder, moveClip, newClip, normalizeClips, removeClip,
   settleLooks, styleDiff, switchOwnLook, MIN_CLIP_SEC, type RecordingClip
 } from './recordingClips';
 
@@ -53,6 +53,28 @@ describe('moveClip and removeClip', () => {
   it('removes only the one named', () => {
     const clips = addClip(addClip([], newClip(0, 20, 60)), newClip(30, 50, 60));
     expect(removeClip(clips, clips[0].id).map(c => c.start)).toEqual([30]);
+  });
+});
+
+describe('dragClip', () => {
+  const clip = { start: 10, end: 30 };
+
+  it('moves the whole bar and keeps its length, inside the recording', () => {
+    expect(dragClip(clip, 'move', 5, 60)).toEqual({ start: 15, end: 35 });
+    expect(dragClip(clip, 'move', -50, 60)).toEqual({ start: 0, end: 20 });
+    expect(dragClip(clip, 'move', 100, 60)).toEqual({ start: 40, end: 60 });
+  });
+
+  it('moves one end, never past the other or out of the recording', () => {
+    expect(dragClip(clip, 'start', -4, 60)).toEqual({ start: 6, end: 30 });
+    expect(dragClip(clip, 'start', 40, 60)).toEqual({ start: 30 - MIN_CLIP_SEC, end: 30 });
+    expect(dragClip(clip, 'end', 12.3456, 60)).toEqual({ start: 10, end: 42.346 });
+    expect(dragClip(clip, 'end', -40, 60)).toEqual({ start: 10, end: 10 + MIN_CLIP_SEC });
+    expect(dragClip(clip, 'end', 100, 60)).toEqual({ start: 10, end: 60 });
+  });
+
+  it('has no far end to keep to while the recording\'s length is unknown', () => {
+    expect(dragClip(clip, 'end', 100, 0)).toEqual({ start: 10, end: 130 });
   });
 });
 

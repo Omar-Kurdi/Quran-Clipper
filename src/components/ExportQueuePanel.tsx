@@ -1,10 +1,13 @@
 'use client';
 
-import React from 'react';
-import { ArrowDown, ArrowUp, CheckCircle, Download, ListOrdered, Loader2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ArrowDown, ArrowUp, CheckCircle, Download, ListOrdered, Loader2, Upload, X } from 'lucide-react';
 import { formatBytes } from '@/lib/exportPresets';
 import type { ExportJob } from '@/lib/exportQueue';
+import type { PublishMetadata } from '@/lib/publishMetadata';
+import { youtubeClientId } from '@/lib/youtubeUpload';
 import { useT } from './LocaleProvider';
+import { YouTubeUpload, type UnsentUpload } from './YouTubeUpload';
 
 interface ExportQueuePanelProps {
   jobs: ExportJob[];
@@ -16,6 +19,15 @@ interface ExportQueuePanelProps {
   onRemove: (id: string) => void;
   onMove: (id: string, direction: -1 | 1) => void;
   onClearFinished: () => void;
+  /** Told whether closing now would lose an upload from any of the finished renders. */
+  onYouTubeUnsent?: (pending: UnsentUpload) => void;
+}
+
+/** The most pressing of the rows' uploads: one on its way, then one set up and not sent. */
+function pendingOf(each: Record<string, UnsentUpload>): UnsentUpload {
+  const states = Object.values(each);
+  if (states.includes('uploading')) return 'uploading';
+  return states.includes('unsent') ? 'unsent' : null;
 }
 
 /**
@@ -28,9 +40,16 @@ interface ExportQueuePanelProps {
  * but the first.
  */
 export const ExportQueuePanel: React.FC<ExportQueuePanelProps> = ({
-  jobs, running, describe, onRun, onCancel, onRemove, onMove, onClearFinished
+  jobs, running, describe, onRun, onCancel, onRemove, onMove, onClearFinished, onYouTubeUnsent
 }) => {
   const t = useT();
+  const [uploads, setUploads] = useState<Record<string, UnsentUpload>>({});
+  const pending = pendingOf(uploads);
+  useEffect(() => { onYouTubeUnsent?.(pending); }, [pending, onYouTubeUnsent]);
+  useEffect(() => () => onYouTubeUnsent?.(null), [onYouTubeUnsent]);
+  /** Stable, and a no-op when nothing changed: each upload reports from an effect. */
+  const reportUpload = useCallback((id: string, state: UnsentUpload) =>
+    setUploads(current => (current[id] === state ? current : { ...current, [id]: state })), []);
   if (!jobs.length) return null;
   const waiting = jobs.filter(job => job.status === 'queued');
   const finished = jobs.some(job => job.status === 'done' || job.status === 'cancelled' || job.status === 'failed');
@@ -52,6 +71,7 @@ export const ExportQueuePanel: React.FC<ExportQueuePanelProps> = ({
             last={waiting.at(-1)?.id === job.id}
             onMove={direction => onMove(job.id, direction)}
             onRemove={() => onRemove(job.id)}
+            onUnsent={reportUpload}
           />
         ))}
       </ol>
@@ -104,7 +124,7 @@ function QueueActions({
 }
 
 function JobRow({
-  job, label, movable, first, last, onMove, onRemove
+  job, label, movable, first, last, onMove, onRemove, onUnsent
 }: {
   job: ExportJob;
   label: string;
@@ -113,8 +133,11 @@ function JobRow({
   last: boolean;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
+  onUnsent: (id: string, pending: UnsentUpload) => void;
 }) {
   const t = useT();
+  const [youtube, setYouTube] = useState<UploadPanel>('closed');
+  const uploadable = job.status === 'done' && job.result?.caption && youtubeClientId() ? job.result : null;
   return (
     <li className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-1.5">
       <div className="flex items-center gap-2 text-[11px]">
@@ -135,9 +158,11 @@ function JobRow({
             <X className="w-3 h-3" />
           </IconButton>
         )}
+        {uploadable && <UploadToggle label={label} open={youtube === 'open'} onToggle={() => setYouTube(state => (state === 'open' ? 'folded' : 'open'))} />}
         {job.status === 'done' && job.result && <DownloadLink result={job.result} />}
         {job.status === 'cancelled' && <span className="text-slate-400">{t.exportQueue.cancelled}</span>}
       </div>
+      {uploadable?.caption && <JobUpload jobId={job.id} blob={uploadable.blob} caption={uploadable.caption} panel={youtube} onUnsent={onUnsent} />}
       {job.status === 'rendering' && (
         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
           <div className="h-full bg-amber-500 transition-all" style={{ width: `${job.progress}%` }} />
@@ -145,6 +170,58 @@ function JobRow({
       )}
     </li>
   );
+}
+
+/** Opens or folds a finished render's YouTube panel. */
+function UploadToggle({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
+  const t = useT();
+  return (
+    <button
+      onClick={onToggle}
+      aria-expanded={open}
+      title={t.exportQueue.youtubeTitle(label)}
+      className="flex items-center gap-1 rounded-md bg-red-500/15 px-1.5 py-0.5 text-red-200 hover:bg-red-500/25"
+    >
+      <Upload className="w-3 h-3" />
+      {t.exportQueue.youtube}
+    </button>
+  );
+}
+
+/** A finished render's YouTube panel: not opened yet, open, or folded away. */
+type UploadPanel = 'closed' | 'open' | 'folded';
+
+/**
+ * Uploading one finished render, under the title its own clip gave it. Kept
+ * mounted once opened, and only hidden when folded: unmounting it would
+ * abandon an upload on its way.
+ */
+function JobUpload({ jobId, blob, caption, panel, onUnsent }: {
+  jobId: string;
+  blob: Blob;
+  caption: () => Promise<PublishMetadata>;
+  panel: UploadPanel;
+  onUnsent: (id: string, pending: UnsentUpload) => void;
+}) {
+  const reportUnsent = useCallback((pending: UnsentUpload) => onUnsent(jobId, pending), [onUnsent, jobId]);
+  if (panel === 'closed') return null;
+  return (
+    <div className={panel === 'open' ? 'mt-2 flex flex-col gap-1.5' : 'hidden'}>
+      <CaptionTitle caption={caption} />
+      <YouTubeUpload clientId={youtubeClientId()} blob={blob} caption={caption} onUnsent={reportUnsent} />
+    </div>
+  );
+}
+
+/** The title this render goes up under, once its caption is built. */
+function CaptionTitle({ caption }: { caption: () => Promise<{ title: string }> }) {
+  const [title, setTitle] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    caption().then(meta => { if (live) setTitle(meta.title); }, () => undefined);
+    return () => { live = false; };
+  }, [caption]);
+  return title ? <p className="text-[11px] text-slate-300 truncate" dir="auto" title={title}>{title}</p> : null;
 }
 
 /** A finished file, saved under its own name. */

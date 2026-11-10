@@ -392,7 +392,9 @@ export const ar: Dictionary = {
     moveUp: 'أبكر',
     moveDown: 'أبعد',
     remove: 'احذف من الطابور',
-    keepOpen: 'يعمل الطابور في هذا التبويب. أبقه مفتوحًا حتى تنتهي كل التصديرات.'
+    keepOpen: 'يعمل الطابور في هذا التبويب. أبقه مفتوحًا حتى تنتهي كل التصديرات.',
+    youtube: 'يوتيوب',
+    youtubeTitle: name => `ارفع ${name} إلى يوتيوب، بعنوانه ووصفه`
   },
   serverRender: {
     label: 'تصديرات في الخلفية',
@@ -478,6 +480,9 @@ export const ar: Dictionary = {
     newClip: length => `مقطع جديد · ${length}`,
     newClipTitle: (start, end) => `اجعل ${start} – ${end} مقطعًا من هذا التسجيل`,
     setClipTo: (start, end) => `اجعل هذا المقطع ${start} – ${end}`,
+    setClip: length => `اضبط المقطع · ${length}`,
+    barTitle: (name, start, end) =>
+      `${name} · ${start} – ${end} · انقر لفتحه، واسحبه لنقله، واسحب طرفه لتغيير بدايته أو نهايته`,
     editAudioOff: 'تحرير الصوت متوقف ما دام للتسجيل مقاطع: قصّاته ستُزيح كل مقطع.',
     everyClip: n => `كل المقاطع (${n})`,
     everyClipTitle: 'تصيير كل مقطع من التسجيل، واحدًا بعد آخر في هذا التبويب، لكل وجهة مختارة.'

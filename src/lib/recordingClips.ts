@@ -67,6 +67,29 @@ export function moveClip(clips: RecordingClip[], id: string, start: number, end:
   return clips.map(clip => (clip.id === id ? { ...clip, start: moved.start, end: moved.end } : clip));
 }
 
+/** Which part of a clip's bar is being dragged: an end, or the whole of it. */
+export type ClipEdge = 'start' | 'end' | 'move';
+
+/**
+ * Where a clip's bar is after being dragged `delta` seconds by `edge`: moved
+ * whole, keeping its length, or one end, never past the other end. Kept inside
+ * the recording, and no shorter than a clip can be.
+ */
+export function dragClip(
+  clip: { start: number; end: number }, edge: ClipEdge, delta: number, duration: number
+): { start: number; end: number } {
+  const last = duration > 0 ? duration : Infinity;
+  if (edge === 'move') {
+    const length = clip.end - clip.start;
+    const start = Math.max(0, Math.min(clip.start + delta, last - length));
+    return { start: ms(start), end: ms(start + length) };
+  }
+  if (edge === 'start') {
+    return { start: ms(Math.max(0, Math.min(clip.start + delta, clip.end - MIN_CLIP_SEC))), end: clip.end };
+  }
+  return { start: clip.start, end: ms(Math.min(last, Math.max(clip.end + delta, clip.start + MIN_CLIP_SEC))) };
+}
+
 /** In the order they play in the recording, which is the order they are listed and numbered in. */
 export function inPlayOrder(clips: RecordingClip[]): RecordingClip[] {
   return [...clips].sort((a, b) => a.start - b.start || a.end - b.end);

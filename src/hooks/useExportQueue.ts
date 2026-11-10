@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ExportHealth } from '@/lib/exportHealth';
+import type { PublishMetadata } from '@/lib/publishMetadata';
 import { planExport, presetById, type ExportPlan, type QualityTier } from '@/lib/exportPresets';
 import {
   addJob, addJobs, cancelAll, moveJob, newJob, nextJob, queueBusy, removeJob, updateJob, withAspect, withClip,
@@ -30,6 +31,8 @@ interface QueueDeps {
   exportSeconds: number;
   /** The file name a single render would get, for a blob of this type. */
   fileNameFor: (blob: Blob) => string;
+  /** The caption for what is open now: asked for as each render lands, while its clip is still open. */
+  captionFor?: () => Promise<PublishMetadata>;
   onSaveExportRecord: (record: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => void;
 }
 
@@ -45,10 +48,13 @@ function startJob(job: ExportJob, latest: React.RefObject<QueueDeps>, setJobs: S
   setJobs(current => updateJob(current, job.id, { status: 'rendering', progress: 0 }));
   const plan = planExport({ presetId: job.presetId, tier: job.tier, fps: job.fps, seconds: exportSeconds });
   onStartExport(plan, (blob, renderMs) => {
-    const { fileNameFor, onSaveExportRecord } = latest.current;
+    const { fileNameFor, onSaveExportRecord, captionFor } = latest.current;
     const fileName = withClip(withAspect(fileNameFor(blob), job.aspectRatio), job.clipNumber);
     onSaveExportRecord({ fileName, fileSizeBytes: blob.size, durationSec: exportSeconds, renderMs });
-    const result = { url: URL.createObjectURL(blob), fileName, bytes: blob.size };
+    // Started now, not when someone asks: the next job opens the next clip.
+    const meta = captionFor?.();
+    meta?.catch(() => undefined);
+    const result = { url: URL.createObjectURL(blob), fileName, bytes: blob.size, blob, caption: meta ? () => meta : undefined };
     setJobs(current => updateJob(current, job.id, { status: 'done', progress: 100, result }));
   });
 }

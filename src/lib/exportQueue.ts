@@ -15,6 +15,7 @@
  */
 
 import type { QualityTier } from './exportPresets';
+import type { PublishMetadata } from './publishMetadata';
 
 export type JobStatus = 'queued' | 'rendering' | 'done' | 'failed' | 'cancelled';
 
@@ -36,8 +37,12 @@ export interface ExportJob {
   status: JobStatus;
   /** 0-100 while rendering. */
   progress: number;
-  /** Set once done: the file, ready to download. */
-  result?: { url: string; fileName: string; bytes: number };
+  /**
+   * Set once done: the file, ready to download or upload, and its caption --
+   * built while its clip was still open, so each clip is posted under its own
+   * ayahs rather than whichever is open when the queue ends.
+   */
+  result?: { url: string; fileName: string; bytes: number; blob: Blob; caption?: () => Promise<PublishMetadata> };
 }
 
 let counter = 0;
