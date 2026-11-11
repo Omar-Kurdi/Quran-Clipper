@@ -38,6 +38,8 @@ const SCREEN_BREAKS: ScreenBreaks[] = ['fewer', 'normal', 'more'];
 const framePreference = createNumberPreference('qc-frame-platform', 0, { min: 0, max: EXPORT_PRESETS.length - 1 });
 /** Whether the preview outlines what a vertical feed's own buttons cover. */
 const safeAreaPreference = createBooleanPreference('qc-safe-area', false);
+/** Whether the panel's rail shows each item's name beside its icon. */
+const railExpandedPreference = createBooleanPreference('qc-rail-expanded', false);
 
 /**
  * Whether to show the preview's frame-rate and paint-time readout.
@@ -49,7 +51,10 @@ const safeAreaPreference = createBooleanPreference('qc-safe-area', false);
 const SHOW_DEV_TOOLS =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEV_TOOLS === '1';
 import { PaletteList } from '@/components/PaletteSwitcher';
-import { PanelTabs, type PanelTab } from '@/components/PanelTabs';
+import { PanelRail, type PanelTab, type RailItem } from '@/components/PanelRail';
+import { PanelHead } from '@/components/PanelHead';
+import type { StyleArea } from '@/components/StyleConfigPanel';
+import { useWideLayout } from '@/hooks/useWideLayout';
 import { FrameBar, SafeAreaOverlay } from '@/components/FrameBar';
 import { framePreset, coveredAreas } from '@/lib/frame';
 import { EXPORT_PRESETS } from '@/lib/exportPresets';
@@ -452,6 +457,24 @@ export default function VideoCreatorPage() {
    * keeping it on screen for good left the preview the least room.
    */
   const [panelTab, setPanelTab] = useState<PanelTab>('source');
+  /** Which part of the look the rail has open, on a desktop; a phone shows them all. */
+  const [styleArea, setStyleArea] = useState<StyleArea>('text');
+  const wide = useWideLayout();
+  /** The rail with each item's name beside its icon: off unless asked for, and remembered by this browser. */
+  const railExpanded = useSyncExternalStore(railExpandedPreference.subscribe, railExpandedPreference.get, railExpandedPreference.getServerSnapshot);
+  const railItem: RailItem = panelTab === 'style' ? styleArea : panelTab;
+  // Each part of the look opens at its top: the parts share one scrolling panel, which would otherwise keep the last one's place.
+  useEffect(() => {
+    document.getElementById('panel-style')?.scrollTo({ top: 0 });
+  }, [styleArea]);
+  const openRailItem = (item: RailItem) => {
+    if (item === 'source' || item === 'captions') {
+      setPanelTab(item);
+      return;
+    }
+    setStyleArea(item);
+    setPanelTab('style');
+  };
   /** Which way into a clip the Source tab shows: a built-in reciter, or the user's own recording. */
   const [sourceMode, setSourceMode] = useState<'reciter' | 'recording'>('reciter');
   /** Set while the source is being edited; otherwise a loaded clip shows as a summary. */
@@ -3001,9 +3024,19 @@ export default function VideoCreatorPage() {
           {/* Working panel */}
           <aside
             aria-label={t.panel.label}
-            className="w-full lg:w-[400px] flex-1 lg:flex-none min-h-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex flex-col overflow-hidden"
+            className="w-full lg:w-auto flex-1 lg:flex-none min-h-0 border-e border-slate-800 bg-slate-900/60 backdrop-blur-sm flex flex-col lg:flex-row overflow-hidden"
           >
-            <PanelTabs value={panelTab} onChange={setPanelTab} toCheck={toCheckCount} />
+            <PanelRail value={railItem} onChange={openRailItem} toCheck={toCheckCount} expanded={railExpanded} onExpandedChange={railExpandedPreference.set} />
+            <div className="flex-1 lg:flex-none lg:w-[344px] min-w-0 min-h-0 flex flex-col overflow-hidden">
+            {panelTab !== 'style' && (
+              <PanelHead
+                className="max-lg:hidden"
+                title={panelTab === 'source' ? t.panel.source : t.panel.captions}
+                summary={panelTab === 'source'
+                  ? `${surahNameEnglish} ${selectedSurah}:${ayahStart}–${ayahEnd}`
+                  : toCheckCount > 0 ? t.panel.toCheck(toCheckCount) : ''}
+              />
+            )}
             {/* Source stays mounted while hidden, so a half-filled form or a
                 pending upload is where it was left on coming back. */}
             <div
@@ -3543,7 +3576,7 @@ export default function VideoCreatorPage() {
               </div>
             )}
             {panelTab === 'style' && (
-              <div id="panel-style" role="tabpanel" aria-labelledby="panel-tab-style" data-tour="panel-style" className="flex-1 overflow-y-auto">
+              <div id="panel-style" role="tabpanel" aria-labelledby={`panel-tab-${styleArea}`} data-tour="panel-style" className="flex-1 overflow-y-auto">
                 <StyleConfigPanel
                   config={canvasConfig}
                   onChangeConfig={setCanvasConfig}
@@ -3551,9 +3584,11 @@ export default function VideoCreatorPage() {
                   laneBlocks={bgSegments}
                   selectedBackground={activeBackground}
                   onSelectBackground={setSelectedBackground}
+                  only={wide ? styleArea : null}
                 />
               </div>
             )}
+            </div>
           </aside>
 
           {/* Preview */}

@@ -123,7 +123,6 @@ export const en = {
     label: 'Frame',
     safeArea: 'Show what the app covers',
     covered: (platform: string) => `Covered by ${platform}`,
-    setAbove: 'The frame shape is set above the preview, and Export opens on the same setting.'
   },
 
   panel: {
@@ -131,7 +130,9 @@ export const en = {
     source: 'Source',
     captions: 'Captions',
     style: 'Style',
-    toCheck: (count: number) => `${count} to check`
+    toCheck: (count: number) => `${count} to check`,
+    showNames: 'Show names',
+    hideNames: 'Hide names'
   },
 
   source: {
@@ -430,7 +431,13 @@ export const en = {
       starlight: { name: 'Starlight', note: 'Digital Khatt straight on a starry sky, no card, periwinkle accents.' },
       minimal: { name: 'Minimal', note: 'No card and no visualiser, just a small corner tag: large Arabic straight on a blurred sky.' },
       'madinah-green': { name: 'Madinah Green', note: 'The Prophet’s Mosque with green accents, the calligraphic surah heading, and the Arabic and translation on cards of their own.' },
-      indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq on a card under a moonlit minaret, a small corner tag, amber accents.' }
+      indopak: { name: 'IndoPak', note: 'Indopak Nastaleeq on a card under a moonlit minaret, a small corner tag, amber accents.' },
+      galaxy: { name: 'Galaxy', note: 'Digital Khatt straight on the Milky Way, no card, a small corner tag, violet accents.' },
+      'haram-daylight': { name: 'Haram Daylight', note: 'The Kaaba by day, softly blurred, the Arabic on a card under a framed heading, pale gold accents.' },
+      'aerial-dusk': { name: 'Aerial Dusk', note: 'A mosque from the air at dusk, the Arabic and translation on cards of their own, warm coral accents.' },
+      'city-lights': { name: 'City Lights', note: 'A mosque among the city lights at night, Digital Khatt on a card under the calligraphic heading, sky-blue accents.' },
+      frosted: { name: 'Frosted', note: 'A heavy blur behind a solid card, no border or visualiser: only the words stand out.' },
+      moonlit: { name: 'Moonlit', note: 'Large mushaf Arabic straight on a moonlit minaret, the calligraphic heading, soft yellow accents.' }
     }
   },
   tour: {
@@ -721,12 +728,12 @@ export const en = {
     ayahMarkerStyle: 'Ayah ending',
     ayahMarkerStyles: {
       medallion: 'Ornament with the number',
-      page: 'The mushaf page’s own',
+      page: 'As in the Madani Mushaf*',
       brackets: 'Ornate brackets',
       plain: 'The number alone',
       circle: 'The number in a ring',
     },
-    ayahMarkerPageHint: 'Drawn from the Madani Mushaf face’s page fonts; in any other face it is the ornament.',
+    ayahMarkerPageHint: '*Only applicable to Madani Mushaf text',
 
     coloursLabel: 'Colours:',
     colourArabic: 'Arabic text',
@@ -764,6 +771,12 @@ export const en = {
     },
 
     tabMotion: 'Motion',
+    textGroups: { font: 'Font', size: 'Size', ayah: 'Ayah number', colours: 'Colours', motion: 'Motion' },
+    bgBar: {
+      look: 'Dim and blur',
+      lookValue: (dim: number, blur: number) => `${dim}% · ${blur}px`,
+      add: 'Add your own'
+    },
     transitionLabel: 'Between captions:',
     transitions: {
       cut: 'Cut',

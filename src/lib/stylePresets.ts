@@ -25,6 +25,7 @@ import { asBadgeStyle, type BadgeStyle } from './surahBadge';
 export type PresetLook = Pick<
   VideoCanvasConfig,
   | 'fontArabic'
+  | 'ayahMarkerStyle'
   | 'arabicFontSize'
   | 'translationFontSize'
   | 'ayahNumberFontSize'
@@ -63,6 +64,8 @@ export const STYLE_PRESETS: StylePreset[] = [
       badgeStyle: 'pill',
       background: 'mosque-moon',
       fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
       arabicFontSize: 45,
       translationFontSize: 45,
       ayahNumberFontSize: 50,
@@ -86,6 +89,8 @@ export const STYLE_PRESETS: StylePreset[] = [
       badgeStyle: 'frame',
       background: 'kaaba-pilgrims',
       fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
       arabicFontSize: 48,
       translationFontSize: 40,
       ayahNumberFontSize: 50,
@@ -133,6 +138,8 @@ export const STYLE_PRESETS: StylePreset[] = [
       badgeStyle: 'corner',
       background: 'clouds-night',
       fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
       arabicFontSize: 50,
       translationFontSize: 38,
       ayahNumberFontSize: 44,
@@ -156,6 +163,8 @@ export const STYLE_PRESETS: StylePreset[] = [
       badgeStyle: 'calligraphic',
       background: 'prophet-mosque',
       fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
       arabicFontSize: 46,
       translationFontSize: 42,
       ayahNumberFontSize: 50,
@@ -193,6 +202,154 @@ export const STYLE_PRESETS: StylePreset[] = [
       bgBlur: 0,
       cardBgOpacity: 35,
       cardBorder: true
+    }
+  },
+  {
+    // The Milky Way with nothing in front of it but the words.
+    id: 'galaxy',
+    look: {
+      layout: 'open',
+      badgeStyle: 'corner',
+      background: 'milky-way',
+      fontArabic: 'DigitalKhatt',
+      arabicFontSize: 48,
+      translationFontSize: 38,
+      ayahNumberFontSize: 44,
+      textAlignment: 'center',
+      textColor: '#ffffff',
+      accentColor: '#c4b5fd',
+      translationColor: '#e4dcff',
+      textShadow: true,
+      showWaveform: false,
+      showSurahBadge: true,
+      bgOverlayOpacity: 25,
+      bgBlur: 0,
+      cardBgOpacity: 0,
+      cardBorder: false
+    }
+  },
+  {
+    id: 'haram-daylight',
+    look: {
+      layout: 'card',
+      badgeStyle: 'frame',
+      background: 'kaaba-daylight',
+      fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
+      arabicFontSize: 46,
+      translationFontSize: 40,
+      ayahNumberFontSize: 48,
+      textAlignment: 'center',
+      textColor: '#ffffff',
+      accentColor: '#e8c872',
+      translationColor: '#f6ecd2',
+      textShadow: true,
+      showWaveform: false,
+      showSurahBadge: true,
+      bgOverlayOpacity: 35,
+      bgBlur: 3,
+      cardBgOpacity: 45,
+      cardBorder: true
+    }
+  },
+  {
+    id: 'aerial-dusk',
+    look: {
+      layout: 'split',
+      badgeStyle: 'pill',
+      background: 'aerial-mosque-night',
+      fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
+      arabicFontSize: 46,
+      translationFontSize: 40,
+      ayahNumberFontSize: 48,
+      textAlignment: 'center',
+      textColor: '#fff7ed',
+      accentColor: '#f4a261',
+      translationColor: '#fde2c8',
+      textShadow: true,
+      showWaveform: true,
+      showSurahBadge: true,
+      bgOverlayOpacity: 40,
+      bgBlur: 0,
+      cardBgOpacity: 35,
+      cardBorder: true
+    }
+  },
+  {
+    id: 'city-lights',
+    look: {
+      layout: 'card',
+      badgeStyle: 'calligraphic',
+      background: 'urban-mosque-night',
+      fontArabic: 'DigitalKhatt',
+      arabicFontSize: 46,
+      translationFontSize: 40,
+      ayahNumberFontSize: 46,
+      textAlignment: 'center',
+      textColor: '#f0f9ff',
+      accentColor: '#7dd3fc',
+      translationColor: '#d6efff',
+      textShadow: true,
+      showWaveform: true,
+      showSurahBadge: true,
+      bgOverlayOpacity: 45,
+      bgBlur: 1,
+      cardBgOpacity: 30,
+      cardBorder: true
+    }
+  },
+  {
+    // A heavy blur and a solid card: the picture is only colour behind the text.
+    id: 'frosted',
+    look: {
+      layout: 'card',
+      badgeStyle: 'pill',
+      background: 'aerial-mosque',
+      fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
+      arabicFontSize: 48,
+      translationFontSize: 40,
+      ayahNumberFontSize: 48,
+      textAlignment: 'center',
+      textColor: '#ffffff',
+      accentColor: '#ffffff',
+      translationColor: '#e5e7eb',
+      textShadow: false,
+      showWaveform: false,
+      showSurahBadge: true,
+      bgOverlayOpacity: 55,
+      bgBlur: 8,
+      cardBgOpacity: 50,
+      cardBorder: false
+    }
+  },
+  {
+    id: 'moonlit',
+    look: {
+      layout: 'open',
+      badgeStyle: 'calligraphic',
+      background: 'minaret-moonlit',
+      fontArabic: QPC_V2,
+      // The mushaf's own ayah ending, which only this face can draw.
+      ayahMarkerStyle: 'page',
+      arabicFontSize: 52,
+      translationFontSize: 38,
+      ayahNumberFontSize: 46,
+      textAlignment: 'center',
+      textColor: '#fffbeb',
+      accentColor: '#fcd34d',
+      translationColor: '#fef3c7',
+      textShadow: true,
+      showWaveform: false,
+      showSurahBadge: true,
+      bgOverlayOpacity: 45,
+      bgBlur: 2,
+      cardBgOpacity: 0,
+      cardBorder: false
     }
   }
 ];

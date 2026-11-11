@@ -11,6 +11,12 @@ interface PresetGalleryProps {
   /** The preset the project currently matches exactly, to mark it. */
   current: string | null;
   onApply: (preset: StylePreset) => void;
+  /**
+   * Every look, larger and three to a row, with no heading: the rail's Presets
+   * panel, where the gallery is all there is. Otherwise a row of four and
+   * "All" for the rest, under its own heading.
+   */
+  full?: boolean;
 }
 
 /**
@@ -24,15 +30,15 @@ interface PresetGalleryProps {
 /** How many looks show in one row before "All looks" opens the rest. */
 const ROW = 4;
 
-export const PresetGallery: React.FC<PresetGalleryProps> = ({ current, onApply }) => {
+export const PresetGallery: React.FC<PresetGalleryProps> = ({ current, onApply, full = false }) => {
   const t = useT();
   const [showAll, setShowAll] = useState(false);
   // The look in use stays visible even when it is not in the first row.
   const currentAt = STYLE_PRESETS.findIndex(preset => preset.id === current);
-  const shown = showAll || currentAt >= ROW ? STYLE_PRESETS : STYLE_PRESETS.slice(0, ROW);
+  const shown = full || showAll || currentAt >= ROW ? STYLE_PRESETS : STYLE_PRESETS.slice(0, ROW);
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
+      {!full && <div className="flex items-center gap-1.5">
         <h3 className="flex-1 text-[13px] font-semibold text-slate-200 flex items-center gap-1.5" title={t.presets.help}>
           <Palette className="w-3.5 h-3.5 text-amber-400" />
           {t.presets.heading}
@@ -42,8 +48,8 @@ export const PresetGallery: React.FC<PresetGalleryProps> = ({ current, onApply }
             {t.presets.showAll(STYLE_PRESETS.length)}
           </button>
         )}
-      </div>
-      <div className="grid grid-cols-4 gap-2">
+      </div>}
+      <div className={`grid ${full ? 'grid-cols-3 gap-3' : 'grid-cols-4 gap-2'}`}>
         {shown.map(preset => {
           const names = t.presets.items[preset.id as keyof typeof t.presets.items];
           const selected = current === preset.id;
@@ -53,14 +59,14 @@ export const PresetGallery: React.FC<PresetGalleryProps> = ({ current, onApply }
               onClick={() => onApply(preset)}
               aria-pressed={selected}
               title={names?.note}
-              className={`group rounded-lg border p-1 text-start transition-all ${
+              className={`group rounded-lg border text-start transition-all ${full ? 'p-1.5' : 'p-1'} ${
                 selected
                   ? 'border-amber-500 ring-1 ring-amber-500/40 bg-amber-500/10'
                   : 'border-slate-800 bg-slate-900/60 hover:border-slate-600'
               }`}
             >
-              <PresetThumb preset={preset} />
-              <span className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-100">
+              <PresetThumb preset={preset} large={full} />
+              <span className={`mt-1 flex items-center gap-1 font-semibold text-slate-100 ${full ? 'text-xs' : 'text-[11px]'}`}>
                 {selected && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
                 <span className="truncate">{names?.name ?? preset.id}</span>
               </span>
@@ -94,7 +100,7 @@ function TranslationBars({ colour }: { colour: string }) {
 }
 
 /** A 9:16 miniature of the frame, from the preset's own values. */
-function PresetThumb({ preset }: { preset: StylePreset }) {
+function PresetThumb({ preset, large = false }: { preset: StylePreset; large?: boolean }) {
   const { look } = preset;
   const layout = frameLayout(look.layout, 1, 1);
   const background = presetBackground(look.background);
@@ -118,7 +124,7 @@ function PresetThumb({ preset }: { preset: StylePreset }) {
       <span className={`${BOX} flex-col justify-center gap-1`} style={boxStyle(layout.text, look, layout.drawsCard)}>
         <span
           dir="rtl"
-          className={`${fontClass} text-[13px] leading-tight`}
+          className={`${fontClass} ${large ? 'text-base' : 'text-[13px]'} leading-tight`}
           style={{ color: look.textColor, textShadow: look.textShadow ? '0 1px 3px rgba(0,0,0,0.9)' : undefined }}
         >
           بِسْمِ ٱللَّهِ

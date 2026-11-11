@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { 
   VideoCanvasConfig 
 } from './VideoCanvas';
@@ -29,7 +29,6 @@ import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { 
   Image as ImageIcon, 
   Upload, 
-  Palette,
   Check,
   ExternalLink,
   X,
@@ -38,10 +37,14 @@ import {
   FileQuestion,
   ChevronLeft,
   ChevronRight,
-  GripVertical
+  GripVertical,
+  Layers, SlidersHorizontal, ArrowDownUp, Plus
 } from 'lucide-react';
 import { PresetGallery } from './PresetGallery';
 import { StyleSection } from './StyleSection';
+import { PanelHead } from './PanelHead';
+import { GroupNav, PanelGroup } from './PanelGroup';
+import { CompactBar } from './CompactBar';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 import { FRAME_LAYOUTS, asFrameLayout } from '@/lib/frameLayout';
 import { GALLERY_SORTS, DEFAULT_GALLERY_SORT, sortGallery, type GallerySort } from '@/lib/gallerySort';
@@ -65,7 +68,15 @@ interface StyleConfigPanelProps {
   /** The block picked on the timeline, so both surfaces act on the same one. */
   selectedBackground?: number | null;
   onSelectBackground?: (index: number | null) => void;
+  /** Show only this part of the look, as the rail opens it; every part, collapsible, without. */
+  only?: StyleArea | null;
 }
+
+/** The parts of the look, each of which the rail can open on its own. */
+export type StyleArea = 'presets' | 'text' | 'background' | 'card' | 'branding';
+
+/** The Text panel's groups, in the order they are laid out. */
+const TEXT_GROUPS = ['font', 'size', 'ayah', 'colours', 'motion'] as const;
 
 export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   config,
@@ -73,7 +84,8 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   clipDuration = 0,
   laneBlocks = [],
   selectedBackground = null,
-  onSelectBackground
+  onSelectBackground,
+  only = null
 }) => {
   const t = useT();
   const { missingFonts } = useStudioConfig();
@@ -87,6 +99,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   const [openSections, setOpenSections] = useState<string[]>(['text']);
   const toggleSection = (id: string) =>
     setOpenSections(current => (current.includes(id) ? current.filter(s => s !== id) : [...current, id]));
+  const isOpen = (id: StyleArea) => (only ? only === id : openSections.includes(id));
+  const shows = (id: StyleArea) => !only || only === id;
+  /** The background's settings as laid out in full, which the chip bar stands in for once scrolled away. */
+  const bgSettingsRef = useRef<HTMLDivElement | null>(null);
 
   const updateConfig = (key: keyof VideoCanvasConfig, value: unknown) => {
     onChangeConfig({
@@ -278,12 +294,14 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
    */
   const clipLengths = useMediaDurations(
     gallery.filter(bg => bg.url && !bg.missing && bg.kind === 'video').map(bg => bg.url as string),
-    openSections.includes('background')
+    isOpen('background')
   );
   const [gallerySort, setGallerySort] = useState<GallerySort>(DEFAULT_GALLERY_SORT);
   const sortedGallery = sortGallery(gallery, gallerySort, clipLengths);
 
   /** What each closed section is set to, in a few words. */
+  const presetId = matchingPreset(config);
+  const presetSummary = presetId ? t.presets.items[presetId as keyof typeof t.presets.items]?.name ?? presetId : '';
   const textSummary = `${FONTS_ARABIC.find(f => f.id === config.fontArabic)?.name ?? config.fontArabic} · ${config.arabicFontSize}px`;
   const badge = config.showSurahBadge ? t.style.badgeStyles[(config.badgeStyle ?? 'pill') as keyof typeof t.style.badgeStyles] : t.style.badgeStyles.none;
   const cardSummary = `${t.style.layouts[asFrameLayout(config.layout)]} · ${badge}`;
@@ -292,9 +310,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     : gallery.find(bg => bg.url === config.bgUrl)?.title ?? '';
   const transition = asCaptionTransition(config.captionTransition);
   const wordEffect = asWordEffect(config.wordEffect);
-  const motionSummary = wordEffect === 'none'
-    ? t.style.transitions[transition]
-    : `${t.style.transitions[transition]} · ${t.style.wordEffects[wordEffect]}`;
   const brandingSummary = config.watermarkText ? `“${config.watermarkText}”` : '—';
 
   /**
@@ -441,398 +456,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
     }
   };
 
-  return (
-    // `p-3` matches the Inspector tab beside it. Without it this panel's cards,
-    // sliders and section headings all sat flush against the column border,
-    // because the container in page.tsx only scrolls -- it does not pad.
-    <div className="flex flex-col gap-4 text-[13px] p-3">
-      {/* Whole looks first: the quickest way to a finished frame, and the
-          fields they set are all edited in the sections below. */}
-      {/* Whole looks first: the quickest way to a finished frame, and the
-          fields they set are all edited further down this tab. */}
-              <PresetGallery
-          current={matchingPreset(config)}
-          onApply={preset => onChangeConfig(applyStylePreset(config, preset))}
-        />
-
-
-      <StyleSection id="text" title={t.style.tabDesign} summary={textSummary} open={openSections.includes('text')} onToggle={() => toggleSection('text')}>
-      {/* The frame shape used to be chosen here as well as in Export, and
-          the two could disagree. It is one setting now, above the preview. */}
-              <p className="text-xs leading-relaxed text-slate-400">{t.frame.setAbove}</p>
-
-
-      {/* Layout & Text, section 2: typography and colour */}
-              <div className="flex flex-col gap-3">
-          <div>
-            <label className="font-semibold text-slate-200 text-sm block mb-1.5">{t.style.arabicFontLabel}</label>
-            <div className="grid grid-cols-2 gap-2">
-              {FONTS_ARABIC.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => updateConfig('fontArabic', f.id)}
-                  // A face whose files are not on this server cannot be drawn,
-                  // so it cannot be chosen either -- see usableArabicFont.
-                  disabled={missingFonts.has(f.id)}
-                  title={missingFonts.has(f.id) ? t.style.fontNotInstalled : undefined}
-                  className={`p-2.5 rounded-xl border text-start transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                    usableArabicFont(config.fontArabic, missingFonts) === f.id
-                      ? 'bg-amber-500/15 border-amber-500 text-amber-300 ring-1 ring-amber-500/40'
-                      : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                  }`}
-                >
-                  <span className="block font-bold text-sm text-slate-100">
-                    {t.style.fonts[f.id as keyof typeof t.style.fonts] ?? f.name}
-                  </span>
-                  {/* Each face previews itself. Hardcoding one family here
-                      showed five identical samples -- and kept every other
-                      family out of the DOM, so the canvas never fetched the
-                      one it was about to draw with. */}
-                  <span className={`block text-lg ${f.className} text-amber-400 mt-1`} dir="rtl">
-                    بِسْمِ ٱللَّهِ
-                  </span>
-                </button>
-              ))}
-            </div>
-            {missingFonts.size > 0 && (
-              <p className="mt-2 text-xs text-slate-400">{t.style.fontNotInstalled}</p>
-            )}
-            {/* The chosen face is missing and none is selected above: say what
-                is drawing instead, in that face. */}
-            {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
-              <p className="mt-1.5 text-xs text-amber-300/90">
-                {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
-              </p>
-            )}
-            {/* Only the mushaf face knows where the printed lines break. */}
-            {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
-              <label className="mt-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={!!config.mushafLines}
-                  onChange={e => updateConfig('mushafLines', e.target.checked)}
-                  className="mt-0.5 accent-amber-500"
-                />
-                <span>
-                  <span className="font-semibold text-slate-200">{t.style.mushafLines}</span>
-                  <span className="block text-slate-400">{t.style.mushafLinesHint}</span>
-                </span>
-              </label>
-            )}
-          </div>
-
-          {/* Font Sizes */}
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.arabicFontSize}</span>
-                <span className="font-mono text-amber-400">{config.arabicFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={24}
-                max={64}
-                value={config.arabicFontSize}
-                onChange={(e) => updateConfig('arabicFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.translationFontSize}</span>
-                <span className="font-mono text-amber-400">{config.translationFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={14}
-                max={48}
-                value={config.translationFontSize}
-                onChange={(e) => updateConfig('translationFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div>
-              <div className="text-slate-300 mb-1">{t.style.ayahNumberPlacement}</div>
-              <select
-                value={placementOf(config.ayahNumberPlacement)}
-                onChange={(e) => updateConfig('ayahNumberPlacement', e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              >
-                {AYAH_NUMBER_PLACEMENTS.map(id => <option key={id} value={id}>{t.style.ayahNumberPlacements[id]}</option>)}
-              </select>
-            </div>
-
-            {placementOf(config.ayahNumberPlacement) === 'end' && (
-              <div>
-                <div className="text-slate-300 mb-1">{t.style.ayahMarkerStyle}</div>
-                <select
-                  value={markerStyleOf(config.ayahMarkerStyle)}
-                  onChange={(e) => updateConfig('ayahMarkerStyle', e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  {AYAH_MARKER_STYLES.map(id => <option key={id} value={id}>{t.style.ayahMarkerStyles[id]}</option>)}
-                </select>
-                {markerStyleOf(config.ayahMarkerStyle) === 'page' && <p className="mt-1 text-xs text-slate-400 leading-relaxed">{t.style.ayahMarkerPageHint}</p>}
-              </div>
-            )}
-
-            <label className="col-span-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={config.showRepeatMark !== false}
-                onChange={e => updateConfig('showRepeatMark', e.target.checked)}
-                className="mt-0.5 accent-amber-500"
-              />
-              <span>
-                <span className="font-semibold text-slate-200">{t.style.showRepeatMark}</span>
-                <span className="block text-slate-400">{t.style.showRepeatMarkHint}</span>
-              </span>
-            </label>
-
-            {/* Between the cards it is the label's size; at the ayah's end it scales the marker against the Arabic. */}
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.ayahNumberSize}</span>
-                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={20}
-                max={72}
-                value={config.ayahNumberFontSize}
-                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-          </div>
-
-          {/* Colours.
-
-              Three native `<input type="color">` used to sit here; on a
-              multi-monitor setup the OS opened its dialog on another screen
-              entirely. `ColorField` keeps the picker in the panel.
-
-              "Accent Gold" was also the wrong name twice over: it is not
-              necessarily gold, and it was never clear what it painted. It is
-              named for its job now, and the card border -- which was hardcoded
-              amber and stayed gold no matter what this was set to -- follows
-              it like everything else in the list. */}
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <label className="font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
-              <Palette className="w-3.5 h-3.5 text-amber-400" />
-              <span>{t.style.coloursLabel}</span>
-            </label>
-            <div className="flex flex-col gap-2">
-              <ColorField
-                label={t.style.colourArabic}
-                description={t.style.colourArabicDescription}
-                value={config.textColor}
-                onChange={hex => updateConfig('textColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourAccent}
-                description={t.style.colourAccentDescription}
-                value={config.accentColor}
-                onChange={hex => updateConfig('accentColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourTranslation}
-                description={t.style.colourTranslationDescription}
-                value={config.translationColor}
-                onChange={hex => updateConfig('translationColor', hex)}
-              />
-            </div>
-          </div>
-        </div>
-
-      <ConfirmDialog
-        isOpen={pendingDelete !== null}
-        title={pendingDelete?.title || ''}
-        message={pendingDelete?.message || ''}
-        confirmLabel={pendingDelete?.confirmLabel}
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={() => {
-          pendingDelete?.run();
-          setPendingDelete(null);
-        }}
-      />
-
-      </StyleSection>
-
-      <StyleSection id="card" title={t.style.tabCard} summary={cardSummary} open={openSections.includes('card')} onToggle={() => toggleSection('card')}>
-      {/* Card & FX */}
-              <div className="flex flex-col gap-3">
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
-            {/* Where things sit, then how the badge looks: the two choices
-                that change the frame's arrangement rather than its colours. */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="font-semibold text-slate-200 block mb-1">{t.style.layoutLabel}</label>
-                <select
-                  value={asFrameLayout(config.layout)}
-                  onChange={(e) => updateConfig('layout', e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  {FRAME_LAYOUTS.map(id => <option key={id} value={id}>{t.style.layouts[id]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeStyleLabel}</label>
-                {/* "None" is the badge switch, not a style: hiding the badge
-                    keeps the style it had for when it comes back. */}
-                <select
-                  value={config.showSurahBadge ? usableBadgeStyle(config.badgeStyle, missingFonts) : 'none'}
-                  onChange={(e) => onChangeConfig(e.target.value === 'none'
-                    ? { ...config, showSurahBadge: false }
-                    : { ...config, showSurahBadge: true, badgeStyle: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  <option value="none">{t.style.badgeStyles.none}</option>
-                  {BADGE_STYLES.map(id => (
-                    <option
-                      key={id}
-                      value={id}
-                      disabled={id === 'calligraphic' && missingFonts.has(SURAH_NAME_FONT_ID)}
-                    >
-                      {t.style.badgeStyles[id]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {missingFonts.has(SURAH_NAME_FONT_ID) && (
-              <p className="-mt-1 text-xs text-slate-400">{t.style.badgeFontMissing}</p>
-            )}
-            {/* Its own control, not the card's: a no-card layout sets the card
-                to nothing, and the badge still has to read over the footage. */}
-            {config.showSurahBadge && (
-              <div>
-                <div className="flex justify-between text-slate-300 mb-1">
-                  <span>{t.style.badgeOpacity}</span>
-                  <span className="font-mono text-amber-400">{config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}
-                  onChange={(e) => updateConfig('badgeOpacity', parseInt(e.target.value, 10))}
-                  className="w-full accent-amber-500"
-                />
-              </div>
-            )}
-
-            <div className="pt-2 border-t border-slate-800">
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.cardOpacity}</span>
-                <span className="font-mono text-amber-400">{config.cardBgOpacity}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={80}
-                value={config.cardBgOpacity}
-                onChange={(e) => updateConfig('cardBgOpacity', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeTextLabel}</label>
-              <input
-                type="text"
-                value={config.surahBadgeText}
-                onChange={(e) => updateConfig('surahBadgeText', e.target.value)}
-                placeholder={t.style.badgeTextPlaceholder}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              />
-              <p className="text-xs text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeSubtitleLabel}</label>
-              <input
-                type="text"
-                value={config.surahBadgeSubtitleText}
-                onChange={(e) => updateConfig('surahBadgeSubtitleText', e.target.value)}
-                placeholder={t.style.badgeSubtitlePlaceholder}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              />
-              <p className="text-xs text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.cardBorder}
-                  onChange={(e) => updateConfig('cardBorder', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.cardBorder}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.textShadow}
-                  onChange={(e) => updateConfig('textShadow', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.textShadow}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showWaveform}
-                  onChange={(e) => updateConfig('showWaveform', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.audioVisualizer}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showSurahBadge}
-                  onChange={(e) => updateConfig('showSurahBadge', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.surahBadge}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showTranslation}
-                  onChange={(e) => updateConfig('showTranslation', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.englishTranslation}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300" title={t.style.tafsirHint}>
-                <input
-                  type="checkbox"
-                  checked={config.showTafsir === true}
-                  onChange={(e) => updateConfig('showTafsir', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.tafsir}</span>
-              </label>
-            </div>
-
-          </div>
-        </div>
-
-      </StyleSection>
-
-      <StyleSection id="background" title={t.style.tabBackground} summary={backgroundSummary} open={openSections.includes('background')} onToggle={() => toggleSection('background')}>
-      {/* Background */}
-              <div className="flex flex-col gap-4">
+  /*
+   * The background's settings, each built once and shown in two places: laid
+   * out in full at the top of the section, and in the bar of chips that holds
+   * them in reach while the gallery below is scrolled (`CompactBar`).
+   */
+  const bgModeBox = (
+    <>
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
             <label className="font-semibold text-slate-200 text-sm block mb-2">{t.style.bgModeLabel}</label>
             <div className="grid grid-cols-2 gap-1.5">
@@ -1055,16 +685,10 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               )
             )}
           </div>
-
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="font-semibold text-slate-200 text-sm">
-                {customBackground
-                  ? t.style.galleryLabelLane
-                  : (config.bgMode || 'single') === 'single'
-                    ? t.style.galleryLabelSingle
-                    : t.style.galleryLabelMulti}
-              </span>
+    </>
+  );
+  const bgSortSelect = (
+    <>
               <label className="flex items-center gap-1.5 text-xs text-slate-400">
                 {t.style.gallerySortLabel}
                 <select
@@ -1075,6 +699,423 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   {GALLERY_SORTS.map(id => <option key={id} value={id}>{t.style.gallerySorts[id]}</option>)}
                 </select>
               </label>
+    </>
+  );
+  const bgLookBox = (
+    <>
+          {/* Overlay Sliders */}
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.overlayOpacity}</span>
+                <span className="font-mono text-amber-400">{config.bgOverlayOpacity}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={90}
+                value={config.bgOverlayOpacity}
+                onChange={(e) => updateConfig('bgOverlayOpacity', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.backgroundBlur}</span>
+                <span className="font-mono text-amber-400">{config.bgBlur}px</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={15}
+                value={config.bgBlur}
+                onChange={(e) => updateConfig('bgBlur', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+          </div>
+    </>
+  );
+  const bgAddBox = (
+          <div className="flex flex-col gap-3">
+          {/* Paste a link -- file or Pexels page */}
+          <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
+            <p className="font-semibold text-slate-200 block mb-1.5">{t.style.pasteLinkLabel}</p>
+            <div className="flex gap-2">
+              <input
+                aria-label={t.style.pasteLinkLabel}
+                type="text"
+                value={urlDraft}
+                onChange={e => { setUrlDraft(e.target.value); setUrlStatus(null); }}
+                placeholder={t.style.pasteLinkPlaceholder}
+                dir="ltr"
+                className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 text-start"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleApplyUrl(urlDraft);
+                }}
+              />
+              <button
+                onClick={() => handleApplyUrl(urlDraft)}
+                disabled={urlStatus?.kind === 'busy'}
+                className="px-3 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold rounded-lg text-xs transition-colors shrink-0"
+              >
+                {t.common.apply}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">{t.style.pasteLinkHelp}</p>
+            {urlStatus && (
+              <p
+                role="status"
+                className={`text-xs mt-1.5 rounded-md p-2 border ${
+                  urlStatus.kind === 'error'
+                    ? 'text-red-300 bg-red-500/10 border-red-500/25'
+                    : urlStatus.kind === 'ok'
+                      ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
+                      : 'text-slate-300 bg-slate-800/60 border-slate-700'
+                }`}
+              >
+                {urlStatus.message}
+              </p>
+            )}
+          </div>
+
+          {/* Custom Upload */}
+          <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
+            <label className="font-semibold text-slate-200 block mb-1.5">{t.style.uploadLabel}</label>
+            <div
+              {...backgroundDrop.dropHandlers}
+              className={`relative flex items-center justify-center p-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                backgroundDrop.isOver
+                  ? 'border-amber-400 bg-amber-500/10'
+                  : 'border-slate-700 hover:border-amber-500/50 bg-slate-950/50'
+              }`}
+            >
+              <input
+                type="file"
+                accept="video/*,image/*"
+                multiple
+                onChange={handleCustomFileUpload}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <div className="flex items-center gap-2 text-slate-400 hover:text-amber-300">
+                <Upload className="w-4 h-4" />
+                <span className="text-xs font-medium">
+                  {backgroundDrop.isOver ? t.style.uploadDropHere : t.style.uploadBrowse}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">{t.style.uploadHelp}</p>
+            {uploadStatus && (
+              <p
+                role="status"
+                className={`text-xs mt-1.5 rounded-md p-2 border ${
+                  uploadStatus.kind === 'error'
+                    ? 'text-red-300 bg-red-500/10 border-red-500/25'
+                    : 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
+                }`}
+              >
+                {uploadStatus.message}
+              </p>
+            )}
+          </div>
+          </div>
+  );
+  const bgModeName = customBackground ? t.style.bgModes.custom : t.style.bgModes[(config.bgMode || 'single') as keyof typeof t.style.bgModes];
+
+  return (
+    // `p-3` matches the Inspector tab beside it. Without it this panel's cards,
+    // sliders and section headings all sat flush against the column border,
+    // because the container in page.tsx only scrolls -- it does not pad.
+    <div className={`flex flex-col text-[13px] ${only ? '' : 'gap-4 p-3'}`}>
+      {/* Whole looks first: the quickest way to a finished frame, and the
+          fields they set are all edited in the sections below. */}
+      {shows('presets') && (only ? (
+        <section id="style-section-presets">
+          <PanelHead title={t.presets.heading} summary={presetSummary} />
+          <div className="p-4"><PresetGallery full current={presetId} onApply={preset => onChangeConfig(applyStylePreset(config, preset))} /></div>
+        </section>
+      ) : (
+        <PresetGallery
+          current={matchingPreset(config)}
+          onApply={preset => onChangeConfig(applyStylePreset(config, preset))}
+        />
+      ))}
+
+
+      {shows('text') && (
+      <StyleSection id="text" title={t.style.tabDesign} summary={textSummary} open={isOpen('text')} onToggle={() => toggleSection('text')} bare={!!only}>
+        {/* Motion used to be a section of its own; it is how the text moves,
+            so it is the text's last group now. */}
+        {only && <GroupNav items={TEXT_GROUPS.map(id => ({ id, label: t.style.textGroups[id] }))} />}
+        <div className="flex flex-col gap-5">
+        <PanelGroup id="font" title={t.style.textGroups.font}>
+          <div>
+            <label className="font-semibold text-slate-200 text-sm block mb-1.5">{t.style.arabicFontLabel}</label>
+            <div className="grid grid-cols-2 gap-2">
+              {FONTS_ARABIC.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => updateConfig('fontArabic', f.id)}
+                  // A face whose files are not on this server cannot be drawn,
+                  // so it cannot be chosen either -- see usableArabicFont.
+                  disabled={missingFonts.has(f.id)}
+                  title={missingFonts.has(f.id) ? t.style.fontNotInstalled : undefined}
+                  className={`p-2.5 rounded-xl border text-start transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    usableArabicFont(config.fontArabic, missingFonts) === f.id
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-300 ring-1 ring-amber-500/40'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="block font-bold text-sm text-slate-100">
+                    {t.style.fonts[f.id as keyof typeof t.style.fonts] ?? f.name}
+                  </span>
+                  {/* Each face previews itself. Hardcoding one family here
+                      showed five identical samples -- and kept every other
+                      family out of the DOM, so the canvas never fetched the
+                      one it was about to draw with. */}
+                  <span className={`block text-lg ${f.className} text-amber-400 mt-1`} dir="rtl">
+                    بِسْمِ ٱللَّهِ
+                  </span>
+                </button>
+              ))}
+            </div>
+            {missingFonts.size > 0 && (
+              <p className="mt-2 text-xs text-slate-400">{t.style.fontNotInstalled}</p>
+            )}
+            {/* The chosen face is missing and none is selected above: say what
+                is drawing instead, in that face. */}
+            {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
+              <p className="mt-1.5 text-xs text-amber-300/90">
+                {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
+              </p>
+            )}
+            {/* Only the mushaf face knows where the printed lines break. */}
+            {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
+              <label className="mt-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!config.mushafLines}
+                  onChange={e => updateConfig('mushafLines', e.target.checked)}
+                  className="mt-0.5 accent-amber-500"
+                />
+                <span>
+                  <span className="font-semibold text-slate-200">{t.style.mushafLines}</span>
+                  <span className="block text-slate-400">{t.style.mushafLinesHint}</span>
+                </span>
+              </label>
+            )}
+          </div>
+        </PanelGroup>
+        <PanelGroup id="size" title={t.style.textGroups.size}>
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.arabicFontSize}</span>
+                <span className="font-mono text-amber-400">{config.arabicFontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={24}
+                max={64}
+                value={config.arabicFontSize}
+                onChange={(e) => updateConfig('arabicFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.translationFontSize}</span>
+                <span className="font-mono text-amber-400">{config.translationFontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={14}
+                max={48}
+                value={config.translationFontSize}
+                onChange={(e) => updateConfig('translationFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+
+          </div>
+        </PanelGroup>
+        <PanelGroup id="ayah" title={t.style.textGroups.ayah}>
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div>
+              <div className="text-slate-300 mb-1">{t.style.ayahNumberPlacement}</div>
+              <select
+                value={placementOf(config.ayahNumberPlacement)}
+                onChange={(e) => updateConfig('ayahNumberPlacement', e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+              >
+                {AYAH_NUMBER_PLACEMENTS.map(id => <option key={id} value={id}>{t.style.ayahNumberPlacements[id]}</option>)}
+              </select>
+            </div>
+
+            {placementOf(config.ayahNumberPlacement) === 'end' && (
+              <div>
+                <div className="text-slate-300 mb-1">{t.style.ayahMarkerStyle}</div>
+                <select
+                  value={markerStyleOf(config.ayahMarkerStyle)}
+                  onChange={(e) => updateConfig('ayahMarkerStyle', e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  {AYAH_MARKER_STYLES.map(id => <option key={id} value={id}>{t.style.ayahMarkerStyles[id]}</option>)}
+                </select>
+                {markerStyleOf(config.ayahMarkerStyle) === 'page' && <p className="mt-1 text-xs text-slate-400 leading-relaxed">{t.style.ayahMarkerPageHint}</p>}
+              </div>
+            )}
+
+            <label className="col-span-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={config.showRepeatMark !== false}
+                onChange={e => updateConfig('showRepeatMark', e.target.checked)}
+                className="mt-0.5 accent-amber-500"
+              />
+              <span>
+                <span className="font-semibold text-slate-200">{t.style.showRepeatMark}</span>
+                <span className="block text-slate-400">{t.style.showRepeatMarkHint}</span>
+              </span>
+            </label>
+
+            {/* Between the cards it is the label's size; at the ayah's end it scales the marker against the Arabic. */}
+            <div>
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.ayahNumberSize}</span>
+                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={20}
+                max={72}
+                value={config.ayahNumberFontSize}
+                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+          </div>
+        </PanelGroup>
+        <PanelGroup id="colours" title={t.style.textGroups.colours}>
+          {/* Colours.
+
+              Three native `<input type="color">` used to sit here; on a
+              multi-monitor setup the OS opened its dialog on another screen
+              entirely. `ColorField` keeps the picker in the panel.
+
+              "Accent Gold" was also the wrong name twice over: it is not
+              necessarily gold, and it was never clear what it painted. It is
+              named for its job now, and the card border -- which was hardcoded
+              amber and stayed gold no matter what this was set to -- follows
+              it like everything else in the list. */}
+          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div className="flex flex-col gap-2">
+              <ColorField
+                label={t.style.colourArabic}
+                description={t.style.colourArabicDescription}
+                value={config.textColor}
+                onChange={hex => updateConfig('textColor', hex)}
+              />
+              <ColorField
+                label={t.style.colourAccent}
+                description={t.style.colourAccentDescription}
+                value={config.accentColor}
+                onChange={hex => updateConfig('accentColor', hex)}
+              />
+              <ColorField
+                label={t.style.colourTranslation}
+                description={t.style.colourTranslationDescription}
+                value={config.translationColor}
+                onChange={hex => updateConfig('translationColor', hex)}
+              />
+            </div>
+          </div>
+        </PanelGroup>
+        <PanelGroup id="motion" title={t.style.textGroups.motion}>
+        <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
+          <div>
+            <label htmlFor="style-transition" className="font-semibold text-slate-200 block mb-1">{t.style.transitionLabel}</label>
+            <select
+              id="style-transition"
+              value={transition}
+              onChange={(e) => updateConfig('captionTransition', e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+            >
+              {CAPTION_TRANSITIONS.map(id => <option key={id} value={id}>{t.style.transitions[id]}</option>)}
+            </select>
+            {transition !== 'cut' && <p className="mt-1 text-xs text-slate-400">{t.style.transitionHelp}</p>}
+          </div>
+          {transition !== 'cut' && (
+            <fieldset className="min-w-0">
+              <legend className="font-semibold text-slate-200 block mb-1">{t.style.motionSpeedLabel}</legend>
+              <div className="grid grid-cols-3 gap-1.5">
+                {MOTION_SPEEDS.map(id => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={asMotionSpeed(config.motionSpeed) === id}
+                    onClick={() => updateConfig('motionSpeed', id)}
+                    className={`py-1.5 rounded-md border text-center text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                      asMotionSpeed(config.motionSpeed) === id
+                        ? 'bg-amber-500/15 border-amber-500 text-slate-100'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    {t.style.motionSpeeds[id]}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          <div className="pt-2 border-t border-slate-800">
+            <label htmlFor="style-word-effect" className="font-semibold text-slate-200 block mb-1">{t.style.wordEffectLabel}</label>
+            <select
+              id="style-word-effect"
+              value={wordEffect}
+              onChange={(e) => updateConfig('wordEffect', e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+            >
+              {WORD_EFFECTS.map(id => <option key={id} value={id}>{t.style.wordEffects[id]}</option>)}
+            </select>
+            {wordEffect !== 'none' && <p className="mt-1 text-xs text-slate-400">{t.style.wordEffectHelp}</p>}
+          </div>
+          {wordEffect === 'highlight' && <HighlightSwatches config={config} onChange={hex => updateConfig('highlightColor', hex)} />}
+        </div>
+        </PanelGroup>
+        </div>
+      </StyleSection>
+      )}
+
+      {shows('background') && (
+      <StyleSection id="background" title={t.style.tabBackground} summary={backgroundSummary} open={isOpen('background')} onToggle={() => toggleSection('background')} bare={!!only}>
+        <div className="flex flex-col gap-4">
+          {only && (
+            <CompactBar
+              watch={bgSettingsRef}
+              items={[
+                { id: 'mode', icon: Layers, label: t.style.bgModeLabel, value: bgModeName, panel: bgModeBox },
+                { id: 'look', icon: SlidersHorizontal, label: t.style.bgBar.look, value: t.style.bgBar.lookValue(config.bgOverlayOpacity, config.bgBlur), panel: bgLookBox },
+                { id: 'sort', icon: ArrowDownUp, label: `${t.style.gallerySortLabel} ${t.style.gallerySorts[gallerySort]}`, panel: bgSortSelect },
+                { id: 'add', icon: Plus, label: t.style.bgBar.add, panel: bgAddBox }
+              ]}
+            />
+          )}
+          <div ref={bgSettingsRef} className="flex flex-col gap-4">
+            {bgModeBox}
+            {bgLookBox}
+          </div>
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="font-semibold text-slate-200 text-sm">
+                {customBackground
+                  ? t.style.galleryLabelLane
+                  : (config.bgMode || 'single') === 'single'
+                    ? t.style.galleryLabelSingle
+                    : t.style.galleryLabelMulti}
+              </span>
+              {bgSortSelect}
             </div>
             <p className="text-xs text-slate-400 mb-2">{t.style.galleryHelp}</p>
             {/* No inner scroller. Capping this at 224px put a second scrollbar
@@ -1212,177 +1253,184 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               <p className="text-xs text-slate-400 mt-1">{t.style.browsePexelsHelp}</p>
             </div>
           </div>
+          {bgAddBox}
+        </div>
+      </StyleSection>
+      )}
 
-          {/* Paste a link -- file or Pexels page */}
-          <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
-            <label htmlFor="bg-url" className="font-semibold text-slate-200 block mb-1.5">{t.style.pasteLinkLabel}</label>
-            <div className="flex gap-2">
+      {shows('card') && (
+      <StyleSection id="card" title={t.style.tabCard} summary={cardSummary} open={isOpen('card')} onToggle={() => toggleSection('card')} bare={!!only}>
+      {/* Card & FX */}
+              <div className="flex flex-col gap-3">
+          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
+            {/* Where things sit, then how the badge looks: the two choices
+                that change the frame's arrangement rather than its colours. */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="font-semibold text-slate-200 block mb-1">{t.style.layoutLabel}</label>
+                <select
+                  value={asFrameLayout(config.layout)}
+                  onChange={(e) => updateConfig('layout', e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  {FRAME_LAYOUTS.map(id => <option key={id} value={id}>{t.style.layouts[id]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeStyleLabel}</label>
+                {/* "None" is the badge switch, not a style: hiding the badge
+                    keeps the style it had for when it comes back. */}
+                <select
+                  value={config.showSurahBadge ? usableBadgeStyle(config.badgeStyle, missingFonts) : 'none'}
+                  onChange={(e) => onChangeConfig(e.target.value === 'none'
+                    ? { ...config, showSurahBadge: false }
+                    : { ...config, showSurahBadge: true, badgeStyle: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                >
+                  <option value="none">{t.style.badgeStyles.none}</option>
+                  {BADGE_STYLES.map(id => (
+                    <option
+                      key={id}
+                      value={id}
+                      disabled={id === 'calligraphic' && missingFonts.has(SURAH_NAME_FONT_ID)}
+                    >
+                      {t.style.badgeStyles[id]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {missingFonts.has(SURAH_NAME_FONT_ID) && (
+              <p className="-mt-1 text-xs text-slate-400">{t.style.badgeFontMissing}</p>
+            )}
+            {/* Its own control, not the card's: a no-card layout sets the card
+                to nothing, and the badge still has to read over the footage. */}
+            {config.showSurahBadge && (
+              <div>
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>{t.style.badgeOpacity}</span>
+                  <span className="font-mono text-amber-400">{config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}
+                  onChange={(e) => updateConfig('badgeOpacity', parseInt(e.target.value, 10))}
+                  className="w-full accent-amber-500"
+                />
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-800">
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>{t.style.cardOpacity}</span>
+                <span className="font-mono text-amber-400">{config.cardBgOpacity}%</span>
+              </div>
               <input
-                id="bg-url"
+                type="range"
+                min={0}
+                max={80}
+                value={config.cardBgOpacity}
+                onChange={(e) => updateConfig('cardBgOpacity', parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500"
+              />
+            </div>
+
+            <div className="pt-2 border-t border-slate-800">
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeTextLabel}</label>
+              <input
                 type="text"
-                value={urlDraft}
-                onChange={e => { setUrlDraft(e.target.value); setUrlStatus(null); }}
-                placeholder={t.style.pasteLinkPlaceholder}
-                dir="ltr"
-                className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 text-start"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleApplyUrl(urlDraft);
-                }}
+                value={config.surahBadgeText}
+                onChange={(e) => updateConfig('surahBadgeText', e.target.value)}
+                placeholder={t.style.badgeTextPlaceholder}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <button
-                onClick={() => handleApplyUrl(urlDraft)}
-                disabled={urlStatus?.kind === 'busy'}
-                className="px-3 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold rounded-lg text-xs transition-colors shrink-0"
-              >
-                {t.common.apply}
-              </button>
-            </div>
-            <p className="text-xs text-slate-400 mt-1.5">{t.style.pasteLinkHelp}</p>
-            {urlStatus && (
-              <p
-                role="status"
-                className={`text-xs mt-1.5 rounded-md p-2 border ${
-                  urlStatus.kind === 'error'
-                    ? 'text-red-300 bg-red-500/10 border-red-500/25'
-                    : urlStatus.kind === 'ok'
-                      ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
-                      : 'text-slate-300 bg-slate-800/60 border-slate-700'
-                }`}
-              >
-                {urlStatus.message}
-              </p>
-            )}
-          </div>
-
-          {/* Custom Upload */}
-          <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
-            <label className="font-semibold text-slate-200 block mb-1.5">{t.style.uploadLabel}</label>
-            <div
-              {...backgroundDrop.dropHandlers}
-              className={`relative flex items-center justify-center p-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-                backgroundDrop.isOver
-                  ? 'border-amber-400 bg-amber-500/10'
-                  : 'border-slate-700 hover:border-amber-500/50 bg-slate-950/50'
-              }`}
-            >
-              <input
-                type="file"
-                accept="video/*,image/*"
-                multiple
-                onChange={handleCustomFileUpload}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
-              <div className="flex items-center gap-2 text-slate-400 hover:text-amber-300">
-                <Upload className="w-4 h-4" />
-                <span className="text-xs font-medium">
-                  {backgroundDrop.isOver ? t.style.uploadDropHere : t.style.uploadBrowse}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs text-slate-400 mt-1.5">{t.style.uploadHelp}</p>
-            {uploadStatus && (
-              <p
-                role="status"
-                className={`text-xs mt-1.5 rounded-md p-2 border ${
-                  uploadStatus.kind === 'error'
-                    ? 'text-red-300 bg-red-500/10 border-red-500/25'
-                    : 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
-                }`}
-              >
-                {uploadStatus.message}
-              </p>
-            )}
-          </div>
-
-          {/* Overlay Sliders */}
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.overlayOpacity}</span>
-                <span className="font-mono text-amber-400">{config.bgOverlayOpacity}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={90}
-                value={config.bgOverlayOpacity}
-                onChange={(e) => updateConfig('bgOverlayOpacity', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
+              <p className="text-xs text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
             </div>
 
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.backgroundBlur}</span>
-                <span className="font-mono text-amber-400">{config.bgBlur}px</span>
-              </div>
+            <div className="pt-2 border-t border-slate-800">
+              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeSubtitleLabel}</label>
               <input
-                type="range"
-                min={0}
-                max={15}
-                value={config.bgBlur}
-                onChange={(e) => updateConfig('bgBlur', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
+                type="text"
+                value={config.surahBadgeSubtitleText}
+                onChange={(e) => updateConfig('surahBadgeSubtitleText', e.target.value)}
+                placeholder={t.style.badgeSubtitlePlaceholder}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
+              <p className="text-xs text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
             </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.cardBorder}
+                  onChange={(e) => updateConfig('cardBorder', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.cardBorder}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.textShadow}
+                  onChange={(e) => updateConfig('textShadow', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.textShadow}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.showWaveform}
+                  onChange={(e) => updateConfig('showWaveform', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.audioVisualizer}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.showSurahBadge}
+                  onChange={(e) => updateConfig('showSurahBadge', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.surahBadge}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={config.showTranslation}
+                  onChange={(e) => updateConfig('showTranslation', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.englishTranslation}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300" title={t.style.tafsirHint}>
+                <input
+                  type="checkbox"
+                  checked={config.showTafsir === true}
+                  onChange={(e) => updateConfig('showTafsir', e.target.checked)}
+                  className="rounded accent-amber-500"
+                />
+                <span>{t.style.tafsir}</span>
+              </label>
+            </div>
+
           </div>
         </div>
 
       </StyleSection>
+      )}
 
-      <StyleSection id="motion" title={t.style.tabMotion} summary={motionSummary} open={openSections.includes('motion')} onToggle={() => toggleSection('motion')}>
-        <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
-          <div>
-            <label htmlFor="style-transition" className="font-semibold text-slate-200 block mb-1">{t.style.transitionLabel}</label>
-            <select
-              id="style-transition"
-              value={transition}
-              onChange={(e) => updateConfig('captionTransition', e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-            >
-              {CAPTION_TRANSITIONS.map(id => <option key={id} value={id}>{t.style.transitions[id]}</option>)}
-            </select>
-            {transition !== 'cut' && <p className="mt-1 text-xs text-slate-400">{t.style.transitionHelp}</p>}
-          </div>
-          {transition !== 'cut' && (
-            <fieldset className="min-w-0">
-              <legend className="font-semibold text-slate-200 block mb-1">{t.style.motionSpeedLabel}</legend>
-              <div className="grid grid-cols-3 gap-1.5">
-                {MOTION_SPEEDS.map(id => (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={asMotionSpeed(config.motionSpeed) === id}
-                    onClick={() => updateConfig('motionSpeed', id)}
-                    className={`py-1.5 rounded-md border text-center text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
-                      asMotionSpeed(config.motionSpeed) === id
-                        ? 'bg-amber-500/15 border-amber-500 text-slate-100'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    {t.style.motionSpeeds[id]}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          )}
-          <div className="pt-2 border-t border-slate-800">
-            <label htmlFor="style-word-effect" className="font-semibold text-slate-200 block mb-1">{t.style.wordEffectLabel}</label>
-            <select
-              id="style-word-effect"
-              value={wordEffect}
-              onChange={(e) => updateConfig('wordEffect', e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-            >
-              {WORD_EFFECTS.map(id => <option key={id} value={id}>{t.style.wordEffects[id]}</option>)}
-            </select>
-            {wordEffect !== 'none' && <p className="mt-1 text-xs text-slate-400">{t.style.wordEffectHelp}</p>}
-          </div>
-          {wordEffect === 'highlight' && <HighlightSwatches config={config} onChange={hex => updateConfig('highlightColor', hex)} />}
-        </div>
-      </StyleSection>
-
-      <StyleSection id="branding" title={t.style.headingBranding} summary={brandingSummary} open={openSections.includes('branding')} onToggle={() => toggleSection('branding')}>
+      {shows('branding') && (
+      <StyleSection id="branding" title={t.style.headingBranding} summary={brandingSummary} open={isOpen('branding')} onToggle={() => toggleSection('branding')} bare={!!only}>
       {/* Card & FX, section 2: branding. It belongs with the other things
           stamped on top of the frame rather than with the ayah's typography. */}
               <div className="flex flex-col gap-3">
@@ -1415,6 +1463,18 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           </div>
         </div>
       </StyleSection>
+      )}
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title={pendingDelete?.title || ''}
+        message={pendingDelete?.message || ''}
+        confirmLabel={pendingDelete?.confirmLabel}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          pendingDelete?.run();
+          setPendingDelete(null);
+        }}
+      />
     </div>
   );
 };

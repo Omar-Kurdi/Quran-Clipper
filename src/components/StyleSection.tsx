@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
+import { PanelHead } from './PanelHead';
 
 /**
  * One collapsible part of the Style tab. Closed, it still says what it is set
@@ -13,8 +14,15 @@ export const StyleSection: React.FC<{
   summary: string;
   open: boolean;
   onToggle: () => void;
+  /** Shown on its own beside the rail: no collapsing, the panel's head on top. */
+  bare?: boolean;
   children: React.ReactNode;
-}> = ({ id, title, summary, open, onToggle, children }) => (
+}> = ({ id, title, summary, open, onToggle, bare = false, children }) => bare ? (
+  <section id={`style-section-${id}`}>
+    <PanelHead title={title} summary={summary} />
+    <div className="p-4 flex flex-col gap-4">{children}</div>
+  </section>
+) : (
   <section className="rounded-xl border border-slate-800">
     <h3>
       <button
