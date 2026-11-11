@@ -3609,6 +3609,7 @@ export default function VideoCreatorPage() {
                 surahNumber={selectedSurah}
                 ayahStart={ayahStart}
                 ayahEnd={ayahEnd}
+                clipRange={recordingClip}
                 syncBackgroundVideo={uploadIsVideo && useVideoAsBackground && canvasConfig.bgUrl === videoBgUrl}
                 isPlaying={isPlaying}
                 backgroundTimeOffset={videoBgOffset}

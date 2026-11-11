@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { asBadgeStyle, usableBadgeStyle, badgeRange, badgeSurah, SURAH_NAME_FONT_ID } from './surahBadge';
+import { asBadgeStyle, usableBadgeStyle, badgeRange, badgeSurah, passageBadgeRange, SURAH_NAME_FONT_ID } from './surahBadge';
 
 describe('asBadgeStyle', () => {
   it('reads anything unknown, and every older project, as the pill', () => {
@@ -46,5 +46,25 @@ describe('badgeSurah', () => {
 
   it('keeps the project surah with no caption on screen', () => {
     expect(badgeSurah(undefined, project)).toBe(project);
+  });
+});
+
+describe('passageBadgeRange', () => {
+  const fallback = { surah: 2, start: 115, end: 149 };
+  const at = (key: string, startTime: number, endTime: number) => ({ verseKey: key, startTime, endTime });
+  // One recording of 2:115-149, cut into clips: every clip holds all of its captions.
+  const recording = [at('2:115', 1, 9), at('2:116', 10, 18), at('2:117', 19, 25), at('2:118', 26, 40), at('2:149', 300, 310)];
+
+  it("names only the ayahs inside a clip, not the recording's whole range", () => {
+    expect(passageBadgeRange(recording, { start: 9.5, end: 25.5 }, fallback)).toBe('2:116-117');
+    expect(passageBadgeRange(recording, { start: 25.5, end: 40.5 }, fallback)).toBe('2:118-118');
+  });
+
+  it('names every caption when there is no clip', () => {
+    expect(passageBadgeRange(recording, null, fallback)).toBe('2:115-149');
+  });
+
+  it('starts at the first ayah, not an opening', () => {
+    expect(passageBadgeRange([at('basmala', 0, 3), ...recording.slice(0, 2)], { start: 0, end: 18.5 }, fallback)).toBe('2:115-116');
   });
 });

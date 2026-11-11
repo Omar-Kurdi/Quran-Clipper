@@ -1,6 +1,5 @@
 'use client';
 
-import { isOpening } from '@/lib/openings';
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useCallback, useMemo, type ReactNode } from 'react';
 import { useOffsetBox } from '@/hooks/useOffsetBox';
 import { VerseData, arabicFontFamily, usableArabicFont } from '@/lib/quranData';
@@ -18,7 +17,7 @@ import { backgroundAt, backgroundPlaylist, mediaKind, BackgroundConfig, Backgrou
 import { captionTranslations, DEFAULT_TRANSLATION_ID } from '@/lib/translations';
 import { shownTafsir, TAFSIR_LABEL } from '@/lib/tafsirName';
 import { frameLayout, blockTop, textFits, splitFits } from '@/lib/frameLayout';
-import { paintSurahBadge, badgeSurah, badgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
+import { paintSurahBadge, badgeSurah, passageBadgeRange, usableBadgeStyle, DEFAULT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { fillArabicLine } from '@/lib/waqfMarks';
 import {
   captionLayers, parkedOnCaption, leadingLayer, revealedWords, recitedWord, settledWordTimes, asCaptionTransition, asWordEffect, asMotionSpeed,
@@ -258,6 +257,13 @@ interface VideoCanvasProps {
    * background to be discarded after a trim.
    */
   backgroundTimeOffset?: number;
+  /**
+   * The stretch of the recording this video is: an open clip's window, or the
+   * export's range. The badge names only the ayahs heard inside it -- a
+   * recording cut into clips holds every clip's captions. A render names the
+   * ayahs of the stretch it is rendering, whatever this says.
+   */
+  clipRange?: { start: number; end: number } | null;
   /**
    * Drawn over the canvas, exactly over its picture and never into it -- the
    * platform safe-area guide. Nothing here can reach an export.
@@ -531,6 +537,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   syncBackgroundVideo = false,
   isPlaying = false,
   backgroundTimeOffset = 0,
+  clipRange = null,
   overlay,
   showStats = false
 }, ref) => {
@@ -542,6 +549,8 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
   const overlayBox = useOffsetBox(canvasRef, !!overlay);
   const bgMediaRef = useRef<BackgroundMedia | null>(null);
   const isExportingRef = useRef<boolean>(false);
+  /** The stretch being rendered, while a render runs: what the badge's range is read from then. */
+  const renderingRangeRef = useRef<{ start: number; end: number } | null>(null);
   /**
    * Set when an export was stopped on purpose, as opposed to finishing.
    *
@@ -1102,7 +1111,11 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           y: arrangement.badgeY,
           accent: goldAccent,
           surah: badgeSurah(leading?.verseKey, { number: surahNumber, nameArabic: surahNameArabic, nameEnglish: surahNameEnglish }),
-          range: badgeRange(verses.find(verse => !isOpening(verse))?.verseKey, verses[verses.length - 1]?.verseKey, { surah: surahNumber, start: ayahStart, end: ayahEnd }),
+          range: passageBadgeRange(
+            verses,
+            isExportingRef.current && renderingRangeRef.current ? renderingRangeRef.current : clipRange,
+            { surah: surahNumber, start: ayahStart, end: ayahEnd }
+          ),
           customTitle: config.surahBadgeText?.trim() || '',
           subtitle: config.surahBadgeSubtitleText?.trim() || '',
           watermarkPosition: config.watermarkPosition,
@@ -1521,7 +1534,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       }
 
   }, [config, verses, tafsir, surahNameArabic, surahNameEnglish, dimensions,
-      getDisplayArabic, surahNumber, ayahStart, ayahEnd, arabicFontId, badgeStyle, motion]);
+      getDisplayArabic, surahNumber, ayahStart, ayahEnd, clipRange, arabicFontId, badgeStyle, motion]);
 
   // ---- LIVE PREVIEW LOOP ----
   useEffect(() => {
@@ -1584,6 +1597,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       if (!canEncodeOffline(config)) return null;
       if (badgeStyle === 'calligraphic') await document.fonts.load(...SURAH_NAME_FONT_SPEC).catch(() => []);
       isExportingRef.current = true;
+      renderingRangeRef.current = range;
       cancelledRef.current = false;
 
       /**
@@ -1712,6 +1726,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
       const endSec = Math.max(startSec + 0.1, range.end);
       const span = endSec - startSec;
       isExportingRef.current = true;
+      renderingRangeRef.current = range;
       cancelledRef.current = false;
       const exportStart = performance.now();
       const prevMuted = audioElement.muted;

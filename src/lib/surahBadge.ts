@@ -9,6 +9,7 @@
 
 import { SURAHS_LIST } from './quranData';
 import { SURAH_NAME_FAMILY, surahNameText } from './mushafFonts';
+import { isOpening } from './openings';
 
 export type BadgeStyle = 'pill' | 'calligraphic' | 'frame' | 'corner';
 
@@ -46,6 +47,24 @@ export function badgeRange(
   return firstKey.split(':')[0] === lastKey.split(':')[0]
     ? `${firstKey}-${lastKey.split(':')[1]}`
     : `${firstKey} → ${lastKey}`;
+}
+
+/**
+ * The range the badge states for the stretch `window` of the recording: the
+ * ayahs heard inside it, the same ones a clip's file name and caption name.
+ * Without a window, every caption. An opening (isti'adha, basmala) is not an
+ * ayah of the passage, so the range starts at the first one that is.
+ *
+ * A recording cut into clips holds every clip's captions, so naming the first
+ * and last of them put the whole recording's range on each clip's video.
+ */
+export function passageBadgeRange(
+  verses: { verseKey: string; startTime: number; endTime: number }[],
+  window: { start: number; end: number } | null | undefined,
+  fallback: { surah: number; start: number; end: number }
+): string {
+  const held = window ? verses.filter(verse => verse.endTime > window.start && verse.startTime < window.end) : verses;
+  return badgeRange(held.find(verse => !isOpening(verse))?.verseKey, held[held.length - 1]?.verseKey, fallback);
 }
 
 /**
