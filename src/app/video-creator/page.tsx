@@ -88,6 +88,8 @@ import { groundTruthFile, groundTruthFileName, groundTruthAudioName } from '@/li
 import { groundTruthClip, saveGroundTruth } from '@/lib/groundTruthSave';
 import { useAudioPlayback } from '@/hooks/useAudioPlayback';
 import { useTransportKeys } from '@/hooks/useTransportKeys';
+import { staysUp, useSaveStatus } from '@/hooks/useSaveStatus';
+import { SaveNotice } from '@/components/SaveNotice';
 import { useVideoExport } from '@/hooks/useVideoExport';
 import { buildProjectPayload, projectTitle, timelinePassage } from '@/lib/projectPayload';
 import {
@@ -507,8 +509,8 @@ export default function VideoCreatorPage() {
     setIsModalOpen: setIsExportModalOpen,
     start: startExport,
   } = useVideoExport();
-  /** `detail` carries why a save failed, so the reason is one hover away rather than console-only. */
-  const [saveStatus, setSaveStatus] = useState<{ text: string; kind: 'pending' | 'ok' | 'error'; detail?: string } | null>(null);
+  /** `detail` carries why a save failed; anything with one stays under the header until dismissed (`SaveNotice`). */
+  const [saveStatus, setSaveStatus] = useSaveStatus();
   // Which background block the panel acts on, so picking one in the lane and
   // removing it in the Style panel refer to the same block.
   const [selectedBackground, setSelectedBackground] = useState<number | null>(null);
@@ -1857,8 +1859,24 @@ export default function VideoCreatorPage() {
     onUndo: history.undo,
     onRedo: history.redo,
     onShowShortcuts: () => setIsShortcutsOpen(true),
-    onNextToCheck: goToNextCheck
+    onNextToCheck: goToNextCheck,
+    onSave: () => void handleSaveProject(),
+    onStepCaption: direction => {
+      if (!verses.length) return;
+      const next = Math.min(verses.length - 1, Math.max(0, selectedIndex + direction));
+      selectCaption(next);
+      handleSeek(verses[next].startTime);
+    }
   });
+
+  // A render in this tab dies with the tab, so closing or reloading mid-render
+  // asks first. Nothing else needs it: the work itself is kept as a draft.
+  useEffect(() => {
+    if (!isExporting) return;
+    const ask = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', ask);
+    return () => window.removeEventListener('beforeunload', ask);
+  }, [isExporting]);
 
 
   // Covers the case where the url did not change -- reloading the same surah
@@ -1919,12 +1937,11 @@ export default function VideoCreatorPage() {
     const outcome = clip ? await saveGroundTruth(withAudio, clip, saved) : null;
     if (outcome && 'written' in outcome) {
       setSaveStatus({ text: t.header.groundTruthWritten, kind: 'ok', detail: outcome.written.map(name => `scripts/${name}`).join('  ·  ') });
-      setTimeout(() => setSaveStatus(null), 8000);
       return;
     }
     // A reciter's passage has nothing to download in its place: say why.
     if (outcome && !outcome.fallback) {
-      setSaveStatus({ text: t.header.groundTruthFailed, kind: 'error', detail: outcome.error });
+      setSaveStatus({ text: t.header.groundTruthFailed, kind: 'error', detail: outcome.error, action: 'ground-truth' });
       return;
     }
 
@@ -1948,7 +1965,6 @@ export default function VideoCreatorPage() {
     link.click();
     if (customAudioFile) {
       setSaveStatus({ text: t.header.groundTruthDownloaded, kind: 'ok', detail: t.header.groundTruthNeedsAudio(uploadOriginalName || customAudioName) });
-      setTimeout(() => setSaveStatus(null), 10000);
     } else {
       setSaveStatus(null);
     }
@@ -2054,8 +2070,7 @@ export default function VideoCreatorPage() {
           // Saved, but the recitation did not fit alongside it. Better said now
           // than discovered on reopening, when the only clue would be silence.
           detail: storedAudio ? undefined : t.header.audioNotStored
-        });
-        setTimeout(() => setSaveStatus(null), storedAudio ? 3000 : 8000);
+        }, 3000);
       } else {
         const data = await res.json().catch(() => null) as { error?: string } | null;
         const reason = data?.error || t.header.saveFailedStatus(res.status);
@@ -2064,14 +2079,12 @@ export default function VideoCreatorPage() {
         // console: "Save Failed" on its own is the one thing nobody can act on,
         // and the usual cause -- a database that is not running -- is fixable in
         // one command once it is named.
-        setSaveStatus({ text: t.header.saveFailed, kind: 'error', detail: reason });
-        setTimeout(() => setSaveStatus(null), 8000);
+        setSaveStatus({ text: t.header.saveFailed, kind: 'error', detail: reason, action: 'save' });
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.error('Save failed:', reason);
-      setSaveStatus({ text: t.header.saveFailed, kind: 'error', detail: reason });
-      setTimeout(() => setSaveStatus(null), 8000);
+      setSaveStatus({ text: t.header.saveFailed, kind: 'error', detail: reason, action: 'save' });
     }
   };
 
@@ -3008,6 +3021,15 @@ export default function VideoCreatorPage() {
           </Button>
         </div>
       </header>
+
+      {staysUp(saveStatus) && (
+        <SaveNotice
+          status={saveStatus}
+          onRetry={saveStatus.action === 'save' ? handleSaveProject
+            : saveStatus.action === 'ground-truth' ? () => void handleDownloadGroundTruth() : undefined}
+          onDismiss={() => setSaveStatus(null)}
+        />
+      )}
 
       {/* Studio workspace.
 

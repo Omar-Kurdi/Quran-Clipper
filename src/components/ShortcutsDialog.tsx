@@ -42,8 +42,11 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
     ['Space', t.shortcuts.playPause],
     ['B', t.shortcuts.markEnd],
     ['N', t.shortcuts.nextToCheck],
+    ['[', t.shortcuts.prevCaption],
+    [']', t.shortcuts.nextCaption],
     ['Ctrl + Z', t.shortcuts.undo],
     ['Ctrl + Shift + Z', t.shortcuts.redo],
+    ['Ctrl + S', t.shortcuts.save],
     ['?', t.shortcuts.list],
     ['Esc', t.shortcuts.dismiss]
   ];

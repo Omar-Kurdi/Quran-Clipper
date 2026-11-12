@@ -45,7 +45,8 @@ export const ar: Dictionary = {
     duplicate: 'تكرار',
     moreActions: 'إجراءات أخرى',
     loading: 'جارٍ التحميل…',
-    dismiss: 'إخفاء'
+    dismiss: 'إخفاء',
+    tryAgain: 'حاول مجددًا'
   },
 
   palette: {
@@ -121,6 +122,7 @@ export const ar: Dictionary = {
   frame: {
     label: 'الإطار',
     safeArea: 'أظهر ما يغطيه التطبيق',
+    safeAreaShort: 'ما يغطيه التطبيق',
     covered: platform => `يغطيه ${platform}`,
   },
 
@@ -462,6 +464,9 @@ export const ar: Dictionary = {
     playPause: 'تشغيل التلاوة أو إيقافها',
     markEnd: 'إنهاء الآية المحدّدة عند المؤشر',
     nextToCheck: 'الانتقال إلى المقطع التالي المعلَّم للمراجعة',
+    prevCaption: 'الانتقال إلى المقطع السابق',
+    nextCaption: 'الانتقال إلى المقطع التالي',
+    save: 'حفظ المقطع في المشاريع',
     undo: 'التراجع عن آخر تغيير في المسار أو التنسيق',
     redo: 'إعادة تنفيذ ما تم التراجع عنه',
     list: 'فتح هذه القائمة',

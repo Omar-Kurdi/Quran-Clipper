@@ -46,7 +46,8 @@ export const en = {
     duplicate: 'Duplicate',
     moreActions: 'More actions',
     loading: 'Loading…',
-    dismiss: 'Dismiss'
+    dismiss: 'Dismiss',
+    tryAgain: 'Try again'
   },
 
   palette: {
@@ -122,6 +123,7 @@ export const en = {
   frame: {
     label: 'Frame',
     safeArea: 'Show what the app covers',
+    safeAreaShort: 'Covered areas',
     covered: (platform: string) => `Covered by ${platform}`,
   },
 
@@ -470,6 +472,9 @@ export const en = {
     playPause: 'Play or pause the recitation',
     markEnd: 'End the selected ayah at the playhead',
     nextToCheck: 'Go to the next caption marked for checking',
+    prevCaption: 'Go to the previous caption',
+    nextCaption: 'Go to the next caption',
+    save: 'Save the clip to Projects',
     undo: 'Undo the last timeline or styling change',
     redo: 'Redo a change that was undone',
     list: 'Open this list',

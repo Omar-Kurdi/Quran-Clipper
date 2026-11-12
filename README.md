@@ -248,7 +248,12 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   changing, and offered back on the next visit — offered, never applied on its own. Uploaded
   files cannot survive a reload, so their names are kept instead, which at least says what to
   pick again.
-- **<kbd>?</kbd> lists every keyboard shortcut.**
+- **<kbd>?</kbd> lists every keyboard shortcut.** Among them <kbd>[</kbd> and <kbd>]</kbd> for
+  the caption before and after the selected one, and <kbd>Ctrl</kbd>+<kbd>S</kbd> to save the clip
+  to Projects.
+- **A save that fails says why, and stays until you have read it:** a strip under the header
+  with the reason and *Try again*, on a phone as well. Closing the tab while a video is
+  rendering in it asks first.
 - **A short guided tour on the first visit,** in each language: it points at Source, Captions,
   Style, the timeline and Export in turn. Skip it, or take it again from the header's Help menu.
 - **Works on a phone.** The bottom bar is the same Source / Captions / Style as on a desktop. On

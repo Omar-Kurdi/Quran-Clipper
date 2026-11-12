@@ -10,10 +10,55 @@ function bareLetter(e: KeyboardEvent): 'KeyB' | 'KeyN' | null {
 }
 
 /**
+ * The keys added after the first set, as a plain function so they can be
+ * tested: Ctrl+S saves, and [ and ] step to the caption before and after the
+ * selected one. By physical key, or by name where no code is sent, for the
+ * same reasons as the rest (see below).
+ */
+export function extraShortcut(e: Pick<KeyboardEvent, 'code' | 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>):
+  'save' | 'prev-caption' | 'next-caption' | null {
+  const is = (physical: string, name: string) => e.code === physical || (!e.code && e.key.toLowerCase() === name);
+  if (e.altKey) return null;
+  if (e.ctrlKey || e.metaKey) return !e.shiftKey && is('KeyS', 's') ? 'save' : null;
+  if (is('BracketLeft', '[')) return 'prev-caption';
+  if (is('BracketRight', ']')) return 'next-caption';
+  return null;
+}
+
+type ExtraHandlers = { onSave?: () => void; onStepCaption?: (direction: -1 | 1) => void };
+
+/**
+ * Listens for the keys `extraShortcut` names. A listener of its own beside the
+ * transport's: none of these keys is one of its, so neither sees the other's.
+ */
+function useExtraShortcuts(latest: React.RefObject<ExtraHandlers>) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const extra = extraShortcut(e);
+      if (!extra) return;
+      // Saving works from a text box too: Ctrl+S there would otherwise offer
+      // to save the web page, which is never what was meant.
+      if (extra === 'save') {
+        e.preventDefault();
+        if (!e.repeat) latest.current?.onSave?.();
+        return;
+      }
+      const el = e.target as HTMLElement | null;
+      if (el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName ?? '')) return;
+      e.preventDefault();
+      latest.current?.onStepCaption?.(extra === 'prev-caption' ? -1 : 1);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [latest]);
+}
+
+/**
  * SPACE plays/pauses, B ends the current ayah at the playhead, N goes to the
- * next caption marked for checking, Ctrl+Z and
- * Ctrl+Shift+Z (or Ctrl+Y) walk the edit history, and ? opens the list of all
- * of them.
+ * next caption marked for checking, [ and ] to the caption before and after
+ * the selected one, Ctrl+Z and
+ * Ctrl+Shift+Z (or Ctrl+Y) walk the edit history, Ctrl+S saves the clip to
+ * Projects, and ? opens the list of all of them.
  *
  * Space used to do both -- play when paused, mark when playing -- which meant
  * there was no way to pause without cutting a boundary you didn't want.
@@ -38,11 +83,15 @@ export function useTransportKeys(handlers: {
   onRedo?: () => void;
   onShowShortcuts?: () => void;
   onNextToCheck?: () => void;
+  onSave?: () => void;
+  /** -1 for the caption before the selected one, 1 for the one after. */
+  onStepCaption?: (direction: -1 | 1) => void;
 }) {
   const latest = useRef(handlers);
   useEffect(() => {
     latest.current = handlers;
   }, [handlers]);
+  useExtraShortcuts(latest);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

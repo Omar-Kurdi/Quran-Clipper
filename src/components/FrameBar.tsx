@@ -26,13 +26,16 @@ export const FrameBar: React.FC<FrameBarProps> = ({ aspectRatio, chosenIndex, on
   const preset = framePreset(chosenIndex, aspectRatio);
   const size = ASPECT_RATIOS.find(ar => ar.id === aspectRatio);
   return (
-    <div className="w-full shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 px-1 pb-3">
-      <label className="flex items-center gap-2 text-[13px] text-slate-400">
-        {t.frame.label}
+    // On a phone the bar is one row: the label and the frame's size in pixels
+    // give way, and the checkbox says less. Wrapped onto two rows it took a
+    // third of the height the preview has there.
+    <div className="w-full shrink-0 flex flex-wrap max-sm:flex-nowrap items-center gap-x-4 gap-y-2 px-1 pb-3">
+      <label className="flex items-center gap-2 text-[13px] text-slate-400 max-sm:min-w-0 max-sm:flex-1">
+        <span className="max-sm:sr-only">{t.frame.label}</span>
         <select
           value={EXPORT_PRESETS.indexOf(preset)}
           onChange={e => onChoose(Number(e.target.value))}
-          className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[13px] font-semibold text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          className="h-9 max-sm:min-w-0 max-sm:w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[13px] font-semibold text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
         >
           {EXPORT_PRESETS.map((p, i) => (
             <option key={p.id} value={i}>
@@ -42,12 +45,13 @@ export const FrameBar: React.FC<FrameBarProps> = ({ aspectRatio, chosenIndex, on
         </select>
       </label>
       {coveredAreas(preset.id).length > 0 && (
-        <label className="flex items-center gap-2 text-[13px] text-slate-300 cursor-pointer">
+        <label className="flex items-center gap-2 text-[13px] text-slate-300 cursor-pointer shrink-0 whitespace-nowrap">
           <input type="checkbox" checked={safeArea} onChange={e => onSafeArea(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-          {t.frame.safeArea}
+          <span className="max-sm:hidden">{t.frame.safeArea}</span>
+          <span className="sm:hidden">{t.frame.safeAreaShort}</span>
         </label>
       )}
-      <span className="ms-auto font-mono text-xs text-slate-400" dir="ltr">
+      <span className="ms-auto font-mono text-xs text-slate-400 max-sm:hidden" dir="ltr">
         {size ? `${size.width} × ${size.height}` : aspectRatio}
       </span>
     </div>
