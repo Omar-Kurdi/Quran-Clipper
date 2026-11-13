@@ -21,7 +21,7 @@ export const LANDING_COPY = {
     },
     steps: {
       title: 'From recitation to video',
-      intro: 'The studio has three tabs, in the order you use them, and Export when it looks right.',
+      intro: 'The studio’s side rail runs in the order you work: the recitation, its captions, then the look — and Export when it looks right.',
       items: [
         {
           tab: '1 · Source',
@@ -38,10 +38,10 @@ export const LANDING_COPY = {
           video: 'captions',
         },
         {
-          tab: '3 · Style',
+          tab: '3 · Look',
           title: 'Give it a look',
           body:
-            'Layouts, Quran fonts, colours and backgrounds, with words lighting up as they are recited and soft motion between captions.',
+            'Twelve ready-made looks, or your own: Quran fonts, colours, layouts and backgrounds, with words lighting up as they are recited and soft motion between captions.',
           video: 'style',
         },
         {
@@ -88,7 +88,7 @@ export const LANDING_COPY = {
     },
     steps: {
       title: 'من التلاوة إلى الفيديو',
-      intro: 'في الاستوديو ثلاث علامات تبويب بالترتيب الذي تستعملها به، ثم التصدير حين يعجبك ما تراه.',
+      intro: 'يسير الشريط الجانبي في الاستوديو بترتيب عملك: التلاوة، ثم مقاطعها، ثم المظهر — ثم التصدير حين يعجبك ما تراه.',
       items: [
         {
           tab: '١ · المصدر',
@@ -105,9 +105,9 @@ export const LANDING_COPY = {
           video: 'captions',
         },
         {
-          tab: '٣ · التنسيق',
+          tab: '٣ · المظهر',
           title: 'اختر المظهر',
-          body: 'تخطيطات وخطوط مصحف وألوان وخلفيات، مع إضاءة الكلمات وهي تُتلى وانتقال هادئ بين المقاطع.',
+          body: 'اثنا عشر مظهرًا جاهزًا، أو مظهرك أنت: خطوط مصحف وألوان وتخطيطات وخلفيات، مع إضاءة الكلمات وهي تُتلى وانتقال هادئ بين المقاطع.',
           video: 'style',
         },
         {

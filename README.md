@@ -24,12 +24,12 @@ it, and exports the finished clip, all in the browser. Free for personal and non
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Passage.gif" alt="The Source tab, both ways in. First a built-in reciter: Surah Al-Mulk, ayahs 1 to 2, Load ayahs and audio, and the passage appears on the timeline. Then My recording: an uploaded recitation of Al-Falaq, the Trim it first step, Match recording, and the timeline fills with the isti'adha, the basmala and the five ayahs, each timed to the audio."><br><sub><b>Pick a reciter, or upload your own recitation.</b> Uploads are matched: the passage is found and every word timed to your audio.</sub></td>
-    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Captions.gif" alt="Playing the clip with Highlight as recited: each word lights up in gold as it is recited, the playhead moves along the timeline, and clicking the second caption opens its words in the Captions tab."><br><sub><b>Check the captions.</b> Words light up as they are recited.</sub></td>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Passage.gif" alt="The Source panel, both ways in. First a built-in reciter: Surah Al-Mulk, ayahs 1 to 2, Load ayahs and audio, and the passage appears on the timeline. Then My recording: an uploaded recitation of Al-Falaq, the Trim it first step, Match recording, and the timeline fills with the isti'adha, the basmala and the five ayahs, each timed to the audio."><br><sub><b>Pick a reciter, or upload your own recitation.</b> Uploads are matched: the passage is found and every word timed to your audio.</sub></td>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Captions.gif" alt="Playing the clip with Highlight as recited: each word lights up in gold as it is recited, the playhead moves along the timeline, and clicking the second caption opens its words in the Captions panel."><br><sub><b>Check the captions.</b> Words light up as they are recited.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Style.gif" alt="The Style tab: choosing the Gold Kaaba and then the Starlight preset changes the preview's background, fonts and card, and the Motion section is set to highlight words as recited."><br><sub><b>Make it yours.</b> Presets, fonts, translations, backgrounds and motion.</sub></td>
-    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Export.gif" alt="The Export dialog: YouTube Shorts and Instagram Feed are picked and Render 2 videos queues them; the first finishes as a 14 MB file while the second renders."><br><sub><b>Export.</b> Rendered in your browser, for every platform at once.</sub></td>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Style.gif" alt="The Presets panel: choosing the Gold Kaaba and then the Starlight preset changes the preview's background, fonts and card; then the Text panel's Motion chip jumps to its Motion group, and the words are set to highlight as recited."><br><sub><b>Make it yours.</b> Presets, fonts, translations, backgrounds and motion.</sub></td>
+    <td width="50%"><img src="docs/screenshots/QuranClipper_Demo_Export.gif" alt="The Export dialog: YouTube Shorts and Instagram Feed are picked and Render 2 videos queues them; the first finishes as a 25 MB file, ready to send to YouTube, while the second renders."><br><sub><b>Export.</b> Rendered in your browser, for every platform at once.</sub></td>
   </tr>
 </table>
 
@@ -39,9 +39,9 @@ only for timing. A word cannot go missing, come back garbled, or land in the wro
 those are structural properties of the method, not tuning. See [docs/ALIGNMENT.md](docs/ALIGNMENT.md).
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio with a matched recording of Surah Al-Falaq: the Captions tab on the left showing the selected caption, 113:2, with its words, translation and timing, the preview with the frame bar above it, and the timeline across the bottom with the isti'adha, the basmala and the five ayahs.">
+  <img src="docs/screenshots/QuranClipper_Studio.png" alt="The studio with a matched recording of Surah Al-Falaq: the side rail and the Captions panel on the left showing the selected caption, 113:2, with its words, translation and timing, the preview with the frame bar above it, and the timeline across the bottom with the isti'adha, the basmala and the five ayahs.">
 </p>
-<p align="center"><sub>One screen: the working panel (Source, Captions, Style), the preview, the timeline. Eight themes ship, seven dark and one light, switchable at runtime from the header's ⋯ menu.</sub></p>
+<p align="center"><sub>One screen: the side rail and its panel (Source, Captions, and each part of the look), the preview, the timeline. Eight themes ship, seven dark and one light, switchable at runtime from the header's ⋯ menu.</sub></p>
 
 ---
 
@@ -167,7 +167,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   will not re-select it.
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The Background section of the Style tab: the four ways backgrounds are used, and the gallery with each clip’s length under its label.">
+  <img src="docs/screenshots/QuranClipper_BackgroundPicker.png" alt="The Background panel: how backgrounds are used, dim and blur, and the gallery with each clip’s length under its label.">
 </p>
 
 - **A real timeline.** Each ayah is a block whose width is its actual duration, drawn over the
@@ -231,8 +231,8 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   background automatically instead of discarding it.
 
 **Styling and export**
-- **Presets**: six complete looks (font, colours, card, layout, badge, background and its dimming) at the top of
-  the Style tab, each shown as a miniature of the frame it makes. A preset never changes the
+- **Presets**: twelve complete looks (font, colours, card, layout, badge, background and its dimming) in
+  the Presets panel, each shown as a miniature of the frame it makes. A preset never changes the
   aspect ratio, the translations, the badge text or the watermark, and applying one is a single undo.
 - **The frame is chosen as a platform**, above the preview: YouTube Shorts · 9:16, Instagram
   Feed · 1:1 and so on, in 9:16, 16:9, 1:1 and 4:5. Export opens on the same platform, so the
@@ -284,12 +284,12 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
 - **Ayah ending**, with the number at the end of the ayah: the ornament with the number in it (the
   default), the mushaf page's own end glyph when the Arabic is in the Madani Mushaf face, ornate
   brackets, the number alone, or the number in a ring.
-- **Brief tafsir**, under *Style → Card*, off by default: Tafsir al-Muyassar, in Arabic, a sentence
+- **Brief tafsir**, under *Card*, off by default: Tafsir al-Muyassar, in Arabic, a sentence
   or two on each ayah under the translation, a size smaller, under its name. Its box in the
-  Captions tab edits it for every caption of the ayah, and of the ayahs it explains together with
+  Captions panel edits it for every caption of the ayah, and of the ayahs it explains together with
   it; the edit is saved with the project, as a translation's correction is, while the text as
   fetched never is.
-- **Layouts**, under *Style → Card*: the centred card; **no card**, the text set straight on the
+- **Layouts**, under *Card*: the centred card; **no card**, the text set straight on the
   picture; and the **Arabic and the translation apart**, each on its own card, with the ayah
   number between them. Each is a set of positions as
   fractions of the frame, so it holds at every aspect ratio, and the text inside is still shrunk
@@ -301,7 +301,7 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   the surah being recited on each caption. The calligraphic heading needs the surah-name font
   (see [Mushaf fonts and QUL data](#mushaf-fonts-and-qul-data)); without it the option is greyed
   out and a project that asks for it draws the pill.
-- **Motion**, under *Style → Motion*: how one caption gives way to the next (a **cut**, a
+- **Motion**, the last group of *Text*: how one caption gives way to the next (a **cut**, a
   **cross-fade**, a **fade through** the empty card, a **slide up** or a gentle **zoom**, at three
   speeds), and the words of an ayah **appearing as recited** or **highlighted as recited**, the
   highlight in the accent or a colour of its own. A change runs in the pause before the next
@@ -312,8 +312,9 @@ those are structural properties of the method, not tuning. See [docs/ALIGNMENT.m
   frame the same way the preview does. A project saved before motion existed opens with a cut.
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Text section of the Style tab: the Arabic calligraphy face, text sizes and the colour fields." width="30%">
-  <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and Watermark sections of the Style tab: layout, badge, card opacity and border, the audio visualiser and the watermark." width="30%">
+  <img src="docs/screenshots/QuranClipper_Presets.png" alt="The Presets panel: the twelve looks, each drawn as a miniature of the frame it makes, the one in use marked." width="30%">
+  <img src="docs/screenshots/QuranClipper_Layout.png" alt="The Text panel: a chip for each of its groups at the top -- Font, Size, Ayah number, Colours and Motion -- then the Arabic calligraphy face, the text sizes, the ayah number and its ending, the colour fields and the motion settings." width="30%">
+  <img src="docs/screenshots/QuranClipper_Card_Branding.png" alt="The Card and Watermark panels: layout, badge, badge and card opacity, the badge text, the card border, the audio visualiser and the watermark." width="30%">
 </p>
 
 - **Export aimed at a platform, not at a fixed frame** — seven platforms, ticked one or several
@@ -605,9 +606,9 @@ they can be swapped freely and compared on the same clip.
 | **Online** (`gemini`) | API key | you | Approximate |
 
 <p align="center">
-  <img src="docs/screenshots/QuranClipper_Matching.png" alt="The Source tab in My recording mode with a recitation chosen: the timing engines and their state, Match recording, Time it by hand and Trim audio." width="30%">
+  <img src="docs/screenshots/QuranClipper_Matching.png" alt="The Source panel in My recording mode with a recitation chosen: the Trim it first step, the timing engine and its state, Match recording and Time it by hand." width="30%">
 </p>
-<p align="center"><sub>Each matcher says whether it can run right now, and why not if it cannot — here the local sidecar has not been started.</sub></p>
+<p align="center"><sub>The timing engine says whether it can run right now, and why not if it cannot — here it is ready.</sub></p>
 
 **Local** is the recommended path. It is *given* the Quran text rather than asked to
 guess it: the text becomes a fixed CTC target and the model decides only *when* each word was
@@ -667,7 +668,7 @@ joins it to the next one, so a wrong boundary is a two-second fix rather than a 
 least sure of, each marked with an amber dot: a line the aligner ended at a stop mark with no
 pause heard there, or a caption scoring under 50%. It is about one caption in ten, and across our
 ground-truth clips four of the ten wrong ones were among them -- a place to start, not a
-guarantee. The Captions tab says why each is marked; **Looks right**, or splitting or merging it,
+guarantee. The Captions panel says why each is marked; **Looks right**, or splitting or merging it,
 clears the mark.
 
 **Shift later captions when I drag**, a checkbox on the timeline toolbar, decides what a drag
@@ -837,10 +838,13 @@ the same Content Sync snapshot, or from the open API when the snapshot cannot be
 
 ## Using the studio
 
-The studio is one screen: a **working panel** on the left with three tabs — **Source**,
-**Captions** and **Style** — the **preview** in the middle, and the **timeline** running the full
-width beneath them. The tabs follow the order a clip is made, but nothing is hidden behind a
-step: every tab is reachable at any time, and you can change which words are shown, the timing
+The studio is one screen: a **side rail** of icons on the left — **Source** and **Captions**,
+then the look in five parts, **Presets**, **Text**, **Background**, **Card** and **Watermark** —
+each opening its own panel beside it, the **preview** in the middle, and the **timeline** running
+the full width beneath them. **»** at the top of the rail shows each icon's name; it is off until
+you choose it and remembered in your browser. On a phone the same panels sit under three tabs,
+**Source**, **Captions** and **Style**. The rail follows the order a clip is made, but nothing is
+hidden behind a step: every panel is reachable at any time, and you can change which words are shown, the timing
 and the styling in any order, which is how the work actually goes.
 
 **Source — what you are making**
@@ -875,7 +879,7 @@ Source shows one way in at a time, chosen at the top: **Built-in reciter** or **
    boundary and move to the next one — the recitation keeps playing while you do.
 5. Drag either edge of a block to adjust it. Moving an end pushes the following ayahs along so
    the timeline stays contiguous.
-6. Click a block to select it; it opens in the Captions tab, unless you are on Style, where
+6. Click a block to select it; it opens in the Captions panel, unless a part of the look is open, where
    clicking through captions is how a look is checked against each of them. Zoom in when a
    boundary needs to land between two words.
 
@@ -1109,7 +1113,7 @@ curl -s -X POST http://127.0.0.1:8000/align \
 src/app/                     Next.js pages and API routes
   api/audio/match/           Matcher endpoint and provider dispatch
   video-creator/             The studio page
-src/components/              VideoCanvas, Timeline, Inspector (the Captions tab),
+src/components/              VideoCanvas, Timeline, Inspector (the Captions panel),
                              StyleConfigPanel, StyleSection, PanelTabs, FrameBar, GpuExportModal,
                              ExportChoices, SavedProjectsDrawer (Projects), ProjectList, HowItWorksDialog, AudioTrimModal,
                              TranslationPicker, TranslationChooser, ShortcutsDialog,
@@ -1145,7 +1149,7 @@ src/lib/
   exportRoute.ts             Whether an export renders now, through the queue, or on the server
   projectSearch.ts           Finding a saved clip, and the shapes it was rendered in
   frame.ts                   The platform the frame is shaped for, and what its app covers
-  stylePresets.ts            The Style tab's whole-look presets
+  stylePresets.ts            The whole-look presets of the Presets panel
   batchMatch.ts              Matching several recordings, one after another
   glBlur.ts                  The background blur in WebGL, used where it is the faster one
   serverRender.ts            Background renders: the job, what travels with it, the ffmpeg step

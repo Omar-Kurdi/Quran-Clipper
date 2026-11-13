@@ -29,24 +29,29 @@ const HEAD = 48;
 export const GroupNav: React.FC<{ items: { id: string; label: string }[] }> = ({ items }) => {
   const ref = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(items[0]?.id);
+  // The groups by name, so a re-render of the panel -- a setting changed, a
+  // note appearing under it -- does not re-read the position and drop the
+  // chip being read for the one above it; only scrolling does.
+  const ids = items.map(item => item.id).join(' ');
   useEffect(() => {
+    const groups = ids.split(' ');
     const root = scrollParent(ref.current);
     if (!root) return;
     const onScroll = () => {
       const top = root.getBoundingClientRect().top + HEAD + 56;
-      let current = items[0]?.id;
-      for (const item of items) {
-        const el = root.querySelector(`[data-group="${item.id}"]`);
-        if (el && el.getBoundingClientRect().top <= top) current = item.id;
+      let current = groups[0];
+      for (const id of groups) {
+        const el = root.querySelector(`[data-group="${id}"]`);
+        if (el && el.getBoundingClientRect().top <= top) current = id;
       }
       // The last group may be too short to reach the top: at the bottom, it is the one being read.
-      if (root.scrollTop + root.clientHeight >= root.scrollHeight - 2) current = items[items.length - 1]?.id;
+      if (root.scrollTop + root.clientHeight >= root.scrollHeight - 2) current = groups[groups.length - 1];
       setActive(current);
     };
     onScroll();
     root.addEventListener('scroll', onScroll, { passive: true });
     return () => root.removeEventListener('scroll', onScroll);
-  }, [items]);
+  }, [ids]);
   return (
     <div ref={ref} className="sticky top-12 z-20 -mx-4 -mt-4 mb-1 px-3 py-2 flex gap-1 overflow-x-auto bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
       {items.map(item => (

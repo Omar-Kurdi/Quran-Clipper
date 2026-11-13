@@ -11,8 +11,8 @@ import { open, click, BASE } from './lib.mjs';
 import fs from 'fs';
 const [locale, outDir, scene] = process.argv.slice(2);
 const L = {
-  en: { rec: 'My recording', match: 'Match recording', surah: 'Surah', to: 'To ayah', load: 'Load ayahs & audio', style: 'Style', captions: 'Captions', motion: 'Motion', between: 'Between captions:', words: 'Words:', play: 'Play recitation', exp: 'Export', render: 'Render', kaaba: 'Gold Kaaba', starlight: 'Starlight', feed: 'Instagram Feed' },
-  ar: { rec: 'تسجيلي', match: 'طابِق التسجيل', surah: 'السورة', to: 'إلى الآية', load: 'تحميل الآيات والصوت', style: 'التنسيق', captions: 'المقاطع', motion: 'الحركة', between: 'بين المقاطع:', words: 'الكلمات:', play: 'تشغيل التلاوة', exp: 'تصدير', render: 'صدّر', kaaba: 'الكعبة الذهبية', starlight: 'ضوء النجوم', feed: null },
+  en: { rec: 'My recording', match: 'Match recording', surah: 'Surah', to: 'To ayah', load: 'Load ayahs & audio', motion: 'Motion', between: 'Between captions:', words: 'Words:', play: 'Play recitation', exp: 'Export', render: 'Render', kaaba: 'Gold Kaaba', starlight: 'Starlight', feed: 'Instagram Feed', complete: 'Video Render Complete!' },
+  ar: { rec: 'تسجيلي', match: 'طابِق التسجيل', surah: 'السورة', to: 'إلى الآية', load: 'تحميل الآيات والصوت', motion: 'الحركة', between: 'بين المقاطع:', words: 'الكلمات:', play: 'تشغيل التلاوة', exp: 'تصدير', render: 'صدّر', kaaba: 'الكعبة الذهبية', starlight: 'ضوء النجوم', feed: null, complete: 'اكتمل تصدير الفيديو' },
 }[locale];
 
 async function loadPassage(page, onCamera) {
@@ -28,10 +28,10 @@ async function loadPassage(page, onCamera) {
   if (onCamera) await click(page, load); else await load.click();
   await page.getByRole('button', { name: /^67:2/ }).waitFor({ timeout: 30000 });
 }
+/** A panel of the side rail (src/components/PanelRail.tsx), by its id, so in either language. */
+const rail = (page, item) => page.locator(`#panel-tab-${item}`);
 async function motionSetting(page, which, value) {
-  await page.getByRole('tab', { name: new RegExp(L.style) }).click();
-  const head = page.getByRole('button', { name: new RegExp('^' + L.motion) });
-  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+  await rail(page, 'text').click();
   await page.getByLabel(which === 'between' ? L.between : L.words, { exact: true }).selectOption(value);
 }
 
@@ -55,11 +55,11 @@ const scenes = {
   },
   async captions(page, mark) {
     await loadPassage(page, false);
-    await page.getByRole('tab', { name: new RegExp(L.style) }).click();
+    await rail(page, 'presets').click();
     await page.getByRole('button', { name: new RegExp(L.kaaba) }).first().click();
     await motionSetting(page, 'words', 'highlight');
     await motionSetting(page, 'between', 'focus');
-    await page.getByRole('tab', { name: new RegExp(L.captions) }).click();
+    await rail(page, 'captions').click();
     await page.waitForTimeout(800);
     await mark('start');
     await click(page, page.getByRole('button', { name: L.play }));
@@ -72,15 +72,17 @@ const scenes = {
     await loadPassage(page, false);
     await page.waitForTimeout(500);
     await mark('start');
-    await click(page, page.getByRole('tab', { name: new RegExp(L.style) }));
+    await click(page, rail(page, 'presets'));
     await page.waitForTimeout(900);
     await click(page, page.getByRole('button', { name: new RegExp(L.kaaba) }).first());
     await page.waitForTimeout(1600);
     await click(page, page.getByRole('button', { name: new RegExp(L.starlight) }).first());
     await page.waitForTimeout(1600);
-    const head = page.getByRole('button', { name: new RegExp('^' + L.motion) });
-    await click(page, head);
-    await page.waitForTimeout(500);
+    // Motion is the Text panel's last group; its chip jumps there.
+    await click(page, rail(page, 'text'));
+    await page.waitForTimeout(700);
+    await click(page, page.locator('#panel-style').getByRole('button', { name: L.motion, exact: true }));
+    await page.waitForTimeout(800);
     const words = page.getByLabel(L.words, { exact: true });
     await click(page, words); await words.selectOption('highlight');
     await page.waitForTimeout(500);
@@ -97,7 +99,10 @@ const scenes = {
     const dialog = page.getByRole('dialog');
     if (L.feed) { await click(page, dialog.getByText(L.feed, { exact: true }).first()); await page.waitForTimeout(900); }
     await click(page, dialog.getByRole('button', { name: new RegExp('^' + L.render) }).first());
-    await page.waitForTimeout(6000);
+    // Until the first video is done, however long this machine takes: a queue
+    // offers it as a download, a single render says it is complete.
+    await dialog.locator('a[download]').or(dialog.getByText(L.complete)).first().waitFor({ timeout: 120000 });
+    await page.waitForTimeout(2500);
     await mark('end');
   },
 };
