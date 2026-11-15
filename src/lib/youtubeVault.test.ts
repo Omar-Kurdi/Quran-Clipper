@@ -17,7 +17,10 @@ describe('seal and unseal', () => {
 
   it('refuses a cookie tampered with, sealed under another secret, or not sealed at all', () => {
     const sealed = seal('1//refresh', 'shh');
-    const flipped = sealed.slice(0, -2) + (sealed.endsWith('A') ? 'B' : 'A') + sealed.slice(-1);
+    // The replacement is chosen against the character it replaces; chosen
+    // against the last one, it was sometimes the same letter and tampered nothing.
+    const flipped = sealed.slice(0, -2) + (sealed.at(-2) === 'A' ? 'B' : 'A') + sealed.slice(-1);
+    expect(flipped).not.toBe(sealed);
     expect(unseal(flipped, 'shh')).toBeNull();
     expect(unseal(sealed, 'other')).toBeNull();
     expect(unseal('1//refresh', 'shh')).toBeNull();
