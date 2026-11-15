@@ -1514,6 +1514,15 @@ const HighlightSwatches: React.FC<{ config: VideoCanvasConfig; onChange: (hex: s
           />
         ))}
       </div>
+      {/* Any colour at all, through the same picker as the text colours; the
+          swatches above are only the quick picks. */}
+      <div className="mt-2">
+        <ColorField
+          label={t.style.highlightCustom}
+          value={chosen || options[0].colour}
+          onChange={hex => onChange(asHighlightColour(hex))}
+        />
+      </div>
     </fieldset>
   );
 };

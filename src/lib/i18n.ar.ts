@@ -783,6 +783,7 @@ export const ar: Dictionary = {
     transitionHelp: 'يجري في الوقفة التي تسبق المقطع التالي إن وُجدت؛ وحيث تتصل المقاطع يتوسّط موضع الالتقاء.',
     highlightColourLabel: 'لون الإبراز:',
     highlightAccent: 'لون التمييز',
+    highlightCustom: 'أي لون',
     wordEffectLabel: 'الكلمات:',
     wordEffects: {
       none: 'كلها معًا',

@@ -800,6 +800,7 @@ export const en = {
     transitionHelp: 'Runs in the pause before the next caption when there is one; where captions run straight on, it is centred on the join.',
     highlightColourLabel: 'Highlight colour:',
     highlightAccent: 'Accent',
+    highlightCustom: 'Any colour',
     wordEffectLabel: 'Words:',
     wordEffects: {
       none: 'All at once',
