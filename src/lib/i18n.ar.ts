@@ -934,6 +934,8 @@ export const ar: Dictionary = {
     dragSelectionEnd: 'اسحب لتحريك نهاية التحديد',
     startLabel: 'البداية (د:ثث.ث)',
     endLabel: 'النهاية (د:ثث.ث)',
+    startLabelHours: 'البداية (س:دد:ثث.ث)',
+    endLabelHours: 'النهاية (س:دد:ثث.ث)',
     selectedLength: 'مدة التحديد',
     playFromPlayhead: 'التشغيل من مؤشر التشغيل',
     previewSelection: 'معاينة التحديد',

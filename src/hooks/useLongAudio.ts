@@ -105,21 +105,37 @@ export function useLongAudio(
     };
   }, [file]);
 
-  return { mode, long, ...useLongPlayer(long?.id) };
+  return { mode, long, ...useElementPlayer(long ? `/api/audio/long?id=${long.id}` : undefined) };
 }
 
-/** Plays the server's copy to listen to of the recording kept as `id`, streamed rather than held. */
-function useLongPlayer(id: string | undefined) {
+/**
+ * Plays `src` through an `<audio>` element, streamed rather than held, keeping
+ * the pitch at any speed: a long recording's copy from the server, or a short
+ * one's own file when the trim dialog plays it faster or slower than 1x -- a
+ * Web Audio buffer source can only change speed by changing the pitch.
+ */
+export function useElementPlayer(src: string | Blob | undefined) {
   const elementRef = useRef<HTMLAudioElement | null>(null);
+  /** A file's object URL, made when it is first played and let go with the element. */
+  const objectUrlRef = useRef<string | null>(null);
   useEffect(() => () => {
     elementRef.current?.pause();
     elementRef.current = null;
-  }, [id]);
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = null;
+  }, [src]);
 
   const element = useCallback(() => {
-    if (!elementRef.current) elementRef.current = new Audio(`/api/audio/long?id=${id}`);
+    if (!elementRef.current) {
+      let url = typeof src === 'string' ? src : undefined;
+      if (src instanceof Blob) url = objectUrlRef.current = URL.createObjectURL(src);
+      const audio = new Audio(url);
+      // The default in every current browser; said here because it is the point.
+      audio.preservesPitch = true;
+      elementRef.current = audio;
+    }
     return elementRef.current;
-  }, [id]);
+  }, [src]);
 
   /** Plays from `seconds` at `rate`, keeping the pitch; `onEnded` when the recording runs out. */
   const play = useCallback((seconds: number, rate: number, onEnded: () => void) => {

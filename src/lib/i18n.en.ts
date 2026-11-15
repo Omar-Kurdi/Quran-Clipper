@@ -954,6 +954,8 @@ export const en = {
     dragSelectionEnd: 'Drag to move the end of the selection',
     startLabel: 'Start (m:ss.s)',
     endLabel: 'End (m:ss.s)',
+    startLabelHours: 'Start (h:mm:ss.s)',
+    endLabelHours: 'End (h:mm:ss.s)',
     selectedLength: 'Selected length',
     playFromPlayhead: 'Play from the playhead',
     previewSelection: 'Preview selection',

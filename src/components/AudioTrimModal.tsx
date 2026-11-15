@@ -6,8 +6,9 @@ import { decodeAudioFile, computePeaks, buildTrimmedFile, TrimResult } from '@/l
 import { Dialog } from './Dialog';
 import { useT } from './LocaleProvider';
 import { useVolume, volumePreference } from '@/hooks/useVolume';
-import { cutLong, useLongAudio } from '@/hooks/useLongAudio';
+import { cutLong, useElementPlayer, useLongAudio } from '@/hooks/useLongAudio';
 import { envelopePeaks, MAX_LONG_TRIM_SEC } from '@/lib/longAudio';
+import { formatDuration, formatTick, parseTimecode } from '@/lib/timecode';
 
 interface AudioTrimModalProps {
   isOpen: boolean;
@@ -16,39 +17,9 @@ interface AudioTrimModalProps {
   onApply: (result: TrimResult & { trimStart: number; trimEnd: number }) => void;
 }
 
-/** `M:SS.s`, matching the format used for durations elsewhere in the studio. */
-export function formatDuration(seconds: number): string {
-  const s = Math.max(0, seconds);
-  const mins = Math.floor(s / 60);
-  const secs = (s % 60).toFixed(1).padStart(4, '0');
-  return `${mins}:${secs}`;
-}
-
-/**
- * Parses the timecodes the trim inputs accept: `3:31.7`, `3:31`, `1:02:05.4`,
- * or a bare `211.7`. Returns null for anything unparseable -- including the
- * empty field and a half-typed `3:` -- so the caller reverts to the previous
- * value instead of committing a NaN.
- */
-export function parseTimecode(input: string): number | null {
-  const parts = input.trim().split(':');
-  if (parts.length > 3) return null;
-  let total = 0;
-  for (const part of parts) {
-    if (!/^(\d+(\.\d*)?|\.\d+)$/.test(part)) return null;
-    total = total * 60 + Number(part);
-  }
-  return Number.isFinite(total) ? total : null;
-}
-
-/** Ruler tick label. Drops the decimal once the ticks are a second or more apart. */
-function formatTick(seconds: number, step: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return step < 1
-    ? `${mins}:${secs.toFixed(1).padStart(4, '0')}`
-    : `${mins}:${Math.round(secs).toString().padStart(2, '0')}`;
-}
+// Moved to the library, where they are tested; still exported from here for
+// the components that import them by this path.
+export { formatDuration, parseTimecode };
 
 const WAVEFORM_BUCKETS = 400;
 /** Keeps the canvas under the browser's max dimension (bucketCount * 2 px wide). */
@@ -218,6 +189,15 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const draggingRef = useRef<DragTarget | null>(null);
   const stopAtSelectionEndRef = useRef(false);
   const zoomAnchorRef = useRef<number | null>(null);
+  /**
+   * Whether the view keeps the playhead in sight while it plays. Scrolling by
+   * hand turns it off -- the view used to pull back to the playhead on the
+   * next frame, so nothing past the screen could be reached while a long
+   * recording played -- and playing, seeking or zooming turns it on again.
+   */
+  const followRef = useRef(true);
+  /** The scroll position the dialog itself last set, so its own scroll is not read as the user's. */
+  const autoScrollRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     trimEndRef.current = trimEnd;
     draggingRef.current = dragging;
@@ -243,6 +223,15 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     }
   });
   const { long, mode: audioMode } = longAudio;
+  /**
+   * A short recording faster or slower than 1x: its own file through an
+   * element, which keeps the pitch where a buffer source would raise it. At 1x
+   * it plays from the buffer, on the clock the waveform and the cut share; a
+   * skim is for finding a stretch, and is set exactly at 1x.
+   */
+  const quick = useElementPlayer(audioMode === 'short' ? file : undefined);
+  /** Whether what is playing now is `quick` rather than the buffer. */
+  const quickRef = useRef(false);
 
   useEffect(() => {
     if (audioMode !== 'short') return;
@@ -296,13 +285,47 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
       const margin = vp.clientWidth * 0.15;
       if (x >= vp.scrollLeft + margin && x <= vp.scrollLeft + vp.clientWidth - margin) return;
     }
-    vp.scrollLeft = Math.max(0, Math.min(x - vp.clientWidth / 2, vp.scrollWidth - vp.clientWidth));
+    const next = Math.round(Math.max(0, Math.min(x - vp.clientWidth / 2, vp.scrollWidth - vp.clientWidth)));
+    if (next === Math.round(vp.scrollLeft)) return;
+    autoScrollRef.current = next;
+    vp.scrollLeft = next;
   }, [duration]);
+
+  /** A scroll the dialog did not make is the user's: stop following the playhead. */
+  const handleViewportScroll = () => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    if (autoScrollRef.current !== null && Math.abs(vp.scrollLeft - autoScrollRef.current) <= 1) {
+      autoScrollRef.current = null;
+      return;
+    }
+    autoScrollRef.current = null;
+    followRef.current = false;
+  };
+
+  // A mouse wheel scrolls the waveform sideways, the way it is laid out; a
+  // trackpad's own sideways swipe is left as it is. Not passive, so the page
+  // behind the dialog does not scroll as well.
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp || !isOpen) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      if (vp.scrollWidth <= vp.clientWidth) return;
+      e.preventDefault();
+      vp.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    };
+    vp.addEventListener('wheel', onWheel, { passive: false });
+    return () => vp.removeEventListener('wheel', onWheel);
+  }, [isOpen, isDecoding]);
 
   /** Silences whatever is playing. Safe to call when nothing is. */
   const { stop: stopLong, play: playLong, position: longPosition, setVolume: setLongVolume, setRate: setLongRate } = longAudio;
+  const { stop: stopQuick, play: playQuick, position: quickPosition, setVolume: setQuickVolume } = quick;
   const stopSource = useCallback(() => {
     stopLong();
+    stopQuick();
+    quickRef.current = false;
     const source = sourceRef.current;
     sourceRef.current = null;
     playFromRef.current = null;
@@ -310,7 +333,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     source.onended = null;
     try { source.stop(); } catch { /* already stopped */ }
     source.disconnect();
-  }, [stopLong]);
+  }, [stopLong, stopQuick]);
 
   /** Plays a long recording's copy from `seconds` (`useLongAudio`); the frame loop stops a selection preview at its end. */
   const playLongFrom = useCallback(
@@ -329,6 +352,24 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     [long, playLong, stopSource]
   );
 
+  /** Plays a short recording faster or slower than 1x through `quick`, keeping the pitch; the frame loop stops a selection preview at its end. */
+  const playQuickFrom = useCallback(
+    (seconds: number) => {
+      if (!buffer) return;
+      stopSource();
+      const from = Math.max(0, Math.min(seconds, buffer.duration - 0.01));
+      playQuick(from, rateRef.current, () => {
+        stopSource();
+        setIsPlaying(false);
+        setPlayhead(buffer.duration);
+      });
+      quickRef.current = true;
+      playFromRef.current = { startedAt: 0, offset: from, rate: rateRef.current };
+      setIsPlaying(true);
+    },
+    [buffer, playQuick, stopSource]
+  );
+
   /**
    * Plays from `seconds`, optionally stopping at `stopAt`.
    *
@@ -342,6 +383,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     (seconds: number, stopAt?: number) => {
       if (long) return playLongFrom(seconds);
       if (!buffer) return;
+      if (rateRef.current !== 1) return playQuickFrom(seconds);
       const ctx =
         audioCtxRef.current ??
         (audioCtxRef.current = new (window.AudioContext ||
@@ -374,8 +416,8 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
         setIsPlaying(false);
         setPlayhead(Math.min(stopAt ?? buffer.duration, buffer.duration));
       };
-      // Faster raises the pitch here: a buffer source has no way to keep it. The
-      // long-recording path plays through an element, which does.
+      // Only ever 1x here: any other speed plays through `quick`, above, since
+      // a buffer source can change speed only by changing the pitch.
       const speed = rateRef.current;
       source.playbackRate.value = speed;
       source.start(0, from);
@@ -384,7 +426,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
       playFromRef.current = { startedAt: ctx.currentTime, offset: from, rate: speed };
       setIsPlaying(true);
     },
-    [buffer, long, playLongFrom, stopSource]
+    [buffer, long, playLongFrom, playQuickFrom, stopSource]
   );
 
   // Applied live, so moving the slider is heard mid-playback rather than at
@@ -392,16 +434,18 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   useEffect(() => {
     if (gainRef.current) gainRef.current.gain.value = volume;
     setLongVolume(volume);
-  }, [volume, setLongVolume]);
+    setQuickVolume(volume);
+  }, [volume, setLongVolume, setQuickVolume]);
 
   const seek = useCallback(
     (seconds: number) => {
       const clamped = Math.max(0, Math.min(seconds, duration));
+      followRef.current = true;
       scrubToRef.current = clamped;
       setPlayhead(clamped);
       // Playing through a seek restarts from the new point, which is what an
       // element-based player did for free. A selection preview keeps its end.
-      if (sourceRef.current) playFrom(clamped, stopAtSelectionEndRef.current ? trimEndRef.current : undefined);
+      if (playFromRef.current) playFrom(clamped, stopAtSelectionEndRef.current ? trimEndRef.current : undefined);
     },
     [duration, playFrom]
   );
@@ -425,7 +469,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const beginScrub = () => {
     stopAtSelectionEndRef.current = false;
     scrubToRef.current = playhead;
-    if (sourceRef.current) {
+    if (playFromRef.current) {
       resumeAfterScrubRef.current = true;
       stopSource();
       setIsPlaying(false);
@@ -470,19 +514,20 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const syncPlayhead = useCallback(() => {
     const ctx = audioCtxRef.current;
     const from = playFromRef.current;
-    if (!from || (!ctx && !long)) return;
-    const t = long ? longPosition() : from.offset + (ctx!.currentTime - from.startedAt) * from.rate;
+    if (!from || (!ctx && !long && !quickRef.current)) return;
+    const t = long ? longPosition() : quickRef.current ? quickPosition() : from.offset + (ctx!.currentTime - from.startedAt) * from.rate;
     setPlayhead(Math.min(t, duration));
     if (stopAtSelectionEndRef.current && t >= trimEndRef.current) {
       stopSource();
       setIsPlaying(false);
       setPlayhead(trimEndRef.current);
-    } else if (!draggingRef.current) {
+    } else if (!draggingRef.current && followRef.current) {
       // Never auto-scroll mid-drag; it would yank the track out from under the
-      // pointer just as the user is placing a trim point.
+      // pointer just as the user is placing a trim point. Nor once the user has
+      // scrolled away to look at something else (`followRef`).
       scrollToTime(t, 'ensure');
     }
-  }, [scrollToTime, duration, stopSource, long, longPosition]);
+  }, [scrollToTime, duration, stopSource, long, longPosition, quickPosition]);
 
   // requestAnimationFrame drives the playhead. It is paused while the tab is
   // hidden, so a backgrounded preview can run past the end of the selection --
@@ -521,6 +566,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
 
 
   const changeZoom = (next: number) => {
+    followRef.current = true;
     const vp = viewportRef.current;
     if (vp && duration > 0 && vp.scrollWidth > 0) {
       zoomAnchorRef.current = ((vp.scrollLeft + vp.clientWidth / 2) / vp.scrollWidth) * duration;
@@ -538,17 +584,18 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
       return;
     }
     stopAtSelectionEndRef.current = fromSelection;
+    followRef.current = true;
     const from = fromSelection || playhead >= duration - 0.01 ? trimStart : playhead;
     setPlayhead(from);
     playFrom(from, fromSelection ? trimEnd : undefined);
   };
 
-  /** A new speed, heard at once: the element changes in place, a buffer source starts again from where it was. */
+  /** A new speed, heard at once: the long recording's element changes in place; a short one starts again from where it was, on the buffer at 1x and the element otherwise. */
   const changeRate = (next: number) => {
     setRate(next);
     rateRef.current = next;
     if (long) return setLongRate(next);
-    if (sourceRef.current) playFrom(playhead, stopAtSelectionEndRef.current ? trimEnd : undefined);
+    if (playFromRef.current) playFrom(playhead, stopAtSelectionEndRef.current ? trimEnd : undefined);
   };
 
   const handleReset = () => {
@@ -556,18 +603,32 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     setTrimEnd(duration);
   };
 
+  /**
+   * Brings a typed start or end into view, an hour into a recording as much as
+   * a minute; playback, if it is running, is left to run without pulling the
+   * view back to itself.
+   */
+  const showTyped = (seconds: number) => {
+    followRef.current = false;
+    scrollToTime(seconds, 'center');
+  };
+
   const commitStart = (text: string) => {
     setStartDraft(null);
     const parsed = parseTimecode(text);
     if (parsed === null) return;
-    setTrimStart(Math.max(0, Math.min(parsed, trimEnd - MIN_TRIM_SECONDS)));
+    const next = Math.max(0, Math.min(parsed, trimEnd - MIN_TRIM_SECONDS));
+    setTrimStart(next);
+    showTyped(next);
   };
 
   const commitEnd = (text: string) => {
     setEndDraft(null);
     const parsed = parseTimecode(text);
     if (parsed === null) return;
-    setTrimEnd(Math.min(duration, Math.max(parsed, trimStart + MIN_TRIM_SECONDS)));
+    const next = Math.min(duration, Math.max(parsed, trimStart + MIN_TRIM_SECONDS));
+    setTrimEnd(next);
+    showTyped(next);
   };
 
   const handleApply = () => {
@@ -597,6 +658,8 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
   const endPct = duration > 0 ? pct(trimEnd) : 100;
   const playheadPct = pct(playhead);
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
+  /** A recording an hour or longer: its times read `h:mm:ss.s`, and the fields say so. */
+  const hours = duration >= 3600;
   const overLongCap = !!long && trimmedDuration > MAX_LONG_TRIM_SEC + 0.05;
   const timecodeInputClass =
     'w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono';
@@ -698,6 +761,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
 
             <div
               ref={viewportRef}
+              onScroll={handleViewportScroll}
               className="relative w-full overflow-x-auto overflow-y-hidden bg-slate-950 rounded-lg border border-slate-800"
             >
               {/* `overflow-hidden` clips the half-handle that hangs past each end
@@ -804,7 +868,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
 
             <div className="grid grid-cols-3 gap-3 mt-4">
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">{t.trim.startLabel}</label>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">{hours ? t.trim.startLabelHours : t.trim.startLabel}</label>
                 <input
                   type="text"
                   inputMode="text"
@@ -821,7 +885,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">{t.trim.endLabel}</label>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">{hours ? t.trim.endLabelHours : t.trim.endLabel}</label>
                 <input
                   type="text"
                   inputMode="text"
