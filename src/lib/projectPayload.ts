@@ -9,6 +9,7 @@
 
 import { VerseData, VideoCanvasConfigLike } from '@/lib/projectPayloadTypes';
 import { TrimWindow } from '@/lib/projectAudio';
+import type { AudioTags } from '@/lib/audioTags';
 
 export interface ProjectPayloadInput {
   surahNumber: number;
@@ -30,6 +31,8 @@ export interface ProjectPayloadInput {
   audioKey?: string;
   /** Where this project's audio sits inside that file, or null if it was never trimmed. */
   trimWindow?: TrimWindow | null;
+  /** What that file's own tag says (`audioTags.ts`); null when it says nothing. */
+  audioTags?: AudioTags | null;
   verses: VerseData[];
   config: VideoCanvasConfigLike;
 }
@@ -85,6 +88,7 @@ export function buildProjectPayload(input: ProjectPayloadInput): Record<string, 
     audioFileName: input.audioFileName || '',
     audioKey: input.audioFileName ? input.audioKey || '' : '',
     trimWindow: input.audioFileName ? input.trimWindow ?? null : null,
+    audioTags: input.audioFileName ? input.audioTags ?? null : null,
     versesJson: input.verses,
   };
 }

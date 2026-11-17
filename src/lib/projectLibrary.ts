@@ -24,6 +24,8 @@ export interface LibraryProject {
   reciterName?: string;
   audioFileName?: string | null;
   audioKey?: string | null;
+  /** What the uploaded file's own tag says (`audioTags.ts`). */
+  audioTags?: { artist?: string; title?: string; track?: number } | null;
   audioDuration?: string | number | null;
   clips?: unknown;
   versesJson?: unknown;
@@ -52,6 +54,8 @@ export interface LibraryRecording {
   surahNameArabic: string;
   /** The file's name for an upload, the reciter's for a built-in recording. */
   source: string;
+  /** Who recites an upload, as its file's tag names them; '' when it does not. */
+  artist: string;
   duration: string | number | null;
   /** The project to open it with: the one last edited. */
   project: LibraryProject;
@@ -62,10 +66,17 @@ export interface LibraryRecording {
   updatedAt: string;
 }
 
+/**
+ * One recording, one key: an upload's stored copy, or where there is none its
+ * file name -- with its reciter, since every reciter's folder has its own
+ * `049 - سورة الحجرات.mp3` and they are not one recording.
+ */
 const recordingKey = (project: LibraryProject) =>
-  project.audioKey || project.audioFileName
-    ? `upload:${project.audioKey || project.audioFileName}`
-    : `reciter:${project.reciterId ?? project.reciterName ?? ''}:${project.surahNumber}`;
+  project.audioKey
+    ? `upload:${project.audioKey}`
+    : project.audioFileName
+      ? `upload:${project.audioTags?.artist ?? ''}/${project.audioFileName}`
+      : `reciter:${project.reciterId ?? project.reciterName ?? ''}:${project.surahNumber}`;
 
 /** The ayah numbers of this surah heard in a stretch of the recording. */
 function ayahsIn(verses: { verseKey?: string; startTime: number; endTime: number }[], surah: number, clip: { start: number; end: number }) {
@@ -128,6 +139,7 @@ export function libraryOf(projects: LibraryProject[], done: { projectId: string;
       key, kind, surahNumber: latest.surahNumber,
       surahNameEnglish: latest.surahNameEnglish, surahNameArabic: latest.surahNameArabic || surah?.nameArabic || '',
       source: (kind === 'upload' ? latest.audioFileName : latest.reciterName) || '',
+      artist: kind === 'upload' ? group.find(project => project.audioTags?.artist)?.audioTags?.artist ?? '' : '',
       duration: latest.audioDuration ?? null, project: latest, projects: group, clips, coverage, updatedAt: latest.updatedAt,
     };
   });

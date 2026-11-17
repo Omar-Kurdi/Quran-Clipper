@@ -43,6 +43,20 @@ describe('libraryOf', () => {
 
 });
 
+describe('libraryOf, an upload by its tag', () => {
+  it("names an upload's reciter from its file's tag", () => {
+    const tagged = { ...upload('proj_a', '2026-11-01', []), audioTags: { artist: 'علاء عقل', track: 49 } };
+    expect(libraryOf([tagged], []).recordings[0].artist).toBe('علاء عقل');
+    expect(libraryOf([upload('proj_b', '2026-11-01', [])], []).recordings[0].artist).toBe('');
+  });
+
+  it("keeps two reciters' files of one name apart once their stored copies are gone", () => {
+    const of = (id: string, artist: string): LibraryProject => ({ ...upload(id, '2026-11-01', []), audioKey: '', audioTags: { artist } });
+    expect(libraryOf([of('proj_a', 'One'), of('proj_b', 'Two')], []).recordings).toHaveLength(2);
+    expect(libraryOf([of('proj_a', 'One'), of('proj_b', 'One')], []).recordings).toHaveLength(1);
+  });
+});
+
 describe("libraryOf, a built-in reciter's surah", () => {
   it("lists a built-in reciter's surah as one recording, each passage a clip", () => {
     const reciter = (id: string, start: number, end: number, updatedAt: string): LibraryProject => ({

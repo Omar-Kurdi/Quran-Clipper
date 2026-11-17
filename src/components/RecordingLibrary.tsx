@@ -83,7 +83,8 @@ const RecordingHead: React.FC<{ recording: LibraryRecording }> = ({ recording })
     <>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-[15px] font-semibold text-slate-100">{recording.surahNameEnglish}</span>
-        {recording.source && <span className="font-mono text-xs text-slate-400 truncate" dir="auto">{recording.source}</span>}
+        {recording.artist && <span className="text-[13px] font-semibold text-amber-300" dir="auto" title={t.library.artistTitle}>{recording.artist}</span>}
+        {recording.source &&<span className="font-mono text-xs text-slate-400 truncate" dir="auto">{recording.source}</span>}
       </div>
       <div className="flex flex-wrap gap-2 text-[11px]">
         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-slate-700 text-slate-300">

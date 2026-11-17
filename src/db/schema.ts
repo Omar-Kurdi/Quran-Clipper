@@ -36,6 +36,12 @@ export const projects = pgTable('projects', {
    * before it existed, and for a project with no clips.
    */
   clips: jsonb('clips').$type<{ id: string; start: number; end: number; style: Record<string, unknown> | null }[]>().default([]),
+  /**
+   * What an uploaded recording's own ID3 tag says -- its artist, title, album
+   * and track (`audioTags.ts`) -- for naming it in Projects. Null for a
+   * built-in reciter, and for an upload with no tag or saved before this.
+   */
+  audioTags: jsonb('audio_tags').$type<{ artist?: string; title?: string; album?: string; track?: number } | null>(),
 
 
   // Customization & Style Settings

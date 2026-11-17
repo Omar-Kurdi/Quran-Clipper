@@ -145,6 +145,50 @@ export function snapToAyahs(
   return ayahWindow(verses, first, last, duration);
 }
 
+/** An ayah's key, as `2:255`; the basmala and anything else unnumbered are not one. */
+const AYAH_KEY = /^\d+:\d+$/;
+
+/**
+ * The recording's ayahs in the order first heard, each with its first caption
+ * and its last -- the last of all its captions, a repeat's included -- as
+ * indices into `verses`, for choosing a clip by its first and last ayah.
+ */
+export function ayahList(verses: { verseKey?: string }[]): { key: string; first: number; last: number }[] {
+  const found = new Map<string, { key: string; first: number; last: number }>();
+  verses.forEach((verse, i) => {
+    const key = verse.verseKey;
+    if (!key || !AYAH_KEY.test(key)) return;
+    const seen = found.get(key);
+    if (seen) seen.last = i;
+    else found.set(key, { key, first: i, last: i });
+  });
+  return [...found.values()];
+}
+
+/**
+ * The clip from ayah `from` to ayah `to`, either way round: from its first
+ * caption to the other's last, opened and closed on the pauses as any clip by
+ * ayahs is (`ayahWindow`). Null when either is not in the recording.
+ */
+export function ayahRangeWindow(
+  verses: { verseKey?: string; startTime: number; endTime: number }[], from: string, to: string, duration: number
+): { start: number; end: number } | null {
+  const ayahs = ayahList(verses);
+  const a = ayahs.findIndex(ayah => ayah.key === from);
+  const b = ayahs.findIndex(ayah => ayah.key === to);
+  if (a < 0 || b < 0) return null;
+  const [first, last] = a <= b ? [ayahs[a], ayahs[b]] : [ayahs[b], ayahs[a]];
+  return ayahWindow(verses, first.first, Math.max(first.last, last.last), duration);
+}
+
+/** The first and last ayah heard in a stretch, as keys; null when it holds none. */
+export function ayahsHeld(
+  verses: { verseKey?: string; startTime: number; endTime: number }[], range: { start: number; end: number }
+): { from: string; to: string } | null {
+  const keys = clipVerses(verses, range).map(verse => verse.verseKey).filter((key): key is string => !!key && AYAH_KEY.test(key));
+  return keys.length ? { from: keys[0], to: keys[keys.length - 1] } : null;
+}
+
 /**
  * Each ayah of the recording once, in the order heard, with the clips that
  * hold it (their places in `clips`), for showing which ayahs are clipped

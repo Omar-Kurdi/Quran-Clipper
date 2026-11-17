@@ -8,6 +8,7 @@ import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour } f
 import { describeDbError } from '@/lib/dbError';
 import { markerStyleOf, placementOf } from '@/lib/ayahMarker';
 import { normalizeClips } from '@/lib/recordingClips';
+import { normalizeAudioTags } from '@/lib/audioTags';
 import { needsContentSync, syncProjectContent, CONTENT_SYNC_MAX_AGE_MS } from '@/lib/contentSync';
 
 const memoryProjects: any[] = [];
@@ -168,6 +169,7 @@ export async function POST(req: NextRequest) {
           : null,
       // An upload's clips, as windows on its recording; anything else is dropped.
       clips: normalizeClips(body.clips),
+      audioTags: normalizeAudioTags(body.audioTags),
       aspectRatio: body.aspectRatio || '9:16',
       fontArabic: resolveArabicFont(body.fontArabic),
       fontTranslation: body.fontTranslation || 'Inter',

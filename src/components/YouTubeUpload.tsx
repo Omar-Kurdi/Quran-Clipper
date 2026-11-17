@@ -26,7 +26,7 @@ interface YouTubeUploadProps {
 export type UnsentUpload = 'unsent' | 'uploading' | null;
 
 /** The hour a personal studio schedules its uploads for by default. */
-const PERSONAL_SCHEDULE_HOUR = 18;
+const PERSONAL_SCHEDULE_HOUR = 6;
 
 type Stage =
   | { kind: 'idle' }

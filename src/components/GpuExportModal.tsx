@@ -426,14 +426,14 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
       // download, an upload being set up -- that a stray click outside or an
       // Escape would throw away. It closes from its own buttons there.
       dismissible={!exportedBlobUrl}
-      panelClassName="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl overflow-hidden"
+      panelClassName="relative w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl"
     >
       <div>
         <button
           onClick={() => leaveResult(handleClose)}
           aria-label={isExporting ? t.exportModal.cancelRender : t.common.close}
           title={isExporting ? t.exportModal.cancelRender : t.common.close}
-          className="absolute top-4 end-4 p-2 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
+          className="sticky top-0 z-10 float-end -me-2 -mt-2 p-2 text-slate-400 hover:text-slate-100 rounded-lg bg-slate-900/90 hover:bg-slate-800 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>

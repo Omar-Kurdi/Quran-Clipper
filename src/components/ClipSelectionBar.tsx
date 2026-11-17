@@ -13,6 +13,11 @@ interface ClipSelectionBarProps {
   origin: number;
   /** The ayahs inside it, as `2:201–203`, or '' when it holds none. */
   label: string;
+  /** The recording's ayahs, as `2:201`, in the order heard, and the first and last of them it holds. */
+  ayahs?: string[];
+  held?: { from: string; to: string } | null;
+  /** Chosen by ayahs: from the first to the last, opened and closed on the pauses. */
+  onAyahs?: (from: string, to: string) => void;
   snap: boolean;
   onSnap: (on: boolean) => void;
   /** A typed start or end. */
@@ -56,13 +61,40 @@ const TimeField: React.FC<{ value: number; label: string; onCommit: (seconds: nu
 };
 
 /**
+ * The stretch as its first and last ayah, each a list of the recording's
+ * ayahs: what makes a clip that starts on an ayah and ends on one exactly,
+ * with no dragging. Before anything is selected it holds neither, and the
+ * first ayah chosen is the whole clip until the last is.
+ */
+export const AyahRangePicker: React.FC<{
+  ayahs: string[]; held: { from: string; to: string } | null; onAyahs: (from: string, to: string) => void;
+}> = ({ ayahs, held, onAyahs }) => {
+  const t = useT();
+  const select = (value: string, label: string, onPick: (key: string) => void) => (
+    <select value={value} onChange={e => onPick(e.target.value)} aria-label={label} dir="ltr"
+      className="bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 font-mono text-[11px] text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500/60">
+      {!held && <option value="">—</option>}
+      {ayahs.map(key => <option key={key} value={key}>{key}</option>)}
+    </select>
+  );
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-slate-300">
+      {t.clips.fromAyah}
+      {select(held?.from ?? '', t.clips.fromAyahLabel, key => onAyahs(key, held?.to ?? key))}
+      {t.clips.toAyah}
+      {select(held?.to ?? '', t.clips.toAyahLabel, key => onAyahs(held?.from ?? key, key))}
+    </span>
+  );
+};
+
+/**
  * What can be done with the stretch selected on the timeline, on a row of its
  * own under the transport: its times, which can be typed, its length and the
  * ayahs in it, whether it snaps to whole ayahs, and making it a clip -- or
  * moving the open clip to it.
  */
 export const ClipSelectionBar: React.FC<ClipSelectionBarProps> = ({
-  start, end, origin, label, snap, onSnap, onRange, makeName, onMake, setName, onSet, keepLabel, onKeep, onReset
+  start, end, origin, label, ayahs = [], held = null, onAyahs, snap, onSnap, onRange, makeName, onMake, setName, onSet, keepLabel, onKeep, onReset
 }) => {
   const t = useT();
   return (
@@ -73,7 +105,9 @@ export const ClipSelectionBar: React.FC<ClipSelectionBarProps> = ({
         <TimeField value={end - origin} label={t.clips.selectionEnd} onCommit={s => onRange(start, s + origin)} />
       </span>
       <span className="font-mono text-[11px] text-slate-400" dir="ltr">{formatDuration(end - start)}</span>
-      {label && <span className="font-mono text-[11px] text-slate-100 px-1.5 py-0.5 rounded bg-amber-500/15" dir="ltr">{label}</span>}
+      {ayahs.length > 0 && onAyahs
+        ? <AyahRangePicker ayahs={ayahs} held={held} onAyahs={onAyahs} />
+        : label && <span className="font-mono text-[11px] text-slate-100 px-1.5 py-0.5 rounded bg-amber-500/15" dir="ltr">{label}</span>}
       <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none" title={t.clips.snapTitle}>
         <input type="checkbox" checked={snap} onChange={e => onSnap(e.target.checked)} className="w-3.5 h-3.5 accent-amber-500" />
         {t.clips.snap}

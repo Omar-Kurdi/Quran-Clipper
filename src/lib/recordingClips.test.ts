@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  snapToAyahs, ayahCoverage,
+  snapToAyahs, ayahCoverage, ayahList, ayahRangeWindow, ayahsHeld,
   addClip, ayahWindow, clipLabel, clipStyle, clipVerses, dragClip, inPlayOrder, moveClip, newClip, normalizeClips, removeClip,
   settleLooks, styleDiff, switchOwnLook, MIN_CLIP_SEC, type RecordingClip
 } from './recordingClips';
@@ -128,6 +128,34 @@ describe('ayahWindow', () => {
 
   it('is nothing for captions that are not there', () => {
     expect(ayahWindow(verses, 0, 9, 60)).toBeNull();
+  });
+});
+
+describe('ayahList', () => {
+  it('lists each ayah once, in the order heard, leaving out the basmala', () => {
+    const heard = [verse('basmala', 0, 2), verse('2:1', 2, 4), verse('2:2', 4, 6), verse('2:2', 6, 8)];
+    expect(ayahList(heard)).toEqual([{ key: '2:1', first: 1, last: 1 }, { key: '2:2', first: 2, last: 3 }]);
+  });
+
+  it("runs an ayah to its repeat's last caption", () => {
+    const heard = [verse('2:1', 0, 2), verse('2:2', 2, 4), verse('2:1', 4, 6)];
+    expect(ayahList(heard)[0]).toEqual({ key: '2:1', first: 0, last: 2 });
+  });
+});
+
+describe('ayahRangeWindow and ayahsHeld', () => {
+  it('is the clip by ayahs from the first ayah to the last, either way round', () => {
+    expect(ayahRangeWindow(verses, '2:2', '2:3', 60)).toEqual(ayahWindow(verses, 1, 2, 60));
+    expect(ayahRangeWindow(verses, '2:3', '2:2', 60)).toEqual(ayahWindow(verses, 1, 2, 60));
+  });
+
+  it('is nothing for an ayah the recording does not have', () => {
+    expect(ayahRangeWindow(verses, '2:2', '2:9', 60)).toBeNull();
+  });
+
+  it('reads back the first and last ayah of a stretch, which the pickers show', () => {
+    expect(ayahsHeld(verses, ayahRangeWindow(verses, '2:2', '2:3', 60)!)).toEqual({ from: '2:2', to: '2:3' });
+    expect(ayahsHeld(verses, { start: 51, end: 59 })).toBeNull();
   });
 });
 

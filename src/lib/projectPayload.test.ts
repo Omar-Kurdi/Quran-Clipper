@@ -78,6 +78,12 @@ describe('buildProjectPayload', () => {
     expect(payload.trimWindow).toBeNull();
   });
 
+  it("carries an upload's own tags, and none for a built-in reciter", () => {
+    const tags = { artist: 'علاء عقل', track: 49 };
+    expect(buildProjectPayload({ ...base, audioFileName: 'test4.mp3', audioTags: tags }).audioTags).toEqual(tags);
+    expect(buildProjectPayload({ ...base, audioFileName: '', audioTags: tags }).audioTags).toBeNull();
+  });
+
   it('stores neither for a built-in reciter, however the studio got there', () => {
     // A session that uploaded a file, trimmed it, then went back to a reciter
     // must not save that file's name against reciter audio -- reopening would

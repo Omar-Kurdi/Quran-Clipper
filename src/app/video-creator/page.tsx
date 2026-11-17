@@ -126,6 +126,8 @@ import { buildRenderForm } from '@/lib/serverRenderForm';
 import { exportFileName } from '@/lib/exportName';
 import { exportRangeFor } from '@/lib/exportRange';
 import { useRecordingClips } from '@/hooks/useRecordingClips';
+import { useSeekableUpload } from '@/hooks/useSeekableUpload';
+import { normalizeAudioTags, readAudioTags, TAG_HEAD_BYTES, type AudioTags } from '@/lib/audioTags';
 import { ayahWindow, clipLabel, clipVerses, inPlayOrder, normalizeClips, styleDiff } from '@/lib/recordingClips';
 import { ClipsPanel } from '@/components/ClipsPanel';
 import { ClipTabs } from '@/components/ClipTabs';
@@ -179,6 +181,10 @@ function savedStatusText(
  */
 const DEFAULT_AUDIO_URL = SAMPLE_PROJECTS[0].audioUrl;
 
+
+/** An upload's own tag, read from the start of the file; null for none, or when it cannot be read. */
+const tagsOf = (file: File): Promise<AudioTags | null> =>
+  file.slice(0, TAG_HEAD_BYTES).arrayBuffer().then(bytes => readAudioTags(new Uint8Array(bytes))).catch(() => null);
 export default function VideoCreatorPage() {
   const { locale, t } = useLocale();
   // Personal or public, and which fonts this server has -- see `/api/studio`.
@@ -213,6 +219,8 @@ export default function VideoCreatorPage() {
    * would be asking for something that never existed.
    */
   const [uploadOriginalName, setUploadOriginalName] = useState<string>('');
+  /** What the upload's own tag says -- its reciter, title, track (`audioTags.ts`) -- saved for naming it in Projects. */
+  const [uploadTags, setUploadTags] = useState<AudioTags | null>(null);
   /**
    * Where this session's audio is stored in the browser, so a saved project can
    * find it again. Minted on upload and re-minted on every trim, because a trim
@@ -950,6 +958,7 @@ export default function VideoCreatorPage() {
     setCustomAudioName(adopted.file.name);
     setCustomAudioDuration(adopted.duration);
     setUploadOriginalName(expecting.fileName);
+    void tagsOf(file).then(setUploadTags);
     setAudioKey(newAudioKey());
     setAudioUrl(adopted.url);
     if (adopted.duration > 0) setAudioDuration(adopted.duration);
@@ -975,6 +984,13 @@ export default function VideoCreatorPage() {
    * particular file, and starting a fresh upload with it would rebase an
    * already-rebased timeline and put every caption `trimStart` seconds early.
    */
+  /** A new upload's name as the user knows it, and what its own tag says. */
+  const nameUpload = (file: File) => {
+    setUploadOriginalName(file.name);
+    setUploadTags(null);
+    void tagsOf(file).then(setUploadTags);
+  };
+
   const acceptRecitationFile = async (file: File | undefined) => {
     if (file) {
       setSourceMode('recording');
@@ -997,7 +1013,7 @@ export default function VideoCreatorPage() {
       // The name the user would recognise, kept apart from `customAudioName`
       // because a trim renames that to `-trimmed.wav`. A fresh key too: this is
       // a different recording from whatever was here before.
-      setUploadOriginalName(file.name);
+      nameUpload(file);
       setAudioKey(newAudioKey());
       setAwaitingAudio(null);
       // A fresh upload starts un-trimmed, so the video and its audio share a
@@ -1318,6 +1334,28 @@ export default function VideoCreatorPage() {
       const styled = preset ? applyStylePreset(prev, preset) : prev;
       return background ? { ...styled, bgType: 'video', bgUrl: background.url, bgMode: 'single' } : styled;
     });
+  };
+
+  /** Whether another background is being looked for, which the Background section's button shows. */
+  const [findingBackground, setFindingBackground] = useState(false);
+  /**
+   * Another background about as long as what is exported, other than the one on
+   * screen: a few asked at once, as each asks Pexels for themes at random,
+   * and the built-ins when none of them differs.
+   */
+  const findAnotherBackground = async () => {
+    // What the export renders: the open clip, a reciter's passage -- not its whole chapter -- or the upload.
+    const seconds = recordingClip ? recordingClip.end - recordingClip.start : exportRangeFor(verses, audioDuration, !!customAudioUrl).span;
+    if (!(seconds > 0)) return;
+    setFindingBackground(true);
+    const current = canvasConfig.bgUrl;
+    const query = new URLSearchParams({ seconds: String(seconds), orientation: searchOrientation(canvasConfig.aspectRatio) });
+    const found: (BackgroundCandidate | null)[] = await Promise.all([0, 1, 2].map(() =>
+      fetch(`/api/background/match?${query}`).then(res => (res.ok ? res.json() : null)).catch(() => null)));
+    const background = found.find(each => each?.url && each.url !== current)
+      ?? chooseBackground(builtInCandidates().filter(each => each.url !== current), seconds);
+    setFindingBackground(false);
+    if (background) setCanvasConfig(prev => ({ ...prev, bgType: 'video', bgUrl: background.url, bgMode: 'single' }));
   };
 
   const runAutoMatch = async (
@@ -1657,6 +1695,7 @@ export default function VideoCreatorPage() {
       audioFileName: file.name,
       audioKey: stored ? key : '',
       trimWindow: null,
+      audioTags: await tagsOf(file),
       verses: result.verses,
       config: withStoredBackgrounds(canvasConfig) as unknown as Record<string, unknown>,
     });
@@ -1824,7 +1863,21 @@ export default function VideoCreatorPage() {
    */
   const editKey = isEdited(audioEdit) ? encodeEdit(audioEdit) : '';
   const renderedUpload = customAudioFile && uploadRenders.file === customAudioFile ? uploadRenders.urls[editKey] : undefined;
-  const playUrl = !editKey ? audioUrl : customAudioFile ? renderedUpload ?? audioUrl : editedAddress(audioUrl, audioEdit) ?? audioUrl;
+  /** An uploaded VBR MP3 plays from a copy that seeks exactly (`seekableAudio.ts`), once it is made. */
+  const seekableUpload = useSeekableUpload(customAudioFile, customAudioDuration);
+  const uploadPlayUrl = seekableUpload && audioUrl === customAudioUrl ? seekableUpload.url : audioUrl;
+  const playUrl = !editKey ? uploadPlayUrl : customAudioFile ? renderedUpload ?? audioUrl : editedAddress(audioUrl, audioEdit) ?? audioUrl;
+
+  // The copy replaces the upload under the element: it carries on from where the upload was, playing if it
+  // was. Read from the render that swapped them -- by now the element has started over on the copy.
+  const swappedToRef = useRef<string | null>(null);
+  useEffect(() => {
+    const audio = audioElementRef.current;
+    if (!seekableUpload || !audio || uploadPlayUrl !== seekableUpload.url || swappedToRef.current === seekableUpload.url) return;
+    swappedToRef.current = seekableUpload.url;
+    queueSeek(seekableUpload.url, currentTime);
+    if (isPlaying) audio.addEventListener('canplay', () => { audio.play().catch(() => {}); }, { once: true });
+  }, [seekableUpload, uploadPlayUrl, queueSeek, currentTime, isPlaying, audioElementRef]);
 
   // An upload's edit restored by undo or redo past what this session rendered.
   useEffect(() => {
@@ -2024,6 +2077,7 @@ export default function VideoCreatorPage() {
       audioFileName: customAudioFile ? uploadOriginalName : '',
       audioKey,
       trimWindow,
+      audioTags: uploadTags,
       verses,
       // An uploaded background is a `blob:` url that dies with this tab, so
       // what goes to the row is the library's id for the file instead. A
@@ -2595,6 +2649,7 @@ export default function VideoCreatorPage() {
       setCustomAudioName('');
       setCustomAudioDuration(0);
       setUploadOriginalName('');
+      setUploadTags(null);
       setAudioKey('');
       setAwaitingAudio(null);
       setTrimWindow(null);
@@ -2605,6 +2660,7 @@ export default function VideoCreatorPage() {
 
     const blob = proj.audioKey ? await loadProjectAudio(proj.audioKey) : null;
     setUploadOriginalName(fileName);
+    setUploadTags(normalizeAudioTags(proj.audioTags));
     setTrimWindow(trim);
     setVideoBgOffset(trim ? trim.start : 0);
     setUploadIsVideo(false);
@@ -2624,6 +2680,8 @@ export default function VideoCreatorPage() {
     // Stored as the file the timeline belongs to, so it is adopted as it is --
     // no re-cut, and nothing to recompute.
     const file = new File([blob], fileName, { type: blob.type || 'audio/wav' });
+    // Saved before tags were kept: the stored copy may still carry its own.
+    if (!proj.audioTags) void tagsOf(file).then(setUploadTags);
     const url = URL.createObjectURL(file);
     setCustomAudioFile(file);
     setCustomAudioUrl(url);
@@ -3686,6 +3744,8 @@ export default function VideoCreatorPage() {
                   selectedBackground={activeBackground}
                   onSelectBackground={setSelectedBackground}
                   only={wide ? styleArea : null}
+                  onAnotherBackground={findAnotherBackground}
+                  findingBackground={findingBackground}
                 />
               </div>
             )}

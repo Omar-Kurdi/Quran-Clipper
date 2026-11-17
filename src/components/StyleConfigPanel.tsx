@@ -38,7 +38,7 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
-  Layers, SlidersHorizontal, ArrowDownUp, Plus
+  Layers, SlidersHorizontal, ArrowDownUp, Plus, RefreshCw
 } from 'lucide-react';
 import { PresetGallery } from './PresetGallery';
 import { StyleSection } from './StyleSection';
@@ -70,6 +70,9 @@ interface StyleConfigPanelProps {
   onSelectBackground?: (index: number | null) => void;
   /** Show only this part of the look, as the rail opens it; every part, collapsible, without. */
   only?: StyleArea | null;
+  /** Swaps the background for another about as long as the clip, from Pexels or the built-ins. */
+  onAnotherBackground?: () => void;
+  findingBackground?: boolean;
 }
 
 /** The parts of the look, each of which the rail can open on its own. */
@@ -85,7 +88,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   laneBlocks = [],
   selectedBackground = null,
   onSelectBackground,
-  only = null
+  only = null,
+  onAnotherBackground,
+  findingBackground = false
 }) => {
   const t = useT();
   const { missingFonts } = useStudioConfig();
@@ -1115,6 +1120,13 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                     ? t.style.galleryLabelSingle
                     : t.style.galleryLabelMulti}
               </span>
+              {onAnotherBackground && !customBackground && !multiBackground && (
+                <button type="button" onClick={onAnotherBackground} disabled={findingBackground} title={t.style.anotherBackgroundTitle}
+                  className="ms-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-700 text-xs font-semibold text-slate-200 hover:border-amber-500/60 hover:text-amber-300 disabled:opacity-50 transition-colors">
+                  <RefreshCw className={`w-3.5 h-3.5 ${findingBackground ? 'animate-spin' : ''}`} />
+                  {t.style.anotherBackground}
+                </button>
+              )}
               {bgSortSelect}
             </div>
             <p className="text-xs text-slate-400 mb-2">{t.style.galleryHelp}</p>

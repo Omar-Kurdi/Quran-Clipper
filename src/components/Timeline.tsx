@@ -19,7 +19,8 @@ import { useT } from './LocaleProvider';
 import { ClipLane } from './ClipLane';
 import { ClipSelectionBar } from './ClipSelectionBar';
 import { TimelineOverview } from './TimelineOverview';
-import { clipLabel, snapToAyahs } from '@/lib/recordingClips';
+import { ayahList, ayahRangeWindow, ayahsHeld, clipLabel, snapToAyahs } from '@/lib/recordingClips';
+import { AyahRangePicker } from './ClipSelectionBar';
 import { LengthReadout } from './LengthReadout';
 import { TimelineSkeleton } from './Skeleton';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
@@ -523,6 +524,14 @@ export const Timeline: React.FC<TimelineProps> = ({
     onAddClip(clipRange.start, clipRange.end);
     setClip(null);
   };
+  /** The recording's ayahs, for choosing a stretch by its first and last. */
+  const ayahKeys = useMemo(() => ayahList(verses).map(ayah => ayah.key), [verses]);
+  const chooseAyahs = (from: string, to: string) => {
+    const chosen = ayahRangeWindow(verses, from, to, duration);
+    if (!chosen) return;
+    setClip({ url: audioUrl, ...chosen });
+    onSeek(chosen.start);
+  };
   const makeRef = useRef(makeClip);
   useEffect(() => { makeRef.current = makeClip; });
   /** Enter makes the selection a clip, unless a field or a button has the key. */
@@ -706,13 +715,19 @@ export const Timeline: React.FC<TimelineProps> = ({
 
       {selecting && (!clipIsWhole || selectHint) && (
         clipIsWhole ? (
-          <p className="px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/[0.06] text-xs text-amber-200">{t.clips.newTabHint}</p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/[0.06]">
+            <p className="text-xs text-amber-200">{t.clips.newTabHint}</p>
+            {ayahKeys.length > 0 && <AyahRangePicker ayahs={ayahKeys} held={null} onAyahs={chooseAyahs} />}
+          </div>
         ) : (
           <ClipSelectionBar
             start={clipRange.start}
             end={clipRange.end}
             origin={origin}
             label={clipLabel(verses, clipRange)}
+            ayahs={ayahKeys}
+            held={ayahsHeld(verses, clipRange)}
+            onAyahs={chooseAyahs}
             snap={snap}
             onSnap={on => {
               setSnap(on);
