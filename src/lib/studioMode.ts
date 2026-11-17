@@ -14,6 +14,21 @@ export function studioMode(env: Record<string, string | undefined> = process.env
 }
 
 /**
+ * What `next.config.ts` bakes into the browser on top of the `NEXT_PUBLIC_`
+ * values from the environment and .env files.
+ *
+ * A public studio's server serves Saheeh International (20) whatever
+ * .env.local names (`defaultTranslationId`), but the browser's copy of that id
+ * is fixed at build time from NEXT_PUBLIC_QURAN_TRANSLATION_ID. Built with the
+ * owner's 131 there, captions holding 20's text were labelled 131 and the
+ * Translations chip showed a bare "131". Next.js loads .env files before it
+ * reads its config, so STUDIO_MODE from .env.local is seen here too.
+ */
+export function browserEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
+  return studioMode(env) === 'public' ? { NEXT_PUBLIC_QURAN_TRANSLATION_ID: '20' } : {};
+}
+
+/**
  * Routes a public installation does not serve.
  *
  * Saved projects and export records have no owner -- there are no accounts --

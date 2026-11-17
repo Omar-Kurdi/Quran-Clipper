@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
+import { browserEnv } from "./src/lib/studioMode";
 
 const nextConfig: NextConfig = {
+  /** A public studio's browser carries the translation its server serves -- see `browserEnv`. */
+  env: browserEnv(),
   experimental: {
     /**
      * How much of a request body the framework buffers when middleware runs.

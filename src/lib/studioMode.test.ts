@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { studioMode, closedInPublicMode, publicPage } from './studioMode';
+import { studioMode, browserEnv, closedInPublicMode, publicPage } from './studioMode';
 
 describe('studioMode', () => {
   it('is personal unless public is asked for', () => {
@@ -11,6 +11,19 @@ describe('studioMode', () => {
   it('reads public however it is written', () => {
     expect(studioMode({ STUDIO_MODE: 'public' })).toBe('public');
     expect(studioMode({ STUDIO_MODE: ' Public ' })).toBe('public');
+  });
+});
+
+describe('browserEnv', () => {
+  it("gives a public studio's browser the translation its server serves, whatever .env names", () => {
+    // Built with the owner's 131, a public studio's Translations chip read a bare "131".
+    expect(browserEnv({ STUDIO_MODE: 'public', NEXT_PUBLIC_QURAN_TRANSLATION_ID: '131' }))
+      .toEqual({ NEXT_PUBLIC_QURAN_TRANSLATION_ID: '20' });
+  });
+
+  it("leaves a personal studio's own setting alone", () => {
+    expect(browserEnv({ STUDIO_MODE: 'personal', NEXT_PUBLIC_QURAN_TRANSLATION_ID: '131' })).toEqual({});
+    expect(browserEnv({})).toEqual({});
   });
 });
 
