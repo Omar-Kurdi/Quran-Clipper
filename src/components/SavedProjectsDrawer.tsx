@@ -11,13 +11,15 @@ import { formatBytes } from '@/lib/exportPresets';
 import { formatTime } from '@/lib/verseEdits';
 import { listProjects, deleteProject as removeProject } from '@/lib/projectStore';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { ProjectListHeader, ProjectListRow } from './ProjectList';
-import { matchesProject, renderedShapes } from '@/lib/projectSearch';
+import { matchesProject } from '@/lib/projectSearch';
+import { RecordingLibrary, type OpenRequest } from './RecordingLibrary';
+import type { LibraryRecording } from '@/lib/projectLibrary';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoadProject: (project: unknown) => void;
+  /** Opens a project, on one of its clips, or ready to choose the next clip's stretch. */
+  onLoadProject: (project: unknown, open?: { clipId: string | null; newClip?: boolean }) => void;
   /** Starts another clip: the Source tab, on its form. */
   onNewClip: () => void;
   /** Saves the clip being worked on, from the empty list. */
@@ -39,7 +41,11 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   const [exportsList, setExportsList] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   /** The project the confirm dialog is asking about, and what went wrong last time. */
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string; kind: 'project' | 'export' } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string; kind: 'export' } | null>(null);
+  /** The recording the confirm dialog is asking about removing, with every project saved from it. */
+  const [pendingRecording, setPendingRecording] = useState<LibraryRecording | null>(null);
+  /** Every project and clip with a render on record, for the library's ticks. */
+  const [done, setDone] = useState<{ projectId: string; clipId: string }[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -47,12 +53,17 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [projects, expRes] = await Promise.all([
+      const [projects, expRes, doneRes] = await Promise.all([
         listProjects(mode),
-        mode === 'public' ? null : fetch('/api/exports')
+        mode === 'public' ? null : fetch('/api/exports'),
+        mode === 'public' ? null : fetch('/api/exports?done=1')
       ]);
 
       if (projects) setProjectsList(projects);
+      if (doneRes?.ok) {
+        const data = await doneRes.json().catch(() => null);
+        setDone(Array.isArray(data?.done) ? data.done : []);
+      }
       if (expRes?.ok) {
         const data = await expRes.json();
         setExportsList(data.exports || []);
@@ -71,21 +82,21 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
    * that is still in the database -- and the next time the drawer opened it
    * would be back, with no explanation.
    */
-  const deleteProject = async (id: string) => {
-    setDeletingId(id);
+  const deleteProject = async (id: string, survivorsOf: () => any[] = () => projectsList): Promise<boolean> => {
     setDeleteError(null);
     try {
       const res = await removeProject(id, mode);
       if (!res.ok) {
         setDeleteError(res.error || t.projects.deleteFailed(res.status));
-        return;
+        return false;
       }
       // The recitation goes with the row, but only if nothing else is using
       // it: several projects can be saved from one upload, and they share the
       // stored copy. `projectsList` is the full list this drawer just fetched,
       // so the surviving references are already to hand.
-      const removed = projectsList.find(proj => proj.id === id);
-      const survivors = projectsList.filter(proj => proj.id !== id);
+      const before = survivorsOf();
+      const removed = before.find(proj => proj.id === id);
+      const survivors = before.filter(proj => proj.id !== id);
       setProjectsList(survivors);
       if (removed?.audioKey) {
         await forgetProjectAudio(
@@ -93,11 +104,23 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
           survivors.map(proj => proj.audioKey).filter(Boolean)
         );
       }
+      return true;
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : t.projects.serverUnreachable);
-    } finally {
-      setDeletingId(null);
+      return false;
     }
+  };
+
+  /** Removes every project saved from a recording, one after another, stopping at the first that fails. */
+  const deleteRecording = async (recording: LibraryRecording) => {
+    setDeletingId(recording.key);
+    // One after another, each against the list the last one left; null once one has failed.
+    await recording.projects.reduce<Promise<any[] | null>>(async (pending, project) => {
+      const left = await pending;
+      if (!left || !(await deleteProject(project.id, () => left))) return null;
+      return left.filter(proj => proj.id !== project.id);
+    }, Promise.resolve(projectsList));
+    setDeletingId(null);
   };
 
   /**
@@ -141,8 +164,8 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
       // Escape belongs to the confirmation while one is up: without this the
       // drawer takes the key first and the whole thing closes, which is a
       // startling answer to "are you sure?".
-      dismissible={pendingDelete === null}
-      panelClassName="w-full max-w-5xl max-h-[88vh] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-2xl p-5 sm:p-6 overflow-hidden"
+      dismissible={pendingDelete === null && pendingRecording === null}
+      panelClassName="w-full max-w-6xl h-[92vh] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-2xl p-5 sm:p-6 overflow-hidden"
     >
       <div className="contents">
         {/* One name for one thing: the header button, this dialog and the
@@ -218,25 +241,21 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                 </button>
               </div>
             ) : (
-              <div role="table" aria-label={t.projects.heading}>
-                <ProjectListHeader />
-                {projectsList.filter(proj => matchesProject(proj, query)).map(proj => (
-                  <ProjectListRow
-                    key={proj.id}
-                    row={proj}
-                    rendered={renderedShapes(exportsList, proj.id)}
-                    deleting={deletingId === proj.id}
-                    onOpen={() => {
-                      onLoadProject(proj);
-                      onClose();
-                    }}
-                    onDelete={() => setPendingDelete({ id: proj.id, title: proj.title, kind: 'project' })}
-                  />
-                ))}
+              <>
+                <RecordingLibrary
+                  projects={projectsList.filter(proj => matchesProject(proj, query))}
+                  done={done}
+                  removing={deletingId}
+                  onOpen={({ project, clipId, newClip }: OpenRequest) => {
+                    onLoadProject(project, { clipId, newClip });
+                    onClose();
+                  }}
+                  onRemove={setPendingRecording}
+                />
                 {projectsList.filter(proj => matchesProject(proj, query)).length === 0 && (
                   <p className="py-8 text-center text-[13px] text-slate-400">{t.projects.noMatches(query.trim())}</p>
                 )}
-              </div>
+              </>
             )
           ) : exportsList.length === 0 ? (
             <div className="text-center py-12 text-slate-400 text-xs">{t.projects.noExports}</div>
@@ -339,9 +358,19 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
         onConfirm={() => {
           const target = pendingDelete;
           setPendingDelete(null);
-          if (!target) return;
-          if (target.kind === 'project') deleteProject(target.id);
-          else deleteExport(target.id);
+          if (target) void deleteExport(target.id);
+        }}
+      />
+    <ConfirmDialog
+        isOpen={pendingRecording !== null}
+        title={t.library.removeTitle}
+        message={pendingRecording ? t.library.removeMessage(pendingRecording.surahNameEnglish, pendingRecording.clips.length) : ''}
+        confirmLabel={t.library.remove}
+        onCancel={() => setPendingRecording(null)}
+        onConfirm={() => {
+          const target = pendingRecording;
+          setPendingRecording(null);
+          if (target) void deleteRecording(target);
         }}
       />
     </>

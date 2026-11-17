@@ -585,10 +585,12 @@ export default function VideoCreatorPage() {
     fetch(`/api/exports?done=1&projectId=${encodeURIComponent(projectId)}`)
       .then(res => (res.ok ? res.json() : null))
       .then((data: { done?: { clipId: string }[] } | null) => {
-        if (data?.done) setExportedClips(new Set(data.done.map(row => row.clipId)));
+        if (data?.done) setExportedClips(new Set(data.done.map(row => row.clipId).filter(Boolean)));
       })
       .catch(() => { /* no ticks is all a failed lookup costs */ });
   };
+  /** Where to put the playhead once the recording now loading is ready: a clip opened from Projects. */
+  const seekOnLoadRef = useRef<number | null>(null);
   /** Set by the tabs' New clip until a clip is made: the timeline says how to choose its stretch. */
   const [newClipHint, setNewClipHint] = useState(false);
   /** Whether the upload has clips, which a trim or an audio edit would move out from under. */
@@ -2736,6 +2738,22 @@ export default function VideoCreatorPage() {
     ));
   };
 
+  /**
+   * Opens a project from Projects: on one of its clips, from a clip card, or
+   * on the whole recording ready to choose the next clip's stretch.
+   */
+  const openSavedProject = (project: unknown, open?: { clipId: string | null; newClip?: boolean }) => {
+    void handleLoadSavedProject(project).then(() => {
+      const clip = open?.clipId ? normalizeClips((project as { clips?: unknown }).clips).find(each => each.id === open.clipId) : null;
+      if (clip) {
+        recordingClips.open(clip.id);
+        seekOnLoadRef.current = clip.start;
+        handleSeek(clip.start);
+      }
+      setNewClipHint(!!open?.newClip);
+    });
+  };
+
   const currentSurahObj = SURAHS_LIST.find(s => s.number === selectedSurah) || SURAHS_LIST[0];
 
   /** Whether a passage is loaded or matched, as opposed to the sample the studio opens on. */
@@ -2921,7 +2939,13 @@ export default function VideoCreatorPage() {
         ref={audioElementRef}
         src={playUrl}
         onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
+        onLoadedMetadata={() => {
+          handleLoadedMetadata();
+          // A clip opened from Projects starts where it starts, once its recording is back.
+          const at = seekOnLoadRef.current;
+          seekOnLoadRef.current = null;
+          if (at !== null) handleSeek(at);
+        }}
         onCanPlay={handleCanPlay}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -3892,7 +3916,7 @@ export default function VideoCreatorPage() {
       <SavedProjectsDrawer
         isOpen={isProjectsDrawerOpen}
         onClose={() => setIsProjectsDrawerOpen(false)}
-        onLoadProject={handleLoadSavedProject}
+        onLoadProject={openSavedProject}
         onNewClip={startNewClip}
         onSaveCurrent={handleSaveProject}
       />

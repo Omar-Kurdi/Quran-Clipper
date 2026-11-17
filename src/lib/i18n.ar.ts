@@ -1192,6 +1192,19 @@ export const ar: Dictionary = {
       'اختُصر شيء ليتّسع لما تقبله المنصة. أما النسب والوسوم فتبقى كاملة.'
   },
 
+  library: {
+    latest: 'أحدث المقاطع',
+    recordings: 'التسجيلات',
+    recordingsNote: 'كل مقطع مدرج تحت التسجيل الذي صُنع منه، وفتحه يفتح ذلك التسجيل -- لا يُرفع شيء ولا يُطابَق من جديد.',
+    yourRecording: 'تسجيلك',
+    builtInReciter: 'قارئ مدمج',
+    exportedCount: n => `${n} مُصدَّر`,
+    open: 'فتح',
+    remove: 'حذف',
+    removeTitle: 'حذف هذا التسجيل؟',
+    removeMessage: (name, clips) =>
+      `يُحذف ${name} ومقاطعه (${clips}) من المشاريع، مع نسخة التسجيل المحفوظة في هذا المتصفح. ويبقى الملف على جهازك وكل فيديو صُدِّر.`
+  },
   projects: {
     dialogLabel: 'المشاريع',
     heading: 'المشاريع',

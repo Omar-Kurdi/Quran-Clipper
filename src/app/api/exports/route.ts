@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, desc, eq, isNotNull, ne } from 'drizzle-orm';
+import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import { describeDbError } from '@/lib/dbError';
 
 const memoryExports: any[] = [];
@@ -15,22 +15,23 @@ async function getDbBindings() {
 
 /**
  * Which clips have been exported: `?done=1` answers with every project and
- * clip that has a render on record, for the tabs' and the library's ticks,
- * rather than the last twenty records the drawer lists.
+ * clip that has a render on record -- a clip id of '' for the project as a
+ * whole -- for the tabs' and the library's ticks, rather than the last twenty
+ * records the drawer lists.
  */
 async function exportedClips(projectId: string | null) {
   const bindings = await getDbBindings();
   if (!bindings) {
     const done = memoryExports
-      .filter(row => row.projectId && row.clipId && (!projectId || row.projectId === projectId))
-      .map(row => ({ projectId: row.projectId as string, clipId: row.clipId as string }));
+      .filter(row => row.projectId && (!projectId || row.projectId === projectId))
+      .map(row => ({ projectId: row.projectId as string, clipId: (row.clipId as string) || '' }));
     return NextResponse.json({ success: true, source: 'memory', done });
   }
   const table = bindings.exportsTable;
   const done = await bindings.db
     .selectDistinct({ projectId: table.projectId, clipId: table.clipId })
     .from(table)
-    .where(and(isNotNull(table.projectId), ne(table.clipId, ''), projectId ? eq(table.projectId, projectId) : undefined));
+    .where(and(isNotNull(table.projectId), projectId ? eq(table.projectId, projectId) : undefined));
   return NextResponse.json({ success: true, source: 'database', done });
 }
 

@@ -1213,6 +1213,19 @@ export const en = {
       'Something was shortened to fit what the platform accepts. The credits and hashtags are kept whole.'
   },
 
+  library: {
+    latest: 'Latest clips',
+    recordings: 'Recordings',
+    recordingsNote: 'Every clip is listed under the recording it was made from, and opening one opens that recording -- nothing is uploaded or matched again.',
+    yourRecording: 'Your recording',
+    builtInReciter: 'Built-in reciter',
+    exportedCount: (n: number) => `${n} exported`,
+    open: 'Open',
+    remove: 'Remove',
+    removeTitle: 'Remove this recording?',
+    removeMessage: (name: string, clips: number) =>
+      `${name} and its ${clips} ${clips === 1 ? 'clip' : 'clips'} are removed from Projects, with the copy of the recording kept in this browser. The file on your computer and any videos already exported stay.`
+  },
   projects: {
     dialogLabel: 'Projects',
     heading: 'Projects',
