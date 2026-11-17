@@ -128,6 +128,7 @@ import { exportRangeFor } from '@/lib/exportRange';
 import { useRecordingClips } from '@/hooks/useRecordingClips';
 import { ayahWindow, clipLabel, clipVerses, inPlayOrder, normalizeClips, styleDiff } from '@/lib/recordingClips';
 import { ClipsPanel } from '@/components/ClipsPanel';
+import { ClipTabs } from '@/components/ClipTabs';
 import { saveProject } from '@/lib/projectStore';
 import { newMatchTicket, watchQueue, roughWait } from '@/lib/queueWatch';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
@@ -574,6 +575,8 @@ export default function VideoCreatorPage() {
    */
   const recordingClips = useRecordingClips(canvasConfig, setCanvasConfig);
   const recordingClip = customAudioFile ? recordingClips.active : null;
+  /** Set by the tabs' New clip until a clip is made: the timeline says how to choose its stretch. */
+  const [newClipHint, setNewClipHint] = useState(false);
   /** Whether the upload has clips, which a trim or an audio edit would move out from under. */
   const hasRecordingClips = !!customAudioFile && recordingClips.clips.length > 0;
   /** A new clip starts with no motion, whatever the last one had; the rest of its style carries over. */
@@ -2299,13 +2302,26 @@ export default function VideoCreatorPage() {
     const clip = recordingClips.clips.find(each => each.id === id);
     if (clip) handleSeek(clip.start);
   };
-  /** A new clip of the recording, opened to work on. */
+  /**
+   * A new clip of the recording, opened to work on, with a look of its own
+   * that starts as the look on screen -- the clip it was made from, or the
+   * shared one -- so styling it never changes another clip.
+   */
   const addRecordingClip = (start: number, end: number) => {
+    const look = canvasConfig;
     const id = recordingClips.add(start, end, audioDuration);
     if (!id) return;
     recordingClips.open(id);
+    recordingClips.ownLook(true);
+    setCanvasConfig(look);
+    setNewClipHint(false);
+    // Its look next: it starts as the one on screen, and Presets is where to change it.
+    setStyleArea('presets');
+    setPanelTab('style');
     handleSeek(Math.max(0, Math.min(start, end)));
   };
+  /** Where the open clip sits in play order, for its name; -1 for the whole recording. */
+  const openClipIndex = listedClips.findIndex(clip => clip.id === recordingClip?.id);
   /**
    * The passage the export actually contains, read off the timeline.
    *
@@ -2965,6 +2981,18 @@ export default function VideoCreatorPage() {
           </div>
         </div>
 
+        {customAudioFile && verses.length > 0 && (
+          <div className="flex-1 min-w-0 flex">
+            <ClipTabs
+              clips={listedClips}
+              activeId={recordingClip?.id ?? null}
+              onOpen={id => { setNewClipHint(false); openRecordingClip(id); }}
+              onRemove={recordingClips.remove}
+              onNew={() => { openRecordingClip(null); setNewClipHint(true); }}
+            />
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           {/* Outside the menus on purpose: undoing a mis-drag is not a
               secondary action, and it is the one control that has to be there
@@ -3017,7 +3045,7 @@ export default function VideoCreatorPage() {
           />
 
           <Button variant="primary" size="md" onClick={() => setIsExportModalOpen(true)} icon={<Sparkles className="w-4 h-4 fill-current" />} data-tour="export">
-            {t.header.export}
+            {openClipIndex >= 0 ? t.clips.exportClip(openClipIndex + 1) : t.header.export}
           </Button>
         </div>
       </header>
@@ -3741,6 +3769,7 @@ export default function VideoCreatorPage() {
           onMoveClip={customAudioFile ? (id, start, end) => recordingClips.move(id, start, end, audioDuration) : undefined}
           activeClipOwn={!!recordingClip?.style}
           onOwnLook={recordingClips.ownLook}
+          selectHint={newClipHint}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}

@@ -120,6 +120,51 @@ export function ayahWindow(
   return { start: ms(Math.min(start, opening.startTime)), end: ms(Math.max(end, closing.endTime)) };
 }
 
+/**
+ * A stretch chosen on the timeline, widened or narrowed to whole ayahs: every
+ * caption whose middle is inside it, then out to the first and last caption of
+ * the ayahs those belong to, opened and closed on the pauses as a clip by
+ * ayahs is (`ayahWindow`). A caption only grazed by the drag is left out, so a
+ * stretch dragged a little past an ayah does not take the next one with it.
+ * Null when no caption's middle is inside, to keep the stretch as dragged.
+ */
+export function snapToAyahs(
+  verses: { verseKey?: string; startTime: number; endTime: number }[], start: number, end: number, duration: number
+): { start: number; end: number } | null {
+  const [from, to] = start <= end ? [start, end] : [end, start];
+  const held = verses
+    .map((verse, i) => ({ i, mid: (verse.startTime + verse.endTime) / 2 }))
+    .filter(({ mid }) => mid >= from && mid <= to)
+    .map(({ i }) => i);
+  if (!held.length) return null;
+  let first = held[0];
+  let last = held[held.length - 1];
+  const sameAyah = (a: number, b: number) => !!verses[a].verseKey && verses[a].verseKey === verses[b].verseKey;
+  while (first > 0 && sameAyah(first - 1, first)) first -= 1;
+  while (last < verses.length - 1 && sameAyah(last + 1, last)) last += 1;
+  return ayahWindow(verses, first, last, duration);
+}
+
+/**
+ * Each ayah of the recording once, in the order heard, with the clips that
+ * hold it (their places in `clips`), for showing which ayahs are clipped
+ * already. An ayah counts as held when any of its captions is.
+ */
+export function ayahCoverage(
+  verses: { verseKey?: string; startTime: number; endTime: number }[], clips: { start: number; end: number }[]
+): { key: string; clips: number[] }[] {
+  const ayahs: { key: string; clips: number[] }[] = [];
+  for (const verse of verses) {
+    if (!verse.verseKey) continue;
+    let ayah = ayahs.find(each => each.key === verse.verseKey);
+    if (!ayah) ayahs.push((ayah = { key: verse.verseKey, clips: [] }));
+    clips.forEach((clip, i) => {
+      if (verse.endTime > clip.start && verse.startTime < clip.end && !ayah!.clips.includes(i)) ayah!.clips.push(i);
+    });
+  }
+  return ayahs;
+}
+
 /** The ayahs a clip holds, as `2:1–5`, or its times when it holds none. */
 export function clipLabel(verses: { verseKey?: string; startTime: number; endTime: number }[], clip: { start: number; end: number }): string {
   const held = clipVerses(verses, clip);

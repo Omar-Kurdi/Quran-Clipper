@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  snapToAyahs, ayahCoverage,
   addClip, ayahWindow, clipLabel, clipStyle, clipVerses, dragClip, inPlayOrder, moveClip, newClip, normalizeClips, removeClip,
   settleLooks, styleDiff, switchOwnLook, MIN_CLIP_SEC, type RecordingClip
 } from './recordingClips';
@@ -189,6 +190,49 @@ describe('settleLooks and switchOwnLook', () => {
   it('changes nothing with no clip open, or one already as asked', () => {
     expect(switchOwnLook(true, shared, [clip('a')], null, null)).toBeNull();
     expect(switchOwnLook(true, shared, [clip('a', {})], 'a', shared)).toBeNull();
+  });
+});
+
+describe('snapToAyahs', () => {
+  // 2:1 is two captions; 2:2 and 2:3 one each, with a pause between each.
+  const verses = [
+    { verseKey: '2:1', startTime: 1, endTime: 3 },
+    { verseKey: '2:1', startTime: 3, endTime: 5 },
+    { verseKey: '2:2', startTime: 6, endTime: 9 },
+    { verseKey: '2:3', startTime: 10, endTime: 14 },
+  ];
+
+  it('widens a stretch to the whole ayahs it holds, opened and closed on the pauses', () => {
+    // Drag from the middle of 2:1's second caption to the middle of 2:2.
+    expect(snapToAyahs(verses, 3.8, 7.6, 20)).toEqual({ start: 0.5, end: 9.5 });
+  });
+
+  it('leaves out an ayah the drag only grazes', () => {
+    expect(snapToAyahs(verses, 5.5, 10.5, 20)).toEqual({ start: 5.5, end: 9.5 });
+  });
+
+  it('takes the drag in either direction', () => {
+    expect(snapToAyahs(verses, 14, 9.6, 20)).toEqual(snapToAyahs(verses, 9.6, 14, 20));
+  });
+
+  it('keeps the stretch as dragged when no caption is inside it', () => {
+    expect(snapToAyahs(verses, 15, 18, 20)).toBeNull();
+  });
+});
+
+describe('ayahCoverage', () => {
+  it('lists each ayah once, in the order heard, with the clips that hold any of it', () => {
+    const verses = [
+      { verseKey: '2:1', startTime: 0, endTime: 2 },
+      { verseKey: '2:1', startTime: 2, endTime: 4 },
+      { verseKey: '2:2', startTime: 4, endTime: 6 },
+      { verseKey: '2:3', startTime: 6, endTime: 8 },
+    ];
+    expect(ayahCoverage(verses, [{ start: 3, end: 5 }, { start: 4.5, end: 5.5 }])).toEqual([
+      { key: '2:1', clips: [0] },
+      { key: '2:2', clips: [0, 1] },
+      { key: '2:3', clips: [] },
+    ]);
   });
 });
 

@@ -2,15 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { dragClip, type ClipEdge } from '@/lib/recordingClips';
+import { clipColour } from '@/lib/clipColours';
 import { useT } from './LocaleProvider';
-
-/** One colour per clip, in turn, so overlapping clips can be told apart. */
-const CLIP_COLOURS = [
-  'border-amber-400/70 bg-amber-400/15 text-amber-100',
-  'border-emerald-400/70 bg-emerald-400/15 text-emerald-100',
-  'border-violet-400/70 bg-violet-400/15 text-violet-100',
-  'border-sky-400/70 bg-sky-400/15 text-sky-100'
-];
 
 /** How far the pointer moves before a press on a bar is a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 4;
@@ -156,7 +149,7 @@ export const ClipLane: React.FC<ClipLaneProps> = ({ clips, activeId, duration, p
             key={each.id}
             clip={each}
             name={name}
-            colour={CLIP_COLOURS[i % CLIP_COLOURS.length]}
+            colour={clipColour(i).bar}
             lower={shown.slice(0, i).some(other => other.end > each.start && other.start < each.end)}
             active={active}
             dragging={preview?.id === each.id}

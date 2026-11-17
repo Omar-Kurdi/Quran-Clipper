@@ -4,7 +4,7 @@ import { isOpening, type OpeningKind } from '@/lib/openings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines, Layers, Plus } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines, Layers } from 'lucide-react';
 import { captionChecks, toCheckCount } from '@/lib/captionChecks';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform, type Waveform as WaveformData } from '@/lib/waveform';
@@ -17,6 +17,9 @@ import { useLoopWindows } from '@/hooks/useLoopWindows';
 import { loopFor } from '@/lib/clipLoop';
 import { useT } from './LocaleProvider';
 import { ClipLane } from './ClipLane';
+import { ClipSelectionBar } from './ClipSelectionBar';
+import { TimelineOverview } from './TimelineOverview';
+import { clipLabel, snapToAyahs } from '@/lib/recordingClips';
 import { LengthReadout } from './LengthReadout';
 import { TimelineSkeleton } from './Skeleton';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
@@ -108,10 +111,16 @@ interface TimelineProps {
    * the look is being edited in.
    */
   activeClipOwn?: boolean;
+  /** Said where a stretch is chosen until one is, after the tabs' New clip asks for one. */
+  selectHint?: boolean;
   onOwnLook?: (on: boolean) => void;
 }
 
 const ZOOMS = [1, 2, 4, 8];
+/** A long recording zooms further: at 8x a two-hour file still shows fifteen minutes at once. */
+const LONG_ZOOMS = [1, 2, 4, 8, 16, 32, 64];
+/** Longer than this, a recording gets `LONG_ZOOMS`. */
+const LONG_RECORDING_SEC = 600;
 
 /**
  * The timeline.
@@ -173,7 +182,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   onTrim, onEditAudio, exportSeconds, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
-  onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip, onMoveClip, activeClipOwn = false, onOwnLook
+  onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip, onMoveClip, activeClipOwn = false, onOwnLook,
+  selectHint = false
 }) => {
   const t = useT();
   const toCheck = useMemo(() => toCheckCount(verses), [verses]);
@@ -208,6 +218,14 @@ export const Timeline: React.FC<TimelineProps> = ({
   // deriving it also cannot go stale when the url changes mid-flight.
   const [loaded, setLoaded] = useState<{ url: string; waveform: WaveformData | null } | null>(null);
   const [zoom, setZoom] = useState(1);
+  /** The part of the track scrolled into view, as fractions of its width, for the overview. */
+  const [visible, setVisible] = useState({ left: 0, width: 1 });
+  const measureVisible = useCallback(() => {
+    const vp = viewportRef.current;
+    if (!vp || !vp.scrollWidth) return;
+    setVisible({ left: vp.scrollLeft / vp.scrollWidth, width: vp.clientWidth / vp.scrollWidth });
+  }, []);
+  useEffect(() => { measureVisible(); }, [zoom, measureVisible]);
   const [drag, setDrag] = useState<{ index: number; edge: 'startTime' | 'endTime' } | null>(null);
 
   // A ref, not state: the ruler captures the pointer, so this only has to
@@ -269,7 +287,11 @@ export const Timeline: React.FC<TimelineProps> = ({
    * trim lands, which replaces the file with the shorter one.
    */
   const [clip, setClip] = useState<{ url: string; start: number; end: number } | null>(null);
-  const [clipDrag, setClipDrag] = useState<'start' | 'end' | null>(null);
+  const [clipDrag, setClipDrag] = useState<'start' | 'end' | 'new' | null>(null);
+  /** Where a fresh selection was started, which its other end is dragged away from. */
+  const anchorRef = useRef(0);
+  /** Whether a selection lets go on whole ayahs (`snapToAyahs`). */
+  const [snap, setSnap] = useState(true);
 
   // Read by the pointer handler so a drag does not rebuild its listeners on
   // every frame as the verses change underneath it.
@@ -397,6 +419,14 @@ export const Timeline: React.FC<TimelineProps> = ({
     };
   }, [bgDrag, xToTime]);
 
+  /** Read when a selection is let go, without rebuilding the drag's listeners. */
+  const snapRef = useRef(snap);
+  const versesRef = useRef(verses);
+  useEffect(() => {
+    snapRef.current = snap;
+    versesRef.current = verses;
+  });
+
   /**
    * Dragging a clip handle also seeks.
    *
@@ -418,14 +448,25 @@ export const Timeline: React.FC<TimelineProps> = ({
         const current = prev && prev.url === audioUrl
           ? prev
           : { url: audioUrl, start: passage?.start ?? 0, end: passage?.end ?? duration };
-        const next = clipDrag === 'start'
-          ? { ...current, url: audioUrl, start: Math.min(t, current.end - MIN_SEGMENT) }
-          : { ...current, url: audioUrl, end: Math.max(t, current.start + MIN_SEGMENT) };
+        const next = clipDrag === 'new'
+          ? { url: audioUrl, start: Math.min(anchorRef.current, t), end: Math.max(anchorRef.current, t, Math.min(anchorRef.current, t) + MIN_SEGMENT) }
+          : clipDrag === 'start'
+            ? { ...current, url: audioUrl, start: Math.min(t, current.end - MIN_SEGMENT) }
+            : { ...current, url: audioUrl, end: Math.max(t, current.start + MIN_SEGMENT) };
         return { ...next, start: Math.max(0, next.start), end: Math.min(duration, next.end) };
       });
       onSeek(Math.max(0, Math.min(t, duration)));
     };
-    const up = () => setClipDrag(null);
+    // Let go on whole ayahs, when that is asked for and there are ayahs to snap to.
+    const up = () => {
+      setClipDrag(null);
+      if (!snapRef.current) return;
+      setClip(prev => {
+        if (!prev || prev.url !== audioUrl) return prev;
+        const snapped = snapToAyahs(versesRef.current, prev.start, prev.end, duration);
+        return snapped ? { url: audioUrl, ...snapped } : prev;
+      });
+    };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     return () => {
@@ -466,7 +507,8 @@ export const Timeline: React.FC<TimelineProps> = ({
     return out;
   }, [viewStart, viewSpan, zoom, origin, length]);
 
-  const zoomIndex = ZOOMS.indexOf(zoom);
+  const zooms = duration > LONG_RECORDING_SEC ? LONG_ZOOMS : ZOOMS;
+  const zoomIndex = zooms.indexOf(zoom);
 
   // A selection made against another file is no selection at all.
   // A built-in reciter's handles start at its clip, not the recording's ends,
@@ -474,6 +516,27 @@ export const Timeline: React.FC<TimelineProps> = ({
   const uncut = passage ?? { start: 0, end: duration };
   const clipRange = clip && clip.url === audioUrl ? clip : uncut;
   const clipIsWhole = clipRange.start <= uncut.start + 0.05 && clipRange.end >= uncut.end - 0.05;
+  /** Whether stretches are chosen here at all: to cut the recording, or to make clips of it. */
+  const selecting = !!(onTrimRange || onAddClip);
+  const makeClip = () => {
+    if (!onAddClip || clipIsWhole) return;
+    onAddClip(clipRange.start, clipRange.end);
+    setClip(null);
+  };
+  const makeRef = useRef(makeClip);
+  useEffect(() => { makeRef.current = makeClip; });
+  /** Enter makes the selection a clip, unless a field or a button has the key. */
+  useEffect(() => {
+    if (!onAddClip) return;
+    const key = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.key !== 'Enter' || e.defaultPrevented || el?.closest('input, textarea, select, button, [contenteditable="true"], [role="dialog"]')) return;
+      e.preventDefault();
+      makeRef.current();
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [onAddClip]);
 
   return (
     <section aria-label={t.timeline.label} className="shrink-0 border-t border-slate-800 bg-slate-900/70 backdrop-blur-sm">
@@ -596,50 +659,6 @@ export const Timeline: React.FC<TimelineProps> = ({
           </button>
         )}
 
-        {/* Only offered once the handles have actually been moved: a button that
-            cuts the clip to exactly itself is a button that does nothing. */}
-        {(onTrimRange || onAddClip) && !clipIsWhole && (
-          <>
-            {onTrimRange && <button
-              onClick={() => {
-                onTrimRange(clipRange.start, clipRange.end);
-                // A built-in reciter keeps its recording, so the handles would
-                // otherwise stay where they were, offering the same cut again.
-                setClip(null);
-              }}
-              title={activeClipId
-                ? t.clips.setClipTo(clock(clipRange.start), clock(clipRange.end))
-                : t.timeline.cutDownTo(clock(clipRange.start), clock(clipRange.end))}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-xs font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span>{activeClipId
-                ? t.clips.setClip(formatTime(clipRange.end - clipRange.start))
-                : t.timeline.keep(formatTime(clipRange.end - clipRange.start))}</span>
-            </button>}
-            {onAddClip && (
-              <button
-                onClick={() => {
-                  onAddClip(clipRange.start, clipRange.end);
-                  setClip(null);
-                }}
-                title={t.clips.newClipTitle(clock(clipRange.start), clock(clipRange.end))}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-gold/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-              >
-                <Plus className="w-3.5 h-3.5 text-amber-400" />
-                <span>{t.clips.newClip(formatTime(clipRange.end - clipRange.start))}</span>
-              </button>
-            )}
-            <button
-              onClick={() => setClip(null)}
-              title={t.timeline.resetClip}
-              className="px-2 py-1.5 text-xs font-semibold text-slate-300 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors"
-            >
-              {t.common.reset}
-            </button>
-          </>
-        )}
-
         <span className="flex-1" />
 
         <button
@@ -667,7 +686,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           {waveformState === 'unavailable' && t.timeline.waveformUnavailable}
         </span>
         <button
-          onClick={() => setZoom(ZOOMS[zoomIndex - 1])}
+          onClick={() => setZoom(zooms[zoomIndex - 1])}
           disabled={zoomIndex <= 0}
           aria-label={t.timeline.zoomOut}
           className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg border border-slate-700 transition-colors"
@@ -676,8 +695,8 @@ export const Timeline: React.FC<TimelineProps> = ({
         </button>
         <span className="hidden sm:inline font-mono text-xs text-slate-400 w-7 text-center" dir="ltr">{zoom}x</span>
         <button
-          onClick={() => setZoom(ZOOMS[zoomIndex + 1])}
-          disabled={zoomIndex >= ZOOMS.length - 1}
+          onClick={() => setZoom(zooms[zoomIndex + 1])}
+          disabled={zoomIndex >= zooms.length - 1}
           aria-label={t.timeline.zoomIn}
           className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg border border-slate-700 transition-colors"
         >
@@ -685,7 +704,53 @@ export const Timeline: React.FC<TimelineProps> = ({
         </button>
       </div>
 
-      <div ref={viewportRef} dir="ltr" className="overflow-x-auto overflow-y-hidden">
+      {selecting && (!clipIsWhole || selectHint) && (
+        clipIsWhole ? (
+          <p className="px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/[0.06] text-xs text-amber-200">{t.clips.newTabHint}</p>
+        ) : (
+          <ClipSelectionBar
+            start={clipRange.start}
+            end={clipRange.end}
+            origin={origin}
+            label={clipLabel(verses, clipRange)}
+            snap={snap}
+            onSnap={on => {
+              setSnap(on);
+              const snapped = on ? snapToAyahs(verses, clipRange.start, clipRange.end, duration) : null;
+              if (snapped) setClip({ url: audioUrl, ...snapped });
+            }}
+            onRange={(start, end) => {
+              const from = Math.max(0, Math.min(start, end));
+              const to = Math.min(duration, Math.max(start, end, from + MIN_SEGMENT));
+              setClip({ url: audioUrl, start: from, end: to });
+              onSeek(from);
+            }}
+            makeName={onAddClip ? t.clips.name(clips.filter(each => each.start < clipRange.start).length + 1) : undefined}
+            onMake={onAddClip ? makeClip : undefined}
+            setName={activeClipId && onTrimRange ? t.clips.name(clips.findIndex(each => each.id === activeClipId) + 1) : undefined}
+            onSet={activeClipId && onTrimRange ? () => { onTrimRange(clipRange.start, clipRange.end); setClip(null); } : undefined}
+            keepLabel={!activeClipId && !clips.length && onTrimRange ? t.timeline.keep(formatTime(clipRange.end - clipRange.start)) : undefined}
+            onKeep={!activeClipId && !clips.length && onTrimRange ? () => { onTrimRange(clipRange.start, clipRange.end); setClip(null); } : undefined}
+            onReset={() => setClip(null)}
+          />
+        )
+      )}
+
+      {zoom > 1 && (
+        <TimelineOverview
+          start={viewStart}
+          span={viewSpan}
+          clips={clips}
+          currentTime={currentTime}
+          visible={visible}
+          onJump={fraction => {
+            const vp = viewportRef.current;
+            if (vp) vp.scrollLeft = Math.max(0, fraction * vp.scrollWidth - vp.clientWidth / 2);
+          }}
+        />
+      )}
+
+      <div ref={viewportRef} dir="ltr" onScroll={measureVisible} className="overflow-x-auto overflow-y-hidden">
         <div ref={trackRef} className="relative select-none" style={{ width: `${zoom * 100}%` }}>
           {/* Clip handles.
 
@@ -695,7 +760,18 @@ export const Timeline: React.FC<TimelineProps> = ({
               the timeline -- the cut has to be legible against the ayahs it
               will take with it, not just against its own row. */}
           {(onTrimRange || onAddClip) && (
-            <div className="relative h-4 border-b border-slate-800/70 bg-slate-950/60">
+            <div
+              className="relative h-5 border-b border-slate-800/70 bg-slate-950/60 cursor-crosshair touch-none"
+              title={t.clips.stripTitle}
+              onPointerDown={e => {
+                if (e.button !== 0) return;
+                const at = xToTime(e.clientX);
+                anchorRef.current = at;
+                setClip({ url: audioUrl, start: at, end: Math.min(duration, at + MIN_SEGMENT) });
+                setClipDrag('new');
+                onSeek(at);
+              }}
+            >
               <span
                 className="absolute inset-y-0 left-0 bg-slate-950/70 pointer-events-none"
                 style={{ width: `${pct(clipRange.start)}%` }}
@@ -723,8 +799,8 @@ export const Timeline: React.FC<TimelineProps> = ({
                   style={{ left: `${pct(edge === 'start' ? clipRange.start : clipRange.end)}%` }}
                 />
               ))}
-              <span className="absolute left-1 top-0 text-[9px] font-mono leading-4 text-slate-400 pointer-events-none">
-                {t.timeline.clip}
+              <span className="absolute left-1 top-0 text-[9px] font-mono leading-5 text-slate-400 pointer-events-none">
+                {clipIsWhole && onAddClip ? t.clips.stripHint : t.timeline.clip}
               </span>
             </div>
           )}

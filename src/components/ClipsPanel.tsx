@@ -5,13 +5,16 @@ import { Layers, Plus, Trash2 } from 'lucide-react';
 import { Button } from './Button';
 import { useT } from './LocaleProvider';
 import { formatDuration } from './AudioTrimModal';
+import { AyahCoverage } from './AyahCoverage';
+import { clipColour } from '@/lib/clipColours';
+import { ayahCoverage } from '@/lib/recordingClips';
 
 interface ClipsPanelProps {
   /** In the order they play, which is the order they are numbered in. */
   clips: { id: string; start: number; end: number; label: string; own: boolean }[];
   activeId: string | null;
   /** The recording's captions, for choosing a clip by its ayahs. */
-  captions: { verseKey: string }[];
+  captions: { verseKey: string; startTime: number; endTime: number }[];
   onOpen: (id: string | null) => void;
   onRemove: (id: string) => void;
   /** Gives the open clip a look of its own, or the shared one back. */
@@ -24,13 +27,16 @@ type ListedClip = ClipsPanelProps['clips'][number];
 
 /** One clip in the list: its ayahs and times, and opening, styling and removing it. */
 const ClipRow: React.FC<{
-  clip: ListedClip; name: string; open: boolean;
+  clip: ListedClip; name: string; open: boolean; colour: string;
   onOpen: (id: string | null) => void; onRemove: (id: string) => void; onOwnLook: (on: boolean) => void;
-}> = ({ clip, name, open, onOpen, onRemove, onOwnLook }) => {
+}> = ({ clip, name, open, colour, onOpen, onRemove, onOwnLook }) => {
   const t = useT();
   return (
     <li className={`px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 ${open ? 'bg-gold/10' : ''}`}>
-      <span className="text-xs font-semibold text-slate-100">{name}</span>
+      <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-100">
+        <span className={`w-2 h-2 rounded-sm ${colour}`} aria-hidden="true" />
+        {name}
+      </span>
       {clip.label && <span className="font-mono text-xs text-gold" dir="ltr">{clip.label}</span>}
       <span className="font-mono text-[11px] text-slate-400" dir="ltr">
         {formatDuration(clip.start)}–{formatDuration(clip.end)} · {formatDuration(clip.end - clip.start)}
@@ -127,6 +133,8 @@ export const ClipsPanel: React.FC<ClipsPanelProps> = ({
         <p className="mt-1 text-xs leading-relaxed text-slate-400">{clips.length ? t.clips.intro : t.clips.empty}</p>
       </div>
 
+      {clips.length > 0 && <AyahCoverage ayahs={ayahCoverage(captions, clips)} />}
+
       {clips.length > 0 && (
         <ul className="flex flex-col divide-y divide-slate-800 rounded-lg border border-slate-800">
           <li>
@@ -145,6 +153,7 @@ export const ClipsPanel: React.FC<ClipsPanelProps> = ({
               key={clip.id}
               clip={clip}
               name={t.clips.name(i + 1)}
+              colour={clipColour(i).dot}
               open={clip.id === activeId}
               onOpen={onOpen}
               onRemove={onRemove}
