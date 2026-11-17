@@ -5,7 +5,8 @@
  * An uploaded recording is one file -- its stored copy (`audioKey`) or, where
  * that is gone, its name -- so the projects saved from it are grouped as one.
  * A built-in reciter's surah is one recording too: each project saved from it
- * is a passage, listed as that recording's clip. Pure, so it can be tested.
+ * is a passage, listed as that recording's clip -- or, where the passage was
+ * cut into clips of its own, those clips. Pure, so it can be tested.
  */
 
 import { SURAHS_LIST } from './quranData';
@@ -84,7 +85,8 @@ const asVerses = (value: unknown) =>
 function clipsOf(kind: LibraryRecording['kind'], projects: LibraryProject[], exported: (projectId: string, clipId: string) => boolean) {
   const listed: Omit<LibraryClip, 'number'>[] = [];
   for (const project of projects) {
-    if (kind === 'reciter') {
+    // A reciter's passage is a clip of its surah, unless it was cut into clips of its own.
+    if (kind === 'reciter' && !normalizeClips(project.clips).length) {
       listed.push({ projectId: project.id, clipId: null, surahNumber: project.surahNumber, first: project.ayahStart, last: project.ayahEnd,
         exported: exported(project.id, ''), updatedAt: project.updatedAt });
       continue;

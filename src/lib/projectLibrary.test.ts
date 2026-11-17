@@ -41,6 +41,9 @@ describe('libraryOf', () => {
     expect(recordings[0].project.id).toBe('proj_new');
   });
 
+});
+
+describe("libraryOf, a built-in reciter's surah", () => {
   it("lists a built-in reciter's surah as one recording, each passage a clip", () => {
     const reciter = (id: string, start: number, end: number, updatedAt: string): LibraryProject => ({
       id, title: id, surahNumber: 67, surahNameEnglish: 'Al-Mulk', ayahStart: start, ayahEnd: end,
@@ -54,5 +57,15 @@ describe('libraryOf', () => {
     expect(recordings[0].kind).toBe('reciter');
     expect(recordings[0].clips.map(c => [c.projectId, c.number, c.exported])).toEqual([['proj_1', 1, false], ['proj_2', 2, true]]);
     expect(latestClips[0].projectId).toBe('proj_2');
+  });
+
+  it("lists the clips a reciter's passage was cut into, rather than the passage", () => {
+    const { recordings } = libraryOf([{
+      id: 'proj_r', title: 'r', surahNumber: 2, surahNameEnglish: 'Al-Baqarah', ayahStart: 201, ayahEnd: 203,
+      reciterId: 'qf-3', reciterName: 'A reciter', versesJson: verses, updatedAt: '2026-11-01',
+      clips: [{ id: 'c1', start: 1, end: 19, style: null }, { id: 'c2', start: 21, end: 29, style: null }],
+    }], []);
+    expect(recordings[0].kind).toBe('reciter');
+    expect(recordings[0].clips.map(c => [c.clipId, c.first, c.last])).toEqual([['c1', 201, 202], ['c2', 203, 203]]);
   });
 });

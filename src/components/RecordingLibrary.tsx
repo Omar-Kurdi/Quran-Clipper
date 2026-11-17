@@ -121,15 +121,13 @@ const RecordingRow: React.FC<{
             <ClipCard key={`${clip.projectId}:${clip.clipId}`} clip={clip} surahArabic={recording.surahNameArabic} size="small"
               onOpen={() => onOpen({ project: projectOf(clip), clipId: clip.clipId })} />
           ))}
-          {recording.kind === 'upload' && (
-            <button type="button" onClick={() => onOpen({ project: recording.project, clipId: null, newClip: true })}
-              className="shrink-0 w-16 text-start focus-visible:outline-none group">
-              <span className="flex items-center justify-center h-[112px] rounded-lg border-2 border-dashed border-slate-600 text-amber-400 group-hover:border-amber-500 group-focus-visible:ring-2 group-focus-visible:ring-amber-400">
-                <Plus className="w-5 h-5" />
-              </span>
-              <span className="mt-1 block text-[11px] font-semibold text-amber-400">{t.clips.newTab}</span>
-            </button>
-          )}
+          <button type="button" onClick={() => onOpen({ project: recording.project, clipId: null, newClip: true })}
+            className="shrink-0 w-16 text-start focus-visible:outline-none group">
+            <span className="flex items-center justify-center h-[112px] rounded-lg border-2 border-dashed border-slate-600 text-amber-400 group-hover:border-amber-500 group-focus-visible:ring-2 group-focus-visible:ring-amber-400">
+              <Plus className="w-5 h-5" />
+            </span>
+            <span className="mt-1 block text-[11px] font-semibold text-amber-400">{t.clips.newTab}</span>
+          </button>
         </div>
       </div>
       <div className="flex md:flex-col gap-2 md:w-32">

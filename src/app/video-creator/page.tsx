@@ -574,7 +574,13 @@ export default function VideoCreatorPage() {
    * a built-in reciter's passage is already a window of its own.
    */
   const recordingClips = useRecordingClips(canvasConfig, setCanvasConfig);
-  const recordingClip = customAudioFile ? recordingClips.active : null;
+  /**
+   * Whether what is loaded can have clips: an upload, or a built-in reciter's
+   * passage once loaded -- not the sample the studio opens on. A clip is a
+   * window on the clock the captions are on, which for a reciter is its audio's.
+   */
+  const clipsAllowed = !!customAudioFile || (!isSampleProject && verses.length > 0);
+  const recordingClip = clipsAllowed ? recordingClips.active : null;
   /** The clips of the open project with a render on record, which their tabs tick. */
   const [exportedClips, setExportedClips] = useState<ReadonlySet<string>>(() => new Set());
   const markExported = (id: string) => setExportedClips(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
@@ -594,7 +600,7 @@ export default function VideoCreatorPage() {
   /** Set by the tabs' New clip until a clip is made: the timeline says how to choose its stretch. */
   const [newClipHint, setNewClipHint] = useState(false);
   /** Whether the upload has clips, which a trim or an audio edit would move out from under. */
-  const hasRecordingClips = !!customAudioFile && recordingClips.clips.length > 0;
+  const hasRecordingClips = clipsAllowed && recordingClips.clips.length > 0;
   /** A new clip starts with no motion, whatever the last one had; the rest of its style carries over. */
   const beginClip = () => {
     if (!newClipPending.current) return;
@@ -1219,7 +1225,7 @@ export default function VideoCreatorPage() {
    */
   // An upload can be edited before it is matched -- trimmed to the voice first;
   // a passage once it is loaded.
-  const canEditAudio = customAudioFile ? studio.mode !== 'public' && !hasRecordingClips : verses.length > 0 && !!editedAddress(audioUrl, NO_EDIT);
+  const canEditAudio = customAudioFile ? studio.mode !== 'public' && !hasRecordingClips : verses.length > 0 && !hasRecordingClips && !!editedAddress(audioUrl, NO_EDIT);
   /** What Edit audio opens on: the recording, the edit, and the captions, all on the recording's clock. */
   const [editAudioStart, setEditAudioStart] = useState<{ edit: AudioEdit; captions: VerseData[] } | null>(null);
   const editAudioSource = useMemo(
@@ -1999,7 +2005,7 @@ export default function VideoCreatorPage() {
     const held = timelinePassage(verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd });
     // An upload's clips are saved with it, and the project's look is the one
     // they share: the open clip's own look is kept on the clip.
-    const { base, clips } = customAudioFile ? recordingClips.settled() : { base: canvasConfig, clips: [] };
+    const { base, clips } = clipsAllowed ? recordingClips.settled() : { base: canvasConfig, clips: [] };
     const storedBase = withStoredBackgrounds(base);
     const payload = buildProjectPayload({
       surahNumber: selectedSurah,
@@ -2307,10 +2313,10 @@ export default function VideoCreatorPage() {
 
   /** The upload's clips as listed and drawn: in the order they play, each named by its ayahs. */
   const listedClips = useMemo(
-    () => customAudioFile
+    () => clipsAllowed
       ? inPlayOrder(recordingClips.clips).map(clip => ({ ...clip, label: clipLabel(verses, clip), own: !!clip.style }))
       : [],
-    [customAudioFile, recordingClips.clips, verses]
+    [clipsAllowed, recordingClips.clips, verses]
   );
   /** Opens a clip of the recording, or the whole of it, with the playhead at its start. */
   const openRecordingClip = (id: string | null) => {
@@ -3025,7 +3031,7 @@ export default function VideoCreatorPage() {
           </div>
         </div>
 
-        {customAudioFile && verses.length > 0 && (
+        {clipsAllowed && (
           <div className="flex-1 min-w-0 flex">
             <ClipTabs
               clips={listedClips}
@@ -3810,8 +3816,8 @@ export default function VideoCreatorPage() {
           clips={listedClips}
           activeClipId={recordingClip?.id ?? null}
           onOpenClip={openRecordingClip}
-          onAddClip={customAudioFile && verses.length ? addRecordingClip : undefined}
-          onMoveClip={customAudioFile ? (id, start, end) => recordingClips.move(id, start, end, audioDuration) : undefined}
+          onAddClip={clipsAllowed ? addRecordingClip : undefined}
+          onMoveClip={clipsAllowed ? (id, start, end) => recordingClips.move(id, start, end, audioDuration) : undefined}
           activeClipOwn={!!recordingClip?.style}
           onOwnLook={recordingClips.ownLook}
           selectHint={newClipHint}
