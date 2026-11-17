@@ -575,6 +575,20 @@ export default function VideoCreatorPage() {
    */
   const recordingClips = useRecordingClips(canvasConfig, setCanvasConfig);
   const recordingClip = customAudioFile ? recordingClips.active : null;
+  /** The clips of the open project with a render on record, which their tabs tick. */
+  const [exportedClips, setExportedClips] = useState<ReadonlySet<string>>(() => new Set());
+  const markExported = (id: string) => setExportedClips(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+  /** Asks the export log which of this project's clips are exported; a public studio keeps no log. */
+  const loadExportedClips = (projectId: string | null) => {
+    setExportedClips(new Set());
+    if (!projectId || studio.mode === 'public') return;
+    fetch(`/api/exports?done=1&projectId=${encodeURIComponent(projectId)}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { done?: { clipId: string }[] } | null) => {
+        if (data?.done) setExportedClips(new Set(data.done.map(row => row.clipId)));
+      })
+      .catch(() => { /* no ticks is all a failed lookup costs */ });
+  };
   /** Set by the tabs' New clip until a clip is made: the timeline says how to choose its stretch. */
   const [newClipHint, setNewClipHint] = useState(false);
   /** Whether the upload has clips, which a trim or an audio edit would move out from under. */
@@ -2486,6 +2500,7 @@ export default function VideoCreatorPage() {
       fileName: withAspect(fileName, plan.aspectRatio),
       title: `${surahNameEnglish} GPU Clip`,
       projectId: projectId ?? undefined,
+      clipId: recordingClip?.id,
     }, audio?.currentSrc || audio?.src || '');
   };
 
@@ -2515,6 +2530,8 @@ export default function VideoCreatorPage() {
   };
 
   const handleSaveExportRecord = async ({ fileName, fileSizeBytes, durationSec, renderMs }: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => {
+    // The clip open while it rendered: a queue opens each clip in turn for its render.
+    const clipId = recordingClips.latestActiveId();
     // Counted on every studio, public included, with nothing to say who
     // exported: the owner's /stats. Not waited on.
     fetch('/api/export-count', {
@@ -2531,6 +2548,7 @@ export default function VideoCreatorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
+          clipId: clipId ?? '',
           title: `${surahNameEnglish} GPU Clip`,
           fileName,
           fileSizeBytes,
@@ -2542,6 +2560,7 @@ export default function VideoCreatorPage() {
           gpuDevice: describeGpu()
         })
       });
+      if (clipId) markExported(clipId);
     } catch {
       // ignore
     }
@@ -2627,6 +2646,7 @@ export default function VideoCreatorPage() {
     if (!proj) return;
     // Saving or rendering it from here updates this project.
     if (typeof proj.id === 'string') rememberClipProject(proj.id, proj);
+    loadExportedClips(typeof proj.id === 'string' ? proj.id : null);
     setSelectedSurah(proj.surahNumber || 1);
     setAyahStart(proj.ayahStart || 1);
     setAyahEnd(proj.ayahEnd || 7);
@@ -2986,6 +3006,7 @@ export default function VideoCreatorPage() {
             <ClipTabs
               clips={listedClips}
               activeId={recordingClip?.id ?? null}
+              exported={exportedClips}
               onOpen={id => { setNewClipHint(false); openRecordingClip(id); }}
               onRemove={recordingClips.remove}
               onNew={() => { openRecordingClip(null); setNewClipHint(true); }}
@@ -3848,6 +3869,7 @@ export default function VideoCreatorPage() {
         exportLane={exportLane}
         renderCheck={renderCheckInput}
         clips={listedClips.map((clip, i) => ({ id: clip.id, label: `${t.clips.name(i + 1)}${clip.label ? ` · ${clip.label}` : ''}` }))}
+        exportedClips={exportedClips}
         clipId={recordingClip?.id ?? null}
         onClip={(id, keep) => recordingClips.open(id, { keep })}
       />

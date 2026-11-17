@@ -61,6 +61,8 @@ export interface RenderSpec {
   media: RenderMedia[];
   /** The project this render was made from, saved when it was sent, for the export log to link. */
   projectId?: string;
+  /** The clip of its recording this renders (`recordingClips.ts`), for the export log; absent for the whole. */
+  clipId?: string;
 }
 
 /** A job as the list shows it. */
@@ -120,6 +122,7 @@ export function parseRenderSpec(text: string): RenderSpec | null {
 
 /** Absent, or an id the studio mints: it ends up in a database row, so nothing else is passed on. */
 const isProjectId = (value: unknown) => value === undefined || (typeof value === 'string' && /^proj_\w{1,60}$/.test(value));
+const isClipId = (value: unknown) => value === undefined || (typeof value === 'string' && /^[\w-]{1,64}$/.test(value));
 
 const isUploadedMedia = (item: unknown) => isObject(item) && typeof item.name === 'string'
   && isInputName(item.name) && item.name !== 'audio' && (item.kind === 'video' || item.kind === 'image');
@@ -132,7 +135,7 @@ function isRenderSpec(value: unknown): value is RenderSpec {
     && isObject(range) && inRange(range.start, 0, 86_400) && inRange(range.end, 0, 86_400)
     && Number(range.end) > Number(range.start)
     && Array.isArray(media) && media.every(isUploadedMedia)
-    && typeof value.fileName === 'string' && typeof value.title === 'string' && isProjectId(value.projectId);
+    && typeof value.fileName === 'string' && typeof value.title === 'string' && isProjectId(value.projectId) && isClipId(value.clipId);
 }
 
 /**

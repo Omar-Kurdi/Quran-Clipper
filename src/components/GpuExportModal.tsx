@@ -105,6 +105,8 @@ interface GpuExportModalProps {
    * one can be rendered in one go; empty when the recording has none.
    */
   clips?: { id: string; label: string }[];
+  /** The clips with a render on record, which *Not yet exported* leaves out. */
+  exportedClips?: ReadonlySet<string>;
   /** The clip open now, null for the whole recording; and how the queue opens another. */
   clipId?: string | null;
   onClip?: (id: string | null, keep: boolean) => void;
@@ -138,6 +140,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   exportLane,
   renderCheck,
   clips = [],
+  exportedClips,
   clipId = null,
   onClip
 }) => {
@@ -159,8 +162,13 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   /** Whether to hand the renders to the studio's server, so the tab can be closed. */
   const [onServer, setOnServer] = useState(false);
   /** Every clip of the recording, each to every destination, through the queue in this tab. */
-  const [everyClip, setEveryClip] = useState(false);
-  const allClips = everyClip && clips.length > 0;
+  /** Which clips to render: what is open, the clips not exported yet, or every clip. */
+  const [whichClips, setWhichClips] = useState<'open' | 'todo' | 'all'>('open');
+  /** The clips a batch renders, each with its number in play order. */
+  const batch = clips
+    .map((clip, i) => ({ ...clip, number: i + 1 }))
+    .filter(clip => whichClips === 'all' || (whichClips === 'todo' && !exportedClips?.has(clip.id)));
+  const allClips = whichClips !== 'open' && batch.length > 0;
   const [tier, setTier] = useState<QualityTier>('standard');
   const [exportedBlobUrl, setExportedBlobUrl] = useState<string | null>(null);
   /** The file itself, for the render check to read back. */
@@ -388,8 +396,8 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
   const render = async () => {
     // Each clip is opened in turn, so they render here, one after another.
     if (allClips) {
-      return queue.runAll(clips.flatMap((clip, i) => destinations.map(presetId => ({
-        presetId, tier, fps: selectedFps, clipId: clip.id, clipLabel: clip.label, clipNumber: i + 1
+      return queue.runAll(batch.flatMap(clip => destinations.map(presetId => ({
+        presetId, tier, fps: selectedFps, clipId: clip.id, clipLabel: clip.label, clipNumber: clip.number
       }))));
     }
     const route = exportRoute(plans.map(p => p.aspectRatio), aspectRatio, onServer && serverReady);
@@ -632,9 +640,18 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   </button>
                 )}
                 {clips.length > 0 && (
-                  <label className="flex items-center gap-2 text-[13px] text-slate-300 cursor-pointer" title={t.clips.everyClipTitle}>
-                    <input type="checkbox" checked={everyClip} onChange={e => setEveryClip(e.target.checked)} disabled={busy} className="w-4 h-4 accent-amber-500" />
-                    {t.clips.everyClip(clips.length)}
+                  <label className="flex items-center gap-2 text-[13px] text-slate-300" title={t.clips.everyClipTitle}>
+                    {t.clips.whichClips}
+                    <select
+                      value={whichClips}
+                      onChange={e => setWhichClips(e.target.value as typeof whichClips)}
+                      disabled={busy}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-[13px] text-slate-100"
+                    >
+                      <option value="open">{clipId ? t.clips.thisClip : t.clips.wholeRecording}</option>
+                      <option value="todo">{t.clips.notYetExported(clips.filter(clip => !exportedClips?.has(clip.id)).length)}</option>
+                      <option value="all">{t.clips.everyClip(clips.length)}</option>
+                    </select>
                   </label>
                 )}
                 {serverReady && !allClips && (
@@ -649,7 +666,7 @@ export const GpuExportModal: React.FC<GpuExportModalProps> = ({
                   title={plans.length === 0 ? t.exportModal.noDestination : undefined}
                   className="ms-auto h-11 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 text-[15px] font-bold transition-colors"
                 >
-                  {server.sending ? t.serverRender.sending : t.exportModal.renderVideos(plans.length * (allClips ? clips.length : 1))}
+                  {server.sending ? t.serverRender.sending : t.exportModal.renderVideos(plans.length * (allClips ? batch.length : 1))}
                 </button>
               </div>
               {server.error && (

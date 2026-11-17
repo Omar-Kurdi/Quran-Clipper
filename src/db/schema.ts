@@ -133,6 +133,8 @@ export const projects = pgTable('projects', {
 export const exports = pgTable('exports', {
   id: text('id').primaryKey(),
   projectId: text('project_id'),
+  /** The clip of the project's recording this is a render of (`recordingClips.ts`), or '' for the whole of it. */
+  clipId: text('clip_id').notNull().default(''),
   title: text('title').notNull(),
   /**
    * The name the export was offered under, not a link to it.

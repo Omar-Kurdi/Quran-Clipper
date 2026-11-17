@@ -184,6 +184,7 @@ async function recordExport(job: StoredJob, spec: RenderSpec) {
       headers: { 'Content-Type': 'application/json', ...studioAuth() },
       body: JSON.stringify({
         projectId: spec.projectId ?? null,
+        clipId: spec.clipId ?? '',
         title: job.title,
         fileName: job.fileName,
         fileSizeBytes: job.bytes,

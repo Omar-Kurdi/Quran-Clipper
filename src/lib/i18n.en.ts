@@ -526,7 +526,10 @@ export const en = {
     setClipToThis: (name: string) => `Set ${name} to this`,
     stripHint: 'Drag here to select a stretch',
     stripTitle: 'Drag along this strip to select a stretch of the recording',
-    coverage: (clipped: number, total: number) => `${clipped} of ${total} ayahs clipped`
+    coverage: (clipped: number, total: number) => `${clipped} of ${total} ayahs clipped`,
+    whichClips: 'Render',
+    thisClip: 'This clip',
+    notYetExported: (n: number) => `Clips not yet exported (${n})`
   },
   timeline: {
     overview: 'The whole recording',

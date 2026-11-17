@@ -69,6 +69,8 @@ describe('parseRenderSpec', () => {
     expect(parseRenderSpec(JSON.stringify(valid))).toEqual(valid);
     const linked = { ...valid, projectId: 'proj_1790410746589_belrg' };
     expect(parseRenderSpec(JSON.stringify(linked))).toEqual(linked);
+    const ofClip = { ...linked, clipId: 'clip-mhx2k1-3' };
+    expect(parseRenderSpec(JSON.stringify(ofClip))).toEqual(ofClip);
   });
 
   it('refuses what an encoder, a path or a range could not take', () => {
@@ -84,6 +86,8 @@ describe('parseRenderSpec', () => {
       { ...valid, verses: 'none' },
       { ...valid, projectId: "x'); drop table projects; --" },
       { ...valid, projectId: 42 },
+      { ...valid, clipId: '../clip' },
+      { ...valid, clipId: 7 },
     ];
     for (const body of broken) {
       expect(parseRenderSpec(typeof body === 'string' ? body : JSON.stringify(body))).toBeNull();

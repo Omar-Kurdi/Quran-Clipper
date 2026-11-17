@@ -42,7 +42,10 @@ function useClipList<C extends object>(config: C) {
     commit(next, null);
   }, [commit]);
 
-  return { state, latest, sharedRef: shared, commit, add, move, reset };
+  /** The clip open now, as last committed: for a callback that may run after renders it was not part of. */
+  const latestActiveId = useCallback(() => latest.current.activeId, []);
+
+  return { state, latest, sharedRef: shared, commit, add, move, reset, latestActiveId };
 }
 
 /**
@@ -56,7 +59,7 @@ function useClipList<C extends object>(config: C) {
  * clip puts its look in the config.
  */
 export function useRecordingClips<C extends object>(config: C, setConfig: (config: C) => void) {
-  const { state, latest, sharedRef, commit, add, move, reset } = useClipList(config);
+  const { state, latest, sharedRef, commit, add, move, reset, latestActiveId } = useClipList(config);
   /** The looks as last kept, which an open that keeps nothing goes back to. */
   const keptRef = useRef<{ base: C; clips: RecordingClip[] } | null>(null);
 
@@ -102,6 +105,6 @@ export function useRecordingClips<C extends object>(config: C, setConfig: (confi
   const active = state.clips.find(clip => clip.id === state.activeId) ?? null;
   return {
     clips: state.clips, activeId: state.activeId, active,
-    open, ownLook, add, remove, move, reset, settled
+    open, ownLook, add, remove, move, reset, settled, latestActiveId
   };
 }

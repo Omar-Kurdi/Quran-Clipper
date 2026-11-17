@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, ne } from 'drizzle-orm';
 import { describeDbError } from '@/lib/dbError';
 
 const memoryExports: any[] = [];
@@ -13,8 +13,31 @@ async function getDbBindings() {
   return { db, exportsTable: schema.exports };
 }
 
-export async function GET() {
+/**
+ * Which clips have been exported: `?done=1` answers with every project and
+ * clip that has a render on record, for the tabs' and the library's ticks,
+ * rather than the last twenty records the drawer lists.
+ */
+async function exportedClips(projectId: string | null) {
+  const bindings = await getDbBindings();
+  if (!bindings) {
+    const done = memoryExports
+      .filter(row => row.projectId && row.clipId && (!projectId || row.projectId === projectId))
+      .map(row => ({ projectId: row.projectId as string, clipId: row.clipId as string }));
+    return NextResponse.json({ success: true, source: 'memory', done });
+  }
+  const table = bindings.exportsTable;
+  const done = await bindings.db
+    .selectDistinct({ projectId: table.projectId, clipId: table.clipId })
+    .from(table)
+    .where(and(isNotNull(table.projectId), ne(table.clipId, ''), projectId ? eq(table.projectId, projectId) : undefined));
+  return NextResponse.json({ success: true, source: 'database', done });
+}
+
+export async function GET(req: NextRequest) {
   try {
+    const query = req.nextUrl.searchParams;
+    if (query.get('done') === '1') return await exportedClips(query.get('projectId'));
     const bindings = await getDbBindings();
     if (!bindings) {
       return NextResponse.json({ success: true, source: 'memory', exports: memoryExports.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 20) });
@@ -72,6 +95,7 @@ export async function POST(req: NextRequest) {
     const exportRecord = {
       id,
       projectId: body.projectId || null,
+      clipId: typeof body.clipId === 'string' ? body.clipId.slice(0, 64) : '',
       title: body.title || 'Quran Video Export',
       fileName: typeof body.fileName === 'string' ? body.fileName : '',
       aspectRatio: body.aspectRatio || '9:16',

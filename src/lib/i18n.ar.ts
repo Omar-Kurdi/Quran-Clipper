@@ -518,7 +518,10 @@ export const ar: Dictionary = {
     setClipToThis: name => `اجعل ${name} هذه المدّة`,
     stripHint: 'اسحب هنا لتحديد مدّة',
     stripTitle: 'اسحب على هذا الشريط لتحديد مدّة من التسجيل',
-    coverage: (clipped, total) => `${clipped} من ${total} آية في مقاطع`
+    coverage: (clipped, total) => `${clipped} من ${total} آية في مقاطع`,
+    whichClips: 'تصيير',
+    thisClip: 'هذا المقطع',
+    notYetExported: n => `مقاطع لم تُصدَّر بعد (${n})`
   },
   timeline: {
     overview: 'التسجيل كاملًا',
