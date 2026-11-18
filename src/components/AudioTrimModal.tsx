@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { fittedScale, PANEL_SCALE_MAX, PANEL_SCALE_MIN } from '@/lib/panelFit';
 import { Scissors, X, Loader2, Play, Pause, RotateCcw, ZoomIn, ZoomOut, ChevronsLeft, ChevronsRight, Move, Maximize2, Volume2 } from 'lucide-react';
 import { decodeAudioFile, computePeaks, buildTrimmedFile, TrimResult } from '@/lib/audioTrim';
 import { Dialog } from './Dialog';
@@ -117,6 +118,10 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
    */
   const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 });
   const [panelScale, setPanelScale] = useState(1);
+  /** The panel's own element, measured to open it as large as the screen allows. */
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  /** That largest size, which the dialog opens at and Reset returns to. */
+  const [fittedPanelScale, setFittedPanelScale] = useState(1);
   const panelDragRef = useRef<
     | { mode: 'move'; pointerX: number; pointerY: number; originX: number; originY: number }
     | { mode: 'scale'; pointerX: number; pointerY: number; startScale: number; span: number }
@@ -139,7 +144,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
         });
       } else {
         const delta = (e.clientX - drag.pointerX + (e.clientY - drag.pointerY)) / drag.span;
-        setPanelScale(Math.max(0.6, Math.min(2, drag.startScale * (1 + delta))));
+        setPanelScale(Math.max(PANEL_SCALE_MIN, Math.min(PANEL_SCALE_MAX, drag.startScale * (1 + delta))));
       }
     };
     const up = () => { panelDragRef.current = null; };
@@ -180,8 +185,21 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
 
   const resetPanelView = () => {
     setPanelOffset({ x: 0, y: 0 });
-    setPanelScale(1);
+    setPanelScale(fittedPanelScale);
   };
+
+  // Opened as large as the screen allows, once its waveform is drawn and so its height known; each time it opens.
+  const ready = isOpen && !isDecoding;
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!ready || !panel) return;
+    const rect = panel.getBoundingClientRect();
+    const scale = Number(getComputedStyle(panel).zoom) || 1;
+    const fitted = fittedScale({ width: rect.width / scale, height: rect.height / scale }, { width: window.innerWidth, height: window.innerHeight });
+    setFittedPanelScale(fitted);
+    setPanelScale(fitted);
+    setPanelOffset({ x: 0, y: 0 });
+  }, [ready]);
 
   // Read by the rAF loop, which must not be torn down and rebuilt every time
   // one of these changes -- `trimEnd` changes on every frame of a handle drag.
@@ -675,6 +693,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
     >
       <div
         data-trim-panel
+        ref={panelRef}
         style={{ zoom: panelScale }}
         className="relative w-[min(48rem,88vw)] bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl"
       >
@@ -702,7 +721,7 @@ export const AudioTrimModal: React.FC<AudioTrimModalProps> = ({ isOpen, file, on
             </h3>
             <p className="text-xs text-slate-400">{t.trim.help}</p>
           </div>
-          {(panelScale !== 1 || panelOffset.x !== 0 || panelOffset.y !== 0) && (
+          {(panelScale !== fittedPanelScale || panelOffset.x !== 0 || panelOffset.y !== 0) && (
             <button
               onClick={resetPanelView}
               className="shrink-0 px-2 py-1 text-[11px] font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"

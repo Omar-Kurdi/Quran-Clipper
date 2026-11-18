@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Check, HardDrive, Mic, Plus, Trash2 } from 'lucide-react';
+import { Check, HardDrive, ListChecks, Mic, Plus, Trash2 } from 'lucide-react';
 import { clipColour } from '@/lib/clipColours';
 import { libraryOf, type ExportedClip, type LibraryClip, type LibraryProject, type LibraryRecording } from '@/lib/projectLibrary';
 import { projectLength } from '@/lib/projectSearch';
@@ -20,8 +20,9 @@ interface RecordingLibraryProps {
   projects: LibraryProject[];
   done: ExportedClip[];
   onOpen: (request: OpenRequest) => void;
-  onRemove: (recording: LibraryRecording) => void;
-  removing: string | null;
+  onRemove: (recordings: LibraryRecording[]) => void;
+  /** The recordings being removed right now, by key. */
+  removing: ReadonlySet<string>;
 }
 
 const ayahRange = (clip: Pick<LibraryClip, 'surahNumber' | 'first' | 'last'>) =>
@@ -92,13 +93,18 @@ const SurahCoverage: React.FC<{ recording: LibraryRecording }> = ({ recording })
 };
 
 /** A recording's name, its file or reciter and folder, where it is from, when, and how many of its clips are exported. */
-const RecordingHead: React.FC<{ recording: LibraryRecording }> = ({ recording }) => {
+const RecordingHead: React.FC<{ recording: LibraryRecording; select?: { selected: boolean; onToggle: () => void } }> = ({ recording, select }) => {
   const t = useT();
   const { locale } = useLocale();
   const exported = recording.clips.filter(clip => clip.exported).length;
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {select && (
+          <input type="checkbox" checked={select.selected} onChange={select.onToggle}
+            aria-label={t.library.selectRecording(recording.surahNameEnglish)}
+            className="self-center w-4 h-4 accent-amber-500 cursor-pointer" />
+        )}
         <span className="text-[15px] font-semibold text-slate-100">{recording.surahNameEnglish}</span>
         {recording.artist && <span className="text-[13px] font-semibold text-amber-300" dir="auto" title={t.library.artistTitle}>{recording.artist}</span>}
         {recording.folder && <span className="font-mono text-xs text-slate-300 truncate" dir="auto" title={t.library.folderTitle}>{recording.folder}/</span>}
@@ -126,18 +132,19 @@ const RecordingHead: React.FC<{ recording: LibraryRecording }> = ({ recording })
 /** One recording: what it is, which ayahs are clipped, its clips, and opening it. */
 const RecordingRow: React.FC<{
   recording: LibraryRecording; removing: boolean; onOpen: RecordingLibraryProps['onOpen']; onRemove: () => void;
-}> = ({ recording, removing, onOpen, onRemove }) => {
+  select?: { selected: boolean; onToggle: () => void };
+}> = ({ recording, removing, onOpen, onRemove, select }) => {
   const t = useT();
   const length = projectLength(recording.duration);
   const projectOf = (clip: LibraryClip) => recording.projects.find(p => p.id === clip.projectId) ?? recording.project;
   return (
-    <li className="grid grid-cols-1 md:grid-cols-[9rem_minmax(0,1fr)_auto] gap-4 py-4 border-t border-slate-800">
+    <li className={`grid grid-cols-1 md:grid-cols-[9rem_minmax(0,1fr)_auto] gap-4 py-4 border-t border-slate-800 ${select?.selected ? 'bg-amber-500/5' : ''}`}>
       <div className="hidden md:flex flex-col justify-between h-24 rounded-xl border border-slate-800 bg-slate-950/70 p-2.5">
         <span className="font-display text-lg text-amber-300" dir="rtl">{recording.surahNameArabic}</span>
         <span className="font-mono text-[11px] text-slate-400" dir="ltr">{length ?? ''}</span>
       </div>
       <div className="min-w-0 flex flex-col gap-2">
-        <RecordingHead recording={recording} />
+        <RecordingHead recording={recording} select={select} />
         <SurahCoverage recording={recording} />
         <div className="flex gap-2.5 overflow-x-auto pb-1">
           {recording.clips.map(clip => (
@@ -167,6 +174,42 @@ const RecordingRow: React.FC<{
   );
 };
 
+/** Choosing recordings to remove together: Select, then how many are chosen, all or none, Remove and Cancel. */
+const SelectControls: React.FC<{
+  recordings: LibraryRecording[]; selected: ReadonlySet<string> | null; chosen: LibraryRecording[]; busy: boolean;
+  onSelect: (keys: ReadonlySet<string> | null) => void; onRemove: () => void;
+}> = ({ recordings, selected, chosen, busy, onSelect: setSelected, onRemove }) => {
+  const t = useT();
+  const allChosen = chosen.length === recordings.length;
+  return (
+    <>
+      {selected ? (
+        <>
+          <span className="text-xs text-slate-400">{t.library.selectedCount(chosen.length)}</span>
+          <button type="button" onClick={() => setSelected(allChosen ? new Set() : new Set(recordings.map(recording => recording.key)))}
+            className="h-8 px-3 rounded-lg border border-slate-700 text-[12px] font-semibold text-slate-200 hover:bg-slate-800">
+            {allChosen ? t.library.selectNone : t.library.selectAll}
+          </button>
+          <button type="button" disabled={!chosen.length || busy}
+            onClick={onRemove}
+            className="h-8 px-3 rounded-lg border border-red-500/40 text-[12px] font-semibold text-red-300 hover:bg-red-500/10 inline-flex items-center gap-1.5 disabled:opacity-50">
+            <Trash2 className="w-3.5 h-3.5" />{t.library.removeSelected(chosen.length)}
+          </button>
+          <button type="button" onClick={() => setSelected(null)}
+            className="h-8 px-3 rounded-lg text-[12px] font-semibold text-slate-400 hover:text-slate-100">
+            {t.common.cancel}
+          </button>
+        </>
+      ) : recordings.length > 1 && (
+        <button type="button" onClick={() => setSelected(new Set())}
+          className="h-8 px-3 rounded-lg border border-slate-700 text-[12px] font-semibold text-slate-200 hover:bg-slate-800 inline-flex items-center gap-1.5">
+          <ListChecks className="w-3.5 h-3.5" />{t.library.select}
+        </button>
+      )}
+    </>
+  );
+};
+
 /**
  * Projects as a library of recordings (`projectLibrary.ts`): the latest clips
  * first, after Video-Clipper's shorts, then each recording once with every
@@ -176,6 +219,15 @@ const RecordingRow: React.FC<{
 export const RecordingLibrary: React.FC<RecordingLibraryProps> = ({ projects, done, onOpen, onRemove, removing }) => {
   const t = useT();
   const { recordings, latestClips } = libraryOf(projects, done);
+  /** Choosing recordings to remove together: null when not choosing, else the keys chosen. */
+  const [selected, setSelected] = React.useState<ReadonlySet<string> | null>(null);
+  const toggle = (key: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (!next.delete(key)) next.add(key);
+    return next;
+  });
+  // Only what is listed: a search may have hidden some of what was chosen.
+  const chosen = selected ? recordings.filter(recording => selected.has(recording.key)) : [];
   return (
     <div className="flex flex-col gap-6">
       {latestClips.length > 0 && (
@@ -191,12 +243,17 @@ export const RecordingLibrary: React.FC<RecordingLibraryProps> = ({ projects, do
         </section>
       )}
       <section aria-label={t.library.recordings}>
-        <h4 className="font-display text-2xl text-slate-100">{t.library.recordings}</h4>
+        <div className="flex flex-wrap items-center gap-2">
+          <h4 className="font-display text-2xl text-slate-100 me-auto">{t.library.recordings}</h4>
+          <SelectControls recordings={recordings} selected={selected} chosen={chosen} busy={removing.size > 0}
+            onSelect={setSelected} onRemove={() => { onRemove(chosen); setSelected(null); }} />
+        </div>
         <p className="mt-0.5 mb-2 text-xs text-slate-400">{t.library.recordingsNote}</p>
         <ul>
           {recordings.map(recording => (
-            <RecordingRow key={recording.key} recording={recording} removing={removing === recording.key}
-              onOpen={onOpen} onRemove={() => onRemove(recording)} />
+            <RecordingRow key={recording.key} recording={recording} removing={removing.has(recording.key)}
+              onOpen={onOpen} onRemove={() => onRemove([recording])}
+              select={selected ? { selected: selected.has(recording.key), onToggle: () => toggle(recording.key) } : undefined} />
           ))}
         </ul>
       </section>

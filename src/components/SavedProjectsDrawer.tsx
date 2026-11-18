@@ -42,11 +42,13 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   /** The project the confirm dialog is asking about, and what went wrong last time. */
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string; kind: 'export' } | null>(null);
-  /** The recording the confirm dialog is asking about removing, with every project saved from it. */
-  const [pendingRecording, setPendingRecording] = useState<LibraryRecording | null>(null);
+  /** The recordings the confirm dialog is asking about removing, with every project saved from each. */
+  const [pendingRecordings, setPendingRecordings] = useState<LibraryRecording[] | null>(null);
   /** Every project and clip with a render on record, for the library's ticks. */
   const [done, setDone] = useState<ExportedClip[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /** The recordings being removed, by key. */
+  const [removingKeys, setRemovingKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
@@ -111,16 +113,16 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
     }
   };
 
-  /** Removes every project saved from a recording, one after another, stopping at the first that fails. */
-  const deleteRecording = async (recording: LibraryRecording) => {
-    setDeletingId(recording.key);
+  /** Removes every project saved from these recordings, one after another, stopping at the first that fails. */
+  const deleteRecordings = async (recordings: LibraryRecording[]) => {
+    setRemovingKeys(new Set(recordings.map(recording => recording.key)));
     // One after another, each against the list the last one left; null once one has failed.
-    await recording.projects.reduce<Promise<any[] | null>>(async (pending, project) => {
+    await recordings.flatMap(recording => recording.projects).reduce<Promise<any[] | null>>(async (pending, project) => {
       const left = await pending;
       if (!left || !(await deleteProject(project.id, () => left))) return null;
       return left.filter(proj => proj.id !== project.id);
     }, Promise.resolve(projectsList));
-    setDeletingId(null);
+    setRemovingKeys(new Set());
   };
 
   /**
@@ -164,7 +166,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
       // Escape belongs to the confirmation while one is up: without this the
       // drawer takes the key first and the whole thing closes, which is a
       // startling answer to "are you sure?".
-      dismissible={pendingDelete === null && pendingRecording === null}
+      dismissible={pendingDelete === null && pendingRecordings === null}
       panelClassName="w-full max-w-6xl h-[92vh] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-2xl p-5 sm:p-6 overflow-hidden"
     >
       <div className="contents">
@@ -245,12 +247,12 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                 <RecordingLibrary
                   projects={projectsList.filter(proj => matchesProject(proj, query))}
                   done={done}
-                  removing={deletingId}
+                  removing={removingKeys}
                   onOpen={({ project, clipId, newClip }: OpenRequest) => {
                     onLoadProject(project, { clipId, newClip });
                     onClose();
                   }}
-                  onRemove={setPendingRecording}
+                  onRemove={setPendingRecordings}
                 />
                 {projectsList.filter(proj => matchesProject(proj, query)).length === 0 && (
                   <p className="py-8 text-center text-[13px] text-slate-400">{t.projects.noMatches(query.trim())}</p>
@@ -362,15 +364,17 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
         }}
       />
     <ConfirmDialog
-        isOpen={pendingRecording !== null}
-        title={t.library.removeTitle}
-        message={pendingRecording ? t.library.removeMessage(pendingRecording.surahNameEnglish, pendingRecording.clips.length) : ''}
+        isOpen={pendingRecordings !== null && pendingRecordings.length > 0}
+        title={pendingRecordings && pendingRecordings.length > 1 ? t.library.removeManyTitle(pendingRecordings.length) : t.library.removeTitle}
+        message={!pendingRecordings?.length ? ''
+          : pendingRecordings.length === 1 ? t.library.removeMessage(pendingRecordings[0].surahNameEnglish, pendingRecordings[0].clips.length)
+          : t.library.removeManyMessage(pendingRecordings.length, pendingRecordings.reduce((sum, recording) => sum + recording.clips.length, 0))}
         confirmLabel={t.library.remove}
-        onCancel={() => setPendingRecording(null)}
+        onCancel={() => setPendingRecordings(null)}
         onConfirm={() => {
-          const target = pendingRecording;
-          setPendingRecording(null);
-          if (target) void deleteRecording(target);
+          const targets = pendingRecordings;
+          setPendingRecordings(null);
+          if (targets?.length) void deleteRecordings(targets);
         }}
       />
     </>

@@ -1230,6 +1230,15 @@ export const ar: Dictionary = {
     exportedCount: n => `${n} مُصدَّر`,
     open: 'فتح',
     remove: 'حذف',
+    select: 'تحديد',
+    selectAll: 'تحديد الكل',
+    selectNone: 'إلغاء تحديد الكل',
+    selectedCount: n => `${n} محدد`,
+    selectRecording: name => `تحديد ${name}`,
+    removeSelected: n => `حذف ${n}`,
+    removeManyTitle: n => `حذف ${n} تسجيلات؟`,
+    removeManyMessage: (n, clips) =>
+      `تُحذف هذه التسجيلات (${n})${clips ? ` ومقاطعها (${clips})` : ''} من المشاريع، مع نسخ التسجيلات المحفوظة في هذا المتصفح. تبقى الملفات على جهازك وأي فيديوهات صُدّرت من قبل.`,
     removeTitle: 'حذف هذا التسجيل؟',
     removeMessage: (name, clips) =>
       `يُحذف ${name} ومقاطعه (${clips}) من المشاريع، مع نسخة التسجيل المحفوظة في هذا المتصفح. ويبقى الملف على جهازك وكل فيديو صُدِّر.`

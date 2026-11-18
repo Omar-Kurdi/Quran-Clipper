@@ -1252,6 +1252,15 @@ export const en = {
     open: 'Open',
     remove: 'Remove',
     removeTitle: 'Remove this recording?',
+    select: 'Select',
+    selectAll: 'Select all',
+    selectNone: 'Select none',
+    selectedCount: (n: number) => `${n} selected`,
+    selectRecording: (name: string) => `Select ${name}`,
+    removeSelected: (n: number) => `Remove ${n}`,
+    removeManyTitle: (n: number) => `Remove ${n} recordings?`,
+    removeManyMessage: (n: number, clips: number) =>
+      `These ${n} recordings${clips ? ` and their ${clips} ${clips === 1 ? 'clip' : 'clips'}` : ''} are removed from Projects, with the copies of the recordings kept in this browser. The files on your computer and any videos already exported stay.`,
     removeMessage: (name: string, clips: number) =>
       `${name} and its ${clips} ${clips === 1 ? 'clip' : 'clips'} are removed from Projects, with the copy of the recording kept in this browser. The file on your computer and any videos already exported stay.`
   },
