@@ -103,7 +103,7 @@ DEFAULT_NEMO_ALIGN_MODEL = "Muno459/fastconformer-quran"
 #: anyone choosing it or measuring it. `scripts/check_model.py` says when the
 #: Hub has a newer one; `ASR_ALIGN_MODEL_REVISION` tries it without a code
 #: change, and this moves only once `./gauge.sh` agrees.
-DEFAULT_NEMO_ALIGN_REVISION = "77dbe5d809628ea89422243695de4c0d69770775"
+DEFAULT_NEMO_ALIGN_REVISION = "bfe02087bc4f488e37884a0ac012190e79ac6d71"
 
 
 def default_model_revision() -> str:

@@ -309,7 +309,7 @@ available:
 {
   "status": "ok",
   "alignModel": "Muno459/fastconformer-quran",
-  "alignModelRevision": "77dbe5d809628ea89422243695de4c0d69770775",  // the pinned upload, or a trial's
+  "alignModelRevision": "bfe02087bc4f488e37884a0ac012190e79ac6d71",  // the pinned upload, or a trial's
   "alignReady": true,          // false => every /align call will fail
   "alignError": null,          // why, when alignReady is false
   "canAutoDetectRange": true,
