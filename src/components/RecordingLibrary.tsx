@@ -3,9 +3,10 @@
 import React from 'react';
 import { Check, HardDrive, Mic, Plus, Trash2 } from 'lucide-react';
 import { clipColour } from '@/lib/clipColours';
-import { libraryOf, type LibraryClip, type LibraryProject, type LibraryRecording } from '@/lib/projectLibrary';
+import { libraryOf, type ExportedClip, type LibraryClip, type LibraryProject, type LibraryRecording } from '@/lib/projectLibrary';
 import { projectLength } from '@/lib/projectSearch';
-import { useT } from './LocaleProvider';
+import { formatStamp } from '@/lib/stamp';
+import { useLocale, useT } from './LocaleProvider';
 
 export interface OpenRequest {
   project: LibraryProject;
@@ -17,7 +18,7 @@ export interface OpenRequest {
 
 interface RecordingLibraryProps {
   projects: LibraryProject[];
-  done: { projectId: string; clipId: string }[];
+  done: ExportedClip[];
   onOpen: (request: OpenRequest) => void;
   onRemove: (recording: LibraryRecording) => void;
   removing: string | null;
@@ -26,14 +27,28 @@ interface RecordingLibraryProps {
 const ayahRange = (clip: Pick<LibraryClip, 'surahNumber' | 'first' | 'last'>) =>
   !clip.first ? '' : clip.first === clip.last ? `${clip.surahNumber}:${clip.first}` : `${clip.surahNumber}:${clip.first}–${clip.last}`;
 
-/** A clip as a small 9:16 card: its surah, its ayahs, and a tick once exported. */
+/** When a clip was made and last exported, the year left out on the card and given in full on hover. */
+const ClipDates: React.FC<{ clip: LibraryClip }> = ({ clip }) => {
+  const t = useT();
+  const { locale } = useLocale();
+  return (
+    <span className="mt-0.5 block font-sans text-[10px] leading-snug text-slate-400"
+      title={[t.library.made(formatStamp(clip.madeAt, locale)), clip.exportedAt ? t.library.exportedOn(formatStamp(clip.exportedAt, locale)) : '']
+        .filter(Boolean).join('\n')}>
+      <span className="block whitespace-nowrap">{t.library.made(formatStamp(clip.madeAt, locale, true))}</span>
+      {clip.exportedAt && <span className="block whitespace-nowrap text-emerald-300/80">{t.library.exportedOn(formatStamp(clip.exportedAt, locale, true))}</span>}
+    </span>
+  );
+};
+
+/** A clip as a small 9:16 card: its surah, its ayahs, when it was made and exported, and a tick once exported. */
 const ClipCard: React.FC<{
   clip: LibraryClip; surahArabic: string; caption?: string; size: 'large' | 'small'; onOpen: () => void;
 }> = ({ clip, surahArabic, caption, size, onOpen }) => {
   const t = useT();
   const large = size === 'large';
   return (
-    <button type="button" onClick={onOpen} className={`group shrink-0 text-start ${large ? 'w-24' : 'w-16'} focus-visible:outline-none`}
+    <button type="button" onClick={onOpen} className={`group shrink-0 text-start w-28 focus-visible:outline-none`}
       title={t.clips.openTitle(t.clips.name(clip.number))}>
       <span className={`relative block ${large ? 'h-[170px]' : 'h-[112px]'} rounded-lg border-2 overflow-hidden bg-[radial-gradient(120%_70%_at_50%_110%,#123247,#08162a_55%,#050b18)] transition-transform group-hover:-translate-y-0.5 group-focus-visible:ring-2 group-focus-visible:ring-amber-400 ${
         clip.exported ? 'border-emerald-400' : 'border-dashed border-slate-600 opacity-80'
@@ -47,6 +62,7 @@ const ClipCard: React.FC<{
       <span className={`mt-1 block font-semibold text-slate-100 ${large ? 'text-xs' : 'text-[11px]'}`}>{t.clips.name(clip.number)}</span>
       <span className="block font-mono text-[10px] text-gold" dir="ltr">{ayahRange(clip)}</span>
       {caption && <span className="block text-[10px] text-slate-400 truncate">{caption}</span>}
+      <ClipDates clip={clip} />
     </button>
   );
 };
@@ -75,16 +91,22 @@ const SurahCoverage: React.FC<{ recording: LibraryRecording }> = ({ recording })
   );
 };
 
-/** A recording's name, its file or reciter, where it is from, and how many of its clips are exported. */
+/** A recording's name, its file or reciter and folder, where it is from, when, and how many of its clips are exported. */
 const RecordingHead: React.FC<{ recording: LibraryRecording }> = ({ recording }) => {
   const t = useT();
+  const { locale } = useLocale();
   const exported = recording.clips.filter(clip => clip.exported).length;
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-[15px] font-semibold text-slate-100">{recording.surahNameEnglish}</span>
         {recording.artist && <span className="text-[13px] font-semibold text-amber-300" dir="auto" title={t.library.artistTitle}>{recording.artist}</span>}
+        {recording.folder && <span className="font-mono text-xs text-slate-300 truncate" dir="auto" title={t.library.folderTitle}>{recording.folder}/</span>}
         {recording.source &&<span className="font-mono text-xs text-slate-400 truncate" dir="auto">{recording.source}</span>}
+      </div>
+      <div className="flex flex-wrap gap-x-3 font-mono text-[11px] text-slate-400">
+        <span>{t.library.created(formatStamp(recording.createdAt, locale))}</span>
+        {recording.updatedAt !== recording.createdAt && <span>{t.library.edited(formatStamp(recording.updatedAt, locale))}</span>}
       </div>
       <div className="flex flex-wrap gap-2 text-[11px]">
         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-slate-700 text-slate-300">
@@ -123,7 +145,7 @@ const RecordingRow: React.FC<{
               onOpen={() => onOpen({ project: projectOf(clip), clipId: clip.clipId })} />
           ))}
           <button type="button" onClick={() => onOpen({ project: recording.project, clipId: null, newClip: true })}
-            className="shrink-0 w-16 text-start focus-visible:outline-none group">
+            className="shrink-0 w-24 text-start focus-visible:outline-none group">
             <span className="flex items-center justify-center h-[112px] rounded-lg border-2 border-dashed border-slate-600 text-amber-400 group-hover:border-amber-500 group-focus-visible:ring-2 group-focus-visible:ring-amber-400">
               <Plus className="w-5 h-5" />
             </span>

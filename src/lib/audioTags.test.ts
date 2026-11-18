@@ -54,6 +54,7 @@ describe('normalizeAudioTags', () => {
   it('keeps what is read here and drops the rest', () => {
     expect(normalizeAudioTags({ artist: ' A ', track: 49, cover: 'x', title: 3 })).toEqual({ artist: 'A', track: 49 });
     expect(normalizeAudioTags({ track: 0 })).toBeNull();
+    expect(normalizeAudioTags({ folder: ' Alaa-Aqel ' })).toEqual({ folder: 'Alaa-Aqel' });
     expect(normalizeAudioTags('artist')).toBeNull();
   });
 });

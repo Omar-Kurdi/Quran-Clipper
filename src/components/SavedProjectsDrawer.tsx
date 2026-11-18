@@ -13,7 +13,7 @@ import { listProjects, deleteProject as removeProject } from '@/lib/projectStore
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { matchesProject } from '@/lib/projectSearch';
 import { RecordingLibrary, type OpenRequest } from './RecordingLibrary';
-import type { LibraryRecording } from '@/lib/projectLibrary';
+import type { ExportedClip, LibraryRecording } from '@/lib/projectLibrary';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
@@ -45,7 +45,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   /** The recording the confirm dialog is asking about removing, with every project saved from it. */
   const [pendingRecording, setPendingRecording] = useState<LibraryRecording | null>(null);
   /** Every project and clip with a render on record, for the library's ticks. */
-  const [done, setDone] = useState<{ projectId: string; clipId: string }[]>([]);
+  const [done, setDone] = useState<ExportedClip[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [query, setQuery] = useState('');

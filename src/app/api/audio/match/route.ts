@@ -18,6 +18,9 @@ import { alignerAudioUrl, publicAudioUrlAllowed } from '@/lib/alignerAudio';
 import { studioMode } from '@/lib/studioMode';
 import { openingVerses, passageAfterOpenings } from '@/lib/openings';
 import { getVerseByKey } from '@/lib/quranCorpus';
+import { cutUploadWindow, MAX_UPLOAD_WINDOW_SEC } from '@/lib/uploadWindow';
+import { shiftTimeline } from '@/lib/verseEdits';
+import { findFfmpeg } from '@/lib/renderRunner';
 import { PHONEME_PROVIDERS, asLab, isPhonemeProvider, labStages, phonemeTrialOffered, type PhonemeProvider } from '@/lib/phonemeTrial';
 import { matchQueue, ticketFrom, visitorFrom, QueueFullError, VisitorBusyError, AbandonedError } from '@/lib/matchQueue';
 
@@ -248,7 +251,7 @@ export async function POST(req: NextRequest) {
       );
     }
     provider = resolveProvider(String(formData.get('provider') || req.nextUrl.searchParams.get('provider') || ''));
-    const audio = formData.get('audio');
+    let audio = formData.get('audio');
     // Either an upload, or one of the built-in reciters: a URL plus the window
     // of it to read. The reciter's file is the whole chapter, so sending it
     // here would mean carrying up to 87 MB through this process to use half a
@@ -257,6 +260,26 @@ export async function POST(req: NextRequest) {
     const windowStart = Number(formData.get('windowStart') ?? NaN);
     const windowEnd = Number(formData.get('windowEnd') ?? NaN);
     const hasWindow = !!audioUrl && Number.isFinite(windowStart) && Number.isFinite(windowEnd) && windowEnd > windowStart;
+    /**
+     * One stretch of an upload -- a clip of a long surah file -- matched on
+     * its own (`uploadWindow.ts`): the file sent with the request, or the one
+     * a personal studio keeps for it (`sourceId`). Its times come back on the
+     * stretch's clock and are moved onto the recording's below.
+     */
+    const sourceId = studioMode() === 'public' ? '' : String(formData.get('sourceId') || '');
+    const uploadWindow = !audioUrl && (audio instanceof File || !!sourceId)
+      && Number.isFinite(windowStart) && Number.isFinite(windowEnd) && windowEnd > windowStart && windowStart >= 0;
+    if (uploadWindow) {
+      if (windowEnd - windowStart > MAX_UPLOAD_WINDOW_SEC) {
+        return NextResponse.json({ success: false, provider, error: `Match at most ${MAX_UPLOAD_WINDOW_SEC / 60} minutes of a recording at a time.` }, { status: 400 });
+      }
+      const ffmpeg = findFfmpeg();
+      if (!ffmpeg) return NextResponse.json({ success: false, provider, error: 'ffmpeg is not installed on this server.' }, { status: 500 });
+      const cut = await cutUploadWindow(ffmpeg, audio instanceof File ? { file: audio } : { sourceId }, windowStart, windowEnd);
+      // The kept copy has been let go: the studio sends the file instead.
+      if (!cut) return NextResponse.json({ success: false, provider, error: 'source gone' }, { status: 404 });
+      audio = cut;
+    }
 
     // A public studio has no Gemini (its key is the owner's, and its free tier
     // is not a shared one) and hands the sidecar only reciter audio -- see
@@ -422,8 +445,8 @@ export async function POST(req: NextRequest) {
       provider,
       selectedSurah,
       windowStart: hasWindow ? windowStart : 0,
-      clientDuration: Number(formData.get('audioDuration') || 0),
-      wholeClip: !hasWindow
+      clientDuration: uploadWindow ? windowEnd - windowStart : Number(formData.get('audioDuration') || 0),
+      wholeClip: !hasWindow && !uploadWindow
     });
     if ('error' in built) {
       return NextResponse.json({ success: false, provider, error: built.error }, { status: built.status });
@@ -436,6 +459,14 @@ export async function POST(req: NextRequest) {
       model: provider === 'gemini' ? geminiModel() : undefined,
       needsReview: needsReview(provider, built.confidence, Boolean(result.warning)),
       ...built.body,
+      // A stretch's captions on the recording's clock, which it alone does not
+      // span; no re-cut, which would answer with the stretch's clock again.
+      ...(uploadWindow ? {
+        verses: shiftTimeline(built.body.verses as VerseData[], windowStart),
+        audioDuration: null,
+        regroupId: null,
+        window: { start: windowStart, end: windowEnd },
+      } : {}),
       /** Whose published timings the captions use, or null when the aligner timed them. */
       timedFrom: published?.provider ?? null,
       pausesFromAudio,

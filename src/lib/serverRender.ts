@@ -53,6 +53,12 @@ export interface RenderSpec {
   backgroundTimeOffset: number;
   /** Where in the recording the clip begins and ends, in seconds. */
   range: { start: number; end: number };
+  /**
+   * Where on the recording's clock the audio sent with the job begins: a long
+   * recording sends only the stretch it renders, cut by the server
+   * (`longAudio.ts`). Absent when the whole recording is sent.
+   */
+  audioStart?: number;
   plan: RenderPlan;
   fileName: string;
   /** What the export log calls it. */
@@ -134,9 +140,16 @@ function isRenderSpec(value: unknown): value is RenderSpec {
     && inRange(plan.fps, 1, 240) && inRange(plan.bitrate, 100_000, 200_000_000)
     && isObject(range) && inRange(range.start, 0, 86_400) && inRange(range.end, 0, 86_400)
     && Number(range.end) > Number(range.start)
+    && (value.audioStart === undefined || inRange(value.audioStart, 0, Number(range.start)))
     && Array.isArray(media) && media.every(isUploadedMedia)
     && typeof value.fileName === 'string' && typeof value.title === 'string' && isProjectId(value.projectId) && isClipId(value.clipId);
 }
+
+/** Where in the audio sent with the job its rendered stretch lies, for the server to cut it. */
+export const sentAudioWindow = (spec: Pick<RenderSpec, 'range' | 'audioStart'>) => ({
+  start: spec.range.start - (spec.audioStart ?? 0),
+  end: spec.range.end - (spec.audioStart ?? 0),
+});
 
 /**
  * Every background url in a config, rewritten by `map`.

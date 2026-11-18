@@ -12,12 +12,16 @@ import { withUploads, type RenderSpec } from './serverRender';
  */
 export async function buildRenderForm(
   spec: Omit<RenderSpec, 'media'>,
-  audioSrc: string
+  /** The recording's address -- or, for a long one, the stretch rendered, already cut (`spec.audioStart`). */
+  audioSrc: string | Blob
 ): Promise<FormData> {
   const { config, uploads } = withUploads(spec.config, mediaKind);
   // Resolved against this page: a reciter's recording is the studio's relative proxy url.
-  const sources = [audioSrc, ...uploads.map(upload => upload.url)].map(src => new URL(src, window.location.href));
-  const [audio, ...backgrounds] = await Promise.all(sources.map(async url => (await fetch(url)).blob()));
+  const fetched = (src: string) => fetch(new URL(src, window.location.href)).then(res => res.blob());
+  const [audio, ...backgrounds] = await Promise.all([
+    typeof audioSrc === 'string' ? fetched(audioSrc) : audioSrc,
+    ...uploads.map(upload => fetched(upload.url)),
+  ]);
   const form = new FormData();
   form.append('audio', audio, 'audio');
   uploads.forEach((upload, i) => form.append(upload.media.name, backgrounds[i], upload.media.name));

@@ -4,7 +4,7 @@ import { isOpening, type OpeningKind } from '@/lib/openings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines, Layers } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines, Layers, Sparkles } from 'lucide-react';
 import { captionChecks, toCheckCount } from '@/lib/captionChecks';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform, type Waveform as WaveformData } from '@/lib/waveform';
@@ -19,7 +19,7 @@ import { useT } from './LocaleProvider';
 import { ClipLane } from './ClipLane';
 import { ClipSelectionBar } from './ClipSelectionBar';
 import { TimelineOverview } from './TimelineOverview';
-import { ayahList, ayahRangeWindow, ayahsHeld, clipLabel, snapToAyahs } from '@/lib/recordingClips';
+import { ayahList, ayahRangeWindow, ayahsHeld, clipLabel, clipVerses, snapToAyahs } from '@/lib/recordingClips';
 import { AyahRangePicker } from './ClipSelectionBar';
 import { LengthReadout } from './LengthReadout';
 import { TimelineSkeleton } from './Skeleton';
@@ -115,6 +115,11 @@ interface TimelineProps {
   /** Said where a stretch is chosen until one is, after the tabs' New clip asks for one. */
   selectHint?: boolean;
   onOwnLook?: (on: boolean) => void;
+  /** Matches the open clip on its own, offered while it has no captions; `matching` while that runs. */
+  onMatchClip?: () => void;
+  matching?: boolean;
+  /** The captions shown are the sample's, not the recording's: no clip of it has captions yet. */
+  sampleCaptions?: boolean;
 }
 
 const ZOOMS = [1, 2, 4, 8];
@@ -184,7 +189,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
   onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip, onMoveClip, activeClipOwn = false, onOwnLook,
-  selectHint = false
+  selectHint = false, onMatchClip, matching = false, sampleCaptions = false
 }) => {
   const t = useT();
   const toCheck = useMemo(() => toCheckCount(verses), [verses]);
@@ -713,6 +718,21 @@ export const Timeline: React.FC<TimelineProps> = ({
         </button>
       </div>
 
+      {onMatchClip && activeClipId && clipIsWhole && !selectHint && (() => {
+        const open = clips.find(each => each.id === activeClipId);
+        if (!open || (!sampleCaptions && clipVerses(verses, open).length)) return null;
+        const name = t.clips.name(clips.filter(each => each.start < open.start).length + 1);
+        return (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/[0.06]">
+            <p className="text-xs text-amber-200">{t.clips.noCaptionsYet(name)}</p>
+            <button type="button" onClick={onMatchClip} disabled={matching}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-gold hover:bg-gold-bright disabled:opacity-60 text-ink text-xs font-bold rounded-lg transition-colors">
+              <Sparkles className={`w-3.5 h-3.5 ${matching ? 'animate-pulse' : ''}`} />
+              {t.clips.matchClip(name)}
+            </button>
+          </div>
+        );
+      })()}
       {selecting && (!clipIsWhole || selectHint) && (
         clipIsWhole ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/[0.06]">

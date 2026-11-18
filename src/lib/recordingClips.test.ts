@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   snapToAyahs, ayahCoverage, ayahList, ayahRangeWindow, ayahsHeld,
-  addClip, ayahWindow, clipLabel, clipStyle, clipVerses, dragClip, inPlayOrder, moveClip, newClip, normalizeClips, removeClip,
+  addClip, ayahWindow, clipLabel, clipMadeAt, clipStyle, clipVerses, dragClip, inPlayOrder, moveClip, newClip, normalizeClips, removeClip,
   settleLooks, styleDiff, switchOwnLook, MIN_CLIP_SEC, type RecordingClip
 } from './recordingClips';
 
@@ -277,5 +277,21 @@ describe('normalizeClips', () => {
 
   it('reads a style that is not an object as the shared look', () => {
     expect(normalizeClips([{ id: 'a', start: 1, end: 9, style: ['x'] }])[0].style).toBeNull();
+  });
+});
+
+describe('clipMadeAt', () => {
+  it('reads when a clip was made from its id', () => {
+    const before = Date.now();
+    const made = newClip(1, 10, 60)!;
+    expect(clipMadeAt(made.id)).toBeGreaterThanOrEqual(before);
+    expect(clipMadeAt(made.id)).toBeLessThanOrEqual(Date.now());
+    expect(clipMadeAt(`clip-${Date.UTC(2026, 10, 18, 6, 30).toString(36)}-3`)).toBe(Date.UTC(2026, 10, 18, 6, 30));
+  });
+
+  it('is null for an id not made with a time', () => {
+    expect(clipMadeAt('c1')).toBeNull();
+    expect(clipMadeAt('clip-zz-1')).toBeNull();
+    expect(clipMadeAt(`clip-${(Date.now() + 10 * 86_400_000).toString(36)}-1`)).toBeNull();
   });
 });

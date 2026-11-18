@@ -15,6 +15,8 @@ export interface AudioTags {
   album?: string;
   /** The track number, as the number before any `/total`. */
   track?: number;
+  /** Not the tag's: the folder the file was picked from, when it was picked by its folder (`FolderPicker`). */
+  folder?: string;
 }
 
 /** The frames read, by id: 2.3 and 2.4's, then 2.2's. */
@@ -113,7 +115,7 @@ export function normalizeAudioTags(value: unknown): AudioTags | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
   const out: AudioTags = {};
-  for (const field of ['artist', 'title', 'album'] as const) {
+  for (const field of ['artist', 'title', 'album', 'folder'] as const) {
     const text = raw[field];
     if (typeof text === 'string' && text.trim()) out[field] = text.trim().slice(0, MAX_TEXT);
   }

@@ -20,7 +20,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { inputPath, listJobs, newKey, outputPath, picturePath, readJob, readSpec, updateJob, type StoredJob } from './renderJobs';
-import { muxArgs, type RenderSpec } from './serverRender';
+import { muxArgs, sentAudioWindow, type RenderSpec } from './serverRender';
 
 /** No word from the render page for this long and it is taken to have died. */
 const STALL_MS = 120_000;
@@ -209,7 +209,8 @@ async function finish(job: StoredJob, startedAt: number) {
     await updateJob(job.id, () => ({ status: 'failed', error: 'The job lost its description.' }));
     return;
   }
-  const error = await mux(job, spec.range.start, spec.range.end);
+  const sent = sentAudioWindow(spec);
+  const error = await mux(job, sent.start, sent.end);
   if (error) {
     await updateJob(job.id, () => ({ status: 'failed', error }));
     return;

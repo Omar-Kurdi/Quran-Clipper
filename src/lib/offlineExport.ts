@@ -168,8 +168,10 @@ export interface OfflineExportRequest {
   fps: number;
   /** Where the clip starts and ends on the recording, in seconds. */
   range: { start: number; end: number };
-  /** The whole recording, already decoded. */
+  /** The recording, already decoded: the whole of it, or a stretch of a long one starting at `audioStart`. */
   audio: AudioBuffer;
+  /** Where on the recording's clock `audio` begins, in seconds; 0 for the whole recording. */
+  audioStart?: number;
   videoBitrate: number;
   onProgress?: (fraction: number, framesDone: number, framesTotal: number) => void;
   signal?: { aborted: boolean };
@@ -212,8 +214,19 @@ function yieldToEventLoop(): Promise<void> {
   });
 }
 
+/**
+ * The samples of `audio` a render takes: `range` is on the recording's clock,
+ * and `audio` starts `audioStart` seconds into the recording.
+ */
+export function audioSamples(range: { start: number; end: number }, audioStart: number, sampleRate: number, length: number) {
+  return {
+    startSample: Math.max(0, Math.floor((range.start - audioStart) * sampleRate)),
+    endSample: Math.min(length, Math.ceil((range.end - audioStart) * sampleRate)),
+  };
+}
+
 export async function encodeOffline(request: OfflineExportRequest): Promise<OfflineExportResult> {
-  const { paint, width, height, fps, range, audio, videoBitrate, onProgress, signal } = request;
+  const { paint, width, height, fps, range, audio, videoBitrate, onProgress, signal, audioStart = 0 } = request;
   const started = performance.now();
   const clipSeconds = Math.max(0.1, range.end - range.start);
   const totalFrames = Math.max(1, Math.round(clipSeconds * fps));
@@ -251,8 +264,7 @@ export async function encodeOffline(request: OfflineExportRequest): Promise<Offl
   // --- audio -------------------------------------------------------------
   // Encoded up front and in one pass: it is small next to the video and this
   // keeps the frame loop free of interleaving.
-  const startSample = Math.max(0, Math.floor(range.start * audio.sampleRate));
-  const endSample = Math.min(audio.length, Math.ceil(range.end * audio.sampleRate));
+  const { startSample, endSample } = audioSamples(range, audioStart, audio.sampleRate, audio.length);
   const CHUNK = 4096;
   const interleaved = new Float32Array(CHUNK * channels);
   const channelData = Array.from({ length: channels }, (_, c) =>
@@ -290,7 +302,7 @@ export async function encodeOffline(request: OfflineExportRequest): Promise<Offl
     if (encodeError) throw encodeError;
 
     const atSeconds = range.start + i / fps;
-    spectrumAt(mono, audio.sampleRate, atSeconds, spectrum);
+    spectrumAt(mono, audio.sampleRate, atSeconds - audioStart, spectrum);
     await paint(ctx, { atSeconds, spectrum });
 
     const frame = new VideoFrame(canvas as unknown as CanvasImageSource, {

@@ -166,7 +166,9 @@ export function useAudioPlayback() {
   const onLoadedMetadata = useCallback(() => {
     const audio = elementRef.current;
     if (!audio) return;
-    setDuration(audio.duration || 43.0);
+    // A copy streamed from the server can say Infinity until it has been read through: the length known stands.
+    if (audio.duration === Infinity) setDuration(prev => prev || 43.0);
+    else setDuration(audio.duration || 43.0);
     setError(null);
     applyPendingSeek();
   }, [applyPendingSeek]);

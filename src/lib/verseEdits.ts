@@ -685,3 +685,41 @@ export function trimTimeline(verses: VerseData[], trimStart: number, trimEnd: nu
       return { ...verse, startTime, endTime: Math.max(endTime, startTime + 0.1), words };
     });
 }
+
+/**
+ * The captions moved `by` seconds later, words and all: a match of one clip's
+ * stretch, timed on that stretch's own clock, put back on the recording's.
+ */
+export function shiftTimeline(verses: VerseData[], by: number): VerseData[] {
+  if (!by) return verses;
+  const at = (seconds: number, places: number) => Math.round((seconds + by) * places) / places;
+  return verses.map(verse => ({
+    ...verse,
+    startTime: at(verse.startTime, 1000),
+    endTime: at(verse.endTime, 1000),
+    words: verse.words?.map(word => (typeof word.timestamp === 'number' ? { ...word, timestamp: at(word.timestamp, 1000) } : word)),
+  }));
+}
+
+/**
+ * The recording's captions with one stretch of it matched again: those inside
+ * `window` give way to `matched`, those outside it stay as they were, and one
+ * reaching into it from either side is cut back to its edge -- so matching a
+ * second clip leaves the first clip's captions alone.
+ */
+export function mergeWindowTimeline(
+  verses: VerseData[], matched: VerseData[], window: { start: number; end: number }
+): VerseData[] {
+  if (!matched.length) return verses;
+  const from = Math.min(window.start, ...matched.map(verse => verse.startTime));
+  const to = Math.max(window.end, ...matched.map(verse => verse.endTime));
+  const kept = verses.flatMap(verse => {
+    if (verse.endTime <= from || verse.startTime >= to) return [verse];
+    // Mostly inside: the new match has it.
+    if (verse.startTime >= from && verse.endTime <= to) return [];
+    const startTime = verse.startTime < from ? verse.startTime : to;
+    const endTime = verse.startTime < from ? from : verse.endTime;
+    return endTime - startTime >= 0.1 ? [{ ...verse, startTime, endTime }] : [];
+  });
+  return [...kept, ...matched].sort((a, b) => a.startTime - b.startTime);
+}

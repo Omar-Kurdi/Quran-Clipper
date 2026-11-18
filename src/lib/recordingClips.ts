@@ -41,6 +41,17 @@ const newId = () => {
   return `clip-${Date.now().toString(36)}-${counter}`;
 };
 
+/**
+ * When a clip was made, read from its id (`newId`: the time in base 36), so
+ * every clip already saved has one; null for an id not made that way.
+ */
+export function clipMadeAt(id: string): number | null {
+  const stamp = /^clip-([0-9a-z]+)-\d+$/.exec(id);
+  const time = stamp ? parseInt(stamp[1], 36) : NaN;
+  // From 2020 on, and not later than now: anything else is not a time.
+  return Number.isFinite(time) && time >= Date.UTC(2020, 0, 1) && time <= Date.now() + 86_400_000 ? time : null;
+}
+
 /** A clip for this stretch of the recording, inside it; null when there is no clip there. */
 export function newClip(start: number, end: number, duration: number): RecordingClip | null {
   const from = ms(Math.max(0, Math.min(start, end)));

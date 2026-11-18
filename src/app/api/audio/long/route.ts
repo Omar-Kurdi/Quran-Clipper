@@ -14,7 +14,8 @@ import { studioMode } from '@/lib/studioMode';
  *
  * `op=read`: the recording once (`source`), kept here by its hash as an edit's
  * is (`editSources`), and its peak envelope and length back with the id.
- * `op=cut`: the id, and the stretch to keep; that stretch back as an MP3.
+ * `op=cut`: the id, and the stretch to keep; that stretch back as an MP3, or
+ * with `format=wav` as a WAV, for an export of it.
  * GET `?id=`: the copy to listen to while trimming (`readEnvelope`).
  */
 export async function GET(req: NextRequest) {
@@ -61,11 +62,12 @@ async function read(ffmpeg: string, source: { id: string; file: string }) {
 async function cut(ffmpeg: string, file: string, form: FormData) {
   const window = longCutWindow(Number(form.get('start')), Number(form.get('end')), Number(form.get('duration')));
   if (!window) return NextResponse.json({ error: 'That is no stretch to keep, or longer than one trim keeps.' }, { status: 400 });
-  const output = path.join(os.tmpdir(), `qc-long-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.mp3`);
+  const wav = form.get('format') === 'wav';
+  const output = path.join(os.tmpdir(), `qc-long-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${wav ? 'wav' : 'mp3'}`);
   try {
-    await cutLongAudio(ffmpeg, file, window.start, window.end, output);
+    await cutLongAudio(ffmpeg, file, window, output, wav ? 'wav' : 'mp3');
     const bytes = await readFile(output);
-    return new NextResponse(new Uint8Array(bytes), { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' } });
+    return new NextResponse(new Uint8Array(bytes), { headers: { 'content-type': wav ? 'audio/wav' : 'audio/mpeg', 'cache-control': 'no-store' } });
   } finally {
     await rm(output, { force: true });
   }

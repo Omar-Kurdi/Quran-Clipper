@@ -71,7 +71,19 @@ export function readEnvelope(ffmpeg: string, file: string, listen: string): Prom
 }
 
 /**
- * [start, end] of the recording as an MP3, written to `output`.
+ * What a cut is written as: an MP3 to replace the upload after a trim, a WAV
+ * of the stretch an export renders -- lossless, and no encoder delay to
+ * shift its start -- or the mono 16 kHz the aligner reads.
+ */
+const CUT_CODECS = {
+  mp3: ['-c:a', 'libmp3lame', '-b:a', '192k'],
+  wav: ['-c:a', 'pcm_s16le'],
+  aligner: ['-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le'],
+} as const;
+export type CutFormat = keyof typeof CUT_CODECS;
+
+/**
+ * [start, end] of the recording as an MP3 -- or as `format` says -- written to `output`.
  *
  * Seeking after the input rather than before it: ffmpeg then reads from the
  * start and counts samples, which is exact, where a seek in a VBR MP3 is an
@@ -79,11 +91,13 @@ export function readEnvelope(ffmpeg: string, file: string, listen: string): Prom
  * recording took three seconds. MP3, not WAV: forty minutes of WAV is 460 MB,
  * past what a match will take.
  */
-export function cutLongAudio(ffmpeg: string, file: string, start: number, end: number, output: string): Promise<void> {
+export function cutLongAudio(
+  ffmpeg: string, file: string, { start, end }: { start: number; end: number }, output: string, format: CutFormat = 'mp3'
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpeg, [
       '-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', file,
-      '-ss', start.toFixed(3), '-to', end.toFixed(3), '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', output,
+      '-ss', start.toFixed(3), '-to', end.toFixed(3), '-vn', ...CUT_CODECS[format], output,
     ], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     proc.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(-2000); });

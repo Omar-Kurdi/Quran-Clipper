@@ -79,7 +79,7 @@ export async function runRenderJob(ticket: RenderTicket, spec: RenderSpec, canva
       lastReport = Date.now();
       void reportRender(ticket, { progress: fraction * 100 });
     },
-    { width: spec.plan.width, height: spec.plan.height, bitrate: spec.plan.bitrate }
+    { width: spec.plan.width, height: spec.plan.height, bitrate: spec.plan.bitrate, audioStart: spec.audioStart }
   );
   if (!result) throw new Error('This browser cannot encode frame by frame.');
   const upload = await fetch(`/api/render/worker?id=${id}&key=${key}`, { method: 'PUT', body: result.blob });

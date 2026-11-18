@@ -11,6 +11,8 @@
  */
 
 import { computePeaks } from '@/lib/audioTrim';
+import { envelopePeaks, isLongAudio } from '@/lib/longAudio';
+import { loadMediaDuration } from '@/lib/mediaDuration';
 
 /**
  * Peaks for a whole file, with the length of the file they span.
@@ -90,6 +92,8 @@ export async function loadWaveform(url: string): Promise<Waveform | null> {
   if (existing) return existing;
 
   const job = (async () => {
+    // A long upload is never decoded here: its waveform comes from the server's read of it.
+    if (url.startsWith('blob:') && isLongAudio(await loadMediaDuration(url).catch(() => 0))) return longSlot(url).promise;
     const Ctor = getAudioContextCtor();
     if (!Ctor) return null;
     const ctx = new Ctor();
@@ -111,4 +115,33 @@ export async function loadWaveform(url: string): Promise<Waveform | null> {
 
   inflight.set(url, job);
   return job;
+}
+
+/**
+ * The waveforms of long uploads, which the studio reads on the server
+ * (`/api/audio/long`) rather than decoding two hours here: asked for before
+ * the read is back, they wait for it.
+ */
+const longWaveforms = new Map<string, { promise: Promise<Waveform | null>; resolve: (waveform: Waveform | null) => void }>();
+
+function longSlot(url: string) {
+  let slot = longWaveforms.get(url);
+  if (!slot) {
+    let resolve: (waveform: Waveform | null) => void = () => {};
+    const promise = new Promise<Waveform | null>(done => { resolve = done; });
+    slot = { promise, resolve };
+    longWaveforms.set(url, slot);
+  }
+  return slot;
+}
+
+/**
+ * The waveform of the long upload playing as `url`, from the server's
+ * envelope of it -- or null when it could not be read, which must always be
+ * said, or the timeline waits on it for good.
+ */
+export function provideLongWaveform(url: string, read: { envelope: Uint8Array; duration: number } | null) {
+  const waveform = read ? { peaks: envelopePeaks(read.envelope, bucketsFor(read.duration)), duration: read.duration } : null;
+  if (waveform) cache.set(url, waveform);
+  longSlot(url).resolve(waveform);
 }

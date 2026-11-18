@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { VideoCanvasConfig } from '@/components/VideoCanvas';
-import { inputUrl, isInputName, isRenderId, muxArgs, parseRenderSpec, withInputUrls, withUploads } from './serverRender';
+import { inputUrl, isInputName, isRenderId, muxArgs, parseRenderSpec, sentAudioWindow, withInputUrls, withUploads } from './serverRender';
 
 const config = (patch: Partial<VideoCanvasConfig>) => ({ bgUrl: '', bgUrls: [], bgSegments: [], ...patch }) as VideoCanvasConfig;
 
@@ -71,6 +71,8 @@ describe('parseRenderSpec', () => {
     expect(parseRenderSpec(JSON.stringify(linked))).toEqual(linked);
     const ofClip = { ...linked, clipId: 'clip-mhx2k1-3' };
     expect(parseRenderSpec(JSON.stringify(ofClip))).toEqual(ofClip);
+    const ofLong = { ...valid, audioStart: 1.5 };
+    expect(parseRenderSpec(JSON.stringify(ofLong))).toEqual(ofLong);
   });
 
   it('refuses what an encoder, a path or a range could not take', () => {
@@ -88,9 +90,19 @@ describe('parseRenderSpec', () => {
       { ...valid, projectId: 42 },
       { ...valid, clipId: '../clip' },
       { ...valid, clipId: 7 },
+      { ...valid, audioStart: 3 },
+      { ...valid, audioStart: -1 },
+      { ...valid, audioStart: '0' },
     ];
     for (const body of broken) {
       expect(parseRenderSpec(typeof body === 'string' ? body : JSON.stringify(body))).toBeNull();
     }
+  });
+});
+
+describe('sentAudioWindow', () => {
+  it("is the range itself when the whole recording was sent, and on the stretch's clock when only it was", () => {
+    expect(sentAudioWindow({ range: { start: 2, end: 38 } })).toEqual({ start: 2, end: 38 });
+    expect(sentAudioWindow({ range: { start: 3002, end: 3038 }, audioStart: 3000 })).toEqual({ start: 2, end: 38 });
   });
 });

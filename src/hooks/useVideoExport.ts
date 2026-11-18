@@ -18,6 +18,18 @@ export interface ExportRange {
  * caller has to show while it runs, and keeps `canvasRef` next to the state it
  * drives rather than in a scope with sixty other values.
  */
+/**
+ * Just the stretch a render takes, where the recording is too long to decode
+ * whole (`longAudio.ts`): its audio, and where on the recording it starts.
+ */
+export type StretchAudio = () => Promise<{ blob: Blob; start: number }>;
+
+/** The audio a render decodes: the stretch, for a long recording, or whatever the player plays. */
+async function renderedAudio(audio: HTMLAudioElement, stretch?: StretchAudio): Promise<{ decoded: AudioBuffer; start: number }> {
+  const sound = stretch ? await stretch() : { blob: await (await fetch(audio.currentSrc || audio.src)).blob(), start: 0 };
+  return { decoded: await decodeAudioFile(sound.blob), start: sound.start };
+}
+
 export function useVideoExport() {
   const canvasRef = useRef<VideoCanvasRef | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -77,7 +89,8 @@ export function useVideoExport() {
       audio: HTMLAudioElement | null,
       range: ExportRange,
       plan: ExportPlan,
-      onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void
+      onComplete: (blob: Blob, renderMs: number, health: ExportHealth) => void,
+      stretch?: StretchAudio
     ) => {
       if (!canvasRef.current || !audio) return;
 
@@ -88,17 +101,16 @@ export function useVideoExport() {
       if (canvasRef.current.canExportOffline()) {
         void (async () => {
           try {
-            const source = audio.currentSrc || audio.src;
-            const decoded = await decodeAudioFile(await (await fetch(source)).blob());
+            const sound = await renderedAudio(audio, stretch);
             const result = await canvasRef.current!.exportVideoOffline(
               range,
-              decoded,
+              sound.decoded,
               targetFps,
               fraction => {
                 setProgress(Math.min(99, Math.round(fraction * 100)));
                 setSpeed('…');
               },
-              { width: plan.width, height: plan.height, bitrate: plan.bitrate }
+              { width: plan.width, height: plan.height, bitrate: plan.bitrate, audioStart: sound.start }
             );
             if (result) {
               setIsExporting(false);
@@ -167,20 +179,20 @@ export function useVideoExport() {
     async (
       audio: HTMLAudioElement | null,
       range: ExportRange,
-      output: { width: number; height: number; fps: number; bitrate: number }
+      output: { width: number; height: number; fps: number; bitrate: number },
+      stretch?: StretchAudio
     ): Promise<Blob | null> => {
       if (!canvasRef.current || !audio || !canvasRef.current.canExportOffline()) return null;
       setPreviewing(true);
       setPreviewProgress(0);
       try {
-        const source = audio.currentSrc || audio.src;
-        const decoded = await decodeAudioFile(await (await fetch(source)).blob());
+        const sound = await renderedAudio(audio, stretch);
         const result = await canvasRef.current.exportVideoOffline(
           range,
-          decoded,
+          sound.decoded,
           output.fps,
           fraction => setPreviewProgress(Math.min(99, Math.round(fraction * 100))),
-          { width: output.width, height: output.height, bitrate: output.bitrate }
+          { width: output.width, height: output.height, bitrate: output.bitrate, audioStart: sound.start }
         );
         return result?.blob ?? null;
       } catch {

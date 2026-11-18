@@ -10,7 +10,7 @@
  */
 
 import { SURAHS_LIST } from './quranData';
-import { clipVerses, inPlayOrder, normalizeClips } from './recordingClips';
+import { clipMadeAt, clipVerses, inPlayOrder, normalizeClips } from './recordingClips';
 
 export interface LibraryProject {
   id: string;
@@ -24,12 +24,20 @@ export interface LibraryProject {
   reciterName?: string;
   audioFileName?: string | null;
   audioKey?: string | null;
-  /** What the uploaded file's own tag says (`audioTags.ts`). */
-  audioTags?: { artist?: string; title?: string; track?: number } | null;
+  /** What the uploaded file's own tag says, and the folder it was picked from (`audioTags.ts`). */
+  audioTags?: { artist?: string; title?: string; track?: number; folder?: string } | null;
   audioDuration?: string | number | null;
   clips?: unknown;
   versesJson?: unknown;
+  createdAt?: string;
   updatedAt: string;
+}
+
+/** A project or clip with a render on record: a clip id of '' is the project as a whole; when it was last rendered. */
+export interface ExportedClip {
+  projectId: string;
+  clipId: string;
+  exportedAt?: string | null;
 }
 
 export interface LibraryClip {
@@ -43,6 +51,10 @@ export interface LibraryClip {
   first: number;
   last: number;
   exported: boolean;
+  /** When it was last rendered, or null. */
+  exportedAt: string | null;
+  /** When it was made: a clip's own time (`clipMadeAt`), else its project's. */
+  madeAt: string;
   updatedAt: string;
 }
 
@@ -56,6 +68,8 @@ export interface LibraryRecording {
   source: string;
   /** Who recites an upload, as its file's tag names them; '' when it does not. */
   artist: string;
+  /** The folder an upload was picked from, when it was picked by its folder; '' otherwise. */
+  folder: string;
   duration: string | number | null;
   /** The project to open it with: the one last edited. */
   project: LibraryProject;
@@ -63,6 +77,8 @@ export interface LibraryRecording {
   clips: LibraryClip[];
   /** For each ayah of the surah, from 1, the numbers of the clips holding it. */
   coverage: number[][];
+  /** When its first project was made, and when any was last edited. */
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -93,21 +109,25 @@ const asVerses = (value: unknown) =>
   );
 
 /** A recording's clips: an upload's own clips, or each reciter project as one. */
-function clipsOf(kind: LibraryRecording['kind'], projects: LibraryProject[], exported: (projectId: string, clipId: string) => boolean) {
+function clipsOf(kind: LibraryRecording['kind'], projects: LibraryProject[], exported: (projectId: string, clipId: string) => string | null | undefined) {
   const listed: Omit<LibraryClip, 'number'>[] = [];
   for (const project of projects) {
     // A reciter's passage is a clip of its surah, unless it was cut into clips of its own.
     if (kind === 'reciter' && !normalizeClips(project.clips).length) {
+      const at = exported(project.id, '');
       listed.push({ projectId: project.id, clipId: null, surahNumber: project.surahNumber, first: project.ayahStart, last: project.ayahEnd,
-        exported: exported(project.id, ''), updatedAt: project.updatedAt });
+        exported: at !== undefined, exportedAt: at ?? null, madeAt: project.createdAt ?? project.updatedAt, updatedAt: project.updatedAt });
       continue;
     }
     const verses = asVerses(project.versesJson);
     for (const clip of inPlayOrder(normalizeClips(project.clips))) {
       const ayahs = ayahsIn(verses, project.surahNumber, clip);
+      const at = exported(project.id, clip.id);
+      const made = clipMadeAt(clip.id);
       listed.push({ projectId: project.id, clipId: clip.id, surahNumber: project.surahNumber,
         first: ayahs.length ? Math.min(...ayahs) : 0, last: ayahs.length ? Math.max(...ayahs) : 0,
-        exported: exported(project.id, clip.id), updatedAt: project.updatedAt });
+        exported: at !== undefined, exportedAt: at ?? null,
+        madeAt: made !== null ? new Date(made).toISOString() : project.createdAt ?? project.updatedAt, updatedAt: project.updatedAt });
     }
   }
   return listed
@@ -120,9 +140,10 @@ function clipsOf(kind: LibraryRecording['kind'], projects: LibraryProject[], exp
  * of them. `done` is every project and clip with a render on record, a clip id
  * of '' meaning the project as a whole.
  */
-export function libraryOf(projects: LibraryProject[], done: { projectId: string; clipId: string }[]) {
-  const doneKeys = new Set(done.map(row => `${row.projectId}\u0000${row.clipId}`));
-  const exported = (projectId: string, clipId: string) => doneKeys.has(`${projectId}\u0000${clipId}`);
+export function libraryOf(projects: LibraryProject[], done: ExportedClip[]) {
+  const doneAt = new Map(done.map(row => [`${row.projectId}\u0000${row.clipId}`, row.exportedAt ?? null]));
+  /** When it was last rendered; null when on record without a time, undefined when not rendered. */
+  const exported = (projectId: string, clipId: string) => doneAt.get(`${projectId}\u0000${clipId}`);
   const groups = new Map<string, LibraryProject[]>();
   for (const project of [...projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
     const key = recordingKey(project);
@@ -140,7 +161,9 @@ export function libraryOf(projects: LibraryProject[], done: { projectId: string;
       surahNameEnglish: latest.surahNameEnglish, surahNameArabic: latest.surahNameArabic || surah?.nameArabic || '',
       source: (kind === 'upload' ? latest.audioFileName : latest.reciterName) || '',
       artist: kind === 'upload' ? group.find(project => project.audioTags?.artist)?.audioTags?.artist ?? '' : '',
-      duration: latest.audioDuration ?? null, project: latest, projects: group, clips, coverage, updatedAt: latest.updatedAt,
+      folder: kind === 'upload' ? group.find(project => project.audioTags?.folder)?.audioTags?.folder ?? '' : '',
+      duration: latest.audioDuration ?? null, project: latest, projects: group, clips, coverage,
+      createdAt: group.map(project => project.createdAt ?? project.updatedAt).sort()[0], updatedAt: latest.updatedAt,
     };
   });
   const latestClips = recordings

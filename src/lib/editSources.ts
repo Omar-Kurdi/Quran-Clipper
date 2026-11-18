@@ -15,10 +15,16 @@ import os from 'node:os';
 import path from 'node:path';
 
 const sourcesDir = () => path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'quran-clipper', 'edit-sources');
-/** Bigger than any clip worth editing, and small enough to not be a way in. */
-const MAX_SOURCE_BYTES = 200 * 1024 * 1024;
-const MAX_SOURCES_BYTES = 2 * 1024 * 1024 * 1024;
+/** A whole long surah -- one reciter's Al-Baqarah is 209 MB -- and within what `next.config.ts` lets arrive. */
+const MAX_SOURCE_BYTES = 600 * 1024 * 1024;
+const MAX_SOURCES_BYTES = 4 * 1024 * 1024 * 1024;
 const SOURCE_ID = /^[0-9a-f]{64}$/;
+
+/** Where the recording kept as `id` is, or null when it is not kept (any more). */
+export function keptSourceFile(id: string): string | null {
+  const file = path.join(sourcesDir(), id);
+  return SOURCE_ID.test(id) && existsSync(file) ? file : null;
+}
 
 /**
  * The upload an edit is of: sent now, or kept from an earlier edit and named

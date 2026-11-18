@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, max } from 'drizzle-orm';
 import { describeDbError } from '@/lib/dbError';
 
 const memoryExports: any[] = [];
@@ -16,22 +16,26 @@ async function getDbBindings() {
 /**
  * Which clips have been exported: `?done=1` answers with every project and
  * clip that has a render on record -- a clip id of '' for the project as a
- * whole -- for the tabs' and the library's ticks, rather than the last twenty
- * records the drawer lists.
+ * whole -- and when it was last rendered, for the tabs' and the library's
+ * ticks, rather than the last twenty records the drawer lists.
  */
 async function exportedClips(projectId: string | null) {
   const bindings = await getDbBindings();
   if (!bindings) {
-    const done = memoryExports
-      .filter(row => row.projectId && (!projectId || row.projectId === projectId))
-      .map(row => ({ projectId: row.projectId as string, clipId: (row.clipId as string) || '' }));
-    return NextResponse.json({ success: true, source: 'memory', done });
+    const latest = new Map<string, { projectId: string; clipId: string; exportedAt: string }>();
+    for (const row of memoryExports.filter(each => each.projectId && (!projectId || each.projectId === projectId))) {
+      const entry = { projectId: row.projectId as string, clipId: (row.clipId as string) || '', exportedAt: new Date(row.createdAt).toISOString() };
+      const key = `${entry.projectId}\u0000${entry.clipId}`;
+      if ((latest.get(key)?.exportedAt ?? '') < entry.exportedAt) latest.set(key, entry);
+    }
+    return NextResponse.json({ success: true, source: 'memory', done: [...latest.values()] });
   }
   const table = bindings.exportsTable;
   const done = await bindings.db
-    .selectDistinct({ projectId: table.projectId, clipId: table.clipId })
+    .select({ projectId: table.projectId, clipId: table.clipId, exportedAt: max(table.createdAt) })
     .from(table)
-    .where(and(isNotNull(table.projectId), projectId ? eq(table.projectId, projectId) : undefined));
+    .where(and(isNotNull(table.projectId), projectId ? eq(table.projectId, projectId) : undefined))
+    .groupBy(table.projectId, table.clipId);
   return NextResponse.json({ success: true, source: 'database', done });
 }
 

@@ -199,9 +199,10 @@ export interface VideoCanvasRef {
      * column would cost the studio its responsiveness for no picture. Nothing
      * in `paintFrame` is written in pixels -- every size is scaled by
      * `height / 1920` -- so the same drawing produces the same frame at any
-     * resolution.
+     * resolution. `audioStart` is where `audio` begins on the recording's
+     * clock, when it is only the stretch rendered of a long recording.
      */
-    output?: { width: number; height: number; bitrate: number }
+    output?: { width: number; height: number; bitrate: number; audioStart?: number }
   ) => Promise<OfflineExportResult | null>;
   /** Whether `exportVideoOffline` can run for the project as configured. */
   canExportOffline: () => boolean;
@@ -1682,6 +1683,7 @@ export const VideoCanvas = forwardRef<VideoCanvasRef, VideoCanvasProps>(({
           fps: targetFps,
           range,
           audio,
+          audioStart: output?.audioStart,
           videoBitrate: output?.bitrate ?? OFFLINE_BITRATE,
           onProgress,
           signal: { get aborted() { return !isExportingRef.current; } },

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { canEncodeOffline } from './offlineExport';
+import { audioSamples, canEncodeOffline } from './offlineExport';
 
 const withCodecs = (present: boolean) => {
   for (const name of ['VideoEncoder', 'AudioEncoder', 'VideoDecoder']) {
@@ -34,5 +34,19 @@ describe('canEncodeOffline', () => {
     withCodecs(true);
     vi.stubGlobal('VideoDecoder', undefined);
     expect(canEncodeOffline({})).toBe(false);
+  });
+});
+
+describe('audioSamples', () => {
+  it('takes the clip from the whole recording', () => {
+    expect(audioSamples({ start: 2, end: 3 }, 0, 100, 1000)).toEqual({ startSample: 200, endSample: 300 });
+  });
+
+  it("takes it from a long recording's stretch that starts partway in", () => {
+    expect(audioSamples({ start: 3002, end: 3003 }, 3000, 100, 1000)).toEqual({ startSample: 200, endSample: 300 });
+  });
+
+  it('never reaches past either end of what was decoded', () => {
+    expect(audioSamples({ start: 2999, end: 3020 }, 3000, 100, 1000)).toEqual({ startSample: 0, endSample: 1000 });
   });
 });

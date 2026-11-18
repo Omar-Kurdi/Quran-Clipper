@@ -21,7 +21,7 @@ async function postLong(form: FormData): Promise<Response> {
   return fetch('/api/audio/long', { method: 'POST', body: form });
 }
 
-async function readLong(file: File): Promise<LongAudio> {
+export async function readLong(file: File): Promise<LongAudio> {
   const form = new FormData();
   form.append('op', 'read');
   form.append('source', file);
@@ -42,8 +42,13 @@ export async function isLongFile(file: File): Promise<boolean> {
   }
 }
 
-/** [start, end] of a long recording, cut by the server; sends the file again if the server has let it go. */
-export async function cutLong(file: File, long: Pick<LongAudio, 'id' | 'duration'>, start: number, end: number): Promise<TrimResult> {
+/**
+ * [start, end] of a long recording, cut by the server -- an MP3, or a WAV for
+ * an export of that stretch; sends the file again if the server has let it go.
+ */
+export async function cutLongStretch(
+  file: File, long: Pick<LongAudio, 'id' | 'duration'>, start: number, end: number, format: 'mp3' | 'wav' = 'mp3'
+): Promise<Blob> {
   const send = (withFile: boolean) => {
     const form = new FormData();
     form.append('op', 'cut');
@@ -52,13 +57,20 @@ export async function cutLong(file: File, long: Pick<LongAudio, 'id' | 'duration
     form.append('start', String(start));
     form.append('end', String(end));
     form.append('duration', String(long.duration));
+    if (format === 'wav') form.append('format', 'wav');
     return postLong(form);
   };
   let res = await send(false);
   if (res.status === 404) res = await send(true);
   if (!res.ok) throw new Error('cut failed');
+  return res.blob();
+}
+
+/** [start, end] of a long recording, cut by the server, as the file a trim keeps. */
+export async function cutLong(file: File, long: Pick<LongAudio, 'id' | 'duration'>, start: number, end: number): Promise<TrimResult> {
+  const blob = await cutLongStretch(file, long, start, end);
   const baseName = file.name.replace(/\.[^./]+$/, '') || 'audio';
-  const cut = new File([await res.blob()], `${baseName}-trimmed.mp3`, { type: 'audio/mpeg' });
+  const cut = new File([blob], `${baseName}-trimmed.mp3`, { type: 'audio/mpeg' });
   return { file: cut, url: URL.createObjectURL(cut), duration: end - start };
 }
 

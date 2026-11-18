@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { browserEnv } from "./src/lib/studioMode";
+import { browserEnv, studioMode } from "./src/lib/studioMode";
 
 const nextConfig: NextConfig = {
   /** A public studio's browser carries the translation its server serves -- see `browserEnv`. */
@@ -17,9 +17,11 @@ const nextConfig: NextConfig = {
      * chapter, is 34MB.
      *
      * This is a local studio tool uploading one file at a time, so the memory
-     * this admits is bounded by what a person can pick in a file dialog.
+     * this admits is bounded by what a person can pick in a file dialog. A
+     * personal studio takes a whole long surah -- one reciter's Al-Baqarah is
+     * 209 MB -- which a public one, keeping no visitor's recording, does not.
      */
-    proxyClientMaxBodySize: '256mb'
+    proxyClientMaxBodySize: studioMode() === 'public' ? '256mb' : '640mb'
   }
 };
 
