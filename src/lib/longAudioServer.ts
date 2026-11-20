@@ -6,7 +6,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ENVELOPE_SAMPLE_RATE, EnvelopeMeter } from './longAudio';
@@ -41,13 +41,31 @@ export async function forgetOldListens() {
  * 1.9 s away from where ffmpeg -- and so the cut -- puts the same moment, an
  * hour and forty minutes in. Seeking in an Ogg Opus copy agreed with ffmpeg to
  * within the 25 ms that test could resolve. Small, too: 59 MB for two hours.
+ *
+ * Two reads of one recording name the same copy, and the element may be
+ * playing it when the second comes. Each read writes a file of its own and
+ * moves it into place when whole, and `bitexact` makes every read of the same
+ * recording the same bytes: ffmpeg otherwise numbers each Ogg stream at
+ * random, and a copy two reads had written into at once changed number
+ * part-way through -- where the browser stopped playing it.
  */
-export function readEnvelope(ffmpeg: string, file: string, listen: string): Promise<{ envelope: Uint8Array; duration: number }> {
+export async function readEnvelope(ffmpeg: string, file: string, listen: string): Promise<{ envelope: Uint8Array; duration: number }> {
+  const part = `${listen}.${process.pid}-${Math.random().toString(36).slice(2, 10)}.part`;
+  try {
+    const read = await readInto(ffmpeg, file, part);
+    await rename(part, listen);
+    return read;
+  } finally {
+    await rm(part, { force: true });
+  }
+}
+
+function readInto(ffmpeg: string, file: string, listen: string): Promise<{ envelope: Uint8Array; duration: number }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpeg, [
       '-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', file,
       '-map', '0:a:0', '-ac', '1', '-ar', String(ENVELOPE_SAMPLE_RATE), '-f', 'f32le', 'pipe:1',
-      '-map', '0:a:0', '-c:a', 'libopus', '-b:a', '64k', '-f', 'ogg', listen,
+      '-map', '0:a:0', '-c:a', 'libopus', '-b:a', '64k', '-fflags', '+bitexact', '-f', 'ogg', listen,
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
     const meter = new EnvelopeMeter();
     // A chunk can end inside a sample; its bytes wait for the next one.
