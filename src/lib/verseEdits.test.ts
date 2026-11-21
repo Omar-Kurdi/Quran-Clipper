@@ -21,7 +21,6 @@ import {
   fillFromCorpus,
   setRepeat,
   shiftTimeline,
-  mergeWindowTimeline,
 } from './verseEdits';
 import type { VerseData } from './quranData';
 
@@ -707,21 +706,3 @@ describe('shiftTimeline', () => {
   });
 });
 
-describe('mergeWindowTimeline', () => {
-  const clip1 = [verse('2:1', 10, 12), verse('2:2', 12, 20)];
-
-  it("leaves another clip's captions alone when a second clip is matched", () => {
-    const merged = mergeWindowTimeline(clip1, [verse('2:30', 600, 610)], { start: 595, end: 615 });
-    expect(merged.map(v => [v.verseKey, v.startTime, v.endTime])).toEqual([['2:1', 10, 12], ['2:2', 12, 20], ['2:30', 600, 610]]);
-  });
-
-  it('replaces what the stretch held before, and cuts back one reaching into it', () => {
-    const before = [verse('2:1', 0, 11), verse('2:2', 11, 20), verse('2:3', 20, 40)];
-    const merged = mergeWindowTimeline(before, [verse('2:2', 12, 19.5)], { start: 10, end: 30 });
-    expect(merged.map(v => [v.verseKey, v.startTime, v.endTime])).toEqual([['2:1', 0, 10], ['2:2', 12, 19.5], ['2:3', 30, 40]]);
-  });
-
-  it('keeps everything when the match found nothing', () => {
-    expect(mergeWindowTimeline(clip1, [], { start: 0, end: 100 })).toBe(clip1);
-  });
-});

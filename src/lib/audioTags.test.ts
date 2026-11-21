@@ -58,3 +58,18 @@ describe('normalizeAudioTags', () => {
     expect(normalizeAudioTags('artist')).toBeNull();
   });
 });
+
+describe('normalizeAudioTags, the recording a clip was cut from', () => {
+  it('keeps a source that is a SHA-256, and drops anything else', () => {
+    const source = '0123456789abcdef'.repeat(4);
+    expect(normalizeAudioTags({ source })).toEqual({ source });
+    expect(normalizeAudioTags({ artist: 'x', source: 'not-a-hash' })).toEqual({ artist: 'x' });
+    expect(normalizeAudioTags({ source: source.toUpperCase() })).toBeNull();
+  });
+
+  it('keeps which clip of the old layout a clip project was made from, and that it is a clip', () => {
+    expect(normalizeAudioTags({ clip: true, windowOf: 'proj_1795206759505_7elv0/clip-mwp2p6uq-1' }))
+      .toEqual({ clip: true, windowOf: 'proj_1795206759505_7elv0/clip-mwp2p6uq-1' });
+    expect(normalizeAudioTags({ clip: 'yes', windowOf: '../../etc' })).toBeNull();
+  });
+});

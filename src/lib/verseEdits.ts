@@ -701,25 +701,3 @@ export function shiftTimeline(verses: VerseData[], by: number): VerseData[] {
   }));
 }
 
-/**
- * The recording's captions with one stretch of it matched again: those inside
- * `window` give way to `matched`, those outside it stay as they were, and one
- * reaching into it from either side is cut back to its edge -- so matching a
- * second clip leaves the first clip's captions alone.
- */
-export function mergeWindowTimeline(
-  verses: VerseData[], matched: VerseData[], window: { start: number; end: number }
-): VerseData[] {
-  if (!matched.length) return verses;
-  const from = Math.min(window.start, ...matched.map(verse => verse.startTime));
-  const to = Math.max(window.end, ...matched.map(verse => verse.endTime));
-  const kept = verses.flatMap(verse => {
-    if (verse.endTime <= from || verse.startTime >= to) return [verse];
-    // Mostly inside: the new match has it.
-    if (verse.startTime >= from && verse.endTime <= to) return [];
-    const startTime = verse.startTime < from ? verse.startTime : to;
-    const endTime = verse.startTime < from ? from : verse.endTime;
-    return endTime - startTime >= 0.1 ? [{ ...verse, startTime, endTime }] : [];
-  });
-  return [...kept, ...matched].sort((a, b) => a.startTime - b.startTime);
-}

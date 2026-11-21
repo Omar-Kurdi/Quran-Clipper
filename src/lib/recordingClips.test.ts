@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  snapToAyahs, ayahCoverage, ayahList, ayahRangeWindow, ayahsHeld,
-  addClip, ayahWindow, clipLabel, clipMadeAt, clipStyle, clipVerses, dragClip, inPlayOrder, moveClip, newClip, normalizeClips, removeClip,
-  settleLooks, styleDiff, switchOwnLook, MIN_CLIP_SEC, type RecordingClip
+  snapToAyahs, ayahList, ayahRangeWindow, ayahsHeld,
+  ayahWindow, clipLabel, clipMadeAt, clipVerses, inPlayOrder, normalizeClips, windowClipProject, MIN_CLIP_SEC, type RecordingClip
 } from './recordingClips';
 
 const verse = (key: string, startTime: number, endTime: number) => ({ verseKey: key, startTime, endTime });
@@ -10,78 +9,9 @@ const verse = (key: string, startTime: number, endTime: number) => ({ verseKey: 
 /** 2:1-4 in a 60-second recording, with pauses between them. */
 const verses = [verse('2:1', 2, 6), verse('2:2', 7, 15), verse('2:3', 15.2, 30), verse('2:4', 33, 50)];
 
-describe('newClip', () => {
-  it('keeps a clip inside the recording', () => {
-    const clip = newClip(-3, 80, 60)!;
-    expect([clip.start, clip.end]).toEqual([0, 60]);
-    expect(clip.style).toBeNull();
-  });
-
-  it('takes the ends in either order', () => {
-    const clip = newClip(20, 10, 60)!;
-    expect([clip.start, clip.end]).toEqual([10, 20]);
-  });
-
-  it('is no clip when shorter than a clip can be', () => {
-    expect(newClip(10, 10 + MIN_CLIP_SEC / 2, 60)).toBeNull();
-  });
-});
-
-describe('addClip', () => {
-  it('adds clips that overlap', () => {
-    const clips = addClip(addClip([], newClip(0, 20, 60)), newClip(10, 30, 60));
-    expect(clips).toHaveLength(2);
-  });
-
-  it('does not add the same stretch twice', () => {
-    const once = addClip([], newClip(0, 20, 60));
-    expect(addClip(once, newClip(0, 20, 60))).toBe(once);
-  });
-});
-
-describe('moveClip and removeClip', () => {
-  it('moves one clip and keeps its look', () => {
-    const clip = { ...newClip(0, 20, 60)!, style: { textColor: '#fff' } };
-    const [moved] = moveClip([clip], clip.id, 5, 25, 60);
-    expect([moved.start, moved.end, moved.style]).toEqual([5, 25, { textColor: '#fff' }]);
-  });
-
-  it('leaves a clip where it is rather than make it too short', () => {
-    const clips = [newClip(0, 20, 60)!];
-    expect(moveClip(clips, clips[0].id, 5, 5.2, 60)).toBe(clips);
-  });
-
-  it('removes only the one named', () => {
-    const clips = addClip(addClip([], newClip(0, 20, 60)), newClip(30, 50, 60));
-    expect(removeClip(clips, clips[0].id).map(c => c.start)).toEqual([30]);
-  });
-});
-
-describe('dragClip', () => {
-  const clip = { start: 10, end: 30 };
-
-  it('moves the whole bar and keeps its length, inside the recording', () => {
-    expect(dragClip(clip, 'move', 5, 60)).toEqual({ start: 15, end: 35 });
-    expect(dragClip(clip, 'move', -50, 60)).toEqual({ start: 0, end: 20 });
-    expect(dragClip(clip, 'move', 100, 60)).toEqual({ start: 40, end: 60 });
-  });
-
-  it('moves one end, never past the other or out of the recording', () => {
-    expect(dragClip(clip, 'start', -4, 60)).toEqual({ start: 6, end: 30 });
-    expect(dragClip(clip, 'start', 40, 60)).toEqual({ start: 30 - MIN_CLIP_SEC, end: 30 });
-    expect(dragClip(clip, 'end', 12.3456, 60)).toEqual({ start: 10, end: 42.346 });
-    expect(dragClip(clip, 'end', -40, 60)).toEqual({ start: 10, end: 10 + MIN_CLIP_SEC });
-    expect(dragClip(clip, 'end', 100, 60)).toEqual({ start: 10, end: 60 });
-  });
-
-  it('has no far end to keep to while the recording\'s length is unknown', () => {
-    expect(dragClip(clip, 'end', 100, 0)).toEqual({ start: 10, end: 130 });
-  });
-});
-
 describe('inPlayOrder', () => {
   it('lists clips in the order they play', () => {
-    const clips = addClip(addClip([], newClip(30, 50, 60)), newClip(0, 20, 60));
+    const clips: RecordingClip[] = [{ id: 'b', start: 30, end: 50, style: null }, { id: 'a', start: 0, end: 20, style: null }];
     expect(inPlayOrder(clips).map(c => c.start)).toEqual([0, 30]);
   });
 });
@@ -159,68 +89,6 @@ describe('ayahRangeWindow and ayahsHeld', () => {
   });
 });
 
-describe('styleDiff and clipStyle', () => {
-  const base = { textColor: '#fff', aspectRatio: '9:16', translationIds: ['20'] };
-
-  it('keeps only what the clip changes', () => {
-    const own = { ...base, textColor: '#000', translationIds: ['20'] };
-    expect(styleDiff(own, base)).toEqual({ textColor: '#000' });
-  });
-
-  it('compares lists by what is in them', () => {
-    expect(styleDiff({ ...base, translationIds: ['131'] }, base)).toEqual({ translationIds: ['131'] });
-  });
-
-  it('draws a clip with the shared look unless it has its own', () => {
-    const clip = newClip(0, 20, 60)!;
-    expect(clipStyle(base, clip)).toBe(base);
-    expect(clipStyle(base, null)).toBe(base);
-  });
-
-  it('lets a change to the shared look reach what a clip did not change', () => {
-    const clip: RecordingClip = { ...newClip(0, 20, 60)!, style: { textColor: '#000' } };
-    expect(clipStyle({ ...base, aspectRatio: '1:1' }, clip)).toEqual({ ...base, aspectRatio: '1:1', textColor: '#000' });
-  });
-});
-
-describe('settleLooks and switchOwnLook', () => {
-  const shared = { textColor: '#fff', aspectRatio: '9:16' };
-  const clip = (id: string, style: Record<string, unknown> | null = null): RecordingClip => ({ id, start: 0, end: 10, style });
-
-  it('takes the config as the shared look while a clip with the shared look is open', () => {
-    const clips = [clip('a'), clip('b', { textColor: '#000' })];
-    const edited = { ...shared, aspectRatio: '1:1' };
-    expect(settleLooks(edited, clips, 'a', null)).toEqual({ base: edited, clips });
-  });
-
-  it('keeps what the open clip with its own look changes, and the shared look as it was', () => {
-    const clips = [clip('a', {}), clip('b')];
-    const settled = settleLooks({ ...shared, textColor: '#000' }, clips, 'a', shared);
-    expect(settled.base).toBe(shared);
-    expect(settled.clips[0].style).toEqual({ textColor: '#000' });
-    expect(settled.clips[1]).toBe(clips[1]);
-  });
-
-  it('gives the open clip its own look starting from the shared one', () => {
-    const changed = switchOwnLook(true, shared, [clip('a')], 'a', null)!;
-    expect(changed.clips[0].style).toEqual({});
-    expect(changed.shared).toBe(shared);
-    expect(changed.config).toBe(shared);
-  });
-
-  it('gives it the shared look back, dropping what it changed', () => {
-    const changed = switchOwnLook(false, { ...shared, textColor: '#000' }, [clip('a', {})], 'a', shared)!;
-    expect(changed.clips[0].style).toBeNull();
-    expect(changed.shared).toBeNull();
-    expect(changed.config).toBe(shared);
-  });
-
-  it('changes nothing with no clip open, or one already as asked', () => {
-    expect(switchOwnLook(true, shared, [clip('a')], null, null)).toBeNull();
-    expect(switchOwnLook(true, shared, [clip('a', {})], 'a', shared)).toBeNull();
-  });
-});
-
 describe('snapToAyahs', () => {
   // 2:1 is two captions; 2:2 and 2:3 one each, with a pause between each.
   const verses = [
@@ -248,22 +116,6 @@ describe('snapToAyahs', () => {
   });
 });
 
-describe('ayahCoverage', () => {
-  it('lists each ayah once, in the order heard, with the clips that hold any of it', () => {
-    const verses = [
-      { verseKey: '2:1', startTime: 0, endTime: 2 },
-      { verseKey: '2:1', startTime: 2, endTime: 4 },
-      { verseKey: '2:2', startTime: 4, endTime: 6 },
-      { verseKey: '2:3', startTime: 6, endTime: 8 },
-    ];
-    expect(ayahCoverage(verses, [{ start: 3, end: 5 }, { start: 4.5, end: 5.5 }])).toEqual([
-      { key: '2:1', clips: [0] },
-      { key: '2:2', clips: [0, 1] },
-      { key: '2:3', clips: [] },
-    ]);
-  });
-});
-
 describe('normalizeClips', () => {
   it('keeps clips as they were saved', () => {
     const clip = { id: 'a', start: 1, end: 9, style: { textColor: '#000' } };
@@ -282,10 +134,9 @@ describe('normalizeClips', () => {
 
 describe('clipMadeAt', () => {
   it('reads when a clip was made from its id', () => {
-    const before = Date.now();
-    const made = newClip(1, 10, 60)!;
-    expect(clipMadeAt(made.id)).toBeGreaterThanOrEqual(before);
-    expect(clipMadeAt(made.id)).toBeLessThanOrEqual(Date.now());
+    // As the studio made them: `clip-<time in base 36>-<counter>`.
+    const now = Date.now();
+    expect(clipMadeAt(`clip-${now.toString(36)}-1`)).toBe(now);
     expect(clipMadeAt(`clip-${Date.UTC(2026, 10, 18, 6, 30).toString(36)}-3`)).toBe(Date.UTC(2026, 10, 18, 6, 30));
   });
 
@@ -293,5 +144,25 @@ describe('clipMadeAt', () => {
     expect(clipMadeAt('c1')).toBeNull();
     expect(clipMadeAt('clip-zz-1')).toBeNull();
     expect(clipMadeAt(`clip-${(Date.now() + 10 * 86_400_000).toString(36)}-1`)).toBeNull();
+  });
+});
+
+describe('windowClipProject', () => {
+  const window = { id: 'clip-a', start: 10, end: 30 };
+
+  it('finds the clip project made from that window', () => {
+    const made = [{ windowOf: 'proj_x/clip-b', cut: null }, { windowOf: 'proj_x/clip-a', cut: { start: 500, end: 520 } }];
+    expect(windowClipProject(made, 'proj_x', 0, window)).toBe(made[1]);
+  });
+
+  it("finds one cut from the same stretch, a copy's window, on the original's clock", () => {
+    // The recording itself trimmed from 100 s: its window 10-30 is 110-130 of the original.
+    const made = [{ windowOf: 'proj_copy/clip-a', cut: { start: 110, end: 130 } }];
+    expect(windowClipProject(made, 'proj_x', 100, window)).toBe(made[0]);
+    expect(windowClipProject(made, 'proj_x', 0, window)).toBeUndefined();
+  });
+
+  it('finds nothing for a window not made yet', () => {
+    expect(windowClipProject([{ windowOf: 'proj_x/clip-b', cut: { start: 10, end: 31 } }], 'proj_x', 0, window)).toBeUndefined();
   });
 });

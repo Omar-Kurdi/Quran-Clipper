@@ -65,8 +65,7 @@ import { HealthStrip } from '@/components/HealthStrip';
 import { OverflowMenu, OverflowItem } from '@/components/OverflowMenu';
 import { Timeline } from '@/components/Timeline';
 import { Inspector } from '@/components/Inspector';
-import { segmentAt, trimTimeline, fitVersesToAudio, fillFromCorpus, mergeWindowTimeline } from '@/lib/verseEdits';
-import { postClipMatch } from '@/lib/clipMatch';
+import { segmentAt, trimTimeline, shiftTimeline, fitVersesToAudio, fillFromCorpus } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import {
   backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName, trimLane,
@@ -75,14 +74,14 @@ import {
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY, NEW_PROJECT_BADGE_OPACITY } from '@/lib/surahBadge';
 import { asFrameLayout, DEFAULT_FRAME_LAYOUT } from '@/lib/frameLayout';
 import { asCaptionTransition, asWordEffect, asMotionSpeed, asHighlightColour, MOTION_DEFAULTS, motionForNewMatch } from '@/lib/captionMotion';
-import { clipWindow, timelineView, playFrom, pastClipEnd, recordingClipMargin } from '@/lib/clipWindow';
+import { clipWindow, timelineView, playFrom, pastClipEnd } from '@/lib/clipWindow';
 import { nextToCheck, captionChecks } from '@/lib/captionChecks';
 import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioTrim';
 import { cutLong, cutLongStretch, isLongFile } from '@/hooks/useLongAudio';
 import { isLongAudio } from '@/lib/longAudio';
 import { STYLE_PRESETS, applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 import { builtInCandidates, chooseBackground, sample, searchOrientation, type BackgroundCandidate } from '@/lib/backgroundMatch';
-import { newAudioKey, storeProjectAudio, loadProjectAudio } from '@/lib/projectAudio';
+import { newAudioKey, storeProjectAudio, loadProjectAudio, forgetProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
 import { ShortcutsDialog } from '@/components/ShortcutsDialog';
@@ -93,7 +92,7 @@ import { useTransportKeys } from '@/hooks/useTransportKeys';
 import { staysUp, useSaveStatus } from '@/hooks/useSaveStatus';
 import { SaveNotice } from '@/components/SaveNotice';
 import { useVideoExport, type StretchAudio } from '@/hooks/useVideoExport';
-import { buildProjectPayload, projectTitle, timelinePassage } from '@/lib/projectPayload';
+import { buildProjectPayload, formatStoredDuration, projectTitle, timelinePassage } from '@/lib/projectPayload';
 import {
   buildDraft, clearDraft, forgetRecoverableDraft, recoverableDraft, replaceRecoverableDraft, serverRecoverableDraft, subscribeToDraft
 } from '@/lib/draftStore';
@@ -127,14 +126,15 @@ import type { BatchResult } from '@/lib/batchMatch';
 import { buildRenderForm } from '@/lib/serverRenderForm';
 import { exportFileName } from '@/lib/exportName';
 import { exportRangeFor } from '@/lib/exportRange';
-import { useRecordingClips } from '@/hooks/useRecordingClips';
 import { usePlayableUpload } from '@/hooks/usePlayableUpload';
 import { FolderPicker } from '@/components/FolderPicker';
 import { normalizeAudioTags, readAudioTags, TAG_HEAD_BYTES, type AudioTags } from '@/lib/audioTags';
-import { ayahWindow, clipLabel, clipVerses, inPlayOrder, normalizeClips, styleDiff } from '@/lib/recordingClips';
+import { ayahWindow, MIN_CLIP_SEC, normalizeClips, windowClipProject, type RecordingClip } from '@/lib/recordingClips';
+import { recordingSource } from '@/lib/recordingSource';
 import { ClipsPanel } from '@/components/ClipsPanel';
+import { deleteProject, listProjects, saveProject } from '@/lib/projectStore';
+import { asLibraryProjects, clipTabLabel, familyOf, type LibraryProject } from '@/lib/projectLibrary';
 import { ClipTabs } from '@/components/ClipTabs';
-import { saveProject } from '@/lib/projectStore';
 import { newMatchTicket, watchQueue, roughWait } from '@/lib/queueWatch';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { useRegroup } from '@/hooks/useRegroup';
@@ -184,6 +184,25 @@ function savedStatusText(
  */
 const DEFAULT_AUDIO_URL = SAMPLE_PROJECTS[0].audioUrl;
 
+
+/** A new project's id, the shape every saved project's has. */
+const newClipProjectId = () => `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+/**
+ * What a recording saved before anything was matched in it holds: none of the
+ * sample's captions, and for its passage the surah its track number names --
+ * a surah file's usually is its surah -- until a clip of it is matched.
+ */
+const unmatchedPassage = (track: number | undefined) => {
+  const surah = SURAHS_LIST.find(each => each.number === track);
+  return {
+    verses: [] as VerseData[],
+    ...(surah && {
+      surahNumber: surah.number, surahNameArabic: surah.nameArabic, surahNameEnglish: surah.nameEnglish,
+      ayahStart: 1, ayahEnd: surah.numberOfAyahs,
+    }),
+  };
+};
 
 /** An upload's own tag, read from the start of the file; null for none, or when it cannot be read. */
 const tagsOf = (file: File): Promise<AudioTags | null> =>
@@ -239,7 +258,7 @@ export default function VideoCreatorPage() {
    * apart: `trimWindow` is where the *current* audio came from, this is what the
    * next upload has to be cut to before it matches the timeline on screen.
    */
-  const [awaitingAudio, setAwaitingAudio] = useState<{ fileName: string; trim: { start: number; end: number } | null } | null>(null);
+  const [awaitingAudio, setAwaitingAudio] = useState<{ fileName: string; trim: { start: number; end: number } | null; key?: string } | null>(null);
   /**
    * The edit of the recording (`audioEdit`): what is cut, how fast it plays,
    * the clean-ups. `audioUrl` stays the recording itself -- what the aligner
@@ -580,38 +599,40 @@ export default function VideoCreatorPage() {
   /** The brief tafsir as fetched, in memory only, while the style shows it; a hand edit is in `verses`. */
   const tafsir = useTafsir(verses, canvasConfig.showTafsir === true);
   /**
-   * Clips cut from an uploaded recording, each a window on its one timeline
-   * (`recordingClips.ts`). `recordingClip` is the one open, for an upload only:
-   * a built-in reciter's passage is already a window of its own.
+   * The clips an upload was cut into while clips were windows on it, before
+   * each clip was a project of its own. Kept with the recording -- written
+   * back unchanged on every save -- until each has been made a clip project
+   * (`migrateWindowClips`), so nothing of the old layout is lost before the
+   * new one is confirmed. Nothing draws or edits them any more.
    */
-  const recordingClips = useRecordingClips(canvasConfig, setCanvasConfig);
+  const windowClips = useRef<RecordingClip[]>([]);
+  /** The saved project open now, which the clip tabs mark; null for one not saved yet. */
+  const [openProjectId, setOpenProjectId] = useState<string | null>(null);
   /**
-   * Whether what is loaded can have clips: an upload, or a built-in reciter's
-   * passage once loaded -- not the sample the studio opens on. A clip is a
-   * window on the clock the captions are on, which for a reciter is its audio's.
+   * The open upload's recording and the clip projects cut from it, as saved,
+   * for the tabs -- read again whenever a save or a delete may have changed
+   * them -- and which of them have a render on record.
    */
-  const clipsAllowed = !!customAudioFile || (!isSampleProject && verses.length > 0);
-  const recordingClip = clipsAllowed ? recordingClips.active : null;
-  /** The clips of the open project with a render on record, which their tabs tick. */
-  const [exportedClips, setExportedClips] = useState<ReadonlySet<string>>(() => new Set());
-  const markExported = (id: string) => setExportedClips(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
-  /** Asks the export log which of this project's clips are exported; a public studio keeps no log. */
-  const loadExportedClips = (projectId: string | null) => {
-    setExportedClips(new Set());
-    if (!projectId || studio.mode === 'public') return;
-    fetch(`/api/exports?done=1&projectId=${encodeURIComponent(projectId)}`)
-      .then(res => (res.ok ? res.json() : null))
-      .then((data: { done?: { clipId: string }[] } | null) => {
-        if (data?.done) setExportedClips(new Set(data.done.map(row => row.clipId).filter(Boolean)));
-      })
-      .catch(() => { /* no ticks is all a failed lookup costs */ });
-  };
-  /** Where to put the playhead once the recording now loading is ready: a clip opened from Projects. */
-  const seekOnLoadRef = useRef<number | null>(null);
-  /** Set by the tabs' New clip until a clip is made: the timeline says how to choose its stretch. */
+  const [family, setFamily] = useState<{ source: string; recording: LibraryProject | null; clips: LibraryProject[]; done: ReadonlySet<string> } | null>(null);
+  const [familyVersion, setFamilyVersion] = useState(0);
+  /**
+   * The project whose windows wait to be made projects once its recording is
+   * in -- known by the key its audio is kept under, since until that is loaded
+   * the file on hand is still the last project's -- and which to open then.
+   */
+  const pendingWindows = useRef<{ id: string; key: string } | null>(null);
+  const openAfterMigration = useRef<string | null>(null);
+  /**
+   * A clip project being given another stretch of its recording, which is
+   * open meanwhile with the clip's stretch selected (`startAdjust`): the clip
+   * as it was saved, and that stretch on the recording's clock.
+   */
+  const [adjusting, setAdjusting] = useState<{ payload: Record<string, unknown>; verses: VerseData[]; window: { start: number; end: number } } | null>(null);
+  /** Set by `makeReciterClip` so the passage loads once its ayahs are the ones asked for, then saved once loaded. */
+  const loadPassageNext = useRef(false);
+  const [loadedClips, setLoadedClips] = useState(0);
+  /** Set by Projects' New clip until a clip is made: the timeline says how to choose its stretch. */
   const [newClipHint, setNewClipHint] = useState(false);
-  /** Whether the upload has clips, which a trim or an audio edit would move out from under. */
-  const hasRecordingClips = clipsAllowed && recordingClips.clips.length > 0;
   /** A new clip starts with no motion, whatever the last one had; the rest of its style carries over. */
   const beginClip = () => {
     if (!newClipPending.current) return;
@@ -820,7 +841,7 @@ export default function VideoCreatorPage() {
   // Fetch Verses on Surah / Reciter / Ayah change
   const handleLoadSurahVerses = async () => {
     beginClip();
-    recordingClips.reset();
+    windowClips.current = [];
     setCanvasConfig(prev => ({ ...prev, ...motionForNewMatch(prev.captionTransition) }));
     // Back to the clip's summary in Source, which reports how the load went.
     setSourceEditing(false);
@@ -944,7 +965,7 @@ export default function VideoCreatorPage() {
    * with `handleApplyTrim` and nothing else: that one is making a new edit,
    * this one is reproducing an edit already made.
    */
-  const adoptAwaitedAudio = async (file: File, expecting: { fileName: string; trim: { start: number; end: number } | null }) => {
+  const adoptAwaitedAudio = async (file: File, expecting: NonNullable<typeof awaitingAudio>) => {
     let adopted: TrimResult;
     if (expecting.trim && (await isLongFile(file))) {
       // Too long for the browser to decode: cut on the server, as it was trimmed (`useLongAudio`).
@@ -961,8 +982,10 @@ export default function VideoCreatorPage() {
     setCustomAudioName(adopted.file.name);
     setCustomAudioDuration(adopted.duration);
     setUploadOriginalName(expecting.fileName);
-    void tagsOf(file).then(setUploadTags);
-    setAudioKey(newAudioKey());
+    // The project's own tags, where it has them -- a clip's say which recording it was cut from -- else the file's.
+    void tagsOf(file).then(read => setUploadTags(kept => kept ?? read));
+    // Stored again under the key the project already names, so it is still that project when saved.
+    setAudioKey(expecting.key || newAudioKey());
     setAudioUrl(adopted.url);
     if (adopted.duration > 0) setAudioDuration(adopted.duration);
     setTrimWindow(expecting.trim);
@@ -1008,7 +1031,7 @@ export default function VideoCreatorPage() {
       const video = isVideoFile(file);
       resetAudioEdit();
       // A different recording: the clips were windows on the last one.
-      recordingClips.reset();
+      windowClips.current = [];
       setCustomAudioUrl(url);
       setCustomAudioName(file.name);
       setCustomAudioFile(file);
@@ -1245,7 +1268,7 @@ export default function VideoCreatorPage() {
   // An upload can be edited before it is matched -- trimmed to the voice first;
   // a passage once it is loaded.
   // Not a recording too long to hold: it is cut a clip at a time instead.
-  const canEditAudio = customAudioFile ? studio.mode !== 'public' && !hasRecordingClips && !isLongAudio(customAudioDuration) : verses.length > 0 && !hasRecordingClips && !!editedAddress(audioUrl, NO_EDIT);
+  const canEditAudio = customAudioFile ? studio.mode !== 'public' && !isLongAudio(customAudioDuration) : verses.length > 0 && !!editedAddress(audioUrl, NO_EDIT);
   /** What Edit audio opens on: the recording, the edit, and the captions, all on the recording's clock. */
   const [editAudioStart, setEditAudioStart] = useState<{ edit: AudioEdit; captions: VerseData[] } | null>(null);
   const editAudioSource = useMemo(
@@ -1348,8 +1371,8 @@ export default function VideoCreatorPage() {
    * and the built-ins when none of them differs.
    */
   const findAnotherBackground = async () => {
-    // What the export renders: the open clip, a reciter's passage -- not its whole chapter -- or the upload.
-    const seconds = recordingClip ? recordingClip.end - recordingClip.start : exportRangeFor(verses, audioDuration, !!customAudioUrl).span;
+    // What the export renders: a reciter's passage -- not its whole chapter -- or the upload.
+    const seconds = exportRangeFor(verses, audioDuration, !!customAudioUrl).span;
     if (!(seconds > 0)) return;
     setFindingBackground(true);
     const current = canvasConfig.bgUrl;
@@ -1450,8 +1473,7 @@ export default function VideoCreatorPage() {
 
       applyMatchData(data);
       // Every match here is one someone asked for -- Match, or a reciter's Load -- and gets a look with it.
-      const clipSeconds = source.kind === 'url' ? source.end - source.start
-        : recordingClip ? recordingClip.end - recordingClip.start : data.audioDuration ?? audioDuration;
+      const clipSeconds = source.kind === 'url' ? source.end - source.start : data.audioDuration ?? audioDuration;
       if (clipSeconds > 0) void dressForMatch(clipSeconds);
       regroup.remember(data, {
         audioUrl,
@@ -1838,32 +1860,21 @@ export default function VideoCreatorPage() {
     })();
   }, [canvasConfig.translationIds, verses, setVerses]);
 
-  /**
-   * The stretch of audio an export should cover -- see `exportRangeFor` --
-   * or the open clip of an upload, which is its window on the recording.
-   */
+  /** The stretch of audio an export should cover -- see `exportRangeFor`. */
   const exportRange = useMemo(
-    () => recordingClip
-      ? { start: recordingClip.start, end: recordingClip.end, span: recordingClip.end - recordingClip.start }
-      : exportRangeFor(verses, audioDuration, !!customAudioUrl),
-    [verses, audioDuration, customAudioUrl, recordingClip]
+    () => exportRangeFor(verses, audioDuration, !!customAudioUrl),
+    [verses, audioDuration, customAudioUrl]
   );
 
   /**
-   * A built-in reciter's passage inside its chapter file, or an upload's open
-   * clip inside the recording, and the stretch of that file the timeline draws
-   * -- see `clipWindow`. Null for an upload played whole.
+   * A built-in reciter's passage inside its chapter file, and the stretch of
+   * that file the timeline draws -- see `clipWindow`. Null for an upload.
    */
   const passage = useMemo(
-    () => recordingClip
-      ? { start: recordingClip.start, end: recordingClip.end }
-      : clipWindow(exportRange, audioDuration, !!customAudioUrl),
-    [exportRange, audioDuration, customAudioUrl, recordingClip]
+    () => clipWindow(exportRange, audioDuration, !!customAudioUrl),
+    [exportRange, audioDuration, customAudioUrl]
   );
-  const timelineWindow = useMemo(
-    () => timelineView(passage, audioDuration, recordingClip && passage ? recordingClipMargin(passage) : undefined),
-    [passage, audioDuration, recordingClip]
-  );
+  const timelineWindow = useMemo(() => timelineView(passage, audioDuration), [passage, audioDuration]);
 
   /**
    * What the player plays: the recording with its edit applied. A built-in
@@ -2071,15 +2082,12 @@ export default function VideoCreatorPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  /** The project as it stands, in the shape a save sends. */
-  const currentProjectPayload = () => {
+  /** The project as it stands, in the shape a save sends; `over` for a clip made from it (`makeClipProject`). */
+  const currentProjectPayload = (over: Partial<Parameters<typeof buildProjectPayload>[0]> = {}) => {
     // The ayahs the timeline holds, not the ones first asked for: a project
     // trimmed down kept the old range in its title and passage.
     const held = timelinePassage(verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd });
-    // An upload's clips are saved with it, and the project's look is the one
-    // they share: the open clip's own look is kept on the clip.
-    const { base, clips } = clipsAllowed ? recordingClips.settled() : { base: canvasConfig, clips: [] };
-    const storedBase = withStoredBackgrounds(base);
+    const storedBase = withStoredBackgrounds(canvasConfig);
     const payload = buildProjectPayload({
       surahNumber: selectedSurah,
       surahNameArabic,
@@ -2093,7 +2101,7 @@ export default function VideoCreatorPage() {
       audioUrl: !isEdited(audioEdit) ? audioUrl : customAudioFile ? uploadEditAddress(audioEdit) : editedAddress(audioUrl, audioEdit) ?? audioUrl,
       // How long the clip is, for the Projects list -- the whole chapter's
       // recording for a built-in reciter, which is not what anyone means by it.
-      audioDurationSeconds: recordingClip ? audioDuration : exportRange.span,
+      audioDurationSeconds: exportRange.span,
       audioFileName: customAudioFile ? uploadOriginalName : '',
       audioKey,
       trimWindow,
@@ -2103,19 +2111,10 @@ export default function VideoCreatorPage() {
       // what goes to the row is the library's id for the file instead. A
       // pasted link is already durable and passes through untouched.
       config: storedBase as unknown as Record<string, unknown>,
+      ...over,
     });
-    return {
-      ...payload,
-      clips: clips.map(clip => clip.style
-        ? {
-            ...clip,
-            style: styleDiff(
-              withStoredBackgrounds({ ...base, ...clip.style }) as unknown as Record<string, unknown>,
-              storedBase as unknown as Record<string, unknown>
-            )
-          }
-        : clip),
-    };
+    // The old layout's clips, as they were stored, until each is a project of its own.
+    return { ...payload, clips: windowClips.current };
   };
 
   /**
@@ -2139,14 +2138,19 @@ export default function VideoCreatorPage() {
    * rather than overwriting the old one with a different clip.
    */
   const clipProject = useRef<{ id: string; clip: string } | null>(null);
-  const clipIdentity = (payload: Record<string, unknown>) =>
-    `${payload.surahNumber}:${payload.ayahStart}-${payload.ayahEnd}|${payload.audioKey || splitAddress(String(payload.audioUrl || '')).source}`;
+  const clipIdentity = (payload: Record<string, unknown>) => {
+    // A recording kept by its source, and each clip of it by its cut: matching one changes its ayahs, not which it is.
+    const source = (payload.audioTags as { source?: string } | null)?.source;
+    if (source) return payload.trimWindow ? `clip|${payload.audioKey}` : `recording|${source}`;
+    return `${payload.surahNumber}:${payload.ayahStart}-${payload.ayahEnd}|${payload.audioKey || splitAddress(String(payload.audioUrl || '')).source}`;
+  };
   const clipProjectId = (payload: Record<string, unknown>) =>
     clipProject.current?.clip === clipIdentity(payload)
       ? clipProject.current.id
       : `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const rememberClipProject = (id: string, payload: Record<string, unknown>) => {
     clipProject.current = { id, clip: clipIdentity(payload) };
+    setOpenProjectId(id);
   };
 
   const handleSaveProject = async () => {
@@ -2159,6 +2163,7 @@ export default function VideoCreatorPage() {
 
       if (res.ok) {
         rememberClipProject(id, current);
+        setFamilyVersion(n => n + 1);
         const data = await res.json().catch(() => null) as { source?: string } | null;
         // The route falls back to in-memory storage when DATABASE_URL is unset;
         // say so rather than implying the project survived a restart. A public
@@ -2385,112 +2390,292 @@ export default function VideoCreatorPage() {
       : t.header.notSavedYet);
 
 
-  /** The upload's clips as listed and drawn: in the order they play, each named by its ayahs. */
-  const listedClips = useMemo(
-    () => clipsAllowed
-      ? inPlayOrder(recordingClips.clips).map(clip => ({ ...clip, label: clipLabel(verses, clip), own: !!clip.style }))
-      : [],
-    [clipsAllowed, recordingClips.clips, verses]
-  );
-  /** Opens a clip of the recording, or the whole of it, with the playhead at its start. */
-  const openRecordingClip = (id: string | null) => {
-    recordingClips.open(id);
-    const clip = recordingClips.clips.find(each => each.id === id);
-    if (clip) handleSeek(clip.start);
-  };
   /**
-   * A new clip of the recording, opened to work on, with a look of its own
-   * that starts as the look on screen -- the clip it was made from, or the
-   * shared one -- so styling it never changes another clip.
+   * A stretch of what is open made a clip of its own. Of an upload, a project
+   * with its own cut of the audio (`makeClipProject`); of a built-in reciter,
+   * the ayahs it holds loaded as a passage of their own.
    */
   const addRecordingClip = (start: number, end: number) => {
-    const look = canvasConfig;
-    const id = recordingClips.add(start, end, audioDuration);
-    if (!id) return;
-    recordingClips.open(id);
-    recordingClips.ownLook(true);
-    setCanvasConfig(look);
+    if (adjusting) {
+      void updateAdjustedClip(adjusting, start, end);
+      return;
+    }
+    if (customAudioFile) {
+      void makeClipProject(start, end);
+      return;
+    }
+    void makeReciterClip(start, end);
+  };
+  /**
+   * Set when a clip project opens with no captions yet -- made from a stretch
+   * nothing was heard in yet, or from an old window that held none -- and
+   * matched once its own audio is in (the effect below): known by the key it
+   * is kept under and its length, since until then the file on hand is the last one.
+   */
+  const matchClipOnOpen = useRef<{ key: string; seconds: number } | null>(null);
+  /** Set while that match runs, so the clip is saved when it ends. */
+  const saveClipAfterMatch = useRef(false);
+  /**
+   * A clip of an upload, made a project of its own: the stretch cut from the
+   * recording -- by the server for a long one, as a WAV so it starts exactly
+   * where it was asked to -- with the captions already heard in it, moved onto
+   * its own clock. From then on it is a trimmed upload like any other, its
+   * `trimWindow` and `source` saying where it came from. The recording is
+   * saved first, so Projects lists the clip under it.
+   */
+  const makeClipProject = async (start: number, end: number) => {
+    const file = customAudioFile;
+    if (!file || !(end - start >= MIN_CLIP_SEC)) return;
+    if (isEdited(audioEditRef.current)) {
+      setMatchStatus({ text: t.clips.editFirst, tone: 'error' });
+      return;
+    }
     setNewClipHint(false);
-    // Its look next: it starts as the one on screen, and Presets is where to change it.
-    setStyleArea('presets');
-    setPanelTab('style');
-    handleSeek(Math.max(0, Math.min(start, end)));
+    setMatchStatus({ text: t.clips.cutting, tone: 'info' });
+    try {
+      const { tags, unmatched } = await saveRecordingForClip(file);
+      const cut = await cutClipAudio(file, start, end);
+      const captions = trimTimeline(isSampleProject ? [] : verses, start, end);
+      const clip = await saveClipProject(cut, { start, end }, captions, { audioTags: tags, ...unmatched });
+      await handleLoadSavedProject(clip);
+      if (captions.length) setMatchStatus({ text: t.clips.made(formatDuration(end - start)), tone: 'info' });
+    } catch (err) {
+      setMatchStatus({ text: t.clips.cutFailed((err as Error).message), tone: 'error' });
+    }
   };
-  /** Where the open clip sits in play order, for its name; -1 for the whole recording. */
-  const openClipIndex = listedClips.findIndex(clip => clip.id === recordingClip?.id);
-  /** The captions as they stand when a clip's match comes back, edits made meanwhile included. */
-  const latestVerses = useRef(verses);
-  useEffect(() => { latestVerses.current = verses; });
+  /** The recording saved as it stands, before a clip is cut from it, with the source its clips name it by. */
+  const saveRecordingForClip = async (file: File, recordingId?: string) => {
+    // Which row this is, asked before it carries its source: a project saved before sources were kept is still that row.
+    const opened = recordingId ?? (clipProject.current?.clip === clipIdentity(currentProjectPayload()) ? clipProject.current.id : null);
+    const source = uploadTags?.source ?? (await recordingSource(file));
+    const tags = source ? { ...uploadTags, source } : uploadTags;
+    setUploadTags(tags);
+    const unmatched = isSampleProject ? unmatchedPassage(tags?.track) : {};
+    // The same file uploaded again is a recording already in Projects: its clips go under it, and it is left as it is.
+    if (!opened && source && (await savedRecordingOf(source))) return { tags, unmatched };
+    const recording = currentProjectPayload({ audioTags: tags, ...unmatched });
+    const id = opened ?? clipProjectId(recording);
+    const kept = await storeUploadFor(recording);
+    const res = await saveProject({ ...kept.payload, id }, studio.mode);
+    if (!res.ok) throw new Error(t.header.saveFailedStatus(res.status));
+    rememberClipProject(id, recording);
+    return { tags, unmatched };
+  };
+  /** The stretch cut from the recording: by the server for a long one, as a WAV, so it starts where it was asked to. */
+  const cutClipAudio = async (file: File, start: number, end: number): Promise<File> => {
+    if (!playable.long) return buildTrimmedFile(await decodeAudioFile(file), start, end, file.name).file;
+    const wav = await cutLongStretch(file, playable.long, start, end, 'wav');
+    return new File([wav], file.name.replace(/\.[^./]+$/, '-clip.wav'), { type: 'audio/wav' });
+  };
+  /** Several stretches cut at once: by the server for a long recording, else from one decode of it. */
+  const cutClipsAudio = async (file: File, stretches: { start: number; end: number }[]): Promise<File[]> => {
+    if (playable.long) return Promise.all(stretches.map(each => cutClipAudio(file, each.start, each.end)));
+    const decoded = await decodeAudioFile(file);
+    return stretches.map(each => buildTrimmedFile(decoded, each.start, each.end, file.name).file);
+  };
+  /** The clip saved as a project of its own, its audio kept in this browser, and the row returned to open. */
+  const saveClipProject = async (
+    cut: File, window: { start: number; end: number }, captions: VerseData[], over: Partial<Parameters<typeof buildProjectPayload>[0]>,
+    made: { windowOf?: string; id?: string } = {}
+  ) => {
+    const key = newAudioKey();
+    const stored = await storeProjectAudio(key, cut);
+    const held = timelinePassage(captions, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd });
+    // On the original's clock, however many trims deep the recording already is.
+    const origin = trimWindow?.start ?? 0;
+    const clip = {
+      ...currentProjectPayload({
+        ayahStart: held.start, ayahEnd: held.end, audioDurationSeconds: window.end - window.start,
+        audioKey: stored ? key : '', trimWindow: { start: origin + window.start, end: origin + window.end },
+        ...over, verses: captions,
+        // A clip, not the recording, and made from a window of the old layout only when it was.
+        audioTags: { ...over.audioTags, windowOf: made.windowOf, clip: true },
+      }),
+      id: made.id ?? newClipProjectId(),
+      clips: [],
+    };
+    const res = await saveProject(clip, studio.mode);
+    if (!res.ok) throw new Error(t.header.saveFailedStatus(res.status));
+    setFamilyVersion(n => n + 1);
+    return clip;
+  };
+  // A clip opened with nothing heard in it yet is matched as any upload is, once its own audio is the one
+  // loaded and measured: until then the length on hand is still the recording's.
+  useEffect(() => {
+    const waiting = matchClipOnOpen.current;
+    if (!waiting || !customAudioFile || audioKey !== waiting.key || Math.abs(customAudioDuration - waiting.seconds) > 1) return;
+    matchClipOnOpen.current = null;
+    saveClipAfterMatch.current = true;
+    handleAutoMatchUploadedAudio();
+  });
+  // ...and saved once matched, so Projects lists it by the ayahs it holds rather than as made.
+  useEffect(() => {
+    if (isMatching || !saveClipAfterMatch.current) return;
+    saveClipAfterMatch.current = false;
+    if (verses.length) void handleSaveProject();
+  }, [isMatching]); // eslint-disable-line react-hooks/exhaustive-deps -- once, when that match ends
 
-  /** One clip's match, on its own (`clipMatch.ts`): its captions, on the recording's clock, or why not. */
-  const matchClip = async (file: File, clip: { start: number; end: number }) => {
-    const ticket = newMatchTicket();
-    const stopWatching = matchProvider === 'gemini' ? () => {} : watchQueue(ticket, seen => {
-      if (seen.position > 0) setMatchStatus({ text: t.match.queued(seen.position, seen.etaSeconds === null ? null : roughWait(seen.etaSeconds)), tone: 'info' });
-    });
-    const res = await postClipMatch({
-      file, sourceId: playable.long?.id, clip, surah: selectedSurah, start: ayahStart, end: ayahEnd,
-      reciter: selectedReciter, provider: matchProvider, breaks: screenBreaks, ticket,
-    }, form => fetch('/api/audio/match', { method: 'POST', body: form })).finally(stopWatching);
-    const data = await res.json();
-    // The server's own reason, said as it is; anything else is a failed match.
-    if (!res.ok || !data.success) throw Object.assign(new Error(data?.error || t.match.notConfigured), { said: true });
-    return { clip, verses: (data.verses || []) as VerseData[], surahNumber: data.surahNumber as number | undefined };
-  };
+  /** The recording saved in Projects with this source -- not a clip of it -- or null. */
+  const savedRecordingOf = async (source: string) =>
+    ((await listProjects(studio.mode)) ?? []).find(row => {
+      const tags = normalizeAudioTags(row.audioTags);
+      return tags?.source === source && !tags.clip;
+    }) ?? null;
 
   /**
-   * Matches clips of an upload, each on its own -- the way a long surah file
-   * is matched -- and puts each one's captions in among the recording's
-   * others, leaving the rest alone. They are sent together: the server queues
-   * them, and none waits on another's captions. A clip's look is its own
-   * already, so the match leaves it as it is.
+   * Each of the old layout's windows on the open recording made a clip
+   * project, as Make clip makes one -- its stretch cut, its captions moved
+   * onto its own clock, its own look if it had one -- unless it has been
+   * already, from this project or a copy of it. The recording keeps its
+   * windows (`windowClips`) until the new projects are confirmed; Projects
+   * lists the projects in their place.
    */
-  const runClipMatch = async (file: File, targets: { clip: { start: number; end: number }; name: string }[]) => {
-    setIsMatching(true);
-    setMatchStatus({ text: t.match.aligning, tone: 'info' });
+  const migrateWindowClips = async (file: File, pending: { id: string; key: string }, windows: RecordingClip[]) => {
+    // Measured here, not read off the page, which can still hold the last file's length: a long one is cut by the
+    // server, once it has read it, and is waited for until then.
+    const url = URL.createObjectURL(file);
+    const seconds = await measureAudioDuration(url).finally(() => URL.revokeObjectURL(url));
+    if (isLongAudio(seconds) && !playable.long) {
+      pendingWindows.current = pending;
+      return;
+    }
+    const source = uploadTags?.source ?? (await recordingSource(file));
+    if (!source) throw new Error(t.clips.noSource);
+    const plans = planWindowClips(await madeClipsOf(source), pending.id, windows);
+    const opened = new Map(plans.map(plan => [plan.clip.id, plan.found?.row]));
+    const missing = plans.filter(plan => !plan.found);
+    // A copy of a project already made into clips joins them under the recording, by its source; nothing else to do.
+    if (missing.length || !uploadTags?.source) {
+      const { tags } = await saveRecordingForClip(file, pending.id);
+      const saved = await saveWindowClips(file, missing, tags, pending.id);
+      missing.forEach((plan, i) => opened.set(plan.clip.id, saved[i]));
+    }
+    // Opened from Projects on one of them: that one, now a project.
+    const wanted = openAfterMigration.current;
+    openAfterMigration.current = null;
+    if (wanted && opened.get(wanted)) await handleLoadSavedProject(opened.get(wanted));
+  };
+  /** The clip projects saved from the recording `source`, as `windowClipProject` compares them. */
+  const madeClipsOf = async (source: string) =>
+    ((await listProjects(studio.mode)) ?? []).flatMap(row => {
+      const tags = normalizeAudioTags(row.audioTags);
+      return tags?.source === source && tags.clip
+        ? [{ row: row as unknown, id: row.id, empty: !row.versesJson?.length, windowOf: tags.windowOf, cut: row.trimWindow as { start: number; end: number } | null | undefined }]
+        : [];
+    });
+  /**
+   * For each window: its captions, and the clip project already made from it,
+   * if one -- unless that one was made from a copy's window with no captions
+   * (it had the sample's), which this window's then fill, on the same row.
+   */
+  const planWindowClips = (made: Awaited<ReturnType<typeof madeClipsOf>>, recordingId: string, windows: RecordingClip[]) =>
+    windows.map(clip => {
+      const captions = trimTimeline(verses, clip.start, clip.end);
+      const found = windowClipProject(made, recordingId, trimWindow?.start ?? 0, clip);
+      const refill = !!found && found.empty && captions.length > 0;
+      return { clip, captions, found: refill ? undefined : found, id: refill ? found.id : undefined };
+    });
+  /** The windows not made yet, each cut and saved as a clip project with the look it had; the rows saved. */
+  const saveWindowClips = async (
+    file: File, missing: ReturnType<typeof planWindowClips>, tags: AudioTags | null, recordingId: string
+  ) => {
+    if (!missing.length) return [];
+    setMatchStatus({ text: t.clips.migrating(missing.length), tone: 'info' });
+    const cuts = await cutClipsAudio(file, missing.map(plan => plan.clip));
+    const saved = await Promise.all(missing.map(({ clip, captions, id }, i) => {
+      const look = clip.style ? { ...canvasConfig, ...withRestoredBackgrounds(clip.style as Partial<VideoCanvasConfig>) } : canvasConfig;
+      // Nothing heard in it yet: named by the recording's track until it is matched, when it is opened.
+      const unheard = captions.length ? {} : unmatchedPassage(tags?.track);
+      return saveClipProject(cuts[i], clip, captions,
+        { ...unheard, audioTags: tags, config: withStoredBackgrounds(look) as unknown as Record<string, unknown> },
+        { windowOf: `${recordingId}/${clip.id}`, id });
+    }));
+    setMatchStatus({ text: t.clips.migrated(missing.length), tone: 'info' });
+    return saved;
+  };
+
+  /** Whether the project open is a clip cut from a recording, which `startAdjust` can widen past its cut. */
+  const isClipProject = !!customAudioFile && !!uploadTags?.clip && !!uploadTags.source && !!trimWindow;
+  /** Adjust in recording: the clip saved, then its recording opened on the clip's stretch, to drag its ends. */
+  const startAdjust = async () => {
+    const source = uploadTags?.source;
+    const cut = trimWindow;
+    if (!source || !cut) return;
+    const recording = await savedRecordingOf(source);
+    if (!recording) {
+      setMatchStatus({ text: t.clips.adjustNoRecording, tone: 'error' });
+      return;
+    }
+    await handleSaveProject();
+    const id = clipProject.current?.id;
+    if (!id) return;
+    const origin = (recording.trimWindow as { start: number } | null | undefined)?.start ?? 0;
+    const held = { payload: { ...currentProjectPayload(), id }, verses, window: { start: cut.start - origin, end: cut.end - origin } };
+    await handleLoadSavedProject(recording);
+    setAdjusting(held);
+    setMatchStatus({ text: t.clips.adjustHint, tone: 'info' });
+  };
+  /**
+   * The clip adjusted given the stretch `start`..`end` of the recording: cut
+   * again, keeping its own captions as they were edited, moved with its start,
+   * and the recording's for whatever the new stretch adds; then opened.
+   */
+  const updateAdjustedClip = async (held: NonNullable<typeof adjusting>, start: number, end: number) => {
+    const file = customAudioFile;
+    if (!file || !(end - start >= MIN_CLIP_SEC)) return;
+    setMatchStatus({ text: t.clips.cutting, tone: 'info' });
     try {
-      const results = await Promise.all(targets.map(target => matchClip(file, target.clip)));
-      // Edits made while they matched are kept. The sample's captions belong to the sample's recording, not this one.
-      const merged = results.reduce((timeline, each) => mergeWindowTimeline(timeline, each.verses, each.clip), isSampleProject ? [] : latestVerses.current);
-      const found = results.reduce((sum, each) => sum + each.verses.length, 0);
-      const passage = timelinePassage(merged, { surahNumber: results[0]?.surahNumber ?? selectedSurah, start: ayahStart, end: ayahEnd });
-      const surah = SURAHS_LIST.find(each => each.number === passage.surahNumber);
-      if (surah) {
-        setSurahNameArabic(surah.nameArabic);
-        setSurahNameEnglish(surah.nameEnglish);
-      }
-      setSelectedSurah(passage.surahNumber);
-      setAyahStart(passage.start);
-      setAyahStartInput(String(passage.start));
-      setAyahEnd(passage.end);
-      setAyahEndInput(String(passage.end));
-      setVerses(merged);
-      setIsSampleProject(false);
-      setMatchStatus({
-        text: targets.length > 1 ? t.match.clipsMatched(targets.length, found) : t.match.clipMatched(targets[0].name, found),
-        tone: 'info',
-      });
+      const cut = await cutClipAudio(file, start, end);
+      const own = trimTimeline(shiftTimeline(held.verses, held.window.start - start), 0, end - start, false);
+      const added = trimTimeline(verses.filter(verse => verse.endTime <= held.window.start || verse.startTime >= held.window.end), start, end);
+      const captions = [...added, ...own].sort((a, b) => a.startTime - b.startTime);
+      const key = newAudioKey();
+      const stored = await storeProjectAudio(key, cut);
+      const origin = trimWindow?.start ?? 0;
+      const surah = Number(held.payload.surahNumber);
+      const passage = timelinePassage(captions, { surahNumber: surah, start: Number(held.payload.ayahStart), end: Number(held.payload.ayahEnd) });
+      const ayahs = passage.surahNumber === surah ? { ayahStart: passage.start, ayahEnd: passage.end } : {};
+      const clip = {
+        ...held.payload, ...ayahs,
+        title: projectTitle(String(held.payload.surahNameEnglish), surah, ayahs.ayahStart ?? Number(held.payload.ayahStart), ayahs.ayahEnd ?? Number(held.payload.ayahEnd)),
+        audioKey: stored ? key : '', audioDuration: formatStoredDuration(end - start),
+        trimWindow: { start: origin + start, end: origin + end }, versesJson: captions,
+      };
+      const res = await saveProject(clip, studio.mode);
+      if (!res.ok) throw new Error(t.header.saveFailedStatus(res.status));
+      setFamilyVersion(n => n + 1);
+      await handleLoadSavedProject(clip);
+      setMatchStatus({ text: t.clips.adjusted(formatDuration(end - start)), tone: 'info' });
     } catch (err) {
-      setMatchStatus({ text: (err as { said?: boolean }).said ? (err as Error).message : t.match.failed, tone: 'error' });
-    } finally {
-      setIsMatching(false);
+      setMatchStatus({ text: t.clips.cutFailed((err as Error).message), tone: 'error' });
     }
   };
 
-  /** Match on the open clip only: the timeline's prompt on a clip with no captions yet. */
-  const matchOpenClip = () => {
-    if (!customAudioFile || isEdited(audioEdit) || !recordingClip) return;
-    setSourceEditing(false);
-    void runClipMatch(customAudioFile, [{ clip: recordingClip, name: t.clips.name(openClipIndex + 1) }]);
+  /**
+   * A stretch of a built-in reciter's passage made a clip: the ayahs it holds,
+   * loaded as a passage of their own and saved as a project of their own, the
+   * passage it came from saved first as it stands.
+   */
+  const makeReciterClip = async (start: number, end: number) => {
+    const held = timelinePassage(trimTimeline(verses, start, end), { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd });
+    if (held.surahNumber !== selectedSurah || (held.start === ayahStart && held.end === ayahEnd)) return;
+    await handleSaveProject();
+    clipProject.current = null;
+    setAyahStart(held.start);
+    setAyahStartInput(String(held.start));
+    setAyahEnd(held.end);
+    setAyahEndInput(String(held.end));
+    loadPassageNext.current = true;
   };
-
-  /** Match clips only: every clip of the upload, in play order, the stretches between them left as they are. */
-  const matchAllClips = () => {
-    if (!customAudioFile || isEdited(audioEdit) || !listedClips.length) return;
-    setSourceEditing(false);
-    void runClipMatch(customAudioFile, listedClips.map((clip, index) => ({ clip, name: t.clips.name(index + 1) })));
-  };
-
+  useEffect(() => {
+    if (!loadPassageNext.current) return;
+    loadPassageNext.current = false;
+    void handleLoadSurahVerses().then(() => setLoadedClips(n => n + 1));
+  });
+  // ...and saved, on the render that has its captions, so the clip is in Projects as soon as it is made.
+  useEffect(() => {
+    if (loadedClips && verses.length) void handleSaveProject();
+  }, [loadedClips]); // eslint-disable-line react-hooks/exhaustive-deps -- once per clip, when its passage is in
   /**
    * The passage the export actually contains, read off the timeline.
    *
@@ -2503,8 +2688,8 @@ export default function VideoCreatorPage() {
    * falls back to the request.
    */
   const clipPassage = useMemo(
-    () => timelinePassage(recordingClip ? clipVerses(verses, recordingClip) : verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd }),
-    [verses, selectedSurah, ayahStart, ayahEnd, recordingClip]
+    () => timelinePassage(verses, { surahNumber: selectedSurah, start: ayahStart, end: ayahEnd }),
+    [verses, selectedSurah, ayahStart, ayahEnd]
   );
 
   /**
@@ -2535,12 +2720,11 @@ export default function VideoCreatorPage() {
       wordByWord: !!canvasConfig.translationFollowsWords,
       // Credited only when the card draws it.
       tafsirName: canvasConfig.showTafsir && verses.some(verse => shownTafsir(verses, tafsir.texts, verse.verseKey)) ? TAFSIR_NAME : undefined,
-      // An open clip's description quotes the ayahs it holds, not the recording's.
-      verses: recordingClip ? clipVerses(verses, recordingClip) : verses
+      verses
     }),
     [
       clipPassage, surahNameArabic, surahNameEnglish, customAudioFile,
-      selectedReciterMeta, canvasConfig.translationFollowsWords, canvasConfig.showTafsir, verses, tafsir.texts, recordingClip
+      selectedReciterMeta, canvasConfig.translationFollowsWords, canvasConfig.showTafsir, verses, tafsir.texts
     ]
   );
 
@@ -2632,7 +2816,7 @@ export default function VideoCreatorPage() {
 
   /** Opens Export -- of a clip, for a recording too long to render whole. */
   const openExport = () => {
-    if (customAudioFile && isLongAudio(customAudioDuration) && !recordingClip) {
+    if (customAudioFile && isLongAudio(customAudioDuration)) {
       setMatchStatus({ text: t.clips.longExportNeedsClip, tone: 'error' });
       return;
     }
@@ -2675,7 +2859,6 @@ export default function VideoCreatorPage() {
       fileName: withAspect(fileName, plan.aspectRatio),
       title: `${surahNameEnglish} GPU Clip`,
       projectId: projectId ?? undefined,
-      clipId: recordingClip?.id,
       audioStart: stretch?.start,
     }, stretch?.blob ?? (audio?.currentSrc || audio?.src || ''));
   };
@@ -2706,8 +2889,6 @@ export default function VideoCreatorPage() {
   };
 
   const handleSaveExportRecord = async ({ fileName, fileSizeBytes, durationSec, renderMs }: { fileName: string; fileSizeBytes: number; durationSec: number; renderMs: number }) => {
-    // The clip open while it rendered: a queue opens each clip in turn for its render.
-    const clipId = recordingClips.latestActiveId();
     // Counted on every studio, public included, with nothing to say who
     // exported: the owner's /stats. Not waited on.
     fetch('/api/export-count', {
@@ -2724,7 +2905,7 @@ export default function VideoCreatorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          clipId: clipId ?? '',
+          clipId: '',
           title: `${surahNameEnglish} GPU Clip`,
           fileName,
           fileSizeBytes,
@@ -2736,7 +2917,6 @@ export default function VideoCreatorPage() {
           gpuDevice: describeGpu()
         })
       });
-      if (clipId) markExported(clipId);
     } catch {
       // ignore
     }
@@ -2786,7 +2966,7 @@ export default function VideoCreatorPage() {
       setCustomAudioName('');
       setCustomAudioDuration(0);
       setAudioKey('');
-      setAwaitingAudio({ fileName, trim });
+      setAwaitingAudio({ fileName, trim, key: proj.audioKey || undefined });
       setMatchStatus({ text: t.match.awaitingAudio(fileName), tone: 'info' });
       return;
     }
@@ -2797,6 +2977,8 @@ export default function VideoCreatorPage() {
     // Saved before tags were kept: the stored copy may still carry its own.
     if (!proj.audioTags) void tagsOf(file).then(setUploadTags);
     const url = URL.createObjectURL(file);
+    // Unknown until measured below: the last file's length, left in the meantime, made a short clip read as long.
+    setCustomAudioDuration(0);
     setCustomAudioFile(file);
     setCustomAudioUrl(url);
     setCustomAudioName(fileName);
@@ -2826,7 +3008,11 @@ export default function VideoCreatorPage() {
     if (!proj) return;
     // Saving or rendering it from here updates this project.
     if (typeof proj.id === 'string') rememberClipProject(proj.id, proj);
-    loadExportedClips(typeof proj.id === 'string' ? proj.id : null);
+    pendingWindows.current = null;
+    setAdjusting(null);
+    const cut = proj.trimWindow as { start: number; end: number } | null | undefined;
+    matchClipOnOpen.current = proj.audioTags?.clip === true && proj.audioKey && cut && !(proj.versesJson?.length)
+      ? { key: proj.audioKey, seconds: cut.end - cut.start } : null;
     setSelectedSurah(proj.surahNumber || 1);
     setAyahStart(proj.ayahStart || 1);
     setAyahEnd(proj.ayahEnd || 7);
@@ -2910,26 +3096,74 @@ export default function VideoCreatorPage() {
       fps: proj.fps || 60,
       gpuAccelerated: proj.gpuAccelerated ?? true
     }));
-    // An upload's clips, with the whole recording open; the look just set is the one they share.
-    recordingClips.reset(normalizeClips(proj.clips).map(clip =>
-      clip.style ? { ...clip, style: withRestoredBackgrounds(clip.style as Partial<VideoCanvasConfig>) } : clip
-    ));
+    // The old layout's clips, kept as stored, and made projects of their own once the recording is in.
+    windowClips.current = normalizeClips(proj.clips);
+    if (windowClips.current.length && proj.audioKey && typeof proj.id === 'string') pendingWindows.current = { id: proj.id, key: proj.audioKey };
   };
 
   /**
-   * Opens a project from Projects: on one of its clips, from a clip card, or
-   * on the whole recording ready to choose the next clip's stretch.
+   * Opens a project from Projects: a clip of the old layout as the project it
+   * is made into (`migrateWindowClips`), or the recording ready to choose the
+   * next clip's stretch.
    */
   const openSavedProject = (project: unknown, open?: { clipId: string | null; newClip?: boolean }) => {
-    void handleLoadSavedProject(project).then(() => {
-      const clip = open?.clipId ? normalizeClips((project as { clips?: unknown }).clips).find(each => each.id === open.clipId) : null;
-      if (clip) {
-        recordingClips.open(clip.id);
-        seekOnLoadRef.current = clip.start;
-        handleSeek(clip.start);
-      }
-      setNewClipHint(!!open?.newClip);
+    openAfterMigration.current = open?.clipId ?? null;
+    void handleLoadSavedProject(project).then(() => setNewClipHint(!!open?.newClip));
+  };
+
+  // Once the recording whose windows wait is in -- and read by the server, for a long one, which cuts it.
+  useEffect(() => {
+    const file = customAudioFile;
+    const pending = pendingWindows.current;
+    if (!file || !pending || awaitingAudio || audioKey !== pending.key || clipProject.current?.id !== pending.id || !(customAudioDuration > 0)) return;
+    if (isLongAudio(customAudioDuration) && !playable.long) return;
+    pendingWindows.current = null;
+    void migrateWindowClips(file, pending, windowClips.current)
+      .catch(err => setMatchStatus({ text: t.clips.cutFailed((err as Error).message), tone: 'error' }));
+  });
+
+  const familySource = studio.mode === 'public' ? undefined : uploadTags?.source;
+  useEffect(() => {
+    if (!familySource) return;
+    let stale = false;
+    void Promise.all([
+      listProjects(studio.mode),
+      fetch('/api/exports?done=1').then(res => (res.ok ? res.json() : null)).catch(() => null),
+    ]).then(([rows, exports]: [unknown[] | null, { done?: { projectId: string; clipId: string }[] } | null]) => {
+      if (stale) return;
+      const { recording, clips } = familyOf(asLibraryProjects(rows ?? []), familySource);
+      const done = new Set((exports?.done ?? []).map(row => `${row.projectId}/${row.clipId}`));
+      // A clip made from a window of the old layout has that window's render too.
+      const exported = new Set(clips.filter(clip => done.has(`${clip.id}/`) || (!!clip.audioTags?.windowOf && done.has(clip.audioTags.windowOf))).map(clip => clip.id));
+      setFamily({ source: familySource, recording, clips, done: exported });
     });
+    return () => { stale = true; };
+  }, [familySource, familyVersion, studio.mode]);
+  /** The tabs: the open upload's recording and its clips, once read; none for anything else. */
+  const tabs = family && family.source === familySource ? family : null;
+  /** Another tab opened: the page open now saved first, as each tab keeps its own work. */
+  const openTab = async (project: LibraryProject | null, newClip = false) => {
+    if (!project) return;
+    if (project.id !== openProjectId) {
+      if (openProjectId && !isSampleProject) await handleSaveProject();
+      await handleLoadSavedProject(project);
+    }
+    setNewClipHint(newClip);
+  };
+  /** A clip deleted from its tab: its row and, unless another project uses it, its audio; the recording opened if it was the one open. */
+  const removeClipTab = async (id: string) => {
+    const clip = tabs?.clips.find(each => each.id === id);
+    const res = await deleteProject(id, studio.mode);
+    if (!res.ok) {
+      setMatchStatus({ text: t.clips.removeFailed(res.error || String(res.status)), tone: 'error' });
+      return;
+    }
+    if (clip?.audioKey) {
+      const others = ((await listProjects(studio.mode)) ?? []).map(row => row.audioKey).filter((key): key is string => typeof key === 'string' && !!key);
+      await forgetProjectAudio(clip.audioKey, others);
+    }
+    setFamilyVersion(n => n + 1);
+    if (id === openProjectId && tabs?.recording) await handleLoadSavedProject(tabs.recording);
   };
 
   const currentSurahObj = SURAHS_LIST.find(s => s.number === selectedSurah) || SURAHS_LIST[0];
@@ -3121,10 +3355,6 @@ export default function VideoCreatorPage() {
           handleLoadedMetadata();
           // A long upload's length is the server's read of it, the clock its copy and every cut are on.
           if (playable.long) setAudioDuration(playable.long.duration);
-          // A clip opened from Projects starts where it starts, once its recording is back.
-          const at = seekOnLoadRef.current;
-          seekOnLoadRef.current = null;
-          if (at !== null) handleSeek(at);
         }}
         onCanPlay={handleCanPlay}
         onPlay={() => setIsPlaying(true)}
@@ -3211,15 +3441,15 @@ export default function VideoCreatorPage() {
           </div>
         </div>
 
-        {clipsAllowed && (
+        {tabs && (tabs.recording || tabs.clips.length > 0) && (
           <div className="flex-1 min-w-0 flex">
             <ClipTabs
-              clips={listedClips}
-              activeId={recordingClip?.id ?? null}
-              exported={exportedClips}
-              onOpen={id => { setNewClipHint(false); openRecordingClip(id); }}
-              onRemove={recordingClips.remove}
-              onNew={() => { openRecordingClip(null); setNewClipHint(true); }}
+              clips={tabs.clips.map(clip => ({ id: clip.id, label: clipTabLabel(clip) }))}
+              activeId={tabs.clips.some(clip => clip.id === openProjectId) ? openProjectId : null}
+              exported={tabs.done}
+              onOpen={id => { void openTab(id ? tabs.clips.find(clip => clip.id === id) ?? null : tabs.recording); }}
+              onRemove={id => { void removeClipTab(id); }}
+              onNew={() => { void openTab(tabs.recording, true); }}
             />
           </div>
         )}
@@ -3276,7 +3506,7 @@ export default function VideoCreatorPage() {
           />
 
           <Button variant="primary" size="md" onClick={openExport} icon={<Sparkles className="w-4 h-4 fill-current" />} data-tour="export">
-            {openClipIndex >= 0 ? t.clips.exportClip(openClipIndex + 1) : t.header.export}
+            {t.header.export}
           </Button>
         </div>
       </header>
@@ -3492,7 +3722,7 @@ export default function VideoCreatorPage() {
                         <Button onClick={() => { setSourceMode(customAudioFile ? 'recording' : 'reciter'); setAdvancedOpen(true); newClipPending.current = false; setSourceEditing(true); }}>
                           {t.source.editSource}
                         </Button>
-                        {customAudioFile && !hasRecordingClips && (
+                        {customAudioFile && (
                           <Button icon={<Scissors className="w-3.5 h-3.5 text-amber-400" />} onClick={() => setShowTrimModal(true)}>
                             {customAudioDuration > 0
                               ? t.header.trimAudioWithLength(formatDuration(customAudioDuration))
@@ -3504,17 +3734,22 @@ export default function VideoCreatorPage() {
                             {t.editAudio.open}
                           </Button>
                         )}
+                        {isClipProject && (
+                          <Button icon={<Layers className="w-3.5 h-3.5 text-amber-400" />} onClick={() => { void startAdjust(); }} title={t.clips.adjustTitle}>
+                            {t.clips.adjust}
+                          </Button>
+                        )}
+                        {adjusting && (
+                          <Button onClick={() => { void handleLoadSavedProject(adjusting.payload); }}>
+                            {t.clips.backToClip}
+                          </Button>
+                        )}
                       </div>
                     </section>
 
                     {customAudioFile && (
                       <ClipsPanel
-                        clips={listedClips}
-                        activeId={recordingClip?.id ?? null}
                         captions={verses}
-                        onOpen={openRecordingClip}
-                        onRemove={recordingClips.remove}
-                        onOwnLook={recordingClips.ownLook}
                         onAddByAyahs={(first, last) => {
                           const span = ayahWindow(verses, first, last, audioDuration);
                           if (span) addRecordingClip(span.start, span.end);
@@ -3744,7 +3979,7 @@ export default function VideoCreatorPage() {
                           onPick={({ file, folder }) => { void acceptRecitationFile(file, folder); }}
                         />
 
-                        {customAudioFile && !hasRecordingClips && (
+                        {customAudioFile && (
                           <TrimStep
                             length={customAudioDuration > 0 ? formatDuration(customAudioDuration) : ''}
                             onTrim={() => setShowTrimModal(true)}
@@ -3754,36 +3989,14 @@ export default function VideoCreatorPage() {
                         {engineSettings}
 
                         <div className="flex flex-col gap-2">
-                          {customAudioFile && hasRecordingClips && !isEdited(audioEdit) ? (
-                            // With clips made, which to match is the choice: the whole surah, or just the clips.
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={handleAutoMatchUploadedAudio}
-                                disabled={isMatching || playable.isLong}
-                                title={playable.isLong ? t.source.fullTooLong : undefined}
-                                className="h-12 px-2 bg-slate-800 hover:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-100 text-sm font-bold rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-2"
-                              >
-                                {t.source.matchFull}
-                              </button>
-                              <button
-                                onClick={matchAllClips}
-                                disabled={isMatching}
-                                className="h-12 px-2 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
-                              >
-                                <Sparkles className="w-4 h-4 shrink-0" />
-                                {t.source.matchClipsOnly(listedClips.length)}
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={handleAutoMatchUploadedAudio}
-                              disabled={!customAudioFile && !customAudioUrl}
-                              className="w-full h-12 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 text-[15px] font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
-                            >
-                              <Sparkles className="w-4 h-4" />
-                              {t.source.matchRecording}
-                            </button>
-                          )}
+                          <button
+                            onClick={handleAutoMatchUploadedAudio}
+                            disabled={!customAudioFile && !customAudioUrl}
+                            className="w-full h-12 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 text-[15px] font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            {t.source.matchRecording}
+                          </button>
                           {customAudioFile || customAudioUrl ? (
                             <div className="flex flex-wrap items-center gap-2">
                               <Button icon={<Clock className="w-3.5 h-3.5 text-amber-400" />} onClick={handleManualMatchUploadedAudio}>
@@ -3954,7 +4167,6 @@ export default function VideoCreatorPage() {
                 surahNumber={selectedSurah}
                 ayahStart={ayahStart}
                 ayahEnd={ayahEnd}
-                clipRange={recordingClip}
                 syncBackgroundVideo={uploadIsVideo && useVideoAsBackground && canvasConfig.bgUrl === videoBgUrl}
                 isPlaying={isPlaying}
                 backgroundTimeOffset={videoBgOffset}
@@ -4015,24 +4227,15 @@ export default function VideoCreatorPage() {
           onToggleRippleEdits={toggleRippleEdits}
           onMarkHere={handleMarkHere}
           onNextToCheck={goToNextCheck}
-          onTrim={customAudioFile && !hasRecordingClips ? () => setShowTrimModal(true) : undefined}
+          onTrim={customAudioFile ? () => setShowTrimModal(true) : undefined}
           onEditAudio={canEditAudio ? () => { void openEditAudio(); } : undefined}
           exportSeconds={verses.length ? exportRange.span : undefined}
-          // With clips, the handles set the open clip's stretch rather than cut the recording.
-          onTrimRange={hasRecordingClips
-            ? recordingClip ? (start, end) => recordingClips.move(recordingClip.id, start, end, audioDuration) : undefined
-            : (customAudioFile && !isLongAudio(customAudioDuration)) || (!customAudioFile && verses.length) ? handleTrimRange : undefined}
-          clips={listedClips}
-          activeClipId={recordingClip?.id ?? null}
-          onOpenClip={openRecordingClip}
-          onAddClip={clipsAllowed ? addRecordingClip : undefined}
-          onMoveClip={clipsAllowed ? (id, start, end) => recordingClips.move(id, start, end, audioDuration) : undefined}
-          activeClipOwn={!!recordingClip?.style}
-          onOwnLook={recordingClips.ownLook}
+          onTrimRange={(customAudioFile && !isLongAudio(customAudioDuration)) || (!customAudioFile && verses.length) ? handleTrimRange : undefined}
+          // A clip is made of what is loaded: an upload, or a built-in reciter's passage -- not the sample.
+          onAddClip={customAudioFile || (!isSampleProject && verses.length > 0) ? addRecordingClip : undefined}
+          makeText={adjusting ? t.clips.updateClip : undefined}
+          selection={adjusting?.window ?? null}
           selectHint={newClipHint}
-          onMatchClip={customAudioFile && !isEdited(audioEdit) ? matchOpenClip : undefined}
-          sampleCaptions={isSampleProject}
-          matching={isMatching}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
           volume={volume}
@@ -4111,10 +4314,6 @@ export default function VideoCreatorPage() {
         buildServerRender={buildServerRender}
         exportLane={exportLane}
         renderCheck={renderCheckInput}
-        clips={listedClips.map((clip, i) => ({ id: clip.id, label: `${t.clips.name(i + 1)}${clip.label ? ` · ${clip.label}` : ''}` }))}
-        exportedClips={exportedClips}
-        clipId={recordingClip?.id ?? null}
-        onClip={(id, keep) => recordingClips.open(id, { keep })}
       />
 
       {/* Saved Projects Drawer */}

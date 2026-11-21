@@ -10,7 +10,7 @@
  */
 
 import { SURAHS_LIST } from './quranData';
-import { clipMadeAt, clipVerses, inPlayOrder, normalizeClips } from './recordingClips';
+import { clipMadeAt, clipVerses, inPlayOrder, normalizeClips, windowClipProject } from './recordingClips';
 
 export interface LibraryProject {
   id: string;
@@ -25,7 +25,9 @@ export interface LibraryProject {
   audioFileName?: string | null;
   audioKey?: string | null;
   /** What the uploaded file's own tag says, and the folder it was picked from (`audioTags.ts`). */
-  audioTags?: { artist?: string; title?: string; track?: number; folder?: string } | null;
+  audioTags?: { artist?: string; title?: string; track?: number; folder?: string; source?: string; clip?: true; windowOf?: string } | null;
+  /** Where its audio was cut from in the original. */
+  trimWindow?: { start: number; end: number } | null;
   audioDuration?: string | number | null;
   clips?: unknown;
   versesJson?: unknown;
@@ -88,7 +90,9 @@ export interface LibraryRecording {
  * `049 - سورة الحجرات.mp3` and they are not one recording.
  */
 const recordingKey = (project: LibraryProject) =>
-  project.audioKey
+  project.audioTags?.source
+    ? `upload:source:${project.audioTags.source}`
+    : project.audioKey
     ? `upload:${project.audioKey}`
     : project.audioFileName
       ? `upload:${project.audioTags?.artist ?? ''}/${project.audioFileName}`
@@ -108,19 +112,36 @@ const asVerses = (value: unknown) =>
       !!verse && typeof verse === 'object' && typeof verse.startTime === 'number' && typeof verse.endTime === 'number'
   );
 
-/** A recording's clips: an upload's own clips, or each reciter project as one. */
+/** A clip of a recording saved as a project of its own (`makeClipProject`), rather than a window on it. */
+const isClipProject = (project: LibraryProject) => !!project.audioTags?.source && project.audioTags.clip === true;
+
+/**
+ * Whether one of the old layout's windows on `project` has been made a clip
+ * project in `group` already: one made from it, or one cut from the same
+ * stretch of the recording -- a copy of the project had the same windows.
+ */
+function madeProject(group: LibraryProject[], project: LibraryProject, clip: { id: string; start: number; end: number }) {
+  const made = group.filter(isClipProject).map(other => ({ windowOf: other.audioTags?.windowOf, cut: other.trimWindow }));
+  return !!windowClipProject(made, project.id, project.trimWindow?.start ?? 0, clip);
+}
+
+/** A recording's clips: each clip project, an upload's windows on it, or each reciter project as one. */
 function clipsOf(kind: LibraryRecording['kind'], projects: LibraryProject[], exported: (projectId: string, clipId: string) => string | null | undefined) {
   const listed: Omit<LibraryClip, 'number'>[] = [];
   for (const project of projects) {
     // A reciter's passage is a clip of its surah, unless it was cut into clips of its own.
-    if (kind === 'reciter' && !normalizeClips(project.clips).length) {
-      const at = exported(project.id, '');
+    if ((kind === 'reciter' && !normalizeClips(project.clips).length) || isClipProject(project)) {
+      // A clip made from one of the old layout's windows keeps that window's render.
+      const [windowProject, windowClip] = project.audioTags?.windowOf?.split('/') ?? [];
+      const own = exported(project.id, '');
+      const at = own === undefined && windowClip ? exported(windowProject, windowClip) : own;
       listed.push({ projectId: project.id, clipId: null, surahNumber: project.surahNumber, first: project.ayahStart, last: project.ayahEnd,
         exported: at !== undefined, exportedAt: at ?? null, madeAt: project.createdAt ?? project.updatedAt, updatedAt: project.updatedAt });
       continue;
     }
     const verses = asVerses(project.versesJson);
     for (const clip of inPlayOrder(normalizeClips(project.clips))) {
+      if (madeProject(projects, project, clip)) continue;
       const ayahs = ayahsIn(verses, project.surahNumber, clip);
       const at = exported(project.id, clip.id);
       const made = clipMadeAt(clip.id);
@@ -150,7 +171,8 @@ export function libraryOf(projects: LibraryProject[], done: ExportedClip[]) {
     groups.set(key, [...(groups.get(key) ?? []), project]);
   }
   const recordings: LibraryRecording[] = [...groups].map(([key, group]) => {
-    const latest = group[0];
+    // Opened as the recording: the one that is not a clip of it, when there is one.
+    const latest = group.find(project => !isClipProject(project)) ?? group[0];
     const kind = key.startsWith('upload:') ? 'upload' : 'reciter';
     const surah = SURAHS_LIST.find(each => each.number === latest.surahNumber);
     const clips = clipsOf(kind, group, exported);
@@ -163,11 +185,40 @@ export function libraryOf(projects: LibraryProject[], done: ExportedClip[]) {
       artist: kind === 'upload' ? group.find(project => project.audioTags?.artist)?.audioTags?.artist ?? '' : '',
       folder: kind === 'upload' ? group.find(project => project.audioTags?.folder)?.audioTags?.folder ?? '' : '',
       duration: latest.audioDuration ?? null, project: latest, projects: group, clips, coverage,
-      createdAt: group.map(project => project.createdAt ?? project.updatedAt).sort()[0], updatedAt: latest.updatedAt,
+      createdAt: group.map(project => project.createdAt ?? project.updatedAt).sort()[0], updatedAt: group[0].updatedAt,
     };
   });
   const latestClips = recordings
     .flatMap(recording => recording.clips.map(clip => ({ ...clip, recording })))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.number - b.number);
   return { recordings, latestClips };
+}
+
+/**
+ * The recording saved with `source` and the clip projects cut from it, in the
+ * order they play: what the studio's tabs show. The recording is the one
+ * last edited, where a copy of it was saved too; null when it is not saved.
+ */
+export function familyOf<P extends LibraryProject>(projects: P[], source: string): { recording: P | null; clips: P[] } {
+  const same = [...projects].filter(project => project.audioTags?.source === source)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return {
+    recording: same.find(project => !isClipProject(project)) ?? null,
+    clips: same.filter(isClipProject).sort((a, b) => (a.trimWindow?.start ?? 0) - (b.trimWindow?.start ?? 0) || a.id.localeCompare(b.id)),
+  };
+}
+
+/** Rows as the projects list sends them, kept to those that are projects: anything else is left out. */
+export function asLibraryProjects(rows: unknown[]): LibraryProject[] {
+  return rows.filter((row): row is LibraryProject => {
+    const r = row as Record<string, unknown> | null;
+    return !!r && typeof r === 'object' && typeof r.id === 'string' && typeof r.title === 'string'
+      && typeof r.surahNumber === 'number' && typeof r.updatedAt === 'string';
+  });
+}
+
+/** A clip's ayahs for its tab, as `3:14–15`; '' while it has no captions. */
+export function clipTabLabel(clip: Pick<LibraryProject, 'surahNumber' | 'ayahStart' | 'ayahEnd' | 'versesJson'>): string {
+  if (!Array.isArray(clip.versesJson) || !clip.versesJson.length) return '';
+  return clip.ayahStart === clip.ayahEnd ? `${clip.surahNumber}:${clip.ayahStart}` : `${clip.surahNumber}:${clip.ayahStart}–${clip.ayahEnd}`;
 }

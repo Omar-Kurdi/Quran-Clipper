@@ -1,18 +1,14 @@
 /**
- * Several clips cut from one uploaded recording.
+ * Stretches of a recording, and the clips cut from it.
  *
- * A long upload -- a night's recitation, a lesson -- is matched once, and the
- * clips are windows on it: a start and an end on the recording's own clock,
- * the same clock its captions are on. Nothing is re-cut. A caption fixed while
- * one clip is open is fixed in every clip that holds it, and clips may overlap.
- * The studio plays and exports a clip the way it plays a built-in reciter's
- * passage inside its chapter file (`clipWindow`, `exportRangeFor`).
+ * A clip is now a project of its own, cut from its recording
+ * (`makeClipProject`). Before that, clips were windows on the recording -- a
+ * start and an end on its clock, with whatever look each had of its own --
+ * and projects saved then still carry them, which `normalizeClips` reads and
+ * the studio makes into clip projects. The rest is choosing a stretch of a
+ * recording by its ayahs, and naming what a stretch holds.
  *
- * Every clip has the look being edited unless it is given its own. A clip
- * with its own look keeps only what differs from the shared one, so a change
- * to the shared look still reaches whatever the clip did not change.
- *
- * Pure state here, so the rules can be tested without a studio.
+ * Pure, so the rules can be tested without a studio.
  */
 
 import { timelinePassage } from './projectPayload';
@@ -22,7 +18,7 @@ export interface RecordingClip {
   /** Seconds on the recording's clock, as its captions are. */
   start: number;
   end: number;
-  /** What this clip changes from the shared look, or null when it has the shared look. */
+  /** What this clip changed from the project's look, or null when it had that look. */
   style: Record<string, unknown> | null;
 }
 
@@ -35,70 +31,15 @@ export const MAX_CLIPS = 100;
 
 const ms = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
-let counter = 0;
-const newId = () => {
-  counter += 1;
-  return `clip-${Date.now().toString(36)}-${counter}`;
-};
-
 /**
- * When a clip was made, read from its id (`newId`: the time in base 36), so
- * every clip already saved has one; null for an id not made that way.
+ * When a clip was made, read from its id (the time in base 36, as the studio
+ * made them), so every clip already saved has one; null for an id not made that way.
  */
 export function clipMadeAt(id: string): number | null {
   const stamp = /^clip-([0-9a-z]+)-\d+$/.exec(id);
   const time = stamp ? parseInt(stamp[1], 36) : NaN;
   // From 2020 on, and not later than now: anything else is not a time.
   return Number.isFinite(time) && time >= Date.UTC(2020, 0, 1) && time <= Date.now() + 86_400_000 ? time : null;
-}
-
-/** A clip for this stretch of the recording, inside it; null when there is no clip there. */
-export function newClip(start: number, end: number, duration: number): RecordingClip | null {
-  const from = ms(Math.max(0, Math.min(start, end)));
-  const to = ms(duration > 0 ? Math.min(duration, Math.max(start, end)) : Math.max(start, end));
-  if (!Number.isFinite(from) || !Number.isFinite(to) || to - from < MIN_CLIP_SEC) return null;
-  return { id: newId(), start: from, end: to, style: null };
-}
-
-/** Adds a clip, unless one already covers exactly that stretch -- two clicks are one intention. */
-export function addClip(clips: RecordingClip[], clip: RecordingClip | null): RecordingClip[] {
-  if (!clip || clips.length >= MAX_CLIPS) return clips;
-  const same = clips.some(other => Math.abs(other.start - clip.start) < 0.01 && Math.abs(other.end - clip.end) < 0.01);
-  return same ? clips : [...clips, clip];
-}
-
-export function removeClip(clips: RecordingClip[], id: string): RecordingClip[] {
-  return clips.filter(clip => clip.id !== id);
-}
-
-/** The clip with a new window, kept inside the recording and no shorter than a clip can be. */
-export function moveClip(clips: RecordingClip[], id: string, start: number, end: number, duration: number): RecordingClip[] {
-  const moved = newClip(start, end, duration);
-  if (!moved) return clips;
-  return clips.map(clip => (clip.id === id ? { ...clip, start: moved.start, end: moved.end } : clip));
-}
-
-/** Which part of a clip's bar is being dragged: an end, or the whole of it. */
-export type ClipEdge = 'start' | 'end' | 'move';
-
-/**
- * Where a clip's bar is after being dragged `delta` seconds by `edge`: moved
- * whole, keeping its length, or one end, never past the other end. Kept inside
- * the recording, and no shorter than a clip can be.
- */
-export function dragClip(
-  clip: { start: number; end: number }, edge: ClipEdge, delta: number, duration: number
-): { start: number; end: number } {
-  const last = duration > 0 ? duration : Infinity;
-  if (edge === 'move') {
-    const length = clip.end - clip.start;
-    const start = Math.max(0, Math.min(clip.start + delta, last - length));
-    return { start: ms(start), end: ms(start + length) };
-  }
-  if (edge === 'start') {
-    return { start: ms(Math.max(0, Math.min(clip.start + delta, clip.end - MIN_CLIP_SEC))), end: clip.end };
-  }
-  return { start: clip.start, end: ms(Math.min(last, Math.max(clip.end + delta, clip.start + MIN_CLIP_SEC))) };
 }
 
 /** In the order they play in the recording, which is the order they are listed and numbered in. */
@@ -200,26 +141,6 @@ export function ayahsHeld(
   return keys.length ? { from: keys[0], to: keys[keys.length - 1] } : null;
 }
 
-/**
- * Each ayah of the recording once, in the order heard, with the clips that
- * hold it (their places in `clips`), for showing which ayahs are clipped
- * already. An ayah counts as held when any of its captions is.
- */
-export function ayahCoverage(
-  verses: { verseKey?: string; startTime: number; endTime: number }[], clips: { start: number; end: number }[]
-): { key: string; clips: number[] }[] {
-  const ayahs: { key: string; clips: number[] }[] = [];
-  for (const verse of verses) {
-    if (!verse.verseKey) continue;
-    let ayah = ayahs.find(each => each.key === verse.verseKey);
-    if (!ayah) ayahs.push((ayah = { key: verse.verseKey, clips: [] }));
-    clips.forEach((clip, i) => {
-      if (verse.endTime > clip.start && verse.startTime < clip.end && !ayah!.clips.includes(i)) ayah!.clips.push(i);
-    });
-  }
-  return ayahs;
-}
-
 /** The ayahs a clip holds, as `2:1–5`, or its times when it holds none. */
 export function clipLabel(verses: { verseKey?: string; startTime: number; endTime: number }[], clip: { start: number; end: number }): string {
   const held = clipVerses(verses, clip);
@@ -230,46 +151,24 @@ export function clipLabel(verses: { verseKey?: string; startTime: number; endTim
     : `${passage.surahNumber}:${passage.start}–${passage.end}`;
 }
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
-/** What `config` changes from `base`: the clip's own look, as it is kept. */
-export function styleDiff(config: Record<string, unknown>, base: Record<string, unknown>): Record<string, unknown> {
-  const diff: Record<string, unknown> = {};
-  for (const key of Object.keys(config)) if (!same(config[key], base[key])) diff[key] = config[key];
-  return diff;
-}
-
-/** The look a clip is drawn with: the shared one, with whatever the clip changes. */
-export function clipStyle<C extends object>(base: C, clip: RecordingClip | null | undefined): C {
-  return clip?.style ? { ...base, ...(clip.style as Partial<C>) } : base;
+/** A clip project as `windowClipProject` compares it: the window it was made from, if one, and its stretch of the recording. */
+export interface MadeClip {
+  windowOf?: string;
+  cut?: { start: number; end: number } | null;
 }
 
 /**
- * The shared look and every clip's own, as they stand: the open clip's, when
- * it has a look of its own, is what the config it is drawn with changes from
- * the shared look kept aside (`shared`). Otherwise the config is the shared look.
+ * The clip project already made from a window of the old layout on a
+ * recording (`recordingId`) -- made from that window, or cut from the same
+ * stretch of the recording, as a copy of the project would have been -- or
+ * undefined. `origin` is where the recording's own audio starts in the
+ * original, for one that was trimmed: a clip's stretch is on the original's.
  */
-export function settleLooks<C extends object>(
-  config: C, clips: RecordingClip[], activeId: string | null, shared: C | null
-): { base: C; clips: RecordingClip[] } {
-  const open = clips.find(clip => clip.id === activeId);
-  if (!open?.style || !shared) return { base: config, clips };
-  const own = styleDiff(config as Record<string, unknown>, shared as Record<string, unknown>);
-  return { base: shared, clips: clips.map(clip => (clip.id === open.id ? { ...clip, style: own } : clip)) };
-}
-
-/**
- * The open clip given a look of its own, starting from the shared one, or the
- * shared one back: its clips, the shared look to keep aside while it has its
- * own, and the config to draw it with. Null when there is nothing to change.
- */
-export function switchOwnLook<C extends object>(
-  on: boolean, config: C, clips: RecordingClip[], activeId: string | null, shared: C | null
-): { clips: RecordingClip[]; shared: C | null; config: C } | null {
-  const open = clips.find(clip => clip.id === activeId);
-  if (!open || on === !!open.style) return null;
-  const marked = clips.map(clip => (clip.id === open.id ? { ...clip, style: on ? {} : null } : clip));
-  return on ? { clips: marked, shared: config, config } : { clips: marked, shared: null, config: shared ?? config };
+export function windowClipProject<M extends MadeClip>(
+  made: M[], recordingId: string, origin: number, clip: { id: string; start: number; end: number }
+): M | undefined {
+  return made.find(each => each.windowOf === `${recordingId}/${clip.id}`
+    || (!!each.cut && Math.abs(each.cut.start - (origin + clip.start)) < 0.01 && Math.abs(each.cut.end - (origin + clip.end)) < 0.01));
 }
 
 /**

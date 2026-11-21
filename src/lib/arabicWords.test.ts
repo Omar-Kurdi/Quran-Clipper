@@ -49,6 +49,23 @@ describe('drawnWordTimes', () => {
 
 });
 
+describe('drawnWordTimes on a hizb mark and a waqf sign in one caption', () => {
+  it('lines up a caption opening on a hizb mark with a waqf sign later in it', () => {
+    // 3:15's first phrase as the aligner hands it over: `۞ قُلْ` drawn as two
+    // pieces, `ذَٰلِكُمْ ۚ` as one. It was drawn whole, with no highlight.
+    const words = [
+      { arabic: '۞ قُلْ', timestamp: 268.022 },
+      { arabic: 'أَؤُنَبِّئُكُم', timestamp: 268.422 },
+      { arabic: 'ذَٰلِكُمْ ۚ', timestamp: 270.242 },
+      { arabic: 'لِلَّذِينَ', timestamp: 271.757 },
+      { arabic: 'خَـٰلِدِينَ', timestamp: 282.582, excluded: true },
+    ];
+    expect(drawnWordTimes(words, ['۞ قُلْ أَؤُنَبِّئُكُم ذَٰلِكُمْۚ', 'لِلَّذِينَ']))
+      .toEqual([[268.022, 268.022, 268.422, 270.242], [271.757]]);
+    expect(drawnWordTimes(words, ['ﲫ ﲬ ﲭ ﲰﲱ ﲲ'])).toEqual([[268.022, 268.022, 268.422, 270.242, 271.757]]);
+  });
+});
+
 describe('drawnWordTimes on partial or unmatched captions', () => {
   it('lines up a partial ayah whose shown words end on a waqf sign', () => {
     // As a matched caption of 3:187 hands it over: the first words hidden,

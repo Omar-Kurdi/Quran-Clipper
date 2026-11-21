@@ -253,6 +253,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                     onClose();
                   }}
                   onRemove={setPendingRecordings}
+                  onRemoveClip={id => { void deleteProject(id); }}
                 />
                 {projectsList.filter(proj => matchesProject(proj, query)).length === 0 && (
                   <p className="py-8 text-center text-[13px] text-slate-400">{t.projects.noMatches(query.trim())}</p>

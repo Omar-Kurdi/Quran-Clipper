@@ -4,7 +4,7 @@ import { isOpening, type OpeningKind } from '@/lib/openings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mushafCaption, QPC_V2 } from '@/lib/mushafFonts';
 import { useStudioConfig } from '@/hooks/useStudioConfig';
-import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines, Layers, Sparkles } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, ZoomIn, ZoomOut, Volume2, VolumeX, Scissors, Link2, Link2Off, AlertTriangle, AudioLines } from 'lucide-react';
 import { captionChecks, toCheckCount } from '@/lib/captionChecks';
 import { VerseData } from '@/lib/quranData';
 import { loadWaveform, type Waveform as WaveformData } from '@/lib/waveform';
@@ -16,10 +16,9 @@ import { useMediaDurations } from '@/hooks/useMediaDurations';
 import { useLoopWindows } from '@/hooks/useLoopWindows';
 import { loopFor } from '@/lib/clipLoop';
 import { useT } from './LocaleProvider';
-import { ClipLane } from './ClipLane';
 import { ClipSelectionBar } from './ClipSelectionBar';
 import { TimelineOverview } from './TimelineOverview';
-import { ayahList, ayahRangeWindow, ayahsHeld, clipLabel, clipVerses, snapToAyahs } from '@/lib/recordingClips';
+import { ayahList, ayahRangeWindow, ayahsHeld, clipLabel, snapToAyahs } from '@/lib/recordingClips';
 import { AyahRangePicker } from './ClipSelectionBar';
 import { LengthReadout } from './LengthReadout';
 import { TimelineSkeleton } from './Skeleton';
@@ -95,31 +94,16 @@ interface TimelineProps {
   clip?: ClipWindow | null;
   view?: ClipWindow | null;
   /**
-   * The clips cut from an uploaded recording (`recordingClips.ts`), drawn on a
-   * lane of their own; the open one, and how to open another, or the whole
-   * recording for null. `onAddClip` makes the stretch between the clip
-   * handles a new clip.
+   * Makes the stretch between the clip handles a clip of its own -- a project
+   * of its own (`makeClipProject`) -- under `makeText` when it is something
+   * other than making a new one.
    */
-  clips?: { id: string; start: number; end: number; label: string }[];
-  activeClipId?: string | null;
-  onOpenClip?: (id: string | null) => void;
   onAddClip?: (start: number, end: number) => void;
-  /** A clip given a new stretch by dragging its bar on the lane. */
-  onMoveClip?: (id: string, start: number, end: number) => void;
-  /**
-   * Whether the open clip has a look of its own, and how to give it one or
-   * the shared one back: beside the clip, where it is seen whichever panel
-   * the look is being edited in.
-   */
-  activeClipOwn?: boolean;
-  /** Said where a stretch is chosen until one is, after the tabs' New clip asks for one. */
+  makeText?: string;
+  /** A stretch to start with selected, until another is dragged: a clip being adjusted in its recording. */
+  selection?: { start: number; end: number } | null;
+  /** Said where a stretch is chosen until one is, after Projects' New clip asks for one. */
   selectHint?: boolean;
-  onOwnLook?: (on: boolean) => void;
-  /** Matches the open clip on its own, offered while it has no captions; `matching` while that runs. */
-  onMatchClip?: () => void;
-  matching?: boolean;
-  /** The captions shown are the sample's, not the recording's: no clip of it has captions yet. */
-  sampleCaptions?: boolean;
 }
 
 const ZOOMS = [1, 2, 4, 8];
@@ -188,8 +172,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   onTrim, onEditAudio, exportSeconds, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
-  onNextToCheck, clips = [], activeClipId = null, onOpenClip, onAddClip, onMoveClip, activeClipOwn = false, onOwnLook,
-  selectHint = false, onMatchClip, matching = false, sampleCaptions = false
+  onNextToCheck, onAddClip, makeText, selection = null, selectHint = false
 }) => {
   const t = useT();
   const toCheck = useMemo(() => toCheckCount(verses), [verses]);
@@ -520,7 +503,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   // A built-in reciter's handles start at its clip, not the recording's ends,
   // which a cut has taken out of view.
   const uncut = passage ?? { start: 0, end: duration };
-  const clipRange = clip && clip.url === audioUrl ? clip : uncut;
+  const clipRange = clip && clip.url === audioUrl ? clip : selection ?? uncut;
   const clipIsWhole = clipRange.start <= uncut.start + 0.05 && clipRange.end >= uncut.end - 0.05;
   /** Whether stretches are chosen here at all: to cut the recording, or to make clips of it. */
   const selecting = !!(onTrimRange || onAddClip);
@@ -640,26 +623,6 @@ export const Timeline: React.FC<TimelineProps> = ({
           </button>
         )}
 
-        {activeClipId && onOpenClip && (
-          <button
-            onClick={() => onOpenClip(null)}
-            title={t.clips.wholeRecordingTitle}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-          >
-            <Layers className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">{t.clips.wholeRecording}</span>
-          </button>
-        )}
-        {activeClipId && onOwnLook && (
-          <label
-            title={t.clips.ownLookTitle}
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-slate-200 rounded-lg border border-slate-700 cursor-pointer select-none hover:bg-slate-800"
-          >
-            <input type="checkbox" checked={activeClipOwn} onChange={e => onOwnLook(e.target.checked)} className="w-3.5 h-3.5 accent-amber-500" />
-            {t.clips.ownLook}
-          </label>
-        )}
-
         {exportSeconds !== undefined && <LengthReadout seconds={exportSeconds} />}
 
         {onEditAudio && (
@@ -718,21 +681,6 @@ export const Timeline: React.FC<TimelineProps> = ({
         </button>
       </div>
 
-      {onMatchClip && activeClipId && clipIsWhole && !selectHint && (() => {
-        const open = clips.find(each => each.id === activeClipId);
-        if (!open || (!sampleCaptions && clipVerses(verses, open).length)) return null;
-        const name = t.clips.name(clips.filter(each => each.start < open.start).length + 1);
-        return (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/[0.06]">
-            <p className="text-xs text-amber-200">{t.clips.noCaptionsYet(name)}</p>
-            <button type="button" onClick={onMatchClip} disabled={matching}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-gold hover:bg-gold-bright disabled:opacity-60 text-ink text-xs font-bold rounded-lg transition-colors">
-              <Sparkles className={`w-3.5 h-3.5 ${matching ? 'animate-pulse' : ''}`} />
-              {t.clips.matchClip(name)}
-            </button>
-          </div>
-        );
-      })()}
       {selecting && (!clipIsWhole || selectHint) && (
         clipIsWhole ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/[0.06]">
@@ -760,12 +708,10 @@ export const Timeline: React.FC<TimelineProps> = ({
               setClip({ url: audioUrl, start: from, end: to });
               onSeek(from);
             }}
-            makeName={onAddClip ? t.clips.name(clips.filter(each => each.start < clipRange.start).length + 1) : undefined}
+            makeText={onAddClip ? makeText ?? t.clips.makeAClip : undefined}
             onMake={onAddClip ? makeClip : undefined}
-            setName={activeClipId && onTrimRange ? t.clips.name(clips.findIndex(each => each.id === activeClipId) + 1) : undefined}
-            onSet={activeClipId && onTrimRange ? () => { onTrimRange(clipRange.start, clipRange.end); setClip(null); } : undefined}
-            keepLabel={!activeClipId && !clips.length && onTrimRange ? t.timeline.keep(formatTime(clipRange.end - clipRange.start)) : undefined}
-            onKeep={!activeClipId && !clips.length && onTrimRange ? () => { onTrimRange(clipRange.start, clipRange.end); setClip(null); } : undefined}
+            keepLabel={onTrimRange && !selection ? t.timeline.keep(formatTime(clipRange.end - clipRange.start)) : undefined}
+            onKeep={onTrimRange && !selection ? () => { onTrimRange(clipRange.start, clipRange.end); setClip(null); } : undefined}
             onReset={() => setClip(null)}
           />
         )
@@ -775,7 +721,6 @@ export const Timeline: React.FC<TimelineProps> = ({
         <TimelineOverview
           start={viewStart}
           span={viewSpan}
-          clips={clips}
           currentTime={currentTime}
           visible={visible}
           onJump={fraction => {
@@ -839,16 +784,6 @@ export const Timeline: React.FC<TimelineProps> = ({
               </span>
             </div>
           )}
-          <ClipLane
-            clips={clips}
-            activeId={activeClipId}
-            duration={duration}
-            pct={pct}
-            xToTime={xToTime}
-            clock={clock}
-            onOpen={onOpenClip}
-            onMove={onMoveClip}
-          />
           {/* Ruler. Click or drag anywhere along it to move the playhead --
               the tick labels are inert so a click near "10.0s" scrubs rather
               than landing on the label and doing nothing. */}

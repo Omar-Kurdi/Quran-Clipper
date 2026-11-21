@@ -7,6 +7,7 @@ import { libraryOf, type ExportedClip, type LibraryClip, type LibraryProject, ty
 import { projectLength } from '@/lib/projectSearch';
 import { formatStamp } from '@/lib/stamp';
 import { useLocale, useT } from './LocaleProvider';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export interface OpenRequest {
   project: LibraryProject;
@@ -21,6 +22,8 @@ interface RecordingLibraryProps {
   done: ExportedClip[];
   onOpen: (request: OpenRequest) => void;
   onRemove: (recordings: LibraryRecording[]) => void;
+  /** Deletes one clip cut from an uploaded recording, which is a project of its own; the recording and its other clips stay. */
+  onRemoveClip?: (projectId: string) => void;
   /** The recordings being removed right now, by key. */
   removing: ReadonlySet<string>;
 }
@@ -44,6 +47,23 @@ const ClipDates: React.FC<{ clip: LibraryClip }> = ({ clip }) => {
 
 /** A clip as a small 9:16 card: its surah, its ayahs, when it was made and exported, and a tick once exported. */
 const ClipCard: React.FC<{
+  clip: LibraryClip; surahArabic: string; caption?: string; size: 'large' | 'small'; onOpen: () => void; onRemove?: () => void;
+}> = ({ clip, surahArabic, caption, size, onOpen, onRemove }) => {
+  const t = useT();
+  if (!onRemove) return <ClipCardFace clip={clip} surahArabic={surahArabic} caption={caption} size={size} onOpen={onOpen} />;
+  return (
+    <span className="relative shrink-0">
+      <ClipCardFace clip={clip} surahArabic={surahArabic} caption={caption} size={size} onOpen={onOpen} />
+      <button type="button" onClick={onRemove} aria-label={t.clips.remove(t.clips.name(clip.number))} title={t.clips.remove(t.clips.name(clip.number))}
+        className="absolute bottom-1 end-0 p-1 rounded text-slate-500 hover:text-red-300 hover:bg-slate-800">
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </span>
+  );
+};
+
+/** The card itself: opens the clip. */
+const ClipCardFace: React.FC<{
   clip: LibraryClip; surahArabic: string; caption?: string; size: 'large' | 'small'; onOpen: () => void;
 }> = ({ clip, surahArabic, caption, size, onOpen }) => {
   const t = useT();
@@ -133,7 +153,8 @@ const RecordingHead: React.FC<{ recording: LibraryRecording; select?: { selected
 const RecordingRow: React.FC<{
   recording: LibraryRecording; removing: boolean; onOpen: RecordingLibraryProps['onOpen']; onRemove: () => void;
   select?: { selected: boolean; onToggle: () => void };
-}> = ({ recording, removing, onOpen, onRemove, select }) => {
+  onRemoveClip?: (clip: LibraryClip) => void;
+}> = ({ recording, removing, onOpen, onRemove, select, onRemoveClip }) => {
   const t = useT();
   const length = projectLength(recording.duration);
   const projectOf = (clip: LibraryClip) => recording.projects.find(p => p.id === clip.projectId) ?? recording.project;
@@ -149,7 +170,9 @@ const RecordingRow: React.FC<{
         <div className="flex gap-2.5 overflow-x-auto pb-1">
           {recording.clips.map(clip => (
             <ClipCard key={`${clip.projectId}:${clip.clipId}`} clip={clip} surahArabic={recording.surahNameArabic} size="small"
-              onOpen={() => onOpen({ project: projectOf(clip), clipId: clip.clipId })} />
+              onOpen={() => onOpen({ project: projectOf(clip), clipId: clip.clipId })}
+              // A clip of an upload that is a project of its own; not a window of the old layout, nor a reciter's passage.
+              onRemove={onRemoveClip && recording.kind === 'upload' && clip.clipId === null ? () => onRemoveClip(clip) : undefined} />
           ))}
           <button type="button" onClick={() => onOpen({ project: recording.project, clipId: null, newClip: true })}
             className="shrink-0 w-24 text-start focus-visible:outline-none group">
@@ -216,8 +239,25 @@ const SelectControls: React.FC<{
  * clip made from it and which ayahs of its surah are clipped already -- so a
  * long recording on this computer is opened again, not uploaded and cut again.
  */
-export const RecordingLibrary: React.FC<RecordingLibraryProps> = ({ projects, done, onOpen, onRemove, removing }) => {
+/** Asks before a clip is deleted from its card. */
+const RemoveClipConfirm: React.FC<{ clip: LibraryClip | null; onRemove?: (projectId: string) => void; onDone: () => void }> = ({ clip, onRemove, onDone }) => {
   const t = useT();
+  return (
+    <ConfirmDialog
+      isOpen={clip !== null}
+      title={clip ? t.clips.remove(t.clips.name(clip.number)) : ''}
+      message={t.clips.removeMessage}
+      confirmLabel={t.clips.removeConfirm}
+      onConfirm={() => { if (clip) onRemove?.(clip.projectId); onDone(); }}
+      onCancel={onDone}
+    />
+  );
+};
+
+export const RecordingLibrary: React.FC<RecordingLibraryProps> = ({ projects, done, onOpen, onRemove, onRemoveClip, removing }) => {
+  const t = useT();
+  /** The clip asked to be deleted, until that is confirmed or cancelled. */
+  const [removingClip, setRemovingClip] = React.useState<LibraryClip | null>(null);
   const { recordings, latestClips } = libraryOf(projects, done);
   /** Choosing recordings to remove together: null when not choosing, else the keys chosen. */
   const [selected, setSelected] = React.useState<ReadonlySet<string> | null>(null);
@@ -252,11 +292,12 @@ export const RecordingLibrary: React.FC<RecordingLibraryProps> = ({ projects, do
         <ul>
           {recordings.map(recording => (
             <RecordingRow key={recording.key} recording={recording} removing={removing.has(recording.key)}
-              onOpen={onOpen} onRemove={() => onRemove([recording])}
+              onOpen={onOpen} onRemove={() => onRemove([recording])} onRemoveClip={onRemoveClip ? setRemovingClip : undefined}
               select={selected ? { selected: selected.has(recording.key), onToggle: () => toggle(recording.key) } : undefined} />
           ))}
         </ul>
       </section>
+      <RemoveClipConfirm clip={removingClip} onRemove={onRemoveClip} onDone={() => setRemovingClip(null)} />
     </div>
   );
 };

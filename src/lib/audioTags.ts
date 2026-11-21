@@ -9,6 +9,8 @@
  * frame, and text comes in any of four encodings.
  */
 
+import { RECORDING_SOURCE } from './recordingSource';
+
 export interface AudioTags {
   artist?: string;
   title?: string;
@@ -17,10 +19,20 @@ export interface AudioTags {
   track?: number;
   /** Not the tag's: the folder the file was picked from, when it was picked by its folder (`FolderPicker`). */
   folder?: string;
+  /** Not the tag's either: which recording the file is, or was cut from (`recordingSource`). */
+  source?: string;
+  /** Set on a clip cut from that recording as a project of its own (`makeClipProject`), not the recording itself. */
+  clip?: true;
+  /**
+   * On a clip made from one of the old layout's windows on the recording,
+   * which: `project id/clip id`. It finds that window's render in the export
+   * log, and keeps it from being made a project twice.
+   */
+  windowOf?: string;
 }
 
 /** The frames read, by id: 2.3 and 2.4's, then 2.2's. */
-const FRAMES: Record<string, keyof AudioTags> = {
+const FRAMES: Record<string, 'artist' | 'title' | 'album' | 'track'> = {
   TPE1: 'artist', TIT2: 'title', TALB: 'album', TRCK: 'track',
   TP1: 'artist', TT2: 'title', TAL: 'album', TRK: 'track',
 };
@@ -110,6 +122,9 @@ export function readAudioTags(bytes: Uint8Array): AudioTags | null {
   return Object.keys(found).length ? found : null;
 }
 
+/** A project id and a clip id, as `windowOf` holds them. */
+const WINDOW_OF = /^[\w-]{1,64}\/[\w-]{1,64}$/;
+
 /** Tags as sent with a project, kept to what is read here; null for anything else. */
 export function normalizeAudioTags(value: unknown): AudioTags | null {
   if (!value || typeof value !== 'object') return null;
@@ -120,5 +135,8 @@ export function normalizeAudioTags(value: unknown): AudioTags | null {
     if (typeof text === 'string' && text.trim()) out[field] = text.trim().slice(0, MAX_TEXT);
   }
   if (Number.isInteger(raw.track) && (raw.track as number) > 0 && (raw.track as number) < 1000) out.track = raw.track as number;
+  if (typeof raw.source === 'string' && RECORDING_SOURCE.test(raw.source)) out.source = raw.source;
+  if (raw.clip === true) out.clip = true;
+  if (typeof raw.windowOf === 'string' && WINDOW_OF.test(raw.windowOf)) out.windowOf = raw.windowOf;
   return Object.keys(out).length ? out : null;
 }

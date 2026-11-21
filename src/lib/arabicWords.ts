@@ -70,7 +70,14 @@ export function drawnWordTimes(
     // and the word, so the caption opening an ayah with it had one drawn word
     // more than entries and lost its reveal and highlight. Each piece takes
     // its entry's time.
-    const pieces = shown.flatMap(word => (word.arabic ? tokensOf(word.arabic) : ['']).map(() => word.timestamp));
+    // A waqf sign inside an entry (`ذَٰلِكُمْ ۚ`), or an entry of its own, is
+    // drawn joined to the word before it and is no piece: 3:15 opens on `۞ قُلْ`
+    // with such a sign later in the same caption, and lost its highlight.
+    const pieces = shown.flatMap((word, index) => {
+      if (!word.arabic) return [word.timestamp];
+      const tokens = tokensOf(word.arabic).filter((token, at) => at === 0 || !isMarkOnly(token));
+      return index > 0 && tokens.every(isMarkOnly) ? [] : tokens.map(() => word.timestamp);
+    });
     if (pieces.length === count) times = pieces;
   }
   // A caption none of whose words was ever timed is drawn whole. One whose

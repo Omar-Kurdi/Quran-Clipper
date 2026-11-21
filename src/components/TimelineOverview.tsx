@@ -1,15 +1,12 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { clipColour } from '@/lib/clipColours';
 import { useT } from './LocaleProvider';
 
 interface TimelineOverviewProps {
   /** The stretch of time the whole track covers. */
   start: number;
   span: number;
-  /** The recording's clips, in play order, each in its colour. */
-  clips: { id: string; start: number; end: number }[];
   currentTime: number;
   /** What part of the track is scrolled into view, as fractions of its width. */
   visible: { left: number; width: number };
@@ -18,12 +15,11 @@ interface TimelineOverviewProps {
 }
 
 /**
- * The whole of a zoomed-in timeline in one thin strip: where each clip is, the
- * playhead, and a box for the part on screen. Press or drag anywhere on it to
+ * The whole of a zoomed-in timeline in one thin strip: the playhead, and a box for the part on screen. Press or drag anywhere on it to
  * bring that part into view -- the way to reach 1:08:00 in a two-hour recording
  * without scrolling through the hour before it.
  */
-export const TimelineOverview: React.FC<TimelineOverviewProps> = ({ start, span, clips, currentTime, visible, onJump }) => {
+export const TimelineOverview: React.FC<TimelineOverviewProps> = ({ start, span, currentTime, visible, onJump }) => {
   const t = useT();
   const ref = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
@@ -57,13 +53,6 @@ export const TimelineOverview: React.FC<TimelineOverviewProps> = ({ start, span,
       }}
       onPointerCancel={() => { dragging.current = false; }}
     >
-      {clips.map((clip, i) => (
-        <span
-          key={clip.id}
-          className={`absolute top-1 bottom-1 rounded-sm opacity-70 ${clipColour(i).dot}`}
-          style={{ left: pct(clip.start), width: `max(2px, calc(${pct(clip.end)} - ${pct(clip.start)}))` }}
-        />
-      ))}
       <span className="absolute inset-y-0 w-0.5 bg-lapis-bright" style={{ left: pct(currentTime) }} />
       <span
         className="absolute inset-y-0 rounded-sm border border-slate-200/80 bg-slate-100/10 pointer-events-none"

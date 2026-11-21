@@ -40,15 +40,6 @@ export function timelineView(clip: ClipWindow | null, fileDuration: number, marg
 }
 
 /**
- * The margin drawn around an open clip of an uploaded recording: half its
- * length either side, so its bar can be dragged well past where it ends now
- * -- a clip's edges are where it is being decided, unlike a reciter's passage.
- */
-export function recordingClipMargin(clip: ClipWindow): number {
-  return Math.max(VIEW_MARGIN_SEC, (clip.end - clip.start) / 2);
-}
-
-/**
  * Where pressing play should start from: the clip's first ayah when the
  * playhead is outside the clip, or null to play on from where it is.
  */

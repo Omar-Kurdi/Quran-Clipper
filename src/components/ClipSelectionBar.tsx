@@ -22,12 +22,9 @@ interface ClipSelectionBarProps {
   onSnap: (on: boolean) => void;
   /** A typed start or end. */
   onRange: (start: number, end: number) => void;
-  /** Make it a new clip, named `makeName`. */
-  makeName?: string;
+  /** Make it a clip, the button saying `makeText`. */
+  makeText?: string;
   onMake?: () => void;
-  /** Give the open clip this stretch, named `setName`. */
-  setName?: string;
-  onSet?: () => void;
   /** Cut the recording down to it, where there are no clips to make. */
   keepLabel?: string;
   onKeep?: () => void;
@@ -94,7 +91,7 @@ export const AyahRangePicker: React.FC<{
  * moving the open clip to it.
  */
 export const ClipSelectionBar: React.FC<ClipSelectionBarProps> = ({
-  start, end, origin, label, ayahs = [], held = null, onAyahs, snap, onSnap, onRange, makeName, onMake, setName, onSet, keepLabel, onKeep, onReset
+  start, end, origin, label, ayahs = [], held = null, onAyahs, snap, onSnap, onRange, makeText, onMake, keepLabel, onKeep, onReset
 }) => {
   const t = useT();
   return (
@@ -113,18 +110,12 @@ export const ClipSelectionBar: React.FC<ClipSelectionBarProps> = ({
         {t.clips.snap}
       </label>
       <span className="flex-1" />
-      {onMake && makeName && (
+      {onMake && makeText && (
         <button onClick={onMake} title={t.clips.makeClipTitle}
           className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold hover:bg-gold-bright text-ink text-xs font-bold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
           <Plus className="w-3.5 h-3.5" />
-          {t.clips.makeClip(makeName)}
+          {makeText}
           <kbd className="hidden md:inline font-mono text-[10px] border border-ink/40 rounded px-1">↵</kbd>
-        </button>
-      )}
-      {onSet && setName && (
-        <button onClick={onSet}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold rounded-lg border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
-          {t.clips.setClipToThis(setName)}
         </button>
       )}
       {onKeep && keepLabel && (
