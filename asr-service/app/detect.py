@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 from collections import Counter
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from . import corpus
 
@@ -256,6 +257,38 @@ def _dominant_span(ayahs: list[int]) -> dict[str, int]:
     return {"start_ayah": best[0], "end_ayah": best[-1]}
 
 
+#: The letters a surah may open with, recited by their names (الٓمٓ is read
+#: "alif lam mim"), as they are written once the marks are taken off.
+OPENING_LETTERS = frozenset("المصركهيعطسحقن")
+_MARKS = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
+
+
+def is_opening_letters(words: list[str]) -> bool:
+    """Whether an ayah is only the letters a surah opens with (الٓمٓ, طسٓمٓ, حمٓ, كهيعٓصٓ)."""
+    letters = "".join(_MARKS.sub("", word) for word in words)
+    return 0 < len(words) <= 2 and bool(letters) and all(ch in OPENING_LETTERS for ch in letters)
+
+
+def with_opening_letters(found: SurahRange, ayah_words: Callable[[int, int], list[str]]) -> SurahRange:
+    """The range taken back over the letters its surah opens with, when it starts just after them.
+
+    The letters are recited by their names, which the decoder does not read
+    back as the written ayah, so no phrase ever locates them: a recording of
+    Ali 'Imran from its start was detected as 3:2 onwards, and the letters'
+    seven seconds were laid on 3:2. Detection starting at ayah 2 or 3 of a
+    surah whose ayahs before it are only letters had them in the audio far
+    more often than not, and the alignment then times them as it does any
+    ayah. ``ayah_words(surah, ayah)`` gives an ayah's words.
+    """
+    start = found.start_ayah
+    while 1 < start <= 3 and is_opening_letters(ayah_words(found.surah, start - 1)):
+        start -= 1
+    if start == found.start_ayah:
+        return found
+    log.info("taking %d:%d-%d back over its opening letters to %d:%d", found.surah, found.start_ayah, found.end_ayah, found.surah, start)
+    return SurahRange(found.surah, start, found.end_ayah, found.phrases)
+
+
 def detect_range(decoded_phrases: list[str], assist: Assist | None = None) -> DetectedRange | None:
     """Work out the surah and ayah range covering the recited phrases.
 
@@ -369,6 +402,7 @@ def detect_range(decoded_phrases: list[str], assist: Assist | None = None) -> De
         len(decoded_phrases),
         confidence,
     )
+    ranges = [with_opening_letters(r, lambda surah, ayah: [w[2] for w in corpus.words_for_range(surah, ayah, ayah)]) for r in ranges]
     return DetectedRange(
         ranges=ranges,
         confidence=round(confidence, 4),

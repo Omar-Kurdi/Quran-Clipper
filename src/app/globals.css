@@ -387,6 +387,16 @@
   animation: pulse-subtle 3s infinite ease-in-out;
 }
 
+/* Work under way with no known end: a band sweeping across the bar (`MatchProgress`). */
+@keyframes progress-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+.animate-progress-sweep {
+  animation: progress-sweep 1.6s infinite ease-in-out;
+}
+
 /* ---------------------------------------------------------------------------
    The jadwal -- the ruled frame that encloses the text block of a mushaf page.
 

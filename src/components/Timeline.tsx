@@ -19,11 +19,14 @@ import { useT } from './LocaleProvider';
 import { ClipSelectionBar } from './ClipSelectionBar';
 import { TimelineOverview } from './TimelineOverview';
 import { ayahList, ayahRangeWindow, ayahsHeld, clipLabel, snapToAyahs } from '@/lib/recordingClips';
+import { pauseNear, snapToPauses, type Pause as RecordingPause } from '@/lib/pauses';
 import { AyahRangePicker } from './ClipSelectionBar';
 import { LengthReadout } from './LengthReadout';
 import { TimelineSkeleton } from './Skeleton';
+import { fittingZoom } from '@/lib/timelineZoom';
 import { useBlockReorder, dropMarker } from '@/hooks/useBlockReorder';
 import { usePalette, paletteColor } from '@/hooks/usePalette';
+
 
 interface TimelineProps {
   /** Selects and plays from the next caption marked for checking; the button shows only while one is. */
@@ -102,6 +105,16 @@ interface TimelineProps {
   makeText?: string;
   /** A stretch to start with selected, until another is dragged: a clip being adjusted in its recording. */
   selection?: { start: number; end: number } | null;
+  /**
+   * A stretch to bring into view, zoomed so it fills about a third of it:
+   * ayahs just chosen in Source. Framed again each time `seq` changes.
+   */
+  frame?: { start: number; end: number; seq: number } | null;
+  /** Clips suggested from the recording's map, drawn as bars under the strip: a click ticks or unticks one. */
+  suggestions?: { id: string; start: number; end: number; label: string; ticked: boolean }[];
+  onToggleSuggestion?: (id: string) => void;
+  /** The recording's pauses (`pauses.ts`): where a stretch with no captions in it is let go, so it ends between words. */
+  pauses?: RecordingPause[];
   /** Said where a stretch is chosen until one is, after Projects' New clip asks for one. */
   selectHint?: boolean;
 }
@@ -172,7 +185,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   onTrim, onEditAudio, exportSeconds, onTrimRange, trimHint, isMuted, volume, onToggleMute, onVolume,
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
-  onNextToCheck, onAddClip, makeText, selection = null, selectHint = false
+  onNextToCheck, onAddClip, makeText, selection = null, frame = null, pauses = [], selectHint = false,
+  suggestions = [], onToggleSuggestion
 }) => {
   const t = useT();
   const toCheck = useMemo(() => toCheckCount(verses), [verses]);
@@ -410,9 +424,11 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   /** Read when a selection is let go, without rebuilding the drag's listeners. */
   const snapRef = useRef(snap);
+  const pausesRef = useRef(pauses);
   const versesRef = useRef(verses);
   useEffect(() => {
     snapRef.current = snap;
+    pausesRef.current = pauses;
     versesRef.current = verses;
   });
 
@@ -452,7 +468,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       if (!snapRef.current) return;
       setClip(prev => {
         if (!prev || prev.url !== audioUrl) return prev;
-        const snapped = snapToAyahs(versesRef.current, prev.start, prev.end, duration);
+        const snapped = snapToAyahs(versesRef.current, prev.start, prev.end, duration) ?? snapToPauses(pausesRef.current, prev.start, prev.end);
         return snapped ? { url: audioUrl, ...snapped } : prev;
       });
     };
@@ -497,7 +513,45 @@ export const Timeline: React.FC<TimelineProps> = ({
   }, [viewStart, viewSpan, zoom, origin, length]);
 
   const zooms = duration > LONG_RECORDING_SEC ? LONG_ZOOMS : ZOOMS;
+  // A zoom another recording had, past this one's levels, would leave neither button working.
+  if (!zooms.includes(zoom)) setZoom(zooms[zooms.length - 1]);
   const zoomIndex = zooms.indexOf(zoom);
+
+  /**
+   * Each recording opens at the least zoom at which nearly all its captions
+   * are wide enough to read: no zoom when they fit already, and no more
+   * scrolling than reading them needs.
+   */
+  const fitZoom = useCallback(() => {
+    const lengths = verses
+      .filter(verse => verse.endTime > viewStart && verse.startTime < viewStart + viewSpan)
+      .map(verse => verse.endTime - verse.startTime);
+    const fitted = fittingZoom(lengths, viewSpan, viewportRef.current?.clientWidth ?? 0, zooms);
+    if (fitted !== null) setZoom(fitted);
+  }, [verses, viewStart, viewSpan, zooms]);
+  // Fitted again once its length is known, not to the length of the recording before it.
+  const fittedFor = useRef<string | null>(null);
+  const fitKey = `${audioUrl}|${Math.round(duration)}`;
+  useEffect(() => {
+    if (!audioUrl || !verses.length || fittedFor.current === fitKey) return;
+    fittedFor.current = fitKey;
+    fitZoom();
+  }, [audioUrl, fitKey, verses.length, fitZoom]);
+
+  // A stretch chosen elsewhere is framed: zoomed in until it fills about a third of the view, then scrolled to.
+  const [framedSeq, setFramedSeq] = useState<number | null>(null);
+  if (frame && frame.seq !== framedSeq) {
+    setFramedSeq(frame.seq);
+    const fitting = zooms.filter(level => viewSpan / level >= Math.max(1, frame.end - frame.start) * 3);
+    setZoom(fitting.length ? fitting[fitting.length - 1] : zooms[0]);
+  }
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp || !frame || frame.seq !== framedSeq) return;
+    const x = ((frame.start - viewStart) / viewSpan) * vp.scrollWidth;
+    vp.scrollLeft = Math.max(0, Math.min(x - vp.clientWidth / 3, vp.scrollWidth - vp.clientWidth));
+  }, [framedSeq, zoom]); // eslint-disable-line react-hooks/exhaustive-deps -- once a frame is asked for, at the zoom it set
+
 
   // A selection made against another file is no selection at all.
   // A built-in reciter's handles start at its clip, not the recording's ends,
@@ -530,6 +584,38 @@ export const Timeline: React.FC<TimelineProps> = ({
       if (e.key !== 'Enter' || e.defaultPrevented || el?.closest('input, textarea, select, button, [contenteditable="true"], [role="dialog"]')) return;
       e.preventDefault();
       makeRef.current();
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [onAddClip]);
+  /**
+   * I and O mark where a stretch starts and ends, at the playhead -- in the
+   * nearest pause to it, where there is one -- so a recording can be marked
+   * while it plays, nothing dragged. Each keeps the other end where it is.
+   */
+  const markRef = useRef((edge: 'start' | 'end') => { void edge; });
+  useEffect(() => {
+    markRef.current = edge => {
+      const at = pauseNear(pauses, currentTime, 2) ?? currentTime;
+      const from = edge === 'start' ? at : Math.min(clipRange.start, at - MIN_SEGMENT);
+      const to = edge === 'end' ? at : Math.max(clipRange.end, at + MIN_SEGMENT);
+      const whole = clipIsWhole;
+      setClip({
+        url: audioUrl,
+        start: Math.max(0, edge === 'start' ? from : whole ? Math.max(0, at - 30) : from),
+        end: Math.min(duration, edge === 'end' ? to : whole ? Math.min(duration, at + 30) : to),
+      });
+    };
+  });
+  useEffect(() => {
+    if (!onAddClip) return;
+    const key = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || el?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      const edge = e.code === 'KeyI' ? 'start' : e.code === 'KeyO' ? 'end' : null;
+      if (!edge) return;
+      e.preventDefault();
+      markRef.current(edge);
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
@@ -699,7 +785,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             snap={snap}
             onSnap={on => {
               setSnap(on);
-              const snapped = on ? snapToAyahs(verses, clipRange.start, clipRange.end, duration) : null;
+              const snapped = on ? snapToAyahs(verses, clipRange.start, clipRange.end, duration) ?? snapToPauses(pauses, clipRange.start, clipRange.end) : null;
               if (snapped) setClip({ url: audioUrl, ...snapped });
             }}
             onRange={(start, end) => {
@@ -721,6 +807,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         <TimelineOverview
           start={viewStart}
           span={viewSpan}
+          pauses={pauses}
           currentTime={currentTime}
           visible={visible}
           onJump={fraction => {
@@ -782,6 +869,16 @@ export const Timeline: React.FC<TimelineProps> = ({
               <span className="absolute left-1 top-0 text-[9px] font-mono leading-5 text-slate-400 pointer-events-none">
                 {clipIsWhole && onAddClip ? t.clips.stripHint : t.timeline.clip}
               </span>
+            </div>
+          )}
+          {suggestions.length > 0 && onToggleSuggestion && (
+            <div className="relative h-3 border-b border-slate-800/70 bg-slate-950/40" aria-label={t.clips.suggested}>
+              {suggestions.map(each => (
+                <button key={each.id} type="button" onClick={() => onToggleSuggestion(each.id)}
+                  aria-pressed={each.ticked} title={`${each.label} · ${formatTime(each.end - each.start)}`}
+                  className={`absolute top-0.5 bottom-0.5 rounded-sm border ${each.ticked ? 'bg-gold/70 border-gold' : 'border-dashed border-amber-400/60 hover:bg-amber-400/20'}`}
+                  style={{ left: `${pct(each.start)}%`, width: `calc(${Math.max(0, pct(each.end) - pct(each.start))}% - 2px)` }} />
+              ))}
             </div>
           )}
           {/* Ruler. Click or drag anywhere along it to move the playhead --
@@ -857,7 +954,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             >
               {lane.map((seg, i) => {
                 const left = pct(seg.start);
-                const width = Math.max(0.3, pct(seg.end) - left);
+                const width = Math.max(0, pct(seg.end) - left);
                 const editable = Boolean(onMoveBackground && onResizeBackground);
                 const active = selectedBackground === i;
                 const span = seg.end - seg.start;
@@ -893,7 +990,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                         ? 'border-lapis-bright bg-lapis-bright/30 ring-1 ring-lapis-bright/60 z-10'
                         : 'border-lapis-bright/40 bg-lapis-bright/15 hover:bg-lapis-bright/25'
                     }`}
-                    style={{ left: `${left}%`, width: `${width}%` }}
+                    style={{ left: `${left}%`, width: `max(${width}%, 2px)` }}
                   >
                     <span className="px-1 text-[9px] leading-none text-slate-300 truncate pointer-events-none">
                       {nameOf(seg.url)}
@@ -969,7 +1066,8 @@ export const Timeline: React.FC<TimelineProps> = ({
 
             {!loading && verses.map((verse, i) => {
               const left = pct(verse.startTime);
-              const width = Math.max(0.4, pct(verse.endTime) - left);
+              // Its own length, never a share of the track: a floor of 0.4% was 8 s of a long recording at 16x, over the next caption.
+              const width = Math.max(0, pct(verse.endTime) - left);
               const active = i === selectedIndex;
               const flagged = captionChecks(verse).length > 0;
               return (
@@ -980,7 +1078,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                       ? 'bg-gold/25 border-gold ring-1 ring-gold/50 z-10'
                       : 'bg-slate-800/55 border-slate-600 hover:bg-slate-700/60'
                   } ${reorderDrag.dragging?.from === i ? 'opacity-40' : ''}`}
-                  style={{ left: `${left}%`, width: `${width}%` }}
+                  style={{ left: `${left}%`, width: `max(${width}%, 2px)` }}
                 >
                   <button
                     onPointerDown={e => { if (e.button === 0) reorderDrag.begin(i, e.clientX); }}

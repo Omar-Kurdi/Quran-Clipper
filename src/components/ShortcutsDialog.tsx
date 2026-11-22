@@ -25,6 +25,22 @@ const Keys: React.FC<{ combo: string }> = ({ combo }) => (
   </span>
 );
 
+/** Every shortcut, as its keys and what it does. */
+const shortcutRows = (t: ReturnType<typeof useT>): [string, string][] => [
+  ['Space', t.shortcuts.playPause],
+  ['B', t.shortcuts.markEnd],
+  ['N', t.shortcuts.nextToCheck],
+  ['[', t.shortcuts.prevCaption],
+  [']', t.shortcuts.nextCaption],
+  ['I', t.shortcuts.markIn],
+  ['O', t.shortcuts.markOut],
+  ['Ctrl + Z', t.shortcuts.undo],
+  ['Ctrl + Shift + Z', t.shortcuts.redo],
+  ['Ctrl + S', t.shortcuts.save],
+  ['?', t.shortcuts.list],
+  ['Esc', t.shortcuts.dismiss]
+];
+
 /**
  * What the keyboard does here.
  *
@@ -38,18 +54,7 @@ const Keys: React.FC<{ combo: string }> = ({ combo }) => (
  */
 export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClose }) => {
   const t = useT();
-  const rows: [string, string][] = [
-    ['Space', t.shortcuts.playPause],
-    ['B', t.shortcuts.markEnd],
-    ['N', t.shortcuts.nextToCheck],
-    ['[', t.shortcuts.prevCaption],
-    [']', t.shortcuts.nextCaption],
-    ['Ctrl + Z', t.shortcuts.undo],
-    ['Ctrl + Shift + Z', t.shortcuts.redo],
-    ['Ctrl + S', t.shortcuts.save],
-    ['?', t.shortcuts.list],
-    ['Esc', t.shortcuts.dismiss]
-  ];
+  const rows = shortcutRows(t);
 
   return (
     <Dialog isOpen={isOpen} onClose={onClose} label={t.shortcuts.dialogLabel} panelClassName="max-w-lg w-full">

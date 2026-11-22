@@ -36,10 +36,12 @@ function useWavCopy(file: File | null, wanted: boolean) {
   return wanted && copy?.file === file ? copy.url : null;
 }
 
-/** What the page is told of a long upload's read: that it has begun -- it takes a while -- and how it ended. */
+/** What the page is told of a long upload's read: that it has begun -- it takes a while -- and how it ended, or that it was let go unfinished. */
 export interface ReadEvents {
   started: () => void;
   finished: (long: LongAudio | null) => void;
+  /** Another recording opened first: whatever `started` said is no longer so. */
+  abandoned: () => void;
 }
 
 /** Where the server's copy of a long upload plays from: a fresh address after each read, so the element loads it anew. */
@@ -61,10 +63,12 @@ function useServerRead(file: File | null, url: string | null, wanted: boolean, e
   useEffect(() => {
     if (!file || !url || !wanted) return;
     let stale = false;
+    let settled = false;
     eventsRef.current.started();
     readLong(file)
       .then(long => {
         if (stale) return;
+        settled = true;
         // Under both addresses the timeline may ask for it by: the file's, and the copy's it then plays.
         provideLongWaveform(url, long);
         provideLongWaveform(listenUrl(long.id, attempt), long);
@@ -73,12 +77,16 @@ function useServerRead(file: File | null, url: string | null, wanted: boolean, e
       })
       .catch(() => {
         if (stale) return;
+        settled = true;
         // Said either way, or the timeline waits for a waveform that will not come.
         provideLongWaveform(url, null);
         setRead({ file, long: null });
         eventsRef.current.finished(null);
       });
-    return () => { stale = true; };
+    return () => {
+      stale = true;
+      if (!settled) eventsRef.current.abandoned();
+    };
   }, [file, url, wanted, attempt]);
   const refresh = useCallback(() => setAttempt(n => n + 1), []);
   const current = wanted && read?.file === file ? read : null;

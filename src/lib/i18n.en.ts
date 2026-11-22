@@ -327,6 +327,8 @@ export const en = {
     needUpload: 'Choose a recording before matching it.',
     queued: (position: number, wait: string | null) =>
       `In the queue, number ${position}${wait ? ` -- about ${wait}` : ''}. Other people are matching first.`,
+    progressTitle: 'Matching your recording',
+    readingUpload: 'Reading the file…',
     aligning: 'Timing the captions to the recitation…',
     timingPublished: 'Timing the passage from the reciter\u2019s published word timings...',
     sendingToGemini: 'Sending audio to Gemini for analysis...',
@@ -471,6 +473,8 @@ export const en = {
     exportBody: 'When it looks right, Export makes the video right here in your browser, ready to download or post. This tour is in the Help menu whenever you want it again.'
   },
   shortcuts: {
+    markIn: 'Start the stretch here, in the nearest pause',
+    markOut: 'End the stretch here, in the nearest pause',
     open: 'Shortcuts',
     openTitle: 'Every keyboard shortcut (?)',
     dialogLabel: 'Keyboard shortcuts',
@@ -492,6 +496,11 @@ export const en = {
 
   clips: {
     cutting: 'Cutting the clip from the recording…',
+    mapping: (done: number, total: number) => (total
+      ? `${done} of ${total} parts done. Clips can be made from them already.`
+      : 'Mapping the recording\u2019s ayahs…'),
+    mapped: (ayahs: number) => `Mapped: ${ayahs} ayahs found. Pick a clip\u2019s ayahs in Source, or drag across the timeline.`,
+    mapFailed: (reason: string) => `Mapping stopped: ${reason}. Match recording carries on from where it stopped.`,
     tabsLabel: 'Clips',
     whole: 'Whole',
     wholeRecordingTitle: 'The whole recording: select a stretch on its timeline to make another clip',
@@ -505,7 +514,7 @@ export const en = {
     noSource: 'this browser could not fingerprint the recording',
     makeAClip: 'Make clip',
     adjust: 'Adjust in recording',
-    adjustTitle: 'Open the recording on this clip\u2019s stretch, to start or end it somewhere else. Its captions and look stay as they are.',
+    adjustTitle: 'Open the recording on this clip\u2019s stretch, to start or end it somewhere else. Its look stays; its captions come from the recording\u2019s, where a fix in any clip is kept.',
     adjustHint: 'The clip\u2019s stretch is selected. Drag its ends, then choose Update clip.',
     adjustNoRecording: 'The recording this clip was cut from is not in Projects any more.',
     updateClip: 'Update clip',
@@ -520,6 +529,23 @@ export const en = {
     wholeRecording: 'Whole recording',
     openTitle: (name: string) => `Open ${name}: play, style and export just this stretch`,
     byAyahs: 'Clip by ayahs',
+    suggested: 'Suggested clips',
+    about: 'About',
+    preview: 'Play from its start',
+    inAClip: 'in a clip',
+    makeMany: (n: number) => (n === 0 ? 'Make clips' : n === 1 ? 'Make 1 clip' : `Make ${n} clips`),
+    suggestedHint: 'Whole ayahs, ending where the reciter pauses. Tick the ones you want.',
+    reopened: 'This recording is in Projects already, so it opened with its captions and its clips.',
+    madeMany: (n: number) => (n === 1 ? 'Made 1 clip: it is in its own tab.' : `Made ${n} clips: each is in its own tab.`),
+    startEnd: 'Start',
+    endEnd: 'End',
+    startEarlier: 'Start one ayah earlier',
+    startLater: 'Start one ayah later',
+    endEarlier: 'End one ayah earlier',
+    endLater: 'End one ayah later',
+    nudgeNone: 'There is no ayah to move to there, or the recording has no captions for this clip yet.',
+    nudgeNeedsRecording: 'The recording is not to hand to cut again: open it with Adjust in recording, then move the ends there.',
+    gridHint: 'Click an ayah, then shift-click another to choose from the first to the last. Ayahs in green are in a clip already.',
     from: 'From',
     to: 'To',
     add: 'Add clip',
