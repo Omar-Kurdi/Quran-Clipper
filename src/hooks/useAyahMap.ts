@@ -5,6 +5,7 @@ import { postClipMatch } from '@/lib/clipMatch';
 import { mergeIntoGaps, planMapWindows, windowsToMatch, type Stretch } from '@/lib/ayahMap';
 import type { Pause } from '@/lib/pauses';
 import type { VerseData } from '@/lib/quranData';
+import { newMatchTicket, watchQueue, type QueueSighting } from '@/lib/queueWatch';
 
 /** What mapping a recording needs from the studio, read when it starts. */
 export interface MapRun {
@@ -26,6 +27,8 @@ export interface MapRun {
   onProgress: (map: VerseData[]) => Promise<void>;
   /** How far it has got, in stretches, said before the first and after each. */
   onStep: (done: number, total: number) => void;
+  /** Where the stretch under way stands: its place in the queue, then the aligner's stage. */
+  onAligner?: (seen: QueueSighting) => void;
 }
 
 /**
@@ -39,10 +42,12 @@ export function useAyahMap() {
   const busy = useRef(false);
 
   const matchStretch = async (run: MapRun, window: Stretch): Promise<VerseData[]> => {
+    const ticket = newMatchTicket();
+    const stopWatching = run.onAligner ? watchQueue(ticket, run.onAligner) : () => {};
     const res = await postClipMatch({
       file: run.file, sourceId: run.long.id, clip: window, surah: run.surah, start: 1, end: run.ayahs,
-      reciter: run.reciter, provider: run.provider, breaks: run.breaks,
-    }, form => fetch('/api/audio/match', { method: 'POST', body: form }));
+      reciter: run.reciter, provider: run.provider, breaks: run.breaks, ticket,
+    }, form => fetch('/api/audio/match', { method: 'POST', body: form })).finally(stopWatching);
     const data = await res.json().catch(() => null);
     if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`);
     return (data.verses || []) as VerseData[];

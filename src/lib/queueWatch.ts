@@ -7,9 +7,13 @@
  * match, and simply reports nothing.
  */
 
+import type { AlignerProgress } from './matchSteps';
+
 export interface QueueSighting {
   position: number;
   etaSeconds: number | null;
+  /** Where the aligner has got to with it, once its turn has come and the aligner has said. */
+  aligner: AlignerProgress | null;
 }
 
 export const newMatchTicket = () =>
@@ -23,7 +27,8 @@ export function watchQueue(ticket: string, onSighting: (seen: QueueSighting) => 
       .then(res => (res.ok ? res.json() : null))
       .then(body => {
         if (!stopped && typeof body?.position === 'number') {
-          onSighting({ position: body.position, etaSeconds: typeof body.etaSeconds === 'number' ? body.etaSeconds : null });
+          const aligner = body.progress && typeof body.progress.stage === 'string' ? body.progress as AlignerProgress : null;
+          onSighting({ position: body.position, etaSeconds: typeof body.etaSeconds === 'number' ? body.etaSeconds : null, aligner });
         }
       })
       .catch(() => {});

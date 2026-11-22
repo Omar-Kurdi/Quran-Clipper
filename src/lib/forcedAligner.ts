@@ -124,6 +124,8 @@ type AlignRequest = {
   lab?: string;
   /** How many of the reference's first ayahs were recited before the recording starts: going back over them is a repeat. */
   heardBefore?: number;
+  /** The studio's name for this match, under which the sidecar says where it has got to (`sidecarProgress`). */
+  ticket?: string;
 };
 
 /** The sidecar's `/align` form for one request. */
@@ -142,6 +144,7 @@ function alignmentForm(params: AlignRequest): FormData {
   if (params.retime) formData.append('retime', params.retime);
   if (params.lab) formData.append('lab', params.lab);
   if (params.heardBefore) formData.append('heard_before', String(params.heardBefore));
+  if (params.ticket) formData.append('ticket', params.ticket);
   return formData;
 }
 
@@ -156,6 +159,30 @@ async function requestAlignment(params: AlignRequest): Promise<AlignResponse> {
     if (params.source.kind !== 'url' || !/could not read/i.test((err as Error).message)) throw err;
     await new Promise(resolve => setTimeout(resolve, 1500));
     return askSidecar(params.serviceUrl, '/align', alignmentForm(params));
+  }
+}
+
+/** Where a match under way has got to in the sidecar: its stage, and how many phrases of how many it has read. */
+export interface SidecarProgress {
+  stage: string | null;
+  done: number | null;
+  total: number | null;
+}
+
+/**
+ * Asks the sidecar where the match with `ticket` has got to. Null when it
+ * cannot say -- not running, an older sidecar, or slow to answer -- which only
+ * leaves the studio's card at the stage it last knew.
+ */
+export async function sidecarProgress(serviceUrl: string, ticket: string): Promise<SidecarProgress | null> {
+  try {
+    const res = await fetch(`${serviceUrl.replace(/\/$/, '')}/progress?ticket=${encodeURIComponent(ticket)}`, { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const count = (value: unknown) => (typeof value === 'number' ? value : null);
+    return { stage: typeof body?.stage === 'string' ? body.stage : null, done: count(body?.done), total: count(body?.total) };
+  } catch {
+    return null;
   }
 }
 
@@ -261,7 +288,7 @@ export async function runForcedAlignMatch(params: {
   assist?: AlignAssist;
   breaks?: ScreenBreaks;
   retime?: PhonemeRetime;
-  lab?: string; heardBefore?: number;
+  lab?: string; heardBefore?: number; ticket?: string;
 }): Promise<MatchResult> {
   const autoDetect = params.autoDetect || !params.surah || !params.start || !params.end;
 
@@ -291,7 +318,7 @@ export async function runForcedAlignMatch(params: {
     assist: params.assist,
     breaks: params.breaks,
     retime: params.retime,
-    lab: params.lab, heardBefore: params.heardBefore
+    lab: params.lab, heardBefore: params.heardBefore, ticket: params.ticket
   });
   return matchFromAlignment(result, params);
 }

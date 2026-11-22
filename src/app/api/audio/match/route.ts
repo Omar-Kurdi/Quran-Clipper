@@ -360,8 +360,10 @@ export async function POST(req: NextRequest) {
         const autoDetect = !published && String(formData.get('autoDetect') ?? 'true').toLowerCase() !== 'false';
         // The sidecar reads one recording at a time; everyone else waits their
         // turn here, and can see where they stand -- see `matchQueue`.
-        result = skipAligner ? { segments: [] } : await matchQueue.run(ticketFrom(formData.get('ticket')), () => runForcedAlignMatch({
+        const ticket = ticketFrom(formData.get('ticket'));
+        result = skipAligner ? { segments: [] } : await matchQueue.run(ticket, () => runForcedAlignMatch({
           serviceUrl,
+          ticket,
           source: audio instanceof File
             ? { kind: 'file', audio }
             : { kind: 'url', audioUrl, windowStart, windowEnd },

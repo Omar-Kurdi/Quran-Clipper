@@ -122,6 +122,7 @@ import { OnboardingTour, type TourStep } from '@/components/OnboardingTour';
 import { useGuidedTour } from '@/hooks/useGuidedTour';
 import { TrimStep } from '@/components/TrimStep';
 import { MatchProgress } from '@/components/MatchProgress';
+import type { MatchRun } from '@/lib/matchSteps';
 import { BatchMatchDialog } from '@/components/BatchMatchDialog';
 import type { BatchResult } from '@/lib/batchMatch';
 import { buildRenderForm } from '@/lib/serverRenderForm';
@@ -328,11 +329,9 @@ export default function VideoCreatorPage() {
    */
   const [matchStatus, setMatchStatus] = useState<{
     text: string; tone: 'info' | 'error';
-    /** Work under way that sets no other flag: an upload being read before its match starts. */
-    busy?: boolean;
-    /** How many of its parts a long recording's mapping has done. */
-    progress?: { done: number; total: number };
   } | null>(null);
+  /** Where a match under way has got to, step by step, for its progress card (`matchSteps.ts`); null when none is. */
+  const [matchRun, setMatchRun] = useState<MatchRun | null>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [chosenProvider, setMatchProvider] = useState<'gemini' | 'align' | 'qul' | PhonemeProvider>('align');
   /** The phoneme lab's model for each stage -- development only, see `phonemeTrial`. */
@@ -1116,7 +1115,8 @@ export default function VideoCreatorPage() {
       if (video && useVideoAsBackground) {
         setCanvasConfig(prev => ({ ...prev, bgType: 'video', bgUrl: url }));
       }
-      setMatchStatus({ text: t.match.readingUpload, tone: 'info', busy: true });
+      setMatchStatus(null);
+      setMatchRun({ flow: 'upload', phase: 'reading', file: true });
       setAudioUrl(url);
       if (audioElementRef.current) {
         audioElementRef.current.src = url;
@@ -1137,11 +1137,17 @@ export default function VideoCreatorPage() {
     setCustomAudioDuration(measured);
     if (measured > 0) setAudioDuration(measured);
     const opened = studio.mode === 'public' ? null : await openSavedRecording(file, key);
-    if (opened === false || opened?.verses) return;
+    if (opened === false) return;
+    if (opened?.verses) {
+      setMatchRun(prev => (prev?.phase === 'reading' ? null : prev));
+      return;
+    }
     if (!(measured > 0) || isLongAudio(measured)) {
-      // Not matched by itself after all: its choices are offered instead.
+      // Not matched by itself after all: its choices are offered instead, and a long one read whole on the server first.
       const offer = isVideoFile(file) ? t.match.videoUploaded : t.match.audioUploaded;
-      setMatchStatus(prev => (prev?.busy ? { text: offer, tone: 'info' } : prev));
+      setMatchStatus(prev => prev ?? { text: offer, tone: 'info' });
+      setMatchRun(prev => (prev?.phase !== 'reading' ? prev
+        : measured > 0 && studio.mode !== 'public' ? { flow: 'long', phase: 'longRead', file: true } : null));
       return;
     }
     matchUploadOnMeasure.current = { key: opened?.key ?? key, seconds: measured };
@@ -1493,6 +1499,7 @@ export default function VideoCreatorPage() {
     accept?: (verses: VerseData[]) => string | null
   ) => {
     setIsMatching(true);
+    setMatchRun({ flow: 'upload', phase: 'matching', file: source.kind === 'file' });
     // A built-in reciter's passage keeps its loaded timings when this fails,
     // and its summary already says whether those are estimates and offers to
     // align again, so a public visitor is not shown the server's reason too.
@@ -1537,6 +1544,11 @@ export default function VideoCreatorPage() {
     const ticket = newMatchTicket();
     formData.append('ticket', ticket);
     const stopWatching = matchProvider === 'gemini' ? () => {} : watchQueue(ticket, seen => {
+      setMatchRun(prev => prev && {
+        ...prev,
+        queue: seen.position > 0 ? { position: seen.position, wait: seen.etaSeconds === null ? null : roughWait(seen.etaSeconds) } : null,
+        aligner: seen.aligner,
+      });
       setMatchStatus({
         text: seen.position > 0
           ? t.match.queued(seen.position, seen.etaSeconds === null ? null : roughWait(seen.etaSeconds))
@@ -1558,6 +1570,7 @@ export default function VideoCreatorPage() {
         // unsearchable.
         setMatchStatus(quietFailure ? null : { text: data?.error || t.match.notConfigured, tone: 'error' });
         setIsMatching(false);
+        setMatchRun(null);
         return;
       }
 
@@ -1566,6 +1579,7 @@ export default function VideoCreatorPage() {
       if (rejection != null) {
         setMatchStatus(rejection ? { text: rejection, tone: 'error' } : null);
         setIsMatching(false);
+        setMatchRun(null);
         return;
       }
 
@@ -1611,9 +1625,11 @@ export default function VideoCreatorPage() {
         tone: 'info'
       });
       setIsMatching(false);
+      setMatchRun(null);
     } catch {
       setMatchStatus(quietFailure ? null : { text: t.match.failed, tone: 'error' });
       setIsMatching(false);
+      setMatchRun(null);
     }
   };
 
@@ -1650,13 +1666,17 @@ export default function VideoCreatorPage() {
     if (customAudioFile && playable.isLong && !isEdited(audioEdit)) {
       // Too long to match whole: mapped a stretch at a time instead.
       if (playable.long) void startMappingRef.current?.();
-      else setMatchStatus({ text: t.match.makeClipFirst, tone: 'error' });
+      else {
+        setMatchRun(null);
+        setMatchStatus({ text: t.match.makeClipFirst, tone: 'error' });
+      }
       return;
     }
     beginClip();
     setCanvasConfig(prev => ({ ...prev, ...motionForNewMatch(prev.captionTransition) }));
     setSourceEditing(false);
     if (!customAudioFile) {
+      setMatchRun(null);
       setMatchStatus({ text: t.match.needUpload, tone: 'error' });
       return;
     }
@@ -1986,11 +2006,19 @@ export default function VideoCreatorPage() {
   /** An uploaded VBR MP3 plays from a copy that seeks exactly (`seekableAudio.ts`), once it is made. */
   const playable = usePlayableUpload(customAudioFile, customAudioUrl, customAudioDuration, !isPublic, {
     // Reading a long upload takes a while, so the studio says it is, and when it is done what comes next.
-    started: () => setMatchStatus({ text: t.match.readingLong, tone: 'info' }),
+    started: () => {
+      setMatchStatus({ text: t.match.readingLong, tone: 'info' });
+      setMatchRun({ flow: 'long', phase: 'longRead', file: true });
+    },
     // A clip opened before the recording was read: its note goes with it.
-    abandoned: () => setMatchStatus(prev => (prev?.text === t.match.readingLong ? null : prev)),
+    abandoned: () => {
+      setMatchStatus(prev => (prev?.text === t.match.readingLong ? null : prev));
+      setMatchRun(prev => (prev?.phase === 'longRead' ? null : prev));
+    },
     // A long upload is as long as the server read it: the clock its copy, its waveform and every cut are on.
     finished: long => {
+      // Its mapping, if it is mapped, starts a card of its own.
+      setMatchRun(prev => (prev?.phase === 'longRead' ? null : prev));
       if (long) setAudioDuration(long.duration);
       setMatchStatus({ text: long ? t.match.longReady : t.match.longUnread, tone: long ? 'info' : 'error' });
     },
@@ -3414,6 +3442,8 @@ export default function VideoCreatorPage() {
     const { tags } = await saveRecordingForClip(file);
     const recordingId = clipProject.current?.id;
     if (!recordingId) return;
+    const mapping: MatchRun = { flow: 'long', phase: 'matching', file: true };
+    setMatchRun(mapping);
     const origin = trimWindow?.start ?? 0;
     // Read afresh, not from the tabs, which may not have loaded yet: a clip's checked captions must not be missed.
     const clips = tags?.source ? familyOf(asLibraryProjects((await listProjects(studio.mode)) ?? []), tags.source).clips : [];
@@ -3430,8 +3460,17 @@ export default function VideoCreatorPage() {
         const res = await saveProject({ ...latestPayload.current({ verses: next, audioTags: tags }), id: recordingId }, studio.mode);
         if (!res.ok) throw new Error(t.header.saveFailedStatus(res.status));
       },
-      onStep: (done, total) => setMatchStatus({ text: t.clips.mapping(done, total), tone: 'info', progress: { done, total } }),
+      onStep: (done, total) => {
+        setMatchStatus({ text: t.clips.mapping(done, total), tone: 'info' });
+        setMatchRun({ ...mapping, parts: { done, total } });
+      },
+      onAligner: seen => setMatchRun(prev => prev && {
+        ...prev,
+        queue: seen.position > 0 ? { position: seen.position, wait: seen.etaSeconds === null ? null : roughWait(seen.etaSeconds) } : null,
+        aligner: seen.aligner,
+      }),
     });
+    setMatchRun(null);
     if (map) setMatchStatus({ text: t.clips.mapped(new Set(map.map(verse => verse.verseKey)).size), tone: 'info' });
     else if (error) setMatchStatus({ text: t.clips.mapFailed(error), tone: 'error' });
   };
@@ -3615,10 +3654,10 @@ export default function VideoCreatorPage() {
   );
 
   /** A match, a long recording's mapping, or an upload about to be matched, under way. */
-  const matchBusy = isMatching || ayahMap.running || Boolean(matchStatus?.busy);
+  const matchBusy = isMatching || ayahMap.running || matchRun !== null;
   /** Where a match has got to, or why it stopped. */
   const matchStatusBlock = matchBusy ? (
-    <MatchProgress title={t.match.progressTitle} step={matchStatus?.text ?? t.match.aligning} progress={matchStatus?.progress} />
+    <MatchProgress run={matchRun ?? { flow: 'upload', phase: 'matching', file: false }} />
   ) : matchStatus && (
     <div className={`text-xs rounded-lg p-3 flex items-start gap-2.5 ${
       matchStatus.tone === 'error'

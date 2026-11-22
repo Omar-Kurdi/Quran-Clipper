@@ -121,6 +121,35 @@ def _startup() -> None:
         )
 
 
+#: How far each match under way has got, by the studio's ticket, for `/progress`:
+#: the stage it is at and, while it reads the recitation phrase by phrase, how
+#: many of how many. Kept a while after, then let go.
+_PROGRESS: dict[str, dict] = {}
+_PROGRESS_KEEP_SEC = 900.0
+
+
+def _report(ticket: str, stage: str, done: int | None = None, total: int | None = None) -> None:
+    """Notes where the match with `ticket` has got to; nothing when it has none."""
+    if not ticket:
+        return
+    now = time.monotonic()
+    for key in [key for key, entry in _PROGRESS.items() if now - entry["at"] > _PROGRESS_KEEP_SEC]:
+        _PROGRESS.pop(key, None)
+    _PROGRESS[ticket] = {"stage": stage, "done": done, "total": total, "at": now}
+
+
+@app.get("/progress")
+def progress_endpoint(ticket: str = Query("")) -> dict:
+    """Where the match with `ticket` has got to, for the studio's progress card.
+
+    Not one at a time like `/align`: it is asked while an alignment runs.
+    """
+    entry = _PROGRESS.get(ticket) if ticket else None
+    if entry is None:
+        return {"stage": None}
+    return {"stage": entry["stage"], "done": entry["done"], "total": entry["total"]}
+
+
 def _assist_requested(name: str) -> bool:
     return name.strip().lower() == "qul"
 
@@ -281,6 +310,14 @@ def _url_window(window_start: float = Form(0.0), window_end: float = Form(0.0)) 
     return window_start, window_end
 
 
+def _phoneme_trial(
+    retime: str = Form(""),  # the phoneme model to re-time the words with (`phoneme.chosen`); `none` for fastconformer's
+    lab: str = Form(""),  # the dev-only phoneme lab's other stages, `reading=v31;timing=old`; see `phoneme.lab_stages`
+) -> tuple[str, str]:
+    """The phoneme models' part in a match: its two form fields as one."""
+    return retime, lab
+
+
 @app.post("/align")
 @_one_at_a_time
 def align_endpoint(
@@ -290,10 +327,10 @@ def align_endpoint(
     window: tuple[float, float] = Depends(_url_window),
     assist: str = Form(""),
     breaks: str = Form(""),
-    retime: str = Form(""),  # the phoneme model to re-time the words with (`phoneme.chosen`); `none` for fastconformer's
-    lab: str = Form(""),  # the dev-only phoneme lab's other stages, `reading=v31;timing=old`; see `phoneme.lab_stages`
+    trial: tuple[str, str] = Depends(_phoneme_trial),  # `retime` and `lab`, see `_phoneme_trial`
     whole: str = Form(""),  # the recording holds every ayah of the text from its `start`, to its `end`, or `both`; see `align.WHOLE_TEXT`
     heard_before: int = Form(0),  # the text's first N ayahs were recited before the recording starts: going back over them is a repeat
+    ticket: str = Form(""),  # the studio's name for this match, under which `/progress` says where it has got to
 ) -> dict:
     """Force-align known Quran text against the audio.
 
@@ -319,6 +356,7 @@ def align_endpoint(
     ``more``, or empty for ``normal``. See `align.BREAK_SCALES`.
     """
     started = time.perf_counter()
+    retime, lab = trial
     breaks = breaks or "normal"
     if whole not in align.WHOLE_TEXT:
         raise HTTPException(status_code=400, detail=f"whole must be one of start, end, both; got {whole!r}.")
@@ -327,6 +365,7 @@ def align_endpoint(
     # Resolved before any decoding, so a missing export fails in milliseconds.
     detect_assist = _assist(assist)
 
+    _report(ticket, "reading")
     window_start, window_end = window
     if audio_url:
         if not (window_end > window_start >= 0):
@@ -372,8 +411,12 @@ def align_endpoint(
 
     if not ref_words:
         try:
+            _report(ticket, "pauses")
             boundaries = align.detect_boundaries(pcm)
-            decoded_phrases = align.decode_phrases(pcm, boundaries)
+            decoded_phrases = align.decode_phrases(
+                pcm, boundaries, on_phrase=lambda done, total: _report(ticket, "listening", done, total)
+            )
+            _report(ticket, "finding")
             detected = detect.detect_range(decoded_phrases, detect_assist)
         except align.AlignError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -414,17 +457,20 @@ def align_endpoint(
     # An isti'adha before 1:1 is silenced for the aligner, which otherwise lays
     # the basmala on it (see `_istiadha_before_basmala`); the openings are still
     # heard from the recording itself.
+    _report(ticket, "aligning")
     aligner_pcm = _without_istiadha(pcm, _istiadha_before_basmala(pcm, ref_words[0][0]))
     try:
         leading = _words_of_leading_ayahs(ref_words, heard_before)
         result = align.align_recitation(
             aligner_pcm, ref_words, boundaries, decoded_phrases, breaks, whole=whole,
-            heard_before=leading, **phoneme.lab_stages(lab),
+            heard_before=leading, on_phrase=lambda done, total: _report(ticket, "aligning", done, total),
+            **phoneme.lab_stages(lab),
         )
     except align.AlignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     aligned, segments = result.words, result.segments
+    _report(ticket, "retiming")
     retimed = phoneme.retime(retime, aligner_pcm, aligned, segments)
     silences = phoneme.silences(retime, aligner_pcm)
     mean_score = result.mean_score

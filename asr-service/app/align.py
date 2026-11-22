@@ -39,6 +39,7 @@ import os
 import re
 import statistics
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 
@@ -1068,7 +1069,9 @@ def decode_window(emission, frame_start: int, frame_end: int) -> str:
     return model.tokenizer.ids_to_text(collapsed) if collapsed else ""
 
 
-def decode_phrases(pcm: np.ndarray, boundaries: list[float]) -> list[str]:
+def decode_phrases(
+    pcm: np.ndarray, boundaries: list[float], on_phrase: Callable[[int, int], None] | None = None
+) -> list[str]:
     """Greedy read-out of each phrase, with no reference text involved.
 
     Used by range auto-detection, which has to know what was said before it can
@@ -1076,9 +1079,14 @@ def decode_phrases(pcm: np.ndarray, boundaries: list[float]) -> list[str]:
     reason as in `assign_phrase_ranges_by_decode`: NeMo normalises features per
     window, so a full-clip read-out is a materially different (and worse)
     decode than the same phrases decoded individually.
+
+    ``on_phrase(done, total)`` is told before each phrase, for a caller showing
+    how far the read-out has got; it changes nothing about the read-out.
     """
     decoded: list[str] = []
     for i in range(len(boundaries) - 1):
+        if on_phrase is not None:
+            on_phrase(i, len(boundaries) - 1)
         chunk = pcm[int(boundaries[i] * SAMPLE_RATE) : int(boundaries[i + 1] * SAMPLE_RATE)]
         if len(chunk) < SAMPLE_RATE // 4:
             decoded.append("")
@@ -1867,8 +1875,12 @@ def assign_phrase_ranges_by_decode(
     emission=None,
     sec_per_frame: float | None = None,
     heard_before: int = 0,
+    on_phrase: Callable[[int, int], None] | None = None,
 ) -> list[tuple[int, int, float, float, float]]:
     """Decode each phrase, then locate what it said in the reference text.
+
+    ``on_phrase(done, total)`` is told before each phrase is placed, for a
+    caller showing how far it has got; it changes nothing about the placing.
 
     Each phrase gets its **own** emission rather than a slice of the whole
     clip's. That is not an optimisation -- it changes the result. NeMo's
@@ -1919,6 +1931,8 @@ def assign_phrase_ranges_by_decode(
     states: dict[int, dict[int, tuple[float, int, list, list[str]]]] = {0: {-1: (0.0, 0, [], [])}}
 
     for i in range(phrases):
+        if on_phrase is not None:
+            on_phrase(i, phrases)
         if i not in states:
             continue
         # Bounded so the extra dimension cannot make this expensive: only the
@@ -3493,6 +3507,7 @@ def _script_by_decode(
     phrase_ends: list[tuple[float, int]] | None = None,
     whole: str = "",
     heard_before: int = 0,
+    on_phrase: Callable[[int, int], None] | None = None,
 ) -> tuple[list[int], list[bool]]:
     """What was recited, by decoding each phrase and finding it in the reference: the script, and its repeats.
 
@@ -3500,7 +3515,9 @@ def _script_by_decode(
     phrase and began the next, as (time, last reference word) -- see
     `decoded_phrase_ends`.
     """
-    assignments = assign_phrase_ranges_by_decode(pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame, heard_before)
+    assignments = assign_phrase_ranges_by_decode(
+        pcm, ref_words, boundaries, decoded_phrases, emission, sec_per_frame, heard_before, on_phrase
+    )
     if phrase_ends is not None:
         phrase_ends.extend(decoded_phrase_ends(assignments))
 
@@ -3550,6 +3567,7 @@ def align_recitation(
     phoneme_reading: str = "",
     whole: str = "",
     heard_before: int = 0,
+    on_phrase: Callable[[int, int], None] | None = None,
 ) -> RecitationResult:
     """Full pipeline: decide *what* was recited, then align it, then group it.
 
@@ -3586,6 +3604,10 @@ def align_recitation(
     one that reads what was recited (`phoneme_reading`) -- trials, off by
     default; `ALIGN_PHONEME_TIMING` and `ALIGN_PHONEME_READING` set them for
     every call, which is how `./gauge.sh` measures them.
+
+    `on_phrase(done, total)` is told as each phrase is found in the text
+    (`assign_phrase_ranges_by_decode`), for a caller showing how far it has
+    got; it changes nothing about the alignment.
     """
     duration = len(pcm) / SAMPLE_RATE
     emission = compute_emission(pcm)
@@ -3610,7 +3632,9 @@ def align_recitation(
     phrase_ends: list[tuple[float, int]] = []
 
     def by_decode() -> tuple[list[int], list[bool]]:
-        return _script_by_decode(pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases, phrase_ends, whole, heard_before)
+        return _script_by_decode(
+            pcm, ref_words, boundaries, emission, sec_per_frame, decoded_phrases, phrase_ends, whole, heard_before, on_phrase
+        )
 
     read = None
     if phoneme_reading:
