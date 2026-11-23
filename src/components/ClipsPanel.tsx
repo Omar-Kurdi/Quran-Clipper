@@ -7,6 +7,7 @@ import { useT } from './LocaleProvider';
 import { LengthReadout } from './LengthReadout';
 import { formatDuration } from './AudioTrimModal';
 import { SUGGESTION_TARGETS, suggestionId, suggestionLabel, type Suggestion } from '@/lib/clipSuggestions';
+import type { Dictionary } from '@/lib/i18n.en';
 
 interface ClipsPanelProps {
   /** The recording's captions, for choosing a clip by its ayahs. */
@@ -133,6 +134,13 @@ export const ClipEnds: React.FC<{ onNudge: (edge: 'start' | 'end', by: -1 | 1) =
  * tick -- here or on the timeline, where they are drawn too; *Make N clips*
  * makes every one ticked, each a project of its own.
  */
+/** A suggestion's section as said: its topic, or its ruku, and which part where it was split; empty for a section with neither. */
+export function sectionName(t: Dictionary, section: NonNullable<Suggestion['section']>): string {
+  const part = section.part && section.parts ? t.clips.part(section.part, section.parts) : '';
+  const name = section.kind === 'ruku' ? t.clips.ruku(section.number, section.of) : section.title ?? '';
+  return [name, part].filter(Boolean).join(' · ');
+}
+
 export const SuggestedClips: React.FC<{
   suggestions: Suggestion[];
   target: number;
@@ -163,13 +171,20 @@ export const SuggestedClips: React.FC<{
           const id = suggestionId(each);
           const inClip = !!clipped?.has(each.from) || !!clipped?.has(each.to);
           return (
-            <li key={id} className="flex items-center gap-2 px-2.5 py-1.5">
-              <input type="checkbox" checked={ticked.has(id)} onChange={() => onToggle(id)} aria-label={id} className="w-3.5 h-3.5 accent-amber-500" />
-              <button type="button" onClick={() => onPreview(each.start)} title={t.clips.preview}
-                className="p-1 rounded text-slate-300 hover:text-amber-300"><Play className="w-3.5 h-3.5" /></button>
-              <span className="font-mono text-xs text-gold" dir="ltr">{suggestionLabel(each)}</span>
-              <span className="font-mono text-[11px] text-slate-400" dir="ltr">{formatDuration(each.end - each.start)}</span>
-              {inClip && <span className="ms-auto text-[10px] text-emerald-300">{t.clips.inAClip}</span>}
+            <li key={id} className="flex flex-col gap-0.5 px-2.5 py-1.5">
+              <span className="flex items-center gap-2">
+                <input type="checkbox" checked={ticked.has(id)} onChange={() => onToggle(id)} aria-label={id} className="w-3.5 h-3.5 accent-amber-500" />
+                <button type="button" onClick={() => onPreview(each.start)} title={t.clips.preview}
+                  className="p-1 rounded text-slate-300 hover:text-amber-300"><Play className="w-3.5 h-3.5" /></button>
+                <span className="font-mono text-xs text-gold" dir="ltr">{suggestionLabel(each)}</span>
+                <span className="font-mono text-[11px] text-slate-400" dir="ltr">{formatDuration(each.end - each.start)}</span>
+                {inClip && <span className="ms-auto text-[10px] text-emerald-300">{t.clips.inAClip}</span>}
+              </span>
+              {each.section && sectionName(t, each.section) && (
+                <span className="ps-12 text-[11px] leading-snug text-slate-300 line-clamp-2" dir="auto" title={sectionName(t, each.section)}>
+                  {sectionName(t, each.section)}
+                </span>
+              )}
             </li>
           );
         })}
@@ -178,7 +193,8 @@ export const SuggestedClips: React.FC<{
         <Button variant="primary" disabled={!chosen.length} onClick={() => onMake(chosen)}>
           {t.clips.makeMany(chosen.length)}
         </Button>
-        <span className="text-[11px] text-slate-400">{t.clips.suggestedHint}</span>
+        <span className="text-[11px] text-slate-400">{suggestions.some(each => each.section?.kind === 'topic') ? t.clips.suggestedByTopic
+          : suggestions.some(each => each.section) ? t.clips.suggestedByRuku : t.clips.suggestedHint}</span>
       </div>
     </section>
   );

@@ -1240,6 +1240,28 @@ def _vocatives_joined(tokens: list[str]) -> list[str]:
     return joined
 
 
+#: Matches already made against the reference in hand, by what was asked: one alignment's worth.
+_MATCHES: dict[int, tuple[list, dict[tuple[str, int, bool, bool], tuple[int, int, float] | None]]] = {}
+#: Each reference word's last word in the same ayah, for the reference it was made from.
+_AYAH_ENDS: dict[int, tuple[list, list[int]]] = {}
+
+
+def _ayah_ends(ref_words: list[tuple[str, int, str]]) -> list[int]:
+    """The index of the last word of each word's ayah, made once per reference rather than once per start searched."""
+    kept = _AYAH_ENDS.get(id(ref_words))
+    if kept is not None and kept[0] is ref_words and len(kept[1]) == len(ref_words):
+        return kept[1]
+    ends = [0] * len(ref_words)
+    last = len(ref_words) - 1
+    for i in range(len(ref_words) - 1, -1, -1):
+        if i < len(ref_words) - 1 and ref_words[i + 1][0] != ref_words[i][0]:
+            last = i
+        ends[i] = last
+    _AYAH_ENDS.clear()
+    _AYAH_ENDS[id(ref_words)] = (ref_words, ends)
+    return ends
+
+
 def match_decoded_to_range(
     decoded: str,
     ref_words: list[tuple[str, int, str]],
@@ -1247,6 +1269,32 @@ def match_decoded_to_range(
     near_only: bool = False,
     *,
     two_ayahs: bool = False,
+) -> tuple[int, int, float] | None:
+    """`_match_decoded_to_range`, each answer kept for the reference in hand.
+
+    The phrase search asks the same thing over and over -- every route through
+    a phrase at the same place in the text asks it again -- and a 14-minute
+    Al-Hijr asked 20,266 times for 5,066 answers. Kept, so the time a match
+    took is spent once. The answer depends on nothing else, so it is the one
+    asking again would give.
+    """
+    kept = _MATCHES.get(id(ref_words))
+    if kept is None or kept[0] is not ref_words:
+        _MATCHES.clear()
+        kept = _MATCHES[id(ref_words)] = (ref_words, {})
+    key = (decoded, cursor, near_only, two_ayahs)
+    if key not in kept[1]:
+        kept[1][key] = _match_decoded_to_range(decoded, ref_words, cursor, near_only=near_only, two_ayahs=two_ayahs)
+    return kept[1][key]
+
+
+def _match_decoded_to_range(
+    decoded: str,
+    ref_words: list[tuple[str, int, str]],
+    cursor: int,
+    *,
+    near_only: bool,
+    two_ayahs: bool,
 ) -> tuple[int, int, float] | None:
     """Locate what a phrase decoded to within the reference text.
 
@@ -1267,8 +1315,6 @@ def match_decoded_to_range(
 
     corpus = _skeletons(ref_words)
     n = len(corpus)
-    best: tuple[int, int, float] | None = None
-    heard = Counter(tokens)
 
     # A read-out with no position of its own may only continue the reading, not
     # move it. See `carries_position`.
@@ -1277,20 +1323,33 @@ def match_decoded_to_range(
         first = max(0, cursor - MAX_BACK_OVERLAP)
         last = min(n - 1, cursor + MAX_BACK_OVERLAP)
 
-    for start in range(first, last + 1):
-        verse_key = ref_words[start][0]
-        # A phrase never spans an ayah boundary.
-        limit = start
-        while limit + 1 < n and ref_words[limit + 1][0] == verse_key:
-            limit += 1
+    best = _best_from_starts(tokens, corpus, _ayah_ends(ref_words), (first, last), cursor)
+    return _or_two_ayahs(best, tokens, ref_words, cursor, range(first, last + 1)) if two_ayahs else best
 
+
+def _best_from_starts(
+    tokens: list[str], corpus: list[str], ayah_ends: list[int], starts: tuple[int, int], cursor: int,
+) -> tuple[int, int, float] | None:
+    """The best window starting anywhere in `starts`, each running at most to its ayah's end: see `match_decoded_to_range`.
+
+    The most any window can score is the read-out matched by one word, so a
+    start whose best could not beat the best so far is passed over, as
+    `_best_window_from` would at once.
+    """
+    n = len(corpus)
+    heard = Counter(tokens)
+    best: tuple[int, int, float] | None = None
+    ceiling = 2.0 * len(tokens) / (len(tokens) + 1)
+    for start in range(starts[0], starts[1] + 1):
         # Mild preference for staying near where the last phrase ended, to
         # break ties between the several places a short formulaic phrase
         # legitimately matches.
         distance = min(abs(start - cursor), n) / max(n, 1)
-        best = _best_window_from(tokens, heard, corpus, (start, min(limit, start + MAX_PHRASE_WORDS - 1)), distance, best)
-
-    return _or_two_ayahs(best, tokens, ref_words, cursor, range(first, last + 1)) if two_ayahs else best
+        if best is not None and ceiling - 0.05 * distance <= best[2]:
+            continue
+        # A phrase never spans an ayah boundary.
+        best = _best_window_from(tokens, heard, corpus, (start, min(ayah_ends[start], start + MAX_PHRASE_WORDS - 1)), distance, best)
+    return best
 
 
 def _best_window_from(

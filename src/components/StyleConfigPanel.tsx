@@ -79,7 +79,7 @@ interface StyleConfigPanelProps {
 export type StyleArea = 'presets' | 'text' | 'background' | 'card' | 'branding';
 
 /** The Text panel's groups, in the order they are laid out. */
-const TEXT_GROUPS = ['font', 'size', 'ayah', 'colours', 'motion'] as const;
+const TEXT_GROUPS = ['font', 'size', 'ayah', 'motion', 'colours'] as const;
 
 export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   config,
@@ -851,7 +851,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       {shows('text') && (
       <StyleSection id="text" title={t.style.tabDesign} summary={textSummary} open={isOpen('text')} onToggle={() => toggleSection('text')} bare={!!only}>
         {/* Motion used to be a section of its own; it is how the text moves,
-            so it is the text's last group now. */}
+            so it is a group of the text, above its colours. */}
         {only && <GroupNav items={TEXT_GROUPS.map(id => ({ id, label: t.style.textGroups[id] }))} />}
         <div className="flex flex-col gap-5">
         <PanelGroup id="font" title={t.style.textGroups.font}>
@@ -1003,41 +1003,6 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
             </div>
           </div>
         </PanelGroup>
-        <PanelGroup id="colours" title={t.style.textGroups.colours}>
-          {/* Colours.
-
-              Three native `<input type="color">` used to sit here; on a
-              multi-monitor setup the OS opened its dialog on another screen
-              entirely. `ColorField` keeps the picker in the panel.
-
-              "Accent Gold" was also the wrong name twice over: it is not
-              necessarily gold, and it was never clear what it painted. It is
-              named for its job now, and the card border -- which was hardcoded
-              amber and stayed gold no matter what this was set to -- follows
-              it like everything else in the list. */}
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div className="flex flex-col gap-2">
-              <ColorField
-                label={t.style.colourArabic}
-                description={t.style.colourArabicDescription}
-                value={config.textColor}
-                onChange={hex => updateConfig('textColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourAccent}
-                description={t.style.colourAccentDescription}
-                value={config.accentColor}
-                onChange={hex => updateConfig('accentColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourTranslation}
-                description={t.style.colourTranslationDescription}
-                value={config.translationColor}
-                onChange={hex => updateConfig('translationColor', hex)}
-              />
-            </div>
-          </div>
-        </PanelGroup>
         <PanelGroup id="motion" title={t.style.textGroups.motion}>
         <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
           <div>
@@ -1088,6 +1053,41 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
           </div>
           {wordEffect === 'highlight' && <HighlightSwatches config={config} onChange={hex => updateConfig('highlightColor', hex)} />}
         </div>
+        </PanelGroup>
+        <PanelGroup id="colours" title={t.style.textGroups.colours}>
+          {/* Colours.
+
+              Three native `<input type="color">` used to sit here; on a
+              multi-monitor setup the OS opened its dialog on another screen
+              entirely. `ColorField` keeps the picker in the panel.
+
+              "Accent Gold" was also the wrong name twice over: it is not
+              necessarily gold, and it was never clear what it painted. It is
+              named for its job now, and the card border -- which was hardcoded
+              amber and stayed gold no matter what this was set to -- follows
+              it like everything else in the list. */}
+          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div className="flex flex-col gap-2">
+              <ColorField
+                label={t.style.colourArabic}
+                description={t.style.colourArabicDescription}
+                value={config.textColor}
+                onChange={hex => updateConfig('textColor', hex)}
+              />
+              <ColorField
+                label={t.style.colourAccent}
+                description={t.style.colourAccentDescription}
+                value={config.accentColor}
+                onChange={hex => updateConfig('accentColor', hex)}
+              />
+              <ColorField
+                label={t.style.colourTranslation}
+                description={t.style.colourTranslationDescription}
+                value={config.translationColor}
+                onChange={hex => updateConfig('translationColor', hex)}
+              />
+            </div>
+          </div>
         </PanelGroup>
         </div>
       </StyleSection>

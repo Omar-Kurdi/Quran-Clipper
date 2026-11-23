@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -115,6 +116,10 @@ FRAME_SEC = 0.04
 #: shares with the next. See `Loaded.emission`.
 WINDOW_SEC = 20.0
 OVERLAP_SEC = 4.0
+#: onnxruntime's name for the CPU, which reads without the GPU.
+CPU_PROVIDER = "CPUExecutionProvider"
+#: Windows the GPU reads at once: 4 took a 14-minute Al-Hijr from 21.4 s to 6.7 s, 8 only to 5.9 s.
+GPU_WINDOWS_AT_ONCE = 4
 
 #: The shortest a re-timed word may be, so its middle stays inside its caption.
 MIN_WORD_SEC = 0.02
@@ -319,12 +324,14 @@ class Loaded:
             import torch  # noqa: F401 -- loads the CUDA libraries onnxruntime-gpu runs on
 
             weights = _fetch(spec, spec.onnx.replace(".int8.onnx", ".onnx"))
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            providers = ["CUDAExecutionProvider", CPU_PROVIDER]
         else:
             weights = _fetch(spec, spec.onnx)
-            providers = ["CPUExecutionProvider"]
+            providers = [CPU_PROVIDER]
         self.session = ort.InferenceSession(weights, _session_options(ort), providers=providers)
         log.info("phoneme model %s on %s", model, self.session.get_providers()[0])
+        #: Windows read at once (`emission`): several on the GPU; one on the CPU, whose threads one read already uses.
+        self.parallel = GPU_WINDOWS_AT_ONCE if self.session.get_providers()[0] != CPU_PROVIDER else 1
         meta = self.session.get_modelmeta().custom_metadata_map
         self.window = int(meta["T"])
         self.shift = int(meta["decode_chunk_len"])
@@ -348,18 +355,23 @@ class Loaded:
 
         hop = WINDOW_SEC - OVERLAP_SEC
         total = int(np.ceil(len(pcm) / SAMPLE_RATE / FRAME_SEC))
+        starts = [0.0]
+        while (starts[-1] + WINDOW_SEC) * SAMPLE_RATE < len(pcm):
+            starts.append(starts[-1] + hop)
+        # Each window is read from a fresh state, so none waits on another: on the GPU several are read
+        # at once, a 14-minute recording in 6.7 s against 21.4 s one after another, every frame the same.
+        windows = [pcm[int(start * SAMPLE_RATE):int((start + WINDOW_SEC) * SAMPLE_RATE)] for start in starts]
+        if self.parallel > 1 and len(windows) > 1:
+            with ThreadPoolExecutor(self.parallel) as pool:
+                read = list(pool.map(self._stream, windows))
+        else:
+            read = [self._stream(window) for window in windows]
         pieces = []
-        start = 0.0
-        while True:
-            end = start + WINDOW_SEC
-            frames = self._stream(pcm[int(start * SAMPLE_RATE):int(end * SAMPLE_RATE)])
-            last = end * SAMPLE_RATE >= len(pcm)
-            keep_from = 0 if start == 0 else int(round(OVERLAP_SEC / 2 / FRAME_SEC))
+        for i, frames in enumerate(read):
+            last = i == len(read) - 1
+            keep_from = 0 if i == 0 else int(round(OVERLAP_SEC / 2 / FRAME_SEC))
             keep_to = len(frames) if last else int(round((WINDOW_SEC - OVERLAP_SEC / 2) / FRAME_SEC))
             pieces.append(frames[keep_from:keep_to])
-            if last:
-                break
-            start += hop
         return torch.from_numpy(np.concatenate(pieces)[:total])[None].float()
 
     def _stream(self, pcm: np.ndarray) -> np.ndarray:

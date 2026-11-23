@@ -67,3 +67,12 @@ describe('matchView for a long recording', () => {
     expect(at(3, 'aligning')).toBeLessThan(1);
   });
 });
+
+describe('matchView for a recording matched in parts in the browser', () => {
+  it('has no server read: split, then the parts in turn', () => {
+    expect(states({ flow: 'parts', phase: 'matching', file: true })).toEqual(['read:done', 'split:current', 'parts:pending']);
+    const view = matchView({ flow: 'parts', phase: 'matching', file: true, parts: { done: 0, total: 3 }, aligner: { stage: 'listening', done: 2, total: 9 } });
+    expect(view.steps.map(step => `${step.id}:${step.state}`)).toEqual(['read:done', 'split:done', 'parts:current']);
+    expect(view.steps[2].count).toEqual({ done: 1, total: 3 });
+  });
+});

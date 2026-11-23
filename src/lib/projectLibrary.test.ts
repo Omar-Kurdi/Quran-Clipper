@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { asLibraryProjects, clipTabLabel, familyOf, libraryOf, type LibraryProject } from './projectLibrary';
+import { asLibraryProjects, clipTabLabel, familyOf, libraryOf, recordingCount, type LibraryProject } from './projectLibrary';
 
 const verses = [
   { verseKey: '2:201', startTime: 0, endTime: 10 },
@@ -196,6 +196,9 @@ describe('familyOf, the studio\'s tabs', () => {
       row('proj_other', '2026-11-21T04:00:00Z', { audioTags: { source: 'c'.repeat(64), clip: true }, trimWindow: { start: 0, end: 10 } }),
     ];
     const family = familyOf(projects, source);
+    // Two recordings, however many rows: a clip is counted with the recording it was cut from.
+    expect(recordingCount(projects)).toBe(libraryOf(projects, []).recordings.length);
+    expect(recordingCount(projects)).toBe(2);
     expect(family.recording?.id).toBe('proj_rec');
     expect(family.clips.map(clip => clip.id)).toEqual(['proj_c1', 'proj_c2']);
   });

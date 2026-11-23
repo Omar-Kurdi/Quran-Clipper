@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { postClipMatch } from '@/lib/clipMatch';
-import { mergeIntoGaps, planMapWindows, windowsToMatch, type Stretch } from '@/lib/ayahMap';
+import { holdAcrossJoin, mergeIntoGaps, planMapWindows, windowsToMatch, type Stretch } from '@/lib/ayahMap';
 import type { Pause } from '@/lib/pauses';
 import type { VerseData } from '@/lib/quranData';
 import { newMatchTicket, watchQueue, type QueueSighting } from '@/lib/queueWatch';
@@ -65,7 +65,9 @@ export function useAyahMap() {
       const map = await windows.reduce<Promise<VerseData[] | null>>(async (pending, window, i) => {
         const sofar = await pending;
         if (!sofar || !run.stillOpen()) return null;
-        const next = mergeIntoGaps(sofar, await matchStretch(run, window));
+        // Held across the pauses it was cut in, at either end, as a match of the whole would be.
+        const merged = mergeIntoGaps(sofar, await matchStretch(run, window));
+        const next = holdAcrossJoin(holdAcrossJoin(merged, window.start), window.end);
         if (!run.stillOpen()) return null;
         await run.onProgress(next);
         run.onStep(i + 1, windows.length);

@@ -20,8 +20,12 @@ export interface AlignerProgress {
 
 /** Where a match has got to, from what the studio knows. */
 export interface MatchRun {
-  /** An upload matched whole, or a long recording mapped a part at a time. */
-  flow: 'upload' | 'long';
+  /**
+   * An upload matched whole; a long recording, read on the server and then
+   * mapped a part at a time; or a shorter one mapped in parts in the browser,
+   * with nothing read on the server first.
+   */
+  flow: 'upload' | 'long' | 'parts';
   /**
    * `reading`: the upload being measured and looked up in Projects.
    * `longRead`: a long one being read whole on the server.
@@ -136,18 +140,18 @@ function partInner(run: MatchRun): Step | null {
 
 /** A long recording's own steps: read whole, split, and its parts matched -- counted once they are known. */
 function longSteps(run: MatchRun, parts: MatchRun['parts']): Step[] {
-  const longRead: Step = { id: 'longRead', state: run.phase === 'reading' ? 'pending' : run.phase === 'longRead' ? 'current' : 'done' };
+  const read: Step[] = run.flow === 'parts' ? [] : [{ id: 'longRead', state: run.phase === 'reading' ? 'pending' : run.phase === 'longRead' ? 'current' : 'done' }];
   if (parts) {
     return [
-      longRead,
+      ...read,
       { id: 'split', state: 'done', count: { done: parts.total, total: parts.total } },
       { id: 'parts', state: 'current', count: { done: Math.min(parts.total, parts.done + 1), total: parts.total } },
     ];
   }
-  return [longRead, { id: 'split', state: run.phase === 'matching' ? 'current' : 'pending' }, { id: 'parts', state: 'pending' }];
+  return [...read, { id: 'split', state: run.phase === 'matching' ? 'current' : 'pending' }, { id: 'parts', state: 'pending' }];
 }
 
-/** A long recording: read whole on the server, split into parts, and the parts matched in turn. */
+/** A recording matched in parts: read whole on the server when it is long, split, and the parts matched in turn. */
 function longView(run: MatchRun, read: Step[]): MatchView {
   const parts = run.phase === 'matching' ? run.parts : undefined;
   const steps = [...read, ...longSteps(run, parts)];

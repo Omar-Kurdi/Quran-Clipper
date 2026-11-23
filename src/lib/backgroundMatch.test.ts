@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  BACKGROUND_QUERIES, LENGTH_MARGIN_SEC, builtInCandidates, chooseBackground, leastLength, sample, searchOrientation
+  BACKGROUND_QUERIES, LENGTH_MARGIN_SEC, MAX_SHORT_SEC, backgroundSeconds, builtInCandidates, chooseBackground, leastLength, sample, searchOrientation
 } from './backgroundMatch';
 
 const video = (seconds: number) => ({ url: `https://videos.example/${seconds}.mp4`, seconds });
@@ -59,5 +59,19 @@ describe('builtInCandidates', () => {
     const builtIns = builtInCandidates();
     expect(builtIns.length).toBe(11);
     expect(Math.max(...builtIns.map(c => c.seconds))).toBe(40.8);
+  });
+});
+
+describe('backgroundSeconds', () => {
+  // Reported: a whole surah drew the same background every time, the only one Pexels had that long.
+  it('asks a tall or square frame for no more than a Short can run', () => {
+    expect(backgroundSeconds(854, '9:16')).toBe(MAX_SHORT_SEC);
+    expect(backgroundSeconds(854, '4:5')).toBe(MAX_SHORT_SEC);
+    expect(backgroundSeconds(854, '1:1')).toBe(MAX_SHORT_SEC);
+    expect(backgroundSeconds(45, '9:16')).toBe(45);
+  });
+
+  it('asks a wide frame for the whole length, as it can be exported whole', () => {
+    expect(backgroundSeconds(854, '16:9')).toBe(854);
   });
 });

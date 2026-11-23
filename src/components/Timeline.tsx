@@ -113,6 +113,8 @@ interface TimelineProps {
   /** Clips suggested from the recording's map, drawn as bars under the strip: a click ticks or unticks one. */
   suggestions?: { id: string; start: number; end: number; label: string; ticked: boolean }[];
   onToggleSuggestion?: (id: string) => void;
+  /** Makes the ticked suggestions clips, from beside their bars, as Make clips under Suggested clips does. */
+  onMakeSuggestions?: () => void;
   /** The recording's pauses (`pauses.ts`): where a stretch with no captions in it is let go, so it ends between words. */
   pauses?: RecordingPause[];
   /** Said where a stretch is chosen until one is, after Projects' New clip asks for one. */
@@ -186,7 +188,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   backgroundSegments = [], onMoveBackground, onResizeBackground,
   selectedBackground = null, onSelectBackground, loading = false, onReorder, clip: passage = null, view = null,
   onNextToCheck, onAddClip, makeText, selection = null, frame = null, pauses = [], selectHint = false,
-  suggestions = [], onToggleSuggestion
+  suggestions = [], onToggleSuggestion, onMakeSuggestions
 }) => {
   const t = useT();
   const toCheck = useMemo(() => toCheckCount(verses), [verses]);
@@ -879,6 +881,15 @@ export const Timeline: React.FC<TimelineProps> = ({
                   className={`absolute top-0.5 bottom-0.5 rounded-sm border ${each.ticked ? 'bg-gold/70 border-gold' : 'border-dashed border-amber-400/60 hover:bg-amber-400/20'}`}
                   style={{ left: `${pct(each.start)}%`, width: `calc(${Math.max(0, pct(each.end) - pct(each.start))}% - 2px)` }} />
               ))}
+            </div>
+          )}
+          {onMakeSuggestions && suggestions.some(each => each.ticked) && (
+            <div className="flex px-1 py-0.5 border-b border-slate-800/70 bg-slate-950/40">
+              {/* Held at the visible edge, however far the zoomed timeline is scrolled. */}
+              <button type="button" onClick={onMakeSuggestions}
+                className="sticky left-1 h-6 px-2.5 rounded-md bg-gold text-slate-950 text-[11px] font-bold hover:brightness-110">
+                {t.clips.makeMany(suggestions.filter(each => each.ticked).length)}
+              </button>
             </div>
           )}
           {/* Ruler. Click or drag anywhere along it to move the playhead --

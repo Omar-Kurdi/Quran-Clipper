@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { VerseData } from './quranData';
 import {
-  clipFromMap, coverage, mergeIntoGaps, mergeWindowTimeline, nudgedStretch, planMapWindows, seedFromClips, windowsToMatch, writeClipToMap,
+  clipFromMap, coverage, holdAcrossJoin, matchesInParts, MAP_IN_PARTS_SEC, mergeIntoGaps, mergeWindowTimeline, nudgedStretch, planMapWindows, seedFromClips, windowsToMatch, writeClipToMap,
 } from './ayahMap';
 
 const verse = (verseKey: string, startTime: number, endTime: number, textUthmani = 'أ ب ج'): VerseData => ({
@@ -108,5 +108,39 @@ describe('nudgedStretch', () => {
   it('gives nothing past the recording\'s ayahs, or a clip of none', () => {
     expect(nudgedStretch(map, { start: 9.5, end: 20.5 }, 'start', -1, 60)).toBeNull();
     expect(nudgedStretch(map, { start: 20.5, end: 30.5 }, 'end', -1, 60)).toBeNull();
+  });
+});
+
+describe('matchesInParts', () => {
+  it('matches in parts only what is more than one part long', () => {
+    expect(matchesInParts(MAP_IN_PARTS_SEC)).toBe(false);
+    expect(planMapWindows(MAP_IN_PARTS_SEC, [])).toHaveLength(1);
+    expect(matchesInParts(MAP_IN_PARTS_SEC + 1)).toBe(true);
+    expect(planMapWindows(MAP_IN_PARTS_SEC + 1, []).length).toBeGreaterThan(1);
+  });
+
+  it('is never true of a length not known', () => {
+    expect(matchesInParts(NaN)).toBe(false);
+    expect(matchesInParts(Infinity)).toBe(false);
+  });
+});
+
+describe('holdAcrossJoin', () => {
+  // As-Sajdah 32:20 matched in two parts cut at 290.7 s: 288.1-293.48 showed nothing.
+  it('holds the caption before a join until the next starts', () => {
+    const map = [verse('32:20', 268.9, 288.1), verse('32:20', 293.48, 307.08)];
+    expect(keys(holdAcrossJoin(map, 290.7))).toEqual([['32:20', 268.9, 293.48], ['32:20', 293.48, 307.08]]);
+  });
+
+  it('leaves a long gap, and a join with nothing on one side', () => {
+    const long = [verse('32:20', 268.9, 280), verse('32:21', 295, 300)];
+    expect(keys(holdAcrossJoin(long, 290))).toEqual(keys(long));
+    const alone = [verse('32:20', 268.9, 288.1)];
+    expect(keys(holdAcrossJoin(alone, 290))).toEqual(keys(alone));
+  });
+
+  it('changes nothing where the captions already meet', () => {
+    const met = [verse('32:20', 268.9, 290.7), verse('32:21', 290.7, 300)];
+    expect(keys(holdAcrossJoin(met, 290.7))).toEqual(keys(met));
   });
 });

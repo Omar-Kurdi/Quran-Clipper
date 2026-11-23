@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VerseData } from './quranData';
-import { MAX_SUGGESTION_SEC, suggestClips, suggestionId, suggestionLabel } from './clipSuggestions';
+import { MAX_SUGGESTION_SEC, carriesOn, rukuStartsOf, suggestClips, suggestionId, suggestionLabel, topicSections } from './clipSuggestions';
 
 const verse = (verseKey: string, startTime: number, endTime: number): VerseData => ({
   verseNumber: Number(verseKey.split(':')[1]),
@@ -56,5 +56,74 @@ describe('suggestionId and suggestionLabel', () => {
     expect(suggestionId({ from: '3:20', to: '3:22' })).toBe('3:20-3:22');
     expect(suggestionLabel({ from: '3:20', to: '3:22' })).toBe('3:20–22');
     expect(suggestionLabel({ from: '3:20', to: '3:20' })).toBe('3:20');
+  });
+});
+
+const rukus = (starts: number[]) => ({ kind: 'ruku' as const, list: starts.map(first => ({ first })) });
+
+describe('suggestClips by ruku', () => {
+  const range = (list: ReturnType<typeof suggestClips>) => list.map(s => [s.from, s.to]);
+
+  it('makes each ruku that fits a clip of its own, whatever the length asked would cut', () => {
+    // Rukus at 3:1 (60 s) and 3:4 (60 s): at 90 s by length 3:1-3:4 would join half of one to the other.
+    const list = suggestClips(map([20, 20, 20, 20, 20, 20]), 90, 200, rukus([1, 4]));
+    expect(range(list)).toEqual([['3:1', '3:3'], ['3:4', '3:6']]);
+    expect(list.map(s => s.section)).toEqual([{ kind: 'ruku', number: 1, of: 2 }, { kind: 'ruku', number: 2, of: 2 }]);
+  });
+
+  it('splits a ruku too long for a clip into numbered parts, inside the ruku', () => {
+    const list = suggestClips(map([30, 30, 30, 30, 30, 30]), 60, 300, rukus([1]));
+    expect(range(list)).toEqual([['3:1', '3:2'], ['3:3', '3:4'], ['3:5', '3:6']]);
+    expect(list.map(s => s.section)).toEqual([1, 2, 3].map(part => ({ kind: 'ruku', number: 1, of: 1, part, parts: 3 })));
+  });
+
+  it('joins rukus shorter than the length asked while together they still fit', () => {
+    const list = suggestClips(map([20, 20, 20, 20]), 90, 200, rukus([1, 3, 4]));
+    expect(range(list)).toEqual([['3:1', '3:4']]);
+  });
+
+  it('does not start a part on an ayah that carries on from the one before', () => {
+    const verses = map([30, 30, 30, 30]);
+    verses[2] = { ...verses[2], textUthmani: 'فَأَخَذَتْهُمُ ٱلصَّيْحَةُ' };
+    const list = suggestClips(verses, 60, 200, rukus([1]));
+    expect(list.some(s => s.from === '3:3')).toBe(false);
+  });
+});
+
+describe('carriesOn', () => {
+  it('knows an ayah opened by fa, thumma or bal', () => {
+    expect(carriesOn('فَأَخَذَتْهُمُ ٱلصَّيْحَةُ مُصْبِحِينَ')).toBe(true);
+    expect(carriesOn('ثُمَّ إِنَّ رَبَّكَ')).toBe(true);
+    expect(carriesOn('بَلْ هُمْ قَوْمٌ')).toBe(true);
+    expect(carriesOn('وَلَقَدْ خَلَقْنَا ٱلْإِنسَـٰنَ')).toBe(false);
+  });
+});
+
+describe('rukuStartsOf', () => {
+  it('finds where each ruku begins', () => {
+    const verses = [1, 2, 3, 4, 5].map(n => ({ verse_number: n, ruku_number: n < 3 ? 218 : 219 }));
+    expect(rukuStartsOf(verses)).toEqual([1, 3]);
+    expect(rukuStartsOf([])).toEqual([]);
+  });
+});
+
+describe('suggestClips by topic', () => {
+  it('names each clip by its topic, and joins short topics with theirs', () => {
+    const topics = { kind: 'topic' as const, list: [{ first: 1, title: 'A' }, { first: 2, title: 'B' }, { first: 4, title: 'C' }] };
+    const list = suggestClips(map([10, 20, 20, 30, 30]), 60, 200, topics);
+    expect(list.map(s => [s.from, s.to, s.section?.title])).toEqual([['3:1', '3:3', 'A · B'], ['3:4', '3:5', 'C']]);
+  });
+});
+
+describe('topicSections', () => {
+  it('makes a section of every group, and of any ayahs no group covers', () => {
+    // Al-Baqarah's export starts at 2:6 and skips 2:40-43.
+    expect(topicSections([[6, 7, 'Warning'], [8, 39, 'Hypocrites'], [44, 44, 'Advice']])).toEqual([
+      { first: 1 }, { first: 6, title: 'Warning' }, { first: 8, title: 'Hypocrites' }, { first: 40 }, { first: 44, title: 'Advice' },
+    ]);
+  });
+
+  it('passes over a group overlapping the one before', () => {
+    expect(topicSections([[1, 5, 'A'], [3, 6, 'B'], [6, 9, 'C']])).toEqual([{ first: 1, title: 'A' }, { first: 6, title: 'C' }]);
   });
 });

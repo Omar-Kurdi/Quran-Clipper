@@ -80,7 +80,7 @@ import { decodeAudioFile, buildTrimmedFile, type TrimResult } from '@/lib/audioT
 import { cutLong, cutLongStretch, isLongFile } from '@/hooks/useLongAudio';
 import { isLongAudio } from '@/lib/longAudio';
 import { STYLE_PRESETS, applyStylePreset, matchingPreset } from '@/lib/stylePresets';
-import { builtInCandidates, chooseBackground, sample, searchOrientation, type BackgroundCandidate } from '@/lib/backgroundMatch';
+import { backgroundSeconds, builtInCandidates, chooseBackground, sample, searchOrientation, type BackgroundCandidate } from '@/lib/backgroundMatch';
 import { newAudioKey, storeProjectAudio, loadProjectAudio, forgetProjectAudio } from '@/lib/projectAudio';
 import { GpuExportModal } from '@/components/GpuExportModal';
 import { SavedProjectsDrawer } from '@/components/SavedProjectsDrawer';
@@ -131,14 +131,14 @@ import { exportRangeFor } from '@/lib/exportRange';
 import { usePlayableUpload } from '@/hooks/usePlayableUpload';
 import { useRecordingPauses } from '@/hooks/useRecordingPauses';
 import { cutFromSavedRecording } from '@/lib/recordingCut';
-import { suggestClips, suggestionId, suggestionLabel } from '@/lib/clipSuggestions';
+import { suggestClips, suggestionId, suggestionLabel, type SectionKind, type SurahSection } from '@/lib/clipSuggestions';
 import { useAyahMap } from '@/hooks/useAyahMap';
-import { clipFromMap, coverage, nudgedStretch, seedFromClips, writeClipToMap } from '@/lib/ayahMap';
+import { clipFromMap, coverage, matchesInParts, nudgedStretch, seedFromClips, writeClipToMap } from '@/lib/ayahMap';
 import { FolderPicker } from '@/components/FolderPicker';
 import { normalizeAudioTags, readAudioTags, TAG_HEAD_BYTES, type AudioTags } from '@/lib/audioTags';
 import { ayahWindow, MIN_CLIP_SEC, normalizeClips, windowClipProject, type RecordingClip } from '@/lib/recordingClips';
-import { recordingSource } from '@/lib/recordingSource';
-import { ClipsPanel, ClipEnds, SuggestedClips } from '@/components/ClipsPanel';
+import { isAwaitedRecording, recordingSource } from '@/lib/recordingSource';
+import { ClipsPanel, sectionName, ClipEnds, SuggestedClips } from '@/components/ClipsPanel';
 import { deleteProject, listProjects, saveProject } from '@/lib/projectStore';
 import { asLibraryProjects, clipTabLabel, familyOf, type LibraryProject } from '@/lib/projectLibrary';
 import { ClipTabs } from '@/components/ClipTabs';
@@ -211,6 +211,12 @@ const unmatchedPassage = (track: number | undefined) => {
   };
 };
 
+/** The one surah a map's captions are from, or undefined for none or several. */
+const surahOfMap = (map: VerseData[]) => {
+  const surahs = new Set(map.map(verse => Number((verse.verseKey || '').split(':')[0])).filter(Number.isFinite));
+  return surahs.size === 1 ? [...surahs][0] : undefined;
+};
+
 /** An upload's own tag, read from the start of the file; null for none, or when it cannot be read. */
 const tagsOf = (file: File): Promise<AudioTags | null> =>
   file.slice(0, TAG_HEAD_BYTES).arrayBuffer().then(bytes => readAudioTags(new Uint8Array(bytes))).catch(() => null);
@@ -267,7 +273,7 @@ export default function VideoCreatorPage() {
    * apart: `trimWindow` is where the *current* audio came from, this is what the
    * next upload has to be cut to before it matches the timeline on screen.
    */
-  const [awaitingAudio, setAwaitingAudio] = useState<{ fileName: string; trim: { start: number; end: number } | null; key?: string } | null>(null);
+  const [awaitingAudio, setAwaitingAudio] = useState<{ fileName: string; trim: { start: number; end: number } | null; key?: string; source?: string } | null>(null);
   /**
    * The edit of the recording (`audioEdit`): what is cut, how fast it plays,
    * the clean-ups. `audioUrl` stays the recording itself -- what the aligner
@@ -369,6 +375,8 @@ export default function VideoCreatorPage() {
    * it. Cleared as soon as anything real arrives.
    */
   const [isSampleProject, setIsSampleProject] = useState<boolean>(true);
+  /** Whether what is open is a project yet: matched, or a reciter's passage loaded -- not the passage the studio opens on. */
+  const canSaveProject = !isSampleProject && verses.length > 0;
 
   /**
    * What the corpus said for each ayah this session has asked about, by key.
@@ -1055,16 +1063,18 @@ export default function VideoCreatorPage() {
     });
   };
   /**
-   * Over the sample the studio opens on, a recording starts with no captions
-   * at all: Al-Fatihah's are not this recording's, and left on screen they
-   * were in the way until it was matched. Whether it was the sample.
+   * A recording uploaded starts with no captions at all, and as no saved
+   * project: neither the sample's nor the last project's are this recording's.
+   * Left on screen they were in the way until it was matched, and a save
+   * before then wrote them -- under the last project's own row -- as this
+   * recording's.
    */
-  const leaveSample = () => {
-    if (!isSampleProject) return false;
+  const startFresh = () => {
     setVerses([]);
     setIsSampleProject(false);
     setSelectedIndex(0);
-    return true;
+    // Its new key and source make it a project of its own when saved (`clipIdentity`).
+    setOpenProjectId(null);
   };
   /** The surah and ayahs a passage names, as the project's own: what a fresh recording is called before it is matched. */
   const takePassage = ({ surahNumber, surahNameArabic: arabic, surahNameEnglish: english, ayahStart: first, ayahEnd: last }: ReturnType<typeof unmatchedPassage>) => {
@@ -1084,7 +1094,8 @@ export default function VideoCreatorPage() {
       // A project is waiting for its recitation back. Reproduce the clip it was
       // saved against rather than starting a fresh upload, which would leave the
       // restored timeline describing a file it no longer matches.
-      if (awaitingAudio && !isVideoFile(file)) {
+      // Only that file, though: any other is a recording of its own, uploaded fresh below.
+      if (awaitingAudio && !isVideoFile(file) && isAwaitedRecording({ source: await recordingSource(file), name: file.name }, awaitingAudio)) {
         await adoptAwaitedAudio(file, awaitingAudio);
         return;
       }
@@ -1100,7 +1111,8 @@ export default function VideoCreatorPage() {
       // The name the user would recognise, kept apart from `customAudioName`
       // because a trim renames that to `-trimmed.wav`. A fresh key too: this is
       // a different recording from whatever was here before.
-      nameUpload(file, folder, leaveSample());
+      startFresh();
+      nameUpload(file, folder, true);
       const key = newAudioKey();
       setAudioKey((mapCandidate.current = key));
       setAwaitingAudio(null);
@@ -1142,15 +1154,23 @@ export default function VideoCreatorPage() {
       setMatchRun(prev => (prev?.phase === 'reading' ? null : prev));
       return;
     }
+    if (matchedOtherwise(file, measured)) return;
+    matchUploadOnMeasure.current = { key: opened?.key ?? key, seconds: measured };
+  };
+  /** An upload not matched whole by itself: a long one's choices offered, a shorter one matched in parts. Whether it was. */
+  const matchedOtherwise = (file: File, measured: number) => {
     if (!(measured > 0) || isLongAudio(measured)) {
       // Not matched by itself after all: its choices are offered instead, and a long one read whole on the server first.
       const offer = isVideoFile(file) ? t.match.videoUploaded : t.match.audioUploaded;
       setMatchStatus(prev => prev ?? { text: offer, tone: 'info' });
       setMatchRun(prev => (prev?.phase !== 'reading' ? prev
         : measured > 0 && studio.mode !== 'public' ? { flow: 'long', phase: 'longRead', file: true } : null));
-      return;
+      return true;
     }
-    matchUploadOnMeasure.current = { key: opened?.key ?? key, seconds: measured };
+    if (!matchesInParts(measured) || studio.mode === 'public') return false;
+    // Matched a part at a time once its pauses are known, each part's captions shown as it lands (`startMapping`).
+    setMatchRun(prev => (prev?.phase === 'reading' ? { flow: 'parts', phase: 'matching', file: true } : prev));
+    return true;
   };
 
   /**
@@ -1454,8 +1474,9 @@ export default function VideoCreatorPage() {
    * -- from Pexels, or from the built-ins when Pexels cannot be asked. One
    * edit, so undo puts the look before the match back.
    */
-  const dressForMatch = async (clipSeconds: number) => {
+  const dressForMatch = async (matchedSeconds: number) => {
     const [preset] = sample(STYLE_PRESETS.filter(p => p.id !== matchingPreset(canvasConfig)), 1);
+    const clipSeconds = backgroundSeconds(matchedSeconds, canvasConfig.aspectRatio);
     const query = new URLSearchParams({ seconds: String(clipSeconds), orientation: searchOrientation(canvasConfig.aspectRatio) });
     const found: BackgroundCandidate | null = await fetch(`/api/background/match?${query}`)
       .then(res => (res.ok ? res.json() : null))
@@ -1474,13 +1495,13 @@ export default function VideoCreatorPage() {
    * screen: a few asked at once, as each asks Pexels for themes at random,
    * and the built-ins when none of them differs.
    */
-  const findAnotherBackground = async () => {
-    // What the export renders: a reciter's passage -- not its whole chapter -- or the upload.
-    const seconds = exportRangeFor(verses, audioDuration, !!customAudioUrl).span;
+  const findAnotherBackground = async (aspectRatio: string = canvasConfig.aspectRatio) => {
+    // What the export renders -- a reciter's passage, not its whole chapter, or the upload -- as long as one video in this frame runs.
+    const seconds = backgroundSeconds(exportRangeFor(verses, audioDuration, !!customAudioUrl).span, aspectRatio);
     if (!(seconds > 0)) return;
     setFindingBackground(true);
     const current = canvasConfig.bgUrl;
-    const query = new URLSearchParams({ seconds: String(seconds), orientation: searchOrientation(canvasConfig.aspectRatio) });
+    const query = new URLSearchParams({ seconds: String(seconds), orientation: searchOrientation(aspectRatio) });
     const found: (BackgroundCandidate | null)[] = await Promise.all([0, 1, 2].map(() =>
       fetch(`/api/background/match?${query}`).then(res => (res.ok ? res.json() : null)).catch(() => null)));
     const background = found.find(each => each?.url && each.url !== current)
@@ -1662,6 +1683,11 @@ export default function VideoCreatorPage() {
   };
 
   const handleAutoMatchUploadedAudio = () => {
+    // Long enough to be matched in parts, its captions coming part by part, where the studio keeps projects.
+    if (customAudioFile && !playable.isLong && !isEdited(audioEdit) && !uploadTags?.clip && studio.mode !== 'public' && matchesInParts(customAudioDuration)) {
+      if (recordingPauses.length) void startMappingRef.current?.();
+      return;
+    }
     // Too long to match whole: a clip at a time is how it is matched.
     if (customAudioFile && playable.isLong && !isEdited(audioEdit)) {
       // Too long to match whole: mapped a stretch at a time instead.
@@ -2287,6 +2313,8 @@ export default function VideoCreatorPage() {
   };
 
   const handleSaveProject = async () => {
+    // A project starts with a match -- an upload matched, or a reciter's passage loaded -- never as the passage the studio opens on.
+    if (!canSaveProject) return;
     setSaveStatus({ text: t.header.saving, kind: 'pending' });
     try {
       const current = currentProjectPayload();
@@ -2448,6 +2476,21 @@ export default function VideoCreatorPage() {
     framePreference.set(index);
     const ratio = EXPORT_PRESETS[index].aspectRatio;
     setCanvasConfig(prev => (prev.aspectRatio === ratio ? prev : { ...prev, aspectRatio: ratio }));
+    // A stock video was found for the old frame's shape and length: a new shape gets one of its own.
+    const stock = canvasConfig.bgType === 'video' && canvasConfig.bgMode !== 'custom' && /^https:\/\/videos\.pexels\.com\//.test(canvasConfig.bgUrl || '');
+    if (stock && searchOrientation(ratio) !== searchOrientation(canvasConfig.aspectRatio)) void findAnotherBackground(ratio);
+  };
+
+  /**
+   * A project deleted in Projects while it is open stays on screen, but as no
+   * saved project: its row is gone, and a save, a switch of tab or a render
+   * would otherwise write it back under the id it was deleted by.
+   */
+  const detachDeleted = (id: string) => {
+    if (clipProject.current?.id !== id && openProjectId !== id) return;
+    clipProject.current = null;
+    setOpenProjectId(null);
+    setFamilyVersion(n => n + 1);
   };
 
   /** "New clip" in Projects: the Source tab, on its form rather than the current clip's summary. */
@@ -2486,14 +2529,14 @@ export default function VideoCreatorPage() {
       onSelect: () => setIsProjectsDrawerOpen(true),
       className: 'sm:hidden'
     },
-    {
+    ...(canSaveProject ? [{
       key: 'save',
       label: t.header.saveToProjects,
       hint: saveStatus?.detail || saveStatus?.text,
       icon: <Save className="w-4 h-4" />,
       onSelect: handleSaveProject,
       className: 'md:hidden'
-    },
+    }] : []),
     ...(customAudioFile
       ? [{
           key: 'trim',
@@ -3192,7 +3235,7 @@ export default function VideoCreatorPage() {
       setCustomAudioName('');
       setCustomAudioDuration(0);
       setAudioKey('');
-      setAwaitingAudio({ fileName, trim, key: proj.audioKey || undefined });
+      setAwaitingAudio({ fileName, trim, key: proj.audioKey || undefined, source: normalizeAudioTags(proj.audioTags)?.source });
       setMatchStatus({ text: t.match.awaitingAudio(fileName), tone: 'info' });
       return;
     }
@@ -3428,37 +3471,82 @@ export default function VideoCreatorPage() {
   /** The project as it stands at the moment it is asked for, for saves made while a long run goes on. */
   const latestPayload = useRef(currentProjectPayload);
   useEffect(() => { latestPayload.current = currentProjectPayload; });
+  /** The recording matched in parts: a long one on the server's copy, a shorter one sending itself (no copy). */
+  const partsOf = () => playable.long
+    ?? (customAudioFile && !playable.isLong && matchesInParts(customAudioDuration) && recordingPauses.length ? { id: '', duration: customAudioDuration } : null);
   /**
-   * Maps the open long recording: saved first, with its source, then each
-   * stretch nothing covers yet matched and merged in, the map saved after
-   * each, seeded from the captions it has and its clips' -- which a match
-   * never replaces. Stops if another project is opened, and carries on from
-   * where it was when this one is opened again.
+   * What mapping starts from: a long recording saved first, with its source,
+   * as it was; a shorter one not yet, only its source known. Null when the
+   * long one's save left no project.
+   */
+  const beginMapping = async (file: File): Promise<{ tags: AudioTags | null; recordingId?: string } | null> => {
+    if (playable.long) {
+      const { tags } = await saveRecordingForClip(file);
+      const recordingId = clipProject.current?.id;
+      return recordingId ? { tags, recordingId } : null;
+    }
+    const source = uploadTags?.source ?? (await recordingSource(file));
+    return { tags: source ? { ...uploadTags, source } : uploadTags };
+  };
+  /** The recording's clips that have captions, on its clock -- read afresh, not from the tabs, which may not have loaded yet. */
+  const captionedClips = async (source: string | undefined) => {
+    const origin = trimWindow?.start ?? 0;
+    const clips = source ? familyOf(asLibraryProjects((await listProjects(studio.mode)) ?? []), source).clips : [];
+    return clips.flatMap(clip => (clip.trimWindow && Array.isArray(clip.versesJson) && clip.versesJson.length
+      ? [{ verses: clip.versesJson as VerseData[], window: { start: clip.trimWindow.start - origin, end: clip.trimWindow.end - origin } }] : []));
+  };
+  /**
+   * The map so far saved as the recording's project, named and numbered from
+   * the map itself -- the last render's passage lags a part behind -- with its
+   * audio stored the first time. The project's id.
+   */
+  const saveMapPart = async (next: VerseData[], tags: AudioTags | null, recordingId?: string): Promise<string> => {
+    const named = SURAHS_LIST.find(each => each.number === surahOfMap(next));
+    const held = timelinePassage(next, { surahNumber: named?.number ?? 0, start: 0, end: 0 });
+    // The passage is the ayahs the map holds, not the whole surah: a recording of 32:13-25 is 32:13-25.
+    if (named) takePassage({ ...unmatchedPassage(named.number), ...(held.start > 0 && { ayahStart: held.start, ayahEnd: held.end }) });
+    const payload = latestPayload.current({
+      verses: next, audioTags: tags,
+      ...(named && { surahNumber: named.number, surahNameArabic: named.nameArabic, surahNameEnglish: named.nameEnglish }),
+      ...(held.start > 0 && { ayahStart: held.start, ayahEnd: held.end }),
+    });
+    const id = recordingId ?? clipProjectId(payload);
+    const kept = recordingId ? { payload } : await storeUploadFor(payload);
+    const res = await saveProject({ ...kept.payload, id }, studio.mode);
+    if (!res.ok) throw new Error(t.header.saveFailedStatus(res.status));
+    if (!recordingId) rememberClipProject(id, payload);
+    return id;
+  };
+  /**
+   * Maps the open recording a part at a time: each stretch nothing covers yet
+   * matched and merged in, the map shown and saved after each, seeded from the
+   * captions it has and its clips' -- which a match never replaces. A long
+   * recording is saved first, with its source; a shorter one once its first
+   * part has captions, as nothing is a project before it is matched. Named by
+   * the surah the map holds. Stops if another project is opened, and carries
+   * on from where it was when this one is opened again.
    */
   const startMapping = async () => {
     const file = customAudioFile;
-    const long = playable.long;
+    const long = partsOf();
     if (!file || !long || ayahMap.running || studio.mode === 'public' || isEdited(audioEdit) || uploadTags?.clip) return;
-    const { tags } = await saveRecordingForClip(file);
-    const recordingId = clipProject.current?.id;
-    if (!recordingId) return;
-    const mapping: MatchRun = { flow: 'long', phase: 'matching', file: true };
+    const key = audioKey;
+    const begun = await beginMapping(file);
+    if (!begun) return;
+    const { tags } = begun;
+    let recordingId = begun.recordingId;
+    const mapping: MatchRun = { flow: playable.long ? 'long' : 'parts', phase: 'matching', file: true };
     setMatchRun(mapping);
-    const origin = trimWindow?.start ?? 0;
-    // Read afresh, not from the tabs, which may not have loaded yet: a clip's checked captions must not be missed.
-    const clips = tags?.source ? familyOf(asLibraryProjects((await listProjects(studio.mode)) ?? []), tags.source).clips : [];
-    const captioned = clips.flatMap(clip => (clip.trimWindow && Array.isArray(clip.versesJson) && clip.versesJson.length
-      ? [{ verses: clip.versesJson as VerseData[], window: { start: clip.trimWindow.start - origin, end: clip.trimWindow.end - origin } }] : []));
+    const captioned = await captionedClips(tags?.source);
     setMatchStatus({ text: t.clips.mapping(0, 0), tone: 'info' });
     const { map, error } = await ayahMap.start({
       file, long, pauses: recordingPauses, seed: seedFromClips(verses, captioned),
       surah: selectedSurah, ayahs: SURAHS_LIST.find(each => each.number === selectedSurah)?.numberOfAyahs ?? ayahEnd,
       reciter: selectedReciter, provider: matchProvider, breaks: screenBreaks,
-      stillOpen: () => clipProject.current?.id === recordingId,
+      stillOpen: () => (recordingId ? clipProject.current?.id === recordingId : mapCandidate.current === key),
       onProgress: async next => {
         setVerses(next);
-        const res = await saveProject({ ...latestPayload.current({ verses: next, audioTags: tags }), id: recordingId }, studio.mode);
-        if (!res.ok) throw new Error(t.header.saveFailedStatus(res.status));
+        recordingId = await saveMapPart(next, tags, recordingId);
       },
       onStep: (done, total) => {
         setMatchStatus({ text: t.clips.mapping(done, total), tone: 'info' });
@@ -3477,31 +3565,55 @@ export default function VideoCreatorPage() {
   useEffect(() => { startMappingRef.current = startMapping; });
   /** The recordings a map has been started for this visit, so one that stopped is not started again by itself. */
   const mapTried = useRef(new Set<string>());
-  // A long recording, once the server has read it and its pauses are known, is mapped by itself.
+  // A recording matched in parts -- a long one once the server has read it -- is mapped by itself once its pauses are known.
   useEffect(() => {
-    const long = playable.long;
+    const long = partsOf();
     if (!long || !customAudioFile || !audioKey || mapCandidate.current !== audioKey || uploadTags?.clip) return;
     if (adjusting || ayahMap.running || !recordingPauses.length) return;
-    if (studio.mode === 'public' || isEdited(audioEdit) || mapTried.current.has(long.id)) return;
+    if (studio.mode === 'public' || isEdited(audioEdit) || mapTried.current.has(audioKey)) return;
     if (coverage(isSampleProject ? [] : verses, { start: 0, end: long.duration }) >= 0.95) return;
-    mapTried.current.add(long.id);
-    void startMapping();
+    mapTried.current.add(audioKey);
+    void startMappingRef.current?.();
   });
 
   /** The ayahs the open recording's clips hold, which the grid marks. */
   const clippedAyahs = useMemo(() => new Set((tabs?.clips ?? []).flatMap(clip =>
     (Array.isArray(clip.versesJson) ? clip.versesJson as VerseData[] : []).map(verse => verse.verseKey))), [tabs]);
 
+  /** The suggestions chosen made clips, ticks cleared: from Suggested clips, or beside their bars on the timeline. */
+  const makeSuggested = (stretches: { start: number; end: number }[]) => {
+    setTickedSuggestions(new Set());
+    void makeClips(stretches);
+  };
   /** Clips suggested from an open recording's captions (`suggestClips`); none for a clip or anything else. */
+  /** The surah the open recording's map holds, for its sections; none for a clip or a map of several. */
+  const mapSurah = customAudioFile && !isClipProject ? surahOfMap(verses) : undefined;
+  /** That surah's sections (`/api/quran/sections`) -- its topic groups, or its rukus -- once asked; suggestions go by them. */
+  const [surahSections, setSurahSections] = useState<{ surah: number; kind: SectionKind; list: SurahSection[] } | null>(null);
+  useEffect(() => {
+    if (!mapSurah || surahSections?.surah === mapSurah) return;
+    let stale = false;
+    fetch(`/api/quran/sections?surah=${mapSurah}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (stale) return;
+        const list: SurahSection[] = Array.isArray(data?.sections) ? data.sections : [];
+        setSurahSections({ surah: mapSurah, kind: data?.kind === 'topic' ? 'topic' : 'ruku', list });
+      })
+      .catch(() => { /* by length, then, as before the sections were known */ });
+    return () => { stale = true; };
+  }, [mapSurah, surahSections?.surah]);
+  const sections = surahSections && surahSections.surah === mapSurah ? surahSections : undefined;
   const suggestions = useMemo(
-    () => (customAudioFile && !isClipProject && verses.length ? suggestClips(verses, suggestTarget, audioDuration) : []),
-    [customAudioFile, isClipProject, verses, suggestTarget, audioDuration]
+    () => (customAudioFile && !isClipProject && verses.length ? suggestClips(verses, suggestTarget, audioDuration, sections) : []),
+    [customAudioFile, isClipProject, verses, suggestTarget, audioDuration, sections]
   );
+  const makeTickedSuggestions = () => makeSuggested(suggestions.filter(each => tickedSuggestions.has(suggestionId(each))));
 
   const currentSurahObj = SURAHS_LIST.find(s => s.number === selectedSurah) || SURAHS_LIST[0];
 
   /** Whether a passage is loaded or matched, as opposed to the sample the studio opens on. */
-  const hasClip = !isSampleProject && verses.length > 0;
+  const hasClip = canSaveProject;
   /** A restored project waiting for its recording needs the drop zone, whatever was chosen. */
   const shownSourceMode = awaitingAudio ? 'recording' : sourceMode;
 
@@ -3749,7 +3861,7 @@ export default function VideoCreatorPage() {
                 {customAudioFile ? customAudioName : selectedReciterMeta?.name}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
+            {canSaveProject && <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
               {saveStatus?.kind === 'pending' ? (
                 <Loader2 className="w-3 h-3 text-amber-400 animate-spin shrink-0" />
               ) : saveStatus?.kind === 'error' ? (
@@ -3766,7 +3878,7 @@ export default function VideoCreatorPage() {
               >
                 {t.header.saveToProjects}
               </button>
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -4095,7 +4207,7 @@ export default function VideoCreatorPage() {
                       onTarget={seconds => { setSuggestTarget(seconds); setTickedSuggestions(new Set()); }}
                       ticked={tickedSuggestions} onToggle={toggleSuggestion} clipped={clippedAyahs}
                       onPreview={start => { handleSeek(start); void audioElementRef.current?.play(); }}
-                      onMake={stretches => { setTickedSuggestions(new Set()); void makeClips(stretches); }} />
+                      onMake={makeSuggested} />
 
                     {/* Where the work goes next, said once the passage is in. */}
                     <div className="rounded-xl border border-amber-500/40 p-4 flex items-center gap-3">
@@ -4450,7 +4562,7 @@ export default function VideoCreatorPage() {
                   selectedBackground={activeBackground}
                   onSelectBackground={setSelectedBackground}
                   only={wide ? styleArea : null}
-                  onAnotherBackground={findAnotherBackground}
+                  onAnotherBackground={() => { void findAnotherBackground(); }}
                   findingBackground={findingBackground}
                 />
               </div>
@@ -4581,8 +4693,9 @@ export default function VideoCreatorPage() {
           selection={adjusting?.window ?? picked}
           frame={adjusting ? null : picked}
           pauses={recordingPauses}
-          suggestions={suggestions.map(each => ({ id: suggestionId(each), start: each.start, end: each.end, label: suggestionLabel(each), ticked: tickedSuggestions.has(suggestionId(each)) }))}
+          suggestions={suggestions.map(each => ({ id: suggestionId(each), start: each.start, end: each.end, label: [suggestionLabel(each), each.section ? sectionName(t, each.section) : ''].filter(Boolean).join(' · '), ticked: tickedSuggestions.has(suggestionId(each)) }))}
           onToggleSuggestion={toggleSuggestion}
+          onMakeSuggestions={makeTickedSuggestions}
           selectHint={newClipHint}
           trimHint={customAudioDuration > 0 ? formatDuration(customAudioDuration) : undefined}
           isMuted={isMuted}
@@ -4685,6 +4798,7 @@ export default function VideoCreatorPage() {
         onLoadProject={openSavedProject}
         onNewClip={startNewClip}
         onSaveCurrent={handleSaveProject}
+        onDeleted={detachDeleted}
       />
 
       {/* Audio Trim Modal */}

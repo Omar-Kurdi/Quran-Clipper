@@ -40,6 +40,20 @@ export const BACKGROUND_QUERIES = [
   'clouds', 'night sky', 'stars', 'ocean waves', 'mountains', 'desert', 'forest', 'waterfall', 'sunset', 'mosque'
 ];
 
+/** The longest a Short, a Reel or a TikTok made here runs: what a tall or square frame is ever exported at, at once. */
+export const MAX_SHORT_SEC = 180;
+
+/**
+ * How long a background is wanted for: what one video made in this frame can
+ * run. A tall or square frame makes Shorts, three minutes at most however
+ * long the recording, so a whole surah no longer asks for a fifteen-minute
+ * video -- which Pexels hardly has, leaving the same longest one every time.
+ * A wide frame can be exported whole, so it asks for all of it.
+ */
+export function backgroundSeconds(seconds: number, aspectRatio: string): number {
+  return searchOrientation(aspectRatio) === 'landscape' ? seconds : Math.min(seconds, MAX_SHORT_SEC);
+}
+
 /** The least length to ask for: the clip and the margin, in Pexels' whole seconds. */
 export function leastLength(clipSeconds: number): number {
   return Math.ceil(Math.max(0, clipSeconds) + LENGTH_MARGIN_SEC);

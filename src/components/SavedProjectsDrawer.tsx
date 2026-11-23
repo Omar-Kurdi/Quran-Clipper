@@ -13,7 +13,7 @@ import { listProjects, deleteProject as removeProject } from '@/lib/projectStore
 import { useStudioConfig } from '@/hooks/useStudioConfig';
 import { matchesProject } from '@/lib/projectSearch';
 import { RecordingLibrary, type OpenRequest } from './RecordingLibrary';
-import type { ExportedClip, LibraryRecording } from '@/lib/projectLibrary';
+import { asLibraryProjects, recordingCount, type ExportedClip, type LibraryRecording } from '@/lib/projectLibrary';
 
 interface SavedProjectsDrawerProps {
   isOpen: boolean;
@@ -24,6 +24,8 @@ interface SavedProjectsDrawerProps {
   onNewClip: () => void;
   /** Saves the clip being worked on, from the empty list. */
   onSaveCurrent: () => void;
+  /** A project deleted here, once the server says it is gone. */
+  onDeleted?: (id: string) => void;
 }
 
 export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
@@ -31,7 +33,8 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
   onClose,
   onLoadProject,
   onNewClip,
-  onSaveCurrent
+  onSaveCurrent,
+  onDeleted
 }) => {
   const t = useT();
   // A public studio keeps projects in this browser and records no exports.
@@ -96,6 +99,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
       // it: several projects can be saved from one upload, and they share the
       // stored copy. `projectsList` is the full list this drawer just fetched,
       // so the surviving references are already to hand.
+      onDeleted?.(id);
       const before = survivorsOf();
       const removed = before.find(proj => proj.id === id);
       const survivors = before.filter(proj => proj.id !== id);
@@ -212,7 +216,7 @@ export const SavedProjectsDrawer: React.FC<SavedProjectsDrawerProps> = ({
                 activeTab === tab ? 'border-amber-500 text-slate-100' : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              {tab === 'projects' ? t.projects.tabProjects(projectsList.length) : t.projects.tabExports(exportsList.length)}
+              {tab === 'projects' ? t.projects.tabProjects(recordingCount(asLibraryProjects(projectsList))) : t.projects.tabExports(exportsList.length)}
             </button>
           ))}
         </div>

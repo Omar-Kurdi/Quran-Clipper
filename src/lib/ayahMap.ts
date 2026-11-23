@@ -25,6 +25,19 @@ export interface Stretch {
 
 /** About four and a half minutes: well inside what the aligner matches quickly, and a few ayahs of a long surah. */
 export const MAP_WINDOW_SEC = 270;
+/**
+ * Longer than this, an upload is matched a part at a time, each part's
+ * captions shown as it lands, rather than all at once at the end. Anything up
+ * to six minutes is one part anyway (a 270 s part and a last one of at least
+ * `MIN_LAST_SEC`), so it is matched whole.
+ */
+export const MAP_IN_PARTS_SEC = 6 * 60;
+
+/** Whether a recording of `seconds` is matched in parts (`MAP_IN_PARTS_SEC`). */
+export function matchesInParts(seconds: number): boolean {
+  return Number.isFinite(seconds) && seconds > MAP_IN_PARTS_SEC;
+}
+
 /** How far either side of a stretch's planned end its cut may move to land in a pause. */
 const CUT_REACH_SEC = 45;
 /** A last stretch shorter than this is joined to the one before. */
@@ -84,6 +97,26 @@ export function windowsToMatch(windows: readonly Stretch[], verses: readonly Pic
 export function mergeIntoGaps(map: readonly VerseData[], matched: readonly VerseData[]): VerseData[] {
   const added = matched.filter(caption => coverage(map, { start: caption.startTime, end: caption.endTime }) < 0.5);
   return [...map, ...added].sort((a, b) => a.startTime - b.startTime);
+}
+
+/** The longest pause a caption is held across at a join between two parts. */
+const HOLD_ACROSS_SEC = 10;
+
+/**
+ * The map with the caption before a join between two parts (`at`, where they
+ * were cut) held until the one after it starts, as a match of the whole holds
+ * a caption through a pause. Each part's captions end where its last word
+ * does, so the pause the parts were cut in showed nothing at all. A gap longer
+ * than `HOLD_ACROSS_SEC`, or one with no caption on either side, is left.
+ */
+export function holdAcrossJoin(map: readonly VerseData[], at: number): VerseData[] {
+  const before = map.reduce<number>((found, caption, i) =>
+    caption.endTime <= at + 0.05 && (found < 0 || caption.endTime > map[found].endTime) ? i : found, -1);
+  const after = map.find(caption => caption.startTime >= at - 0.05);
+  if (before < 0 || !after) return [...map];
+  const gap = after.startTime - map[before].endTime;
+  if (gap <= 0 || gap > HOLD_ACROSS_SEC) return [...map];
+  return map.map((caption, i) => (i === before ? { ...caption, endTime: after.startTime } : caption));
 }
 
 /**

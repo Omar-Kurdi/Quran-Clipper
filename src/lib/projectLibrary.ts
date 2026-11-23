@@ -194,6 +194,11 @@ export function libraryOf(projects: LibraryProject[], done: ExportedClip[]) {
   return { recordings, latestClips };
 }
 
+/** How many recordings the library lists: a recording and the clips cut from it are one, as `libraryOf` groups them. */
+export function recordingCount(projects: LibraryProject[]): number {
+  return new Set(projects.map(recordingKey)).size;
+}
+
 /**
  * The recording saved with `source` and the clip projects cut from it, in the
  * order they play: what the studio's tabs show. The recording is the one
