@@ -805,7 +805,7 @@ export const en = {
     overlayOpacity: 'Dark Overlay Opacity:',
     backgroundBlur: 'Background Blur:',
 
-    arabicFontLabel: 'Arabic Calligraphy Font:',
+    arabicFontLabel: 'Arabic font',
     fonts: {
       'qpc-v2': 'Madani Mushaf',
       DigitalKhatt: 'Digital Khatt',
@@ -814,12 +814,12 @@ export const en = {
     },
     fontNotInstalled: 'Greyed-out fonts are not installed on this server. They come from the QUL archives -- see “Mushaf fonts” in the README.',
     fontFallback: 'The chosen font is not installed on this server, so the Arabic is drawn in Amiri until it is.',
-    arabicFontSize: 'Arabic Font Size:',
-    translationFontSize: 'Translation Font Size:',
-    ayahNumberSize: 'Ayah Number Size:',
-    ayahNumberPlacement: 'Ayah number',
+    arabicFontSize: 'Arabic',
+    translationFontSize: 'Translation',
+    ayahNumberSize: 'Size',
+    ayahNumberPlacement: 'Placement',
     ayahNumberPlacements: { end: 'At the end of the ayah', between: 'Between the cards' },
-    ayahMarkerStyle: 'Ayah ending',
+    ayahMarkerStyle: 'Ending',
     ayahMarkerStyles: {
       medallion: 'Ornament with the number',
       page: 'As in the Madani Mushaf*',
@@ -838,25 +838,27 @@ export const en = {
     colourTranslation: 'Translation text',
     colourTranslationDescription: 'The English line under the Arabic.',
 
-    cardOpacity: 'Card Glass Opacity:',
-    badgeOpacity: 'Badge Opacity:',
-    badgeTextLabel: 'Surah Badge Text:',
+    cardOpacity: 'Card opacity',
+    badgeOpacity: 'Badge opacity',
+    badgeTextLabel: 'Badge title',
+    automatic: 'Automatic',
+    notSet: 'None',
     badgeTextPlaceholder: 'Leave blank for automatic surah/range title',
     badgeTextHelp: 'Leave empty to auto-generate from detected surah and ayah range.',
-    badgeSubtitleLabel: 'Surah Badge Subtitle:',
+    badgeSubtitleLabel: 'Badge subtitle',
     badgeSubtitlePlaceholder: 'Optional subtitle under the badge title',
     badgeSubtitleHelp: 'Leave empty to hide the second badge line.',
     cardBorder: 'Card border',
-    textShadow: 'Text Shadow',
-    audioVisualizer: 'Audio Visualizer',
-    surahBadge: 'Surah Badge',
+    textShadow: 'Text shadow',
+    audioVisualizer: 'Audio visualizer',
+    surahBadge: 'Surah badge',
     englishTranslation: 'Translation',
     tafsir: 'Brief tafsir (Al-Muyassar)',
     tafsirHint: 'Tafsir al-Muyassar, in Arabic: a sentence or two on each ayah, under the translation. Off unless you tick it.',
 
-    watermarkLabel: 'Watermark / Social Handle:',
+    watermarkLabel: 'Watermark',
     watermarkPlaceholder: '@MyDawahChannel',
-    watermarkPositionLabel: 'Watermark Position:',
+    watermarkPositionLabel: 'Position',
     watermarkPositions: {
       'bottom-right': 'Bottom Right',
       'bottom-left': 'Bottom Left',
@@ -871,7 +873,7 @@ export const en = {
       lookValue: (dim: number, blur: number) => `${dim}% · ${blur}px`,
       add: 'Add your own'
     },
-    transitionLabel: 'Between captions:',
+    transitionLabel: 'Between captions',
     transitions: {
       cut: 'Cut',
       crossfade: 'Cross-fade',
@@ -880,17 +882,17 @@ export const en = {
       zoom: 'Zoom',
       focus: 'Soft focus'
     },
-    motionSpeedLabel: 'Speed:',
+    motionSpeedLabel: 'Speed',
     motionSpeeds: {
       slow: 'Slow',
       normal: 'Normal',
       quick: 'Quick'
     },
     transitionHelp: 'Runs in the pause before the next caption when there is one; where captions run straight on, it is centred on the join.',
-    highlightColourLabel: 'Highlight colour:',
+    highlightColourLabel: 'Highlight colour',
     highlightAccent: 'Accent',
     highlightCustom: 'Any colour',
-    wordEffectLabel: 'Words:',
+    wordEffectLabel: 'Words',
     wordEffects: {
       none: 'All at once',
       reveal: 'Appear as recited',
@@ -898,13 +900,13 @@ export const en = {
     },
     wordEffectHelp: 'Needs the time of each word, which a match or a built-in reciter gives. A caption without it is drawn whole.',
 
-    layoutLabel: 'Layout:',
+    layoutLabel: 'Layout',
     layouts: {
       card: 'Centred card',
       open: 'No card',
       split: 'Arabic and translation apart'
     },
-    badgeStyleLabel: 'Badge:',
+    badgeStyleLabel: 'Badge',
     badgeStyles: {
       none: 'None',
       pill: 'Pill',
@@ -1005,6 +1007,8 @@ export const en = {
     fade: 'Fade in and out',
     fadeHelp: 'The clip’s first and last moments faded, so it starts and ends softly. Off unless you tick it.',
     fadeLength: 'Each fade',
+    mosque: 'Sound like a mosque',
+    mosqueHelp: 'Adds the echo of a large mosque hall under the recitation.',
     denoise: 'Clean up my recording',
     denoiseHelp: 'Takes out hum, fan and room noise.',
     trimToVoice: 'Trim to the voice',

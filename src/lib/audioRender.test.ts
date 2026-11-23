@@ -59,3 +59,27 @@ describe('a fade at the clip\'s edges in the graph', () => {
       .toBe('[0:a]afade=t=in:d=0.12,areverse,afade=t=in:d=0.15,areverse,apad=pad_dur=0.5[out]');
   });
 });
+
+describe('a mosque in the graph', () => {
+  it('adds the hall after the speed-up and before the loudness, the voice kept in front', () => {
+    const graph = editGraph(normalizeEdit({ tempo: 1.1, mosque: true, loudness: true }), 10, { rubberband: true });
+    const at = (part: string) => graph.indexOf(part);
+    expect(at('rubberband=tempo=1.1')).toBeGreaterThanOrEqual(0);
+    expect(at('rubberband=tempo=1.1')).toBeLessThan(at('[voice]'));
+    expect(graph).toContain('[voice]aresample=44100,aformat=channel_layouts=stereo,asplit[dry][send]');
+    expect(graph).toContain('[send][hall]afir=irfmt=input[echo]');
+    expect(graph).toMatch(/\[room\]loudnorm=.*\[out\]$/);
+  });
+
+  it('takes the recording itself, or what the cuts kept, when nothing comes before it', () => {
+    expect(editGraph(normalizeEdit({ mosque: true }), 10, { rubberband: true })).toMatch(/^\[0:a\]aresample=/);
+    expect(editGraph(normalizeEdit({ mosque: true, cuts: [{ start: 1, end: 2 }] }), 10, { rubberband: true })).toContain('[cut]aresample=');
+    expect(editGraph(normalizeEdit({ mosque: true }), 10, { rubberband: true })).toMatch(/\[room\]anull\[out\]$/);
+  });
+
+  it('is the same hall every time', () => {
+    const edit = normalizeEdit({ mosque: true });
+    expect(editGraph(edit, 10, { rubberband: true })).toBe(editGraph(edit, 10, { rubberband: true }));
+    expect(editGraph(edit, 10, { rubberband: true })).toMatch(/anoisesrc=[^[]*:s=1\[irl\].*anoisesrc=[^[]*:s=2\[irr\]/);
+  });
+});

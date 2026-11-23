@@ -44,8 +44,9 @@ export const GroupNav: React.FC<{ items: { id: string; label: string }[] }> = ({
         const el = root.querySelector(`[data-group="${id}"]`);
         if (el && el.getBoundingClientRect().top <= top) current = id;
       }
-      // The last group may be too short to reach the top: at the bottom, it is the one being read.
-      if (root.scrollTop + root.clientHeight >= root.scrollHeight - 2) current = groups[groups.length - 1];
+      // The last group may be too short to reach the top: scrolled to the bottom, it is the one
+      // being read. A panel that fits without scrolling is at its top as much as its bottom.
+      if (root.scrollTop > 0 && root.scrollTop + root.clientHeight >= root.scrollHeight - 2) current = groups[groups.length - 1];
       setActive(current);
     };
     onScroll();

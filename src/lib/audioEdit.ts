@@ -44,9 +44,11 @@ export interface AudioEdit {
    * clock of what plays; 0 is no fade. Off unless asked for.
    */
   fade: number;
+  /** The recitation as it sounds in a large mosque: the hall's echo added under the voice. */
+  mosque: boolean;
 }
 
-export const NO_EDIT: AudioEdit = { cuts: [], tempo: 1, loudness: false, denoise: false, loop: false, fade: 0 };
+export const NO_EDIT: AudioEdit = { cuts: [], tempo: 1, loudness: false, denoise: false, loop: false, fade: 0, mosque: false };
 
 /** Past this recitation sounds hurried, however well the pitch is kept. */
 export const MAX_TEMPO = 1.25;
@@ -101,12 +103,13 @@ export function normalizeEdit(value: unknown, duration?: number): AudioEdit {
     denoise: raw.denoise === true,
     loop: raw.loop === true,
     fade: Number.isFinite(fade) && fade > 0 ? Math.round(Math.min(MAX_FADE_SEC, fade) * 100) / 100 : 0,
+    mosque: raw.mosque === true,
   };
 }
 
 /** Whether the edit changes anything at all. */
 export const isEdited = (edit: AudioEdit | null | undefined): edit is AudioEdit =>
-  !!edit && (edit.cuts.length > 0 || edit.tempo !== 1 || edit.loudness || edit.denoise || edit.loop || edit.fade > 0);
+  !!edit && (edit.cuts.length > 0 || edit.tempo !== 1 || edit.loudness || edit.denoise || edit.loop || edit.fade > 0 || edit.mosque);
 
 /** What is left of a recording `duration` long once `cuts` are taken out. */
 export function keptSpans(cuts: Span[], duration: number): Span[] {
@@ -225,6 +228,7 @@ export function encodeEdit(edit: AudioEdit): string {
     d: edit.denoise ? 1 : 0,
     ...(edit.loop ? { p: 1 } : {}),
     ...(edit.fade > 0 ? { f: edit.fade } : {}),
+    ...(edit.mosque ? { m: 1 } : {}),
   };
   const bytes = new TextEncoder().encode(JSON.stringify(compact));
   let binary = '';
@@ -248,6 +252,7 @@ export function decodeEdit(text: string): AudioEdit | null {
       denoise: compact.d === 1,
       loop: compact.p === 1,
       fade: compact.f,
+      mosque: compact.m === 1,
     });
   } catch {
     return null;

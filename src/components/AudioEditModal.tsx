@@ -399,6 +399,7 @@ const FitAndCleanUp: React.FC<PlanProps & { isUpload: boolean }> = ({ draft, dur
           <input type="range" min={0.1} max={MAX_FADE_SEC} step={0.1} value={draft.fade} dir="ltr" onChange={e => onDraft({ ...draft, fade: Number(e.target.value) })} />
         </label>
       )}
+      <Check checked={draft.mosque} label={t.editAudio.mosque} help={t.editAudio.mosqueHelp} onChange={on => onDraft({ ...draft, mosque: on })} />
       {isUpload && <Check checked={draft.denoise} label={t.editAudio.denoise} help={t.editAudio.denoiseHelp} onChange={on => onDraft({ ...draft, denoise: on })} />}
     </section>
   );

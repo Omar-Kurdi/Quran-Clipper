@@ -44,6 +44,7 @@ import { PresetGallery } from './PresetGallery';
 import { StyleSection } from './StyleSection';
 import { PanelHead } from './PanelHead';
 import { GroupNav, PanelGroup } from './PanelGroup';
+import { ChoiceRow, CompactRow, SliderRow, SwitchRow } from './CompactRow';
 import { CompactBar } from './CompactBar';
 import { applyStylePreset, matchingPreset } from '@/lib/stylePresets';
 import { FRAME_LAYOUTS, asFrameLayout } from '@/lib/frameLayout';
@@ -78,6 +79,9 @@ interface StyleConfigPanelProps {
 /** The parts of the look, each of which the rail can open on its own. */
 export type StyleArea = 'presets' | 'text' | 'background' | 'card' | 'branding';
 
+const WATERMARK_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'] as const;
+type WatermarkPosition = typeof WATERMARK_POSITIONS[number];
+
 /** The Text panel's groups, in the order they are laid out. */
 const TEXT_GROUPS = ['font', 'size', 'ayah', 'motion', 'colours'] as const;
 
@@ -102,6 +106,9 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
    * finishing with one part does not hide the others behind a tab.
    */
   const [openSections, setOpenSections] = useState<string[]>(['text']);
+  // The one setting opened in place (`CompactRow`); pressing another closes it.
+  const [openRow, setOpenRow] = useState<string | null>(null);
+  const row = (id: string) => ({ open: openRow === id, onToggle: () => setOpenRow(at => (at === id ? null : id)) });
   const toggleSection = (id: string) =>
     setOpenSections(current => (current.includes(id) ? current.filter(s => s !== id) : [...current, id]));
   const isOpen = (id: StyleArea) => (only ? only === id : openSections.includes(id));
@@ -307,6 +314,7 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
   /** What each closed section is set to, in a few words. */
   const presetId = matchingPreset(config);
   const presetSummary = presetId ? t.presets.items[presetId as keyof typeof t.presets.items]?.name ?? presetId : '';
+  const fontName = (id: string) => t.style.fonts[id as keyof typeof t.style.fonts] ?? FONTS_ARABIC.find(f => f.id === id)?.name ?? id;
   const textSummary = `${FONTS_ARABIC.find(f => f.id === config.fontArabic)?.name ?? config.fontArabic} · ${config.arabicFontSize}px`;
   const badge = config.showSurahBadge ? t.style.badgeStyles[(config.badgeStyle ?? 'pill') as keyof typeof t.style.badgeStyles] : t.style.badgeStyles.none;
   const cardSummary = `${t.style.layouts[asFrameLayout(config.layout)]} · ${badge}`;
@@ -855,8 +863,8 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
         {only && <GroupNav items={TEXT_GROUPS.map(id => ({ id, label: t.style.textGroups[id] }))} />}
         <div className="flex flex-col gap-5">
         <PanelGroup id="font" title={t.style.textGroups.font}>
-          <div>
-            <label className="font-semibold text-slate-200 text-sm block mb-1.5">{t.style.arabicFontLabel}</label>
+          <div className="flex flex-col">
+          <CompactRow label={t.style.arabicFontLabel} value={fontName(usableArabicFont(config.fontArabic, missingFonts))} {...row('font')}>
             <div className="grid grid-cols-2 gap-2">
               {FONTS_ARABIC.map((f) => (
                 <button
@@ -873,186 +881,80 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
                   }`}
                 >
                   <span className="block font-bold text-sm text-slate-100">
-                    {t.style.fonts[f.id as keyof typeof t.style.fonts] ?? f.name}
+                    {fontName(f.id)}
                   </span>
                   {/* Each face previews itself. Hardcoding one family here
                       showed five identical samples -- and kept every other
                       family out of the DOM, so the canvas never fetched the
                       one it was about to draw with. */}
                   <span className={`block text-lg ${f.className} text-amber-400 mt-1`} dir="rtl">
-                    بِسْمِ ٱللَّهِ
+                    بِسْمِ ٱللَّهِ
                   </span>
                 </button>
               ))}
             </div>
             {missingFonts.size > 0 && (
-              <p className="mt-2 text-xs text-slate-400">{t.style.fontNotInstalled}</p>
+              <p className="text-xs text-slate-400">{t.style.fontNotInstalled}</p>
             )}
-            {/* The chosen face is missing and none is selected above: say what
-                is drawing instead, in that face. */}
-            {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
-              <p className="mt-1.5 text-xs text-amber-300/90">
-                {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
-              </p>
-            )}
-            {/* Only the mushaf face knows where the printed lines break. */}
-            {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
-              <label className="mt-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={!!config.mushafLines}
-                  onChange={e => updateConfig('mushafLines', e.target.checked)}
-                  className="mt-0.5 accent-amber-500"
-                />
-                <span>
-                  <span className="font-semibold text-slate-200">{t.style.mushafLines}</span>
-                  <span className="block text-slate-400">{t.style.mushafLinesHint}</span>
-                </span>
-              </label>
-            )}
+          </CompactRow>
+          {/* The chosen face is missing and none is selected above: say what
+              is drawing instead, in that face. */}
+          {usableArabicFont(config.fontArabic, missingFonts) === FONT_ARABIC_BUILTIN && (
+            <p className="px-2 text-xs text-amber-300/90">
+              {t.style.fontFallback} <span className="font-amiri text-sm" dir="rtl">بِسْمِ ٱللَّهِ</span>
+            </p>
+          )}
+          {/* Only the mushaf face knows where the printed lines break. */}
+          {FONTS_ARABIC.find(f => f.id === usableArabicFont(config.fontArabic, missingFonts))?.mushaf && (
+            <SwitchRow label={t.style.mushafLines} hint={t.style.mushafLinesHint} checked={!!config.mushafLines} onChange={on => updateConfig('mushafLines', on)} />
+          )}
           </div>
         </PanelGroup>
         <PanelGroup id="size" title={t.style.textGroups.size}>
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.arabicFontSize}</span>
-                <span className="font-mono text-amber-400">{config.arabicFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={24}
-                max={64}
-                value={config.arabicFontSize}
-                onChange={(e) => updateConfig('arabicFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.translationFontSize}</span>
-                <span className="font-mono text-amber-400">{config.translationFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={14}
-                max={48}
-                value={config.translationFontSize}
-                onChange={(e) => updateConfig('translationFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
+          <div className="flex flex-col">
+            <SliderRow label={t.style.arabicFontSize} value={config.arabicFontSize} min={24} max={64} unit="px" onChange={v => updateConfig('arabicFontSize', v)} />
+            <SliderRow label={t.style.translationFontSize} value={config.translationFontSize} min={14} max={48} unit="px" onChange={v => updateConfig('translationFontSize', v)} />
           </div>
         </PanelGroup>
         <PanelGroup id="ayah" title={t.style.textGroups.ayah}>
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div>
-              <div className="text-slate-300 mb-1">{t.style.ayahNumberPlacement}</div>
-              <select
-                value={placementOf(config.ayahNumberPlacement)}
-                onChange={(e) => updateConfig('ayahNumberPlacement', e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              >
-                {AYAH_NUMBER_PLACEMENTS.map(id => <option key={id} value={id}>{t.style.ayahNumberPlacements[id]}</option>)}
-              </select>
-            </div>
-
+          <div className="flex flex-col">
+            <ChoiceRow label={t.style.ayahNumberPlacement} {...row('placement')}
+              options={AYAH_NUMBER_PLACEMENTS.map(id => ({ id, label: t.style.ayahNumberPlacements[id] }))}
+              chosen={placementOf(config.ayahNumberPlacement)} onChoose={id => updateConfig('ayahNumberPlacement', id)} />
             {placementOf(config.ayahNumberPlacement) === 'end' && (
-              <div>
-                <div className="text-slate-300 mb-1">{t.style.ayahMarkerStyle}</div>
-                <select
-                  value={markerStyleOf(config.ayahMarkerStyle)}
-                  onChange={(e) => updateConfig('ayahMarkerStyle', e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  {AYAH_MARKER_STYLES.map(id => <option key={id} value={id}>{t.style.ayahMarkerStyles[id]}</option>)}
-                </select>
-                {markerStyleOf(config.ayahMarkerStyle) === 'page' && <p className="mt-1 text-xs text-slate-400 leading-relaxed">{t.style.ayahMarkerPageHint}</p>}
-              </div>
+              <ChoiceRow label={t.style.ayahMarkerStyle} {...row('ending')}
+                options={AYAH_MARKER_STYLES.map(id => ({ id, label: t.style.ayahMarkerStyles[id] }))}
+                chosen={markerStyleOf(config.ayahMarkerStyle)} onChoose={id => updateConfig('ayahMarkerStyle', id)}>
+                {markerStyleOf(config.ayahMarkerStyle) === 'page' && <p className="px-2 text-xs text-slate-400 leading-relaxed">{t.style.ayahMarkerPageHint}</p>}
+              </ChoiceRow>
             )}
-
-            <label className="col-span-2 flex items-start gap-2 text-xs text-slate-300 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={config.showRepeatMark !== false}
-                onChange={e => updateConfig('showRepeatMark', e.target.checked)}
-                className="mt-0.5 accent-amber-500"
-              />
-              <span>
-                <span className="font-semibold text-slate-200">{t.style.showRepeatMark}</span>
-                <span className="block text-slate-400">{t.style.showRepeatMarkHint}</span>
-              </span>
-            </label>
-
             {/* Between the cards it is the label's size; at the ayah's end it scales the marker against the Arabic. */}
-            <div>
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.ayahNumberSize}</span>
-                <span className="font-mono text-amber-400">{config.ayahNumberFontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min={20}
-                max={72}
-                value={config.ayahNumberFontSize}
-                onChange={(e) => updateConfig('ayahNumberFontSize', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
+            <SliderRow label={t.style.ayahNumberSize} value={config.ayahNumberFontSize} min={20} max={72} unit="px" onChange={v => updateConfig('ayahNumberFontSize', v)} />
+            <SwitchRow label={t.style.showRepeatMark} hint={t.style.showRepeatMarkHint} checked={config.showRepeatMark !== false} onChange={on => updateConfig('showRepeatMark', on)} />
           </div>
         </PanelGroup>
         <PanelGroup id="motion" title={t.style.textGroups.motion}>
-        <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
-          <div>
-            <label htmlFor="style-transition" className="font-semibold text-slate-200 block mb-1">{t.style.transitionLabel}</label>
-            <select
-              id="style-transition"
-              value={transition}
-              onChange={(e) => updateConfig('captionTransition', e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-            >
-              {CAPTION_TRANSITIONS.map(id => <option key={id} value={id}>{t.style.transitions[id]}</option>)}
-            </select>
-            {transition !== 'cut' && <p className="mt-1 text-xs text-slate-400">{t.style.transitionHelp}</p>}
+          <div className="flex flex-col">
+            {/* How quickly it moves belongs to the move, so it opens with it. */}
+            <ChoiceRow label={t.style.transitionLabel} {...row('transition')}
+              options={CAPTION_TRANSITIONS.map(id => ({ id, label: t.style.transitions[id] }))}
+              chosen={transition} onChoose={id => updateConfig('captionTransition', id)} />
+            {transition !== 'cut' && (
+              <ChoiceRow label={t.style.motionSpeedLabel} hint={t.style.transitionHelp} {...row('speed')}
+                options={MOTION_SPEEDS.map(id => ({ id, label: t.style.motionSpeeds[id] }))}
+                chosen={asMotionSpeed(config.motionSpeed)} onChoose={id => updateConfig('motionSpeed', id)} />
+            )}
+            <ChoiceRow label={t.style.wordEffectLabel} hint={t.style.wordEffectHelp} {...row('words')}
+              options={WORD_EFFECTS.map(id => ({ id, label: t.style.wordEffects[id] }))}
+              chosen={wordEffect} onChoose={id => updateConfig('wordEffect', id)} />
+            {/* The highlight's colour is a setting of its own once there is one. */}
+            {wordEffect === 'highlight' && (
+              <CompactRow label={t.style.highlightColourLabel} value={asHighlightColour(config.highlightColor) || t.style.highlightAccent}
+                swatch={asHighlightColour(config.highlightColor) || config.accentColor || '#b8c7dc'} {...row('highlight')}>
+                <HighlightSwatches config={config} onChange={hex => updateConfig('highlightColor', hex)} />
+              </CompactRow>
+            )}
           </div>
-          {transition !== 'cut' && (
-            <fieldset className="min-w-0">
-              <legend className="font-semibold text-slate-200 block mb-1">{t.style.motionSpeedLabel}</legend>
-              <div className="grid grid-cols-3 gap-1.5">
-                {MOTION_SPEEDS.map(id => (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={asMotionSpeed(config.motionSpeed) === id}
-                    onClick={() => updateConfig('motionSpeed', id)}
-                    className={`py-1.5 rounded-md border text-center text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
-                      asMotionSpeed(config.motionSpeed) === id
-                        ? 'bg-amber-500/15 border-amber-500 text-slate-100'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    {t.style.motionSpeeds[id]}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          )}
-          <div className="pt-2 border-t border-slate-800">
-            <label htmlFor="style-word-effect" className="font-semibold text-slate-200 block mb-1">{t.style.wordEffectLabel}</label>
-            <select
-              id="style-word-effect"
-              value={wordEffect}
-              onChange={(e) => updateConfig('wordEffect', e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-            >
-              {WORD_EFFECTS.map(id => <option key={id} value={id}>{t.style.wordEffects[id]}</option>)}
-            </select>
-            {wordEffect !== 'none' && <p className="mt-1 text-xs text-slate-400">{t.style.wordEffectHelp}</p>}
-          </div>
-          {wordEffect === 'highlight' && <HighlightSwatches config={config} onChange={hex => updateConfig('highlightColor', hex)} />}
-        </div>
         </PanelGroup>
         <PanelGroup id="colours" title={t.style.textGroups.colours}>
           {/* Colours.
@@ -1066,27 +968,25 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
               named for its job now, and the card border -- which was hardcoded
               amber and stayed gold no matter what this was set to -- follows
               it like everything else in the list. */}
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div className="flex flex-col gap-2">
-              <ColorField
-                label={t.style.colourArabic}
-                description={t.style.colourArabicDescription}
-                value={config.textColor}
-                onChange={hex => updateConfig('textColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourAccent}
-                description={t.style.colourAccentDescription}
-                value={config.accentColor}
-                onChange={hex => updateConfig('accentColor', hex)}
-              />
-              <ColorField
-                label={t.style.colourTranslation}
-                description={t.style.colourTranslationDescription}
-                value={config.translationColor}
-                onChange={hex => updateConfig('translationColor', hex)}
-              />
-            </div>
+          <div className="flex flex-col">
+            <ColorField compact {...row('colourArabic')}
+              label={t.style.colourArabic}
+              description={t.style.colourArabicDescription}
+              value={config.textColor}
+              onChange={hex => updateConfig('textColor', hex)}
+            />
+            <ColorField compact {...row('colourAccent')}
+              label={t.style.colourAccent}
+              description={t.style.colourAccentDescription}
+              value={config.accentColor}
+              onChange={hex => updateConfig('accentColor', hex)}
+            />
+            <ColorField compact {...row('colourTranslation')}
+              label={t.style.colourTranslation}
+              description={t.style.colourTranslationDescription}
+              value={config.translationColor}
+              onChange={hex => updateConfig('translationColor', hex)}
+            />
           </div>
         </PanelGroup>
         </div>
@@ -1273,168 +1173,66 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       {shows('card') && (
       <StyleSection id="card" title={t.style.tabCard} summary={cardSummary} open={isOpen('card')} onToggle={() => toggleSection('card')} bare={!!only}>
       {/* Card & FX */}
-              <div className="flex flex-col gap-3">
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
-            {/* Where things sit, then how the badge looks: the two choices
-                that change the frame's arrangement rather than its colours. */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="font-semibold text-slate-200 block mb-1">{t.style.layoutLabel}</label>
-                <select
-                  value={asFrameLayout(config.layout)}
-                  onChange={(e) => updateConfig('layout', e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  {FRAME_LAYOUTS.map(id => <option key={id} value={id}>{t.style.layouts[id]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeStyleLabel}</label>
-                {/* "None" is the badge switch, not a style: hiding the badge
-                    keeps the style it had for when it comes back. */}
-                <select
-                  value={config.showSurahBadge ? usableBadgeStyle(config.badgeStyle, missingFonts) : 'none'}
-                  onChange={(e) => onChangeConfig(e.target.value === 'none'
-                    ? { ...config, showSurahBadge: false }
-                    : { ...config, showSurahBadge: true, badgeStyle: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-                >
-                  <option value="none">{t.style.badgeStyles.none}</option>
-                  {BADGE_STYLES.map(id => (
-                    <option
-                      key={id}
-                      value={id}
-                      disabled={id === 'calligraphic' && missingFonts.has(SURAH_NAME_FONT_ID)}
-                    >
-                      {t.style.badgeStyles[id]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {missingFonts.has(SURAH_NAME_FONT_ID) && (
-              <p className="-mt-1 text-xs text-slate-400">{t.style.badgeFontMissing}</p>
-            )}
+        <div className="flex flex-col gap-5">
+          {/* Where things sit, then how the badge looks: the two choices
+              that change the frame's arrangement rather than its colours. */}
+          <div className="flex flex-col">
+            <ChoiceRow label={t.style.layoutLabel} {...row('layout')}
+              options={FRAME_LAYOUTS.map(id => ({ id, label: t.style.layouts[id] }))}
+              chosen={asFrameLayout(config.layout)} onChoose={id => updateConfig('layout', id)} />
+            {/* "None" is the badge switch, not a style: hiding the badge
+                keeps the style it had for when it comes back. */}
+            <ChoiceRow label={t.style.badgeStyleLabel} {...row('badge')}
+              options={[
+                { id: 'none', label: t.style.badgeStyles.none },
+                ...BADGE_STYLES.map(id => ({ id: id as string, label: t.style.badgeStyles[id], disabled: id === 'calligraphic' && missingFonts.has(SURAH_NAME_FONT_ID) })),
+              ]}
+              chosen={config.showSurahBadge ? usableBadgeStyle(config.badgeStyle, missingFonts) : 'none'}
+              onChoose={id => onChangeConfig(id === 'none'
+                ? { ...config, showSurahBadge: false }
+                : { ...config, showSurahBadge: true, badgeStyle: id })}>
+              {missingFonts.has(SURAH_NAME_FONT_ID) && <p className="px-2 text-xs text-slate-400">{t.style.badgeFontMissing}</p>}
+            </ChoiceRow>
             {/* Its own control, not the card's: a no-card layout sets the card
                 to nothing, and the badge still has to read over the footage. */}
             {config.showSurahBadge && (
-              <div>
-                <div className="flex justify-between text-slate-300 mb-1">
-                  <span>{t.style.badgeOpacity}</span>
-                  <span className="font-mono text-amber-400">{config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={config.badgeOpacity ?? DEFAULT_BADGE_OPACITY}
-                  onChange={(e) => updateConfig('badgeOpacity', parseInt(e.target.value, 10))}
-                  className="w-full accent-amber-500"
-                />
-              </div>
+              <SliderRow label={t.style.badgeOpacity} value={config.badgeOpacity ?? DEFAULT_BADGE_OPACITY} min={0} max={100} unit="%" onChange={v => updateConfig('badgeOpacity', v)} />
             )}
+            <SliderRow label={t.style.cardOpacity} value={config.cardBgOpacity} min={0} max={80} unit="%" onChange={v => updateConfig('cardBgOpacity', v)} />
+          </div>
 
-            <div className="pt-2 border-t border-slate-800">
-              <div className="flex justify-between text-slate-300 mb-1">
-                <span>{t.style.cardOpacity}</span>
-                <span className="font-mono text-amber-400">{config.cardBgOpacity}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={80}
-                value={config.cardBgOpacity}
-                onChange={(e) => updateConfig('cardBgOpacity', parseInt(e.target.value, 10))}
-                className="w-full accent-amber-500"
-              />
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeTextLabel}</label>
+          <div className="flex flex-col">
+            <CompactRow label={t.style.badgeTextLabel} hint={t.style.badgeTextHelp} value={config.surahBadgeText || t.style.automatic} {...row('badgeText')}>
               <input
                 type="text"
                 value={config.surahBadgeText}
                 onChange={(e) => updateConfig('surahBadgeText', e.target.value)}
                 placeholder={t.style.badgeTextPlaceholder}
+                aria-label={t.style.badgeTextLabel}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-xs text-slate-400 mt-1">{t.style.badgeTextHelp}</p>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.badgeSubtitleLabel}</label>
+              <p className="text-xs text-slate-400">{t.style.badgeTextHelp}</p>
+            </CompactRow>
+            <CompactRow label={t.style.badgeSubtitleLabel} hint={t.style.badgeSubtitleHelp} value={config.surahBadgeSubtitleText || t.style.notSet} {...row('badgeSubtitle')}>
               <input
                 type="text"
                 value={config.surahBadgeSubtitleText}
                 onChange={(e) => updateConfig('surahBadgeSubtitleText', e.target.value)}
                 placeholder={t.style.badgeSubtitlePlaceholder}
+                aria-label={t.style.badgeSubtitleLabel}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
               />
-              <p className="text-xs text-slate-400 mt-1">{t.style.badgeSubtitleHelp}</p>
-            </div>
+              <p className="text-xs text-slate-400">{t.style.badgeSubtitleHelp}</p>
+            </CompactRow>
+          </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.cardBorder}
-                  onChange={(e) => updateConfig('cardBorder', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.cardBorder}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.textShadow}
-                  onChange={(e) => updateConfig('textShadow', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.textShadow}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showWaveform}
-                  onChange={(e) => updateConfig('showWaveform', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.audioVisualizer}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showSurahBadge}
-                  onChange={(e) => updateConfig('showSurahBadge', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.surahBadge}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={config.showTranslation}
-                  onChange={(e) => updateConfig('showTranslation', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.englishTranslation}</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300" title={t.style.tafsirHint}>
-                <input
-                  type="checkbox"
-                  checked={config.showTafsir === true}
-                  onChange={(e) => updateConfig('showTafsir', e.target.checked)}
-                  className="rounded accent-amber-500"
-                />
-                <span>{t.style.tafsir}</span>
-              </label>
-            </div>
-
+          <div className="flex flex-col">
+            <SwitchRow label={t.style.cardBorder} checked={config.cardBorder} onChange={on => updateConfig('cardBorder', on)} />
+            <SwitchRow label={t.style.textShadow} checked={config.textShadow} onChange={on => updateConfig('textShadow', on)} />
+            <SwitchRow label={t.style.audioVisualizer} checked={config.showWaveform} onChange={on => updateConfig('showWaveform', on)} />
+            <SwitchRow label={t.style.surahBadge} checked={config.showSurahBadge} onChange={on => updateConfig('showSurahBadge', on)} />
+            <SwitchRow label={t.style.englishTranslation} checked={config.showTranslation} onChange={on => updateConfig('showTranslation', on)} />
+            <SwitchRow label={t.style.tafsir} hint={t.style.tafsirHint} checked={config.showTafsir === true} onChange={on => updateConfig('showTafsir', on)} />
           </div>
         </div>
 
@@ -1445,34 +1243,21 @@ export const StyleConfigPanel: React.FC<StyleConfigPanelProps> = ({
       <StyleSection id="branding" title={t.style.headingBranding} summary={brandingSummary} open={isOpen('branding')} onToggle={() => toggleSection('branding')} bare={!!only}>
       {/* Card & FX, section 2: branding. It belongs with the other things
           stamped on top of the frame rather than with the ayah's typography. */}
-              <div className="flex flex-col gap-3">
-          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col gap-3">
-            <div>
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.watermarkLabel}</label>
-              <input
-                type="text"
-                value={config.watermarkText}
-                onChange={(e) => updateConfig('watermarkText', e.target.value)}
-                placeholder={t.style.watermarkPlaceholder}
-                dir="ltr"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono text-start"
-              />
-            </div>
-
-            <div>
-              <label className="font-semibold text-slate-200 block mb-1">{t.style.watermarkPositionLabel}</label>
-              <select
-                value={config.watermarkPosition}
-                onChange={(e) => updateConfig('watermarkPosition', e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              >
-                <option value="bottom-right">{t.style.watermarkPositions['bottom-right']}</option>
-                <option value="bottom-left">{t.style.watermarkPositions['bottom-left']}</option>
-                <option value="top-right">{t.style.watermarkPositions['top-right']}</option>
-                <option value="top-left">{t.style.watermarkPositions['top-left']}</option>
-              </select>
-            </div>
-          </div>
+        <div className="flex flex-col">
+          <CompactRow label={t.style.watermarkLabel} value={config.watermarkText || t.style.notSet} {...row('watermark')}>
+            <input
+              type="text"
+              value={config.watermarkText}
+              onChange={(e) => updateConfig('watermarkText', e.target.value)}
+              placeholder={t.style.watermarkPlaceholder}
+              aria-label={t.style.watermarkLabel}
+              dir="ltr"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono text-start"
+            />
+          </CompactRow>
+          <ChoiceRow label={t.style.watermarkPositionLabel} {...row('watermarkPosition')}
+            options={WATERMARK_POSITIONS.map(id => ({ id, label: t.style.watermarkPositions[id] }))}
+            chosen={config.watermarkPosition as WatermarkPosition} onChoose={id => updateConfig('watermarkPosition', id)} />
         </div>
       </StyleSection>
       )}
@@ -1509,7 +1294,8 @@ const HighlightSwatches: React.FC<{ config: VideoCanvasConfig; onChange: (hex: s
   ];
   return (
     <fieldset className="min-w-0">
-      <legend className="font-semibold text-slate-200 block mb-1">{t.style.highlightColourLabel}</legend>
+      {/* Its row says what it is; the legend is for a screen reader. */}
+      <legend className="sr-only">{t.style.highlightColourLabel}</legend>
       <div className="flex flex-wrap gap-1.5">
         {options.map(option => (
           <button

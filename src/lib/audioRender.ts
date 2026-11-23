@@ -5,7 +5,8 @@
  * never clicks and laid end to end so the result is exactly what was kept; the
  * clean-up of a recording of one's own; the speed-up, by Rubber Band, which
  * stretches time without moving pitch or formants, so the reciter keeps his
- * voice (ffmpeg's atempo where it was built without it); and the loudness,
+ * voice (ffmpeg's atempo where it was built without it); a mosque's echo, if
+ * asked for; and the loudness,
  * measured first and then applied as one gain, so nothing pumps.
  *
  * FLAC out: lossless, so the edited clock is the samples and the captions,
@@ -24,6 +25,34 @@ const LOUDNESS = { I: -16, TP: -1.5, LRA: 11 };
 /** Hum below the voice, then broadband room and fan noise, tracked as it changes. */
 const DENOISE = 'highpass=f=60,afftdn=nr=12:nf=-50:tn=1';
 const RATE = 44100;
+/**
+ * A large mosque's hall, as an impulse response made here rather than one
+ * recorded somewhere: pink noise for each ear, kept to the voice's band, dying
+ * away by 60dB over `seconds` after the sound's first trip to the walls. Seeded,
+ * so the same edit renders the same audio every time.
+ */
+const MOSQUE = { seconds: 2.4, preDelayMs: 40, length: 3, low: 180, high: 4000, dry: 0.8, wet: 14 };
+const mosqueResponse = (label: string) => {
+  const noise = (seed: number, out: string) => `anoisesrc=d=${MOSQUE.length}:c=pink:r=${RATE}:a=1:s=${seed}[${out}]`;
+  return [
+    noise(1, 'irl'), noise(2, 'irr'),
+    `[irl][irr]amerge=inputs=2,highpass=f=${MOSQUE.low},lowpass=f=${MOSQUE.high},volume=exp(-6.91*t/${MOSQUE.seconds}):eval=frame,adelay=${MOSQUE.preDelayMs}|${MOSQUE.preDelayMs}[${label}]`,
+  ];
+};
+
+/**
+ * `[input]` in a mosque, as `[room]`: the voice kept in front, the hall's echo
+ * about 10dB under it, held under full scale where the two meet. As long as
+ * what went in, so every caption stays where it was.
+ */
+function mosqueChains(input: string): string[] {
+  return [
+    `[${input}]aresample=${RATE},aformat=channel_layouts=stereo,asplit[dry][send]`,
+    ...mosqueResponse('hall'),
+    '[send][hall]afir=irfmt=input[echo]',
+    `[dry][echo]amix=inputs=2:weights=${MOSQUE.dry} ${MOSQUE.wet}:normalize=0,alimiter=limit=0.89:level=0[room]`,
+  ];
+}
 /**
  * A loop-friendly ending: the first moment faded in and the last faded out,
  * each too short to touch a word -- a passage starts and ends in its own
@@ -69,20 +98,38 @@ const MIN_KEPT_SEC = 0.02;
  */
 export function editGraph(edit: AudioEdit, duration: number, options: { rubberband: boolean; measured?: Loudness }): string {
   const chains = edit.cuts.length ? cutChains(edit, duration) : [];
-  const label = edit.cuts.length ? 'cut' : '0:a';
-  const after: string[] = [];
-  if (edit.denoise) after.push(DENOISE);
-  if (edit.tempo !== 1) after.push(options.rubberband ? `rubberband=tempo=${edit.tempo}:pitchq=quality` : `atempo=${edit.tempo}`);
-  if (edit.loudness) {
-    const target = `I=${LOUDNESS.I}:TP=${LOUDNESS.TP}:LRA=${LOUDNESS.LRA}`;
-    const m = options.measured;
-    after.push(m
-      ? `loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
-      : `loudnorm=${target}:print_format=json`);
+  let label = edit.cuts.length ? 'cut' : '0:a';
+  const after = voiceSteps(edit, options.rubberband);
+  if (edit.mosque) {
+    // Its echo is of the voice as it plays, so it comes after the speed-up, and
+    // before the loudness, which then measures what is heard.
+    if (after.length) {
+      chains.push(`[${label}]${after.splice(0).join(',')}[voice]`);
+      label = 'voice';
+    }
+    chains.push(...mosqueChains(label));
+    label = 'room';
   }
+  if (edit.loudness) after.push(loudnessStep(options.measured));
   after.push(...edges(edit));
   chains.push(`[${label}]${after.length ? after.join(',') : 'anull'}[out]`);
   return chains.join(';');
+}
+
+/** The clean-up of a recording of one's own, then the speed-up. */
+function voiceSteps(edit: AudioEdit, rubberband: boolean): string[] {
+  const steps: string[] = [];
+  if (edit.denoise) steps.push(DENOISE);
+  if (edit.tempo !== 1) steps.push(rubberband ? `rubberband=tempo=${edit.tempo}:pitchq=quality` : `atempo=${edit.tempo}`);
+  return steps;
+}
+
+/** The loudness pass: measuring, or with `measured`, applying it as one gain. */
+function loudnessStep(m: Loudness | undefined): string {
+  const target = `I=${LOUDNESS.I}:TP=${LOUDNESS.TP}:LRA=${LOUDNESS.LRA}`;
+  return m
+    ? `loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
+    : `loudnorm=${target}:print_format=json`;
 }
 
 /** What is kept between the cuts, each faded at its joins, laid end to end as `[cut]`. */

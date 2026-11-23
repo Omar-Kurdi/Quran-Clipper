@@ -789,7 +789,7 @@ export const ar: Dictionary = {
     overlayOpacity: 'عتامة الطبقة الداكنة:',
     backgroundBlur: 'ضبابية الخلفية:',
 
-    arabicFontLabel: 'الخط العربي:',
+    arabicFontLabel: 'الخط العربي',
     fonts: {
       'qpc-v2': 'المصحف المدني',
       DigitalKhatt: 'الخط الرقمي',
@@ -798,12 +798,12 @@ export const ar: Dictionary = {
     },
     fontNotInstalled: 'الخطوط الباهتة غير مثبّتة على هذا الخادم، ومصدرها أرشيفات QUL -- انظر «خطوط المصحف» في ملف README.',
     fontFallback: 'الخط المختار غير مثبّت على هذا الخادم، فيُرسم النص العربي بخط الأميري إلى أن يُثبَّت.',
-    arabicFontSize: 'حجم الخط العربي:',
-    translationFontSize: 'حجم خط الترجمة:',
-    ayahNumberSize: 'حجم رقم الآية:',
-    ayahNumberPlacement: 'رقم الآية',
+    arabicFontSize: 'العربية',
+    translationFontSize: 'الترجمة',
+    ayahNumberSize: 'الحجم',
+    ayahNumberPlacement: 'الموضع',
     ayahNumberPlacements: { end: 'في نهاية الآية', between: 'بين البطاقتين' },
-    ayahMarkerStyle: 'علامة نهاية الآية',
+    ayahMarkerStyle: 'النهاية',
     ayahMarkerStyles: {
       medallion: 'زخرفة فيها الرقم',
       page: 'كما في المصحف المدني*',
@@ -821,12 +821,14 @@ export const ar: Dictionary = {
     colourTranslation: 'نص الترجمة',
     colourTranslationDescription: 'السطر الإنجليزي تحت النص العربي.',
 
-    cardOpacity: 'عتامة البطاقة الزجاجية:',
-    badgeOpacity: 'عتامة الشارة:',
-    badgeTextLabel: 'نص شارة السورة:',
+    cardOpacity: 'عتامة البطاقة',
+    badgeOpacity: 'عتامة الشارة',
+    badgeTextLabel: 'عنوان الشارة',
+    automatic: 'تلقائي',
+    notSet: 'لا شيء',
     badgeTextPlaceholder: 'اتركه فارغًا لعنوان تلقائي بالسورة والنطاق',
     badgeTextHelp: 'اتركه فارغًا ليُولَّد تلقائيًا من السورة ونطاق الآيات المكتشفين.',
-    badgeSubtitleLabel: 'العنوان الفرعي للشارة:',
+    badgeSubtitleLabel: 'العنوان الفرعي للشارة',
     badgeSubtitlePlaceholder: 'عنوان فرعي اختياري تحت عنوان الشارة',
     badgeSubtitleHelp: 'اتركه فارغًا لإخفاء السطر الثاني من الشارة.',
     cardBorder: 'إطار البطاقة',
@@ -837,9 +839,9 @@ export const ar: Dictionary = {
     tafsir: 'تفسير موجز (الميسر)',
     tafsirHint: 'التفسير الميسر بالعربية: جملة أو جملتان عن كل آية، تحت الترجمة. لا يظهر إلا إذا اخترته.',
 
-    watermarkLabel: 'العلامة المائية / المعرّف:',
+    watermarkLabel: 'العلامة المائية',
     watermarkPlaceholder: '@MyDawahChannel',
-    watermarkPositionLabel: 'موضع العلامة المائية:',
+    watermarkPositionLabel: 'الموضع',
     watermarkPositions: {
       'bottom-right': 'أسفل اليمين',
       'bottom-left': 'أسفل اليسار',
@@ -854,7 +856,7 @@ export const ar: Dictionary = {
       lookValue: (dim, blur) => `${dim}% · ${blur}px`,
       add: 'أضف خلفيتك'
     },
-    transitionLabel: 'بين المقاطع:',
+    transitionLabel: 'بين المقاطع',
     transitions: {
       cut: 'قطع مباشر',
       crossfade: 'تلاشٍ متداخل',
@@ -863,17 +865,17 @@ export const ar: Dictionary = {
       zoom: 'تكبير',
       focus: 'تركيز ناعم'
     },
-    motionSpeedLabel: 'السرعة:',
+    motionSpeedLabel: 'السرعة',
     motionSpeeds: {
       slow: 'بطيئة',
       normal: 'عادية',
       quick: 'سريعة'
     },
     transitionHelp: 'يجري في الوقفة التي تسبق المقطع التالي إن وُجدت؛ وحيث تتصل المقاطع يتوسّط موضع الالتقاء.',
-    highlightColourLabel: 'لون الإبراز:',
+    highlightColourLabel: 'لون الإبراز',
     highlightAccent: 'لون التمييز',
     highlightCustom: 'أي لون',
-    wordEffectLabel: 'الكلمات:',
+    wordEffectLabel: 'الكلمات',
     wordEffects: {
       none: 'كلها معًا',
       reveal: 'تظهر مع التلاوة',
@@ -881,13 +883,13 @@ export const ar: Dictionary = {
     },
     wordEffectHelp: 'يحتاج إلى توقيت كل كلمة، وتعطيه المطابقة أو القارئ المدمج. أما المقطع الذي لا توقيت له فيُعرض كاملًا.',
 
-    layoutLabel: 'التخطيط:',
+    layoutLabel: 'التخطيط',
     layouts: {
       card: 'بطاقة في الوسط',
       open: 'بلا بطاقة',
       split: 'العربية والترجمة منفصلتان'
     },
-    badgeStyleLabel: 'الشارة:',
+    badgeStyleLabel: 'الشارة',
     badgeStyles: {
       none: 'بلا شارة',
       pill: 'كبسولة',
@@ -986,6 +988,8 @@ export const ar: Dictionary = {
     fade: 'ظهور وتلاشٍ تدريجي',
     fadeHelp: 'يبدأ المقطع وينتهي بهدوء: تتدرّج أولى لحظاته وآخرها. لا يُطبَّق إلا إذا اخترته.',
     fadeLength: 'مدة كل تدرّج',
+    mosque: 'صوت كأنه في مسجد',
+    mosqueHelp: 'يضيف صدى قاعة مسجد كبيرة تحت التلاوة.',
     denoise: 'تنظيف تسجيلي',
     denoiseHelp: 'يزيل الطنين وصوت المروحة وضجيج الغرفة.',
     trimToVoice: 'القصّ إلى الصوت',

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useT } from './LocaleProvider';
 
 interface ColorFieldProps {
@@ -9,6 +10,14 @@ interface ColorFieldProps {
   description?: string;
   value: string;
   onChange: (hex: string) => void;
+  /**
+   * One line, as the style panels' other settings (`CompactRow`): the label,
+   * then the swatch and hex; what it paints is said on hover. With `open` and
+   * `onToggle`, the panel decides when it is open, so one opens at a time.
+   */
+  compact?: boolean;
+  open?: boolean;
+  onToggle?: () => void;
 }
 
 /**
@@ -86,9 +95,11 @@ export function hslToHex({ h, s, l }: Hsl): string {
   return `#${toByte(r)}${toByte(g)}${toByte(b)}`;
 }
 
-export const ColorField: React.FC<ColorFieldProps> = ({ label, description, value, onChange }) => {
+export const ColorField: React.FC<ColorFieldProps> = ({ label, description, value, onChange, compact, open: shown, onToggle }) => {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = shown ?? ownOpen;
+  const toggle = onToggle ?? (() => setOwnOpen(o => !o));
   const [draft, setDraft] = useState<string | null>(null);
   // Hue and saturation survive a trip through pure black, white or grey, where
   // the hex carries no hue at all. Reading them back off `value` every render
@@ -123,11 +134,26 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
 
   const sliderClass = 'w-full accent-amber-500';
 
+  const Chevron = open ? ChevronDown : ChevronRight;
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950/60">
+    <div className={compact ? (open ? 'rounded-lg bg-slate-900/60 ring-1 ring-slate-800' : '') : 'rounded-lg border border-slate-800 bg-slate-950/60'}>
+      {compact ? (
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          title={description}
+          className="w-full min-h-9 flex items-center gap-3 px-2 py-1.5 rounded-md text-start hover:bg-slate-800/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold"
+        >
+          <span className="flex-1 min-w-0 text-sm text-slate-200">{label}</span>
+          <span aria-hidden className="w-3.5 h-3.5 shrink-0 rounded-sm border border-slate-600" style={{ background: value }} />
+          <span className="font-mono text-xs text-slate-400 shrink-0" dir="ltr">{value}</span>
+          <Chevron aria-hidden className="w-3.5 h-3.5 shrink-0 text-slate-500 rtl:-scale-x-100" />
+        </button>
+      ) : (
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={toggle}
         aria-expanded={open}
         className="w-full flex items-center gap-2.5 p-2 text-start focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded-lg"
       >
@@ -141,6 +167,7 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, description, valu
         </span>
         <span className="font-mono text-[11px] text-slate-400 shrink-0">{value}</span>
       </button>
+      )}
 
       {open && (
         <div className="p-2 pt-0 flex flex-col gap-2">

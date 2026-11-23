@@ -48,6 +48,17 @@ describe('an edit as given', () => {
     expect(encodeEdit(normalizeEdit({ loop: true }))).toBe(encodeEdit({ ...NO_EDIT, loop: true }));
     expect(decodeEdit(encodeEdit({ ...NO_EDIT, loop: true }))?.fade).toBe(0);
   });
+
+  it('has no mosque unless asked, and carries one in an address that is otherwise unchanged', () => {
+    expect(normalizeEdit({}).mosque).toBe(false);
+    expect(normalizeEdit({ mosque: 'yes' }).mosque).toBe(false);
+    const hall = normalizeEdit({ mosque: true });
+    expect(isEdited(hall)).toBe(true);
+    expect(decodeEdit(encodeEdit(hall))).toEqual(hall);
+    // An address made before the mosque existed is read as none, and is unchanged by it.
+    expect(encodeEdit(normalizeEdit({ fade: 0.5 }))).toBe(encodeEdit({ ...NO_EDIT, fade: 0.5 }));
+    expect(decodeEdit(encodeEdit({ ...NO_EDIT, fade: 0.5 }))?.mosque).toBe(false);
+  });
 });
 
 describe('the edited clock', () => {
