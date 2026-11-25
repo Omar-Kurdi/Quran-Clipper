@@ -11,6 +11,7 @@ import {
   resizeSegment,
   moveSegmentTo,
   trimLane,
+  clipLaneConfig,
 } from './backgroundTimeline';
 import { BACKGROUND_VIDEOS } from './quranData';
 
@@ -178,5 +179,19 @@ describe('trimLane', () => {
     const trimmed = trimLane(lane, 320.41, 370.45);
     const at = (t: number) => backgroundAt({ bgType: 'video', bgUrl: '', bgMode: 'custom' as const, bgSegments: trimmed }, [], t)?.url;
     expect([at(0), at(29), at(30), at(50)]).toEqual(['b.mp4', 'b.mp4', 'c.mp4', 'c.mp4']);
+  });
+});
+
+describe('clipLaneConfig', () => {
+  // The bug this pins: a 32s clip cut at 140-172.2s of a 561s recording kept
+  // the recording's one block, 0-561s, so its timeline ran nine minutes on.
+  it('cuts a recording\'s lane to the clip, on the clip\'s clock', () => {
+    const config = { bgType: 'video', bgUrl: 'a.mp4', bgMode: 'custom' as const, bgSegments: [{ url: 'a.mp4', start: 0, end: 561.237333 }] };
+    expect(clipLaneConfig(config, 140, 172.2).bgSegments).toEqual([{ url: 'a.mp4', start: 0, end: 32.2 }]);
+  });
+
+  it('leaves a mode the lane is worked out from as it is', () => {
+    const config = { bgType: 'video', bgUrl: 'a.mp4', bgMode: 'cycle' as const, bgSegments: [{ url: 'a.mp4', start: 0, end: 561 }] };
+    expect(clipLaneConfig(config, 140, 172.2)).toBe(config);
   });
 });

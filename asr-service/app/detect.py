@@ -16,7 +16,7 @@ import difflib
 import logging
 import re
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING, Callable
 
 from . import corpus
@@ -289,6 +289,57 @@ def with_opening_letters(found: SurahRange, ayah_words: Callable[[int, int], lis
     return SurahRange(found.surah, start, found.end_ayah, found.phrases)
 
 
+_ISTIADHA = tuple(corpus.skeleton(word) for word in "أَعُوذُ بِاللَّهِ مِنَ الشَّيْطَانِ الرَّجِيمِ".split())
+_BASMALA = tuple(corpus.skeleton(word) for word in "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ".split())
+# Each opening as it may be heard, longest first. The decoder can hear the
+# basmala's بِسْمِ اللَّهِ as nothing and only its الرَّحْمَنِ الرَّحِيمِ -- which no
+# recitation opens on otherwise.
+OPENINGS = {"istiadha": (_ISTIADHA,), "basmala": (_BASMALA, _BASMALA[2:])}
+
+
+def _openings_at_start(words: list[str]) -> tuple[int, set[str]]:
+    """How many of the first words are openings, in their order, and which ones they are."""
+    at = 0
+    said: set[str] = set()
+    for name, heard_as in OPENINGS.items():
+        formula = next((f for f in heard_as if tuple(corpus.skeleton(word) for word in words[at:at + len(f)]) == f), None)
+        if formula:
+            at += len(formula)
+            said.add(name)
+    return at, said
+
+
+def without_openings(decoded_phrases: list[str]) -> tuple[list[str], set[str]]:
+    """The heard phrases with the isti'adha and basmala said before the recitation taken off, and which were.
+
+    They are said before a recitation, not recited from it, yet located like
+    any phrase they land on the ayahs that share their words: the isti'adha's
+    last four words are 16:98's, and the basmala's الرَّحْمَنِ الرَّحِيمِ -- which
+    the decoder often hears as a phrase of its own, or alone -- ends 2:163. A Luqman
+    upload came back as 16:98, then as 2:163, before its first ayah. Taken off
+    here, only at the start and only as whole formulas, in their order and
+    across phrase breaks; the openings (`phoneme_reading.find_openings`)
+    caption them. A recitation of 113:1 or 114:1 (قُلْ أَعُوذُ بِرَبِّ) or of
+    16:98 itself (فَٱسْتَعِذْ بِٱللَّهِ) does not start with either.
+    """
+    words = [(i, word) for i, phrase in enumerate(decoded_phrases) for word in phrase.split()]
+    at, said = _openings_at_start([word for _, word in words])
+    if not said:
+        return decoded_phrases, said
+    kept: dict[int, list[str]] = {}
+    for i, word in words[at:]:
+        kept.setdefault(i, []).append(word)
+    log.info("leaving the %s out of the detection: said before the recitation, not an ayah", " and ".join(sorted(said)))
+    return [" ".join(kept[i]) for i in sorted(kept)], said
+
+
+def _from_the_basmala(ranges: list[SurahRange], said: set[str]) -> list[SurahRange]:
+    """Al-Fatihah's basmala is its first ayah: with it taken off as an opening, 1:2 starts at 1:1 again."""
+    if "basmala" not in said:
+        return ranges
+    return [replace(r, start_ayah=1) if r.surah == 1 and r.start_ayah == 2 else r for r in ranges]
+
+
 def detect_range(decoded_phrases: list[str], assist: Assist | None = None) -> DetectedRange | None:
     """Work out the surah and ayah range covering the recited phrases.
 
@@ -301,6 +352,7 @@ def detect_range(decoded_phrases: list[str], assist: Assist | None = None) -> De
     that falls wholly inside one of the Quran's repeated phrases from
     anchoring a surah: its match says what was recited, not where.
     """
+    decoded_phrases, said = without_openings(decoded_phrases)
     words = corpus.load_words()
     skeletons = corpus.corpus_skeletons()
     index = corpus.ngram_index()
@@ -402,7 +454,7 @@ def detect_range(decoded_phrases: list[str], assist: Assist | None = None) -> De
         len(decoded_phrases),
         confidence,
     )
-    ranges = [with_opening_letters(r, lambda surah, ayah: [w[2] for w in corpus.words_for_range(surah, ayah, ayah)]) for r in ranges]
+    ranges = [with_opening_letters(r, lambda surah, ayah: [w[2] for w in corpus.words_for_range(surah, ayah, ayah)]) for r in _from_the_basmala(ranges, said)]
     return DetectedRange(
         ranges=ranges,
         confidence=round(confidence, 4),

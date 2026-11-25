@@ -68,7 +68,7 @@ import { Inspector } from '@/components/Inspector';
 import { segmentAt, trimTimeline, shiftTimeline, fitVersesToAudio, fillFromCorpus } from '@/lib/verseEdits';
 import { Button } from '@/components/Button';
 import {
-  backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName, trimLane,
+  backgroundSegments, moveSegmentTo, resizeSegment, rememberMediaName, trimLane, clipLaneConfig,
   BackgroundSegment, BACKGROUND_MODES, BackgroundMode
 } from '@/lib/backgroundTimeline';
 import { asBadgeStyle, DEFAULT_BADGE_STYLE, DEFAULT_BADGE_OPACITY, NEW_PROJECT_BADGE_OPACITY } from '@/lib/surahBadge';
@@ -2683,6 +2683,8 @@ export default function VideoCreatorPage() {
       ...currentProjectPayload({
         ayahStart: held.start, ayahEnd: held.end, audioDurationSeconds: window.end - window.start,
         audioKey: stored ? key : '', trimWindow: { start: origin + window.start, end: origin + window.end },
+        // A hand-cut background lane is on the recording's clock: cut to the clip, as its captions are.
+        config: clipLaneConfig(withStoredBackgrounds(canvasConfig), window.start, window.end) as unknown as Record<string, unknown>,
         ...over, verses: captions,
         // A clip, not the recording, and made from a window of the old layout only when it was.
         audioTags: { ...over.audioTags, windowOf: made.windowOf, clip: true },

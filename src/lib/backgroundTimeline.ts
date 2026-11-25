@@ -311,6 +311,18 @@ export function trimLane(segments: BackgroundSegment[], trimStart: number, trimE
     }));
 }
 
+/**
+ * A config for a clip cut from [start, end] of what is open: a hand-cut lane
+ * cut to that stretch and moved onto the clip's clock (`trimLane`), every
+ * other mode as it is. Copied whole, a recording's lane ran on for the rest
+ * of the recording, and the clip's timeline with it.
+ */
+export function clipLaneConfig<C extends BackgroundConfig>(config: C, start: number, end: number): C {
+  return config.bgMode === 'custom' && config.bgSegments?.length
+    ? { ...config, bgSegments: trimLane(config.bgSegments, start, end) }
+    : config;
+}
+
 /** The room a block has, given the blocks either side of it. */
 function neighbours(segments: BackgroundSegment[], index: number, duration: number) {
   return {
